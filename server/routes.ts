@@ -396,14 +396,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       if (usersNeedingReminder.length > 0) {
-        await sendCheckinReminder(usersNeedingReminder);
+        // Fetch active questions to include in the reminder
+        const questions = await storage.getActiveQuestions();
+        await sendCheckinReminder(usersNeedingReminder, questions);
       }
       
       res.json({ 
         message: "Reminder sent", 
-        userCount: usersNeedingReminder.length 
+        userCount: usersNeedingReminder.length,
+        questionsIncluded: await storage.getActiveQuestions().then(q => q.length)
       });
     } catch (error) {
+      console.error("Failed to send check-in reminder:", error);
       res.status(500).json({ message: "Failed to send reminder" });
     }
   });

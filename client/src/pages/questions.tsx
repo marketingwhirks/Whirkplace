@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { z } from "zod";
-import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff } from "lucide-react";
+import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff, Send } from "lucide-react";
 
 import Header from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
@@ -122,6 +122,26 @@ export default function Questions() {
     },
   });
 
+  // Send check-in reminder mutation
+  const sendCheckinReminderMutation = useMutation({
+    mutationFn: async () => {
+      return apiRequest("POST", "/api/slack/send-checkin-reminder", {});
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Check-in Reminder Sent",
+        description: `Reminder sent to ${data.userCount} team members with ${data.questionsIncluded} questions included`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to send check-in reminder",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Handle form submission
   const handleSubmit = (data: CreateQuestionForm) => {
     if (editingQuestion) {
@@ -180,7 +200,7 @@ export default function Questions() {
       />
 
       <main className="flex-1 overflow-auto p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Question Management</h1>
             <p className="text-muted-foreground">
@@ -188,14 +208,25 @@ export default function Questions() {
             </p>
           </div>
           
-          <Dialog open={showCreateDialog} onOpenChange={handleDialogClose}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-create-question">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Question
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
+          <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+            <Button 
+              variant="outline"
+              onClick={() => sendCheckinReminderMutation.mutate()}
+              disabled={sendCheckinReminderMutation.isPending}
+              data-testid="button-send-reminder"
+              className="w-full sm:w-auto"
+            >
+              <Send className="w-4 h-4 mr-2" />
+              {sendCheckinReminderMutation.isPending ? "Sending..." : "Send Check-in Reminder"}
+            </Button>
+            <Dialog open={showCreateDialog} onOpenChange={handleDialogClose}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-create-question" className="w-full sm:w-auto">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Question
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
               <DialogHeader>
                 <DialogTitle>
                   {editingQuestion ? "Edit Question" : "Create New Question"}
@@ -269,8 +300,9 @@ export default function Questions() {
                   </DialogFooter>
                 </form>
               </Form>
-            </DialogContent>
-          </Dialog>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         {isLoading ? (

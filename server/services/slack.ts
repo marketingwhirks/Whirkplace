@@ -17,7 +17,7 @@ export async function sendSlackMessage(
   message: ChatPostMessageArguments
 ): Promise<string | undefined> {
   if (!slack) {
-    console.warn("Slack not configured. Message not sent:", message.text);
+    console.warn("Slack not configured. Message not sent:", JSON.stringify(message));
     return undefined;
   }
 
@@ -31,32 +31,78 @@ export async function sendSlackMessage(
 }
 
 /**
- * Send a check-in reminder to Slack
+ * Send a check-in reminder to Slack with link to check-in and weekly questions
  */
-export async function sendCheckinReminder(userNames: string[]) {
+export async function sendCheckinReminder(userNames: string[], questions: Array<{id: string, text: string}> = []) {
   if (!slack) return;
 
-  const channel = process.env.SLACK_CHANNEL_ID;
+  const channel = process.env.SLACK_CHANNEL_ID || '#general';
   const userList = userNames.join(", ");
+  
+  // Get the app URL for the check-in link
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const checkinUrl = `${appUrl}/#/checkins`;
+
+  // Create question preview blocks
+  const questionBlocks = questions.slice(0, 3).map((question, index) => ({
+    type: 'section' as const,
+    text: {
+      type: 'mrkdwn' as const,
+      text: `*${index + 1}.* ${question.text}`
+    }
+  }));
+
+  const blocks = [
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: '*Weekly Check-in Reminder* 📝'
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `Hey ${userList}! Time for your weekly check-in. Your feedback helps us build a better team culture! 🚀`
+      }
+    },
+    ...(questions.length > 0 ? [
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: '*This week\'s questions:*'
+        }
+      },
+      ...questionBlocks,
+      ...(questions.length > 3 ? [{
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `_...and ${questions.length - 3} more questions_`
+        }
+      }] : [])
+    ] : []),
+    {
+      type: 'actions' as const,
+      elements: [
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: 'Complete Check-in 📝'
+          },
+          url: checkinUrl,
+          style: 'primary' as const
+        }
+      ]
+    }
+  ];
 
   await sendSlackMessage({
     channel,
-    blocks: [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: '*Weekly Check-in Reminder* 📝'
-        }
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'plain_text',
-          text: `Hey ${userList}! Don't forget to complete your weekly check-in. Your feedback helps us build a better team culture! 🚀`
-        }
-      }
-    ]
+    blocks
   });
 }
 
@@ -66,7 +112,7 @@ export async function sendCheckinReminder(userNames: string[]) {
 export async function announceWin(winTitle: string, winDescription: string, userName: string, nominatedBy?: string) {
   if (!slack) return;
 
-  const channel = process.env.SLACK_CHANNEL_ID;
+  const channel = process.env.SLACK_CHANNEL_ID || '#general';
   const announcement = nominatedBy 
     ? `🎉 ${nominatedBy} wants to celebrate ${userName}!` 
     : `🎉 Let's celebrate ${userName}!`;
@@ -107,7 +153,7 @@ export async function announceWin(winTitle: string, winDescription: string, user
 export async function sendTeamHealthUpdate(averageRating: number, completionRate: number, totalWins: number) {
   if (!slack) return;
 
-  const channel = process.env.SLACK_CHANNEL_ID;
+  const channel = process.env.SLACK_CHANNEL_ID || '#general';
   const healthEmoji = averageRating >= 4 ? '🌟' : averageRating >= 3 ? '😊' : '😐';
 
   await sendSlackMessage({
