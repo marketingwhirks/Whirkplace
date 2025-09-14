@@ -55,6 +55,8 @@ export interface IStorage {
   // Comments
   getComment(id: string): Promise<Comment | undefined>;
   createComment(comment: InsertComment): Promise<Comment>;
+  updateComment(id: string, comment: Partial<InsertComment>): Promise<Comment | undefined>;
+  deleteComment(id: string): Promise<boolean>;
   getCommentsByCheckin(checkinId: string): Promise<Comment[]>;
 }
 
@@ -322,6 +324,20 @@ export class DatabaseStorage implements IStorage {
       .values(insertComment)
       .returning();
     return comment;
+  }
+
+  async updateComment(id: string, commentUpdate: Partial<InsertComment>): Promise<Comment | undefined> {
+    const [comment] = await db
+      .update(comments)
+      .set(commentUpdate)
+      .where(eq(comments.id, id))
+      .returning();
+    return comment || undefined;
+  }
+
+  async deleteComment(id: string): Promise<boolean> {
+    const result = await db.delete(comments).where(eq(comments.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getCommentsByCheckin(checkinId: string): Promise<Comment[]> {
@@ -639,6 +655,19 @@ export class MemStorage implements IStorage {
     };
     this.comments.set(comment.id, comment);
     return comment;
+  }
+
+  async updateComment(id: string, commentUpdate: Partial<InsertComment>): Promise<Comment | undefined> {
+    const comment = this.comments.get(id);
+    if (!comment) return undefined;
+    
+    const updatedComment = { ...comment, ...commentUpdate };
+    this.comments.set(id, updatedComment);
+    return updatedComment;
+  }
+
+  async deleteComment(id: string): Promise<boolean> {
+    return this.comments.delete(id);
   }
 
   async getCommentsByCheckin(checkinId: string): Promise<Comment[]> {

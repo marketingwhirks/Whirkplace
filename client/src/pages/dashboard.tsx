@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import RatingStars from "@/components/checkin/rating-stars";
 import WinCard from "@/components/wins/win-card";
 import TeamMemberCard from "@/components/team/team-member-card";
+import CheckinDetail from "@/components/checkin/checkin-detail";
 import { Heart, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +34,7 @@ export default function Dashboard() {
     overallMood: 0,
     responses: {} as Record<string, string>,
   });
+  const [selectedCheckin, setSelectedCheckin] = useState<(Checkin & { user?: User }) | null>(null);
 
   // Fetch data
   const { data: stats } = useQuery<DashboardStats>({
@@ -275,7 +277,12 @@ export default function Dashboard() {
                           <span className="text-xs text-muted-foreground" data-testid={`text-checkin-timestamp-${checkin.id}`}>
                             {formatDistanceToNow(new Date(checkin.createdAt), { addSuffix: true })}
                           </span>
-                          <Button variant="link" size="sm" data-testid={`button-view-checkin-${checkin.id}`}>
+                          <Button 
+                            variant="link" 
+                            size="sm" 
+                            onClick={() => setSelectedCheckin(checkin)}
+                            data-testid={`button-view-checkin-${checkin.id}`}
+                          >
                             View Details
                           </Button>
                         </div>
@@ -456,6 +463,16 @@ export default function Dashboard() {
           </Card>
         </div>
       </main>
+
+      {/* Check-in Detail Modal */}
+      {selectedCheckin && (
+        <CheckinDetail
+          checkin={selectedCheckin}
+          questions={questions}
+          open={!!selectedCheckin}
+          onOpenChange={(open) => !open && setSelectedCheckin(null)}
+        />
+      )}
     </>
   );
 }

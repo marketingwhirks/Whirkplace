@@ -279,6 +279,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch("/api/comments/:id", async (req, res) => {
+    try {
+      // Only allow updating the content field for security
+      const updateSchema = z.object({ content: z.string().min(1, "Content is required") });
+      const updates = updateSchema.parse(req.body);
+      const comment = await storage.updateComment(req.params.id, updates);
+      if (!comment) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+      res.json(comment);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid comment data" });
+    }
+  });
+
+  app.delete("/api/comments/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteComment(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete comment" });
+    }
+  });
+
   // Analytics & Stats
   app.get("/api/analytics/team-health", async (req, res) => {
     try {
