@@ -3,6 +3,19 @@ import { pgTable, text, varchar, timestamp, integer, boolean, jsonb } from "driz
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Company Values Enum
+export const CompanyValues = {
+  OWN_IT: "own it",
+  CHALLENGE_IT: "challenge it",
+  TEAM_FIRST: "team first",
+  EMPATHY_FOR_OTHERS: "empathy for others",
+  PASSION_FOR_OUR_PURPOSE: "passion for our purpose",
+} as const;
+
+export type CompanyValue = typeof CompanyValues[keyof typeof CompanyValues];
+
+export const companyValuesArray = Object.values(CompanyValues);
+
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
@@ -53,6 +66,7 @@ export const wins = pgTable("wins", {
   nominatedBy: varchar("nominated_by"),
   isPublic: boolean("is_public").notNull().default(true),
   slackMessageId: text("slack_message_id"),
+  values: text("values").array().notNull().default([]),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -91,6 +105,8 @@ export const insertQuestionSchema = createInsertSchema(questions).omit({
 export const insertWinSchema = createInsertSchema(wins).omit({
   id: true,
   createdAt: true,
+}).extend({
+  values: z.array(z.enum(["own it", "challenge it", "team first", "empathy for others", "passion for our purpose"])).min(1, "At least one company value must be selected"),
 });
 
 export const insertCommentSchema = createInsertSchema(comments).omit({

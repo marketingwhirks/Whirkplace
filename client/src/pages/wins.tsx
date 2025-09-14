@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle, Check } from "lucide-react";
 
 import Header from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
@@ -16,14 +16,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
-import type { Win, User, InsertWin } from "@shared/schema";
-import { insertWinSchema } from "@shared/schema";
+import type { Win, User, InsertWin, CompanyValue } from "@shared/schema";
+import { insertWinSchema, CompanyValues, companyValuesArray } from "@shared/schema";
 
 // Form schemas - extend shared schema for UI-specific validation
 const winFormSchema = insertWinSchema.extend({
@@ -61,6 +62,7 @@ export default function Wins() {
       isPublic: true,
       userId: "",
       nominatedBy: "",
+      values: [],
     },
   });
 
@@ -70,6 +72,7 @@ export default function Wins() {
     description: z.string().min(1, "Description is required").max(500, "Description too long"),
     isPublic: z.boolean().default(true),
     nominatedBy: z.string().optional().nullable(),
+    values: z.array(z.enum(["own it", "challenge it", "team first", "empathy for others", "passion for our purpose"])).min(1, "At least one company value must be selected"),
   });
   
   const editForm = useForm<z.infer<typeof editFormSchema>>({
@@ -79,6 +82,7 @@ export default function Wins() {
       description: "",
       isPublic: true,
       nominatedBy: "",
+      values: [],
     },
   });
 
@@ -191,6 +195,7 @@ export default function Wins() {
       description: win.description,
       isPublic: win.isPublic,
       nominatedBy: win.nominatedBy || "",
+      values: (win.values || []) as CompanyValue[],
     });
   };
 
@@ -213,11 +218,11 @@ export default function Wins() {
         description="Celebrate team achievements and successes"
       />
 
-      <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-4 md:p-6">
         <div className="space-y-6">
           {/* Actions Header */}
-          <div className="flex items-center justify-between">
-            <Tabs value={filter} onValueChange={(value) => setFilter(value as any)} className="w-auto">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <Tabs value={filter} onValueChange={(value) => setFilter(value as any)} className="w-full sm:w-auto">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="all" data-testid="filter-all">All Wins</TabsTrigger>
                 <TabsTrigger value="public" data-testid="filter-public">Public</TabsTrigger>
@@ -227,12 +232,12 @@ export default function Wins() {
 
             <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
               <DialogTrigger asChild>
-                <Button data-testid="button-create-win">
+                <Button data-testid="button-create-win" className="w-full sm:w-auto">
                   <Plus className="w-4 h-4 mr-2" />
                   Create Win
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
+              <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Create New Win</DialogTitle>
                   <DialogDescription>
@@ -240,7 +245,7 @@ export default function Wins() {
                   </DialogDescription>
                 </DialogHeader>
                 <Form {...createForm}>
-                  <form onSubmit={createForm.handleSubmit(handleCreateSubmit)} className="space-y-4">
+                  <form onSubmit={createForm.handleSubmit(handleCreateSubmit)} className="space-y-4 pb-4">
                     <FormField
                       control={createForm.control}
                       name="title"
@@ -321,6 +326,42 @@ export default function Wins() {
                               ))}
                             </SelectContent>
                           </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={createForm.control}
+                      name="values"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Company Values</FormLabel>
+                          <div className="text-[0.8rem] text-muted-foreground mb-3">
+                            Select the company values this win demonstrates
+                          </div>
+                          <div className="grid grid-cols-1 gap-3">
+                            {companyValuesArray.map((value) => (
+                              <div key={value} className="flex items-center space-x-2">
+                                <Checkbox
+                                  id={`value-${value}`}
+                                  checked={field.value.includes(value)}
+                                  onCheckedChange={(checked) => {
+                                    const updatedValues = checked
+                                      ? [...field.value, value]
+                                      : field.value.filter((v) => v !== value);
+                                    field.onChange(updatedValues);
+                                  }}
+                                  data-testid={`checkbox-value-${value.replace(/\s+/g, '-')}`}
+                                />
+                                <label
+                                  htmlFor={`value-${value}`}
+                                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 capitalize cursor-pointer"
+                                >
+                                  {value}
+                                </label>
+                              </div>
+                            ))}
+                          </div>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -463,6 +504,16 @@ export default function Wins() {
                     <p className="text-foreground mb-4" data-testid={`win-description-${win.id}`}>
                       {win.description}
                     </p>
+                    {win.values && win.values.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {win.values.map((value) => (
+                          <Badge key={value} variant="secondary" className="text-xs" data-testid={`badge-value-${value.replace(/\s+/g, '-')}-${win.id}`}>
+                            <Star className="w-3 h-3 mr-1" />
+                            {value}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                     {win.slackMessageId && (
                       <Badge variant="outline" className="mb-2">
                         <MessageCircle className="w-3 h-3 mr-1" />
@@ -542,6 +593,42 @@ export default function Wins() {
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={editForm.control}
+                    name="values"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Company Values</FormLabel>
+                        <div className="text-[0.8rem] text-muted-foreground mb-3">
+                          Select the company values this win demonstrates
+                        </div>
+                        <div className="grid grid-cols-1 gap-3">
+                          {companyValuesArray.map((value) => (
+                            <div key={value} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`edit-value-${value}`}
+                                checked={field.value.includes(value)}
+                                onCheckedChange={(checked) => {
+                                  const updatedValues = checked
+                                    ? [...field.value, value]
+                                    : field.value.filter((v) => v !== value);
+                                  field.onChange(updatedValues);
+                                }}
+                                data-testid={`checkbox-edit-value-${value.replace(/\s+/g, '-')}`}
+                              />
+                              <label
+                                htmlFor={`edit-value-${value}`}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 capitalize cursor-pointer"
+                              >
+                                {value}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
                         <FormMessage />
                       </FormItem>
                     )}

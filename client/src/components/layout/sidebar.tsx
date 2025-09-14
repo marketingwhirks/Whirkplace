@@ -1,6 +1,10 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings } from "lucide-react";
+import { Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: BarChart3 },
@@ -12,11 +16,12 @@ const navigation = [
   { name: "Settings", href: "/settings", icon: Settings },
 ];
 
-export default function Sidebar() {
+// Sidebar content component
+function SidebarContent() {
   const [location] = useLocation();
 
   return (
-    <div className="w-64 bg-card border-r border-border flex flex-col">
+    <div className="h-full bg-card border-r border-border flex flex-col">
       {/* Logo/Brand */}
       <div className="p-6 border-b border-border">
         <div className="flex items-center space-x-3">
@@ -76,6 +81,40 @@ export default function Sidebar() {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Mobile trigger button
+export function MobileSidebarTrigger() {
+  return (
+    <Sheet>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon" className="md:hidden" data-testid="mobile-menu-trigger">
+          <Menu className="h-6 w-6" />
+          <span className="sr-only">Open menu</span>
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left" className="w-64 p-0">
+        <SidebarContent />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+// Main sidebar component
+export default function Sidebar() {
+  const isMobile = useIsMobile();
+
+  // On mobile, don't render the static sidebar
+  if (isMobile) {
+    return null;
+  }
+
+  // On desktop, show the static sidebar
+  return (
+    <div className="w-64">
+      <SidebarContent />
     </div>
   );
 }

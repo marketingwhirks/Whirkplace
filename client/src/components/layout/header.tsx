@@ -1,5 +1,6 @@
 import { Bell, Slack } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { MobileSidebarTrigger } from "./sidebar";
 
 interface HeaderProps {
   title: string;
@@ -8,23 +9,26 @@ interface HeaderProps {
 
 export default function Header({ title, description }: HeaderProps) {
   return (
-    <header className="bg-card border-b border-border p-6">
+    <header className="bg-card border-b border-border p-4 md:p-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-foreground">{title}</h2>
-          {description && (
-            <p className="text-muted-foreground">{description}</p>
-          )}
+        <div className="flex items-center gap-3">
+          <MobileSidebarTrigger />
+          <div>
+            <h2 className="text-xl md:text-2xl font-bold text-foreground">{title}</h2>
+            {description && (
+              <p className="text-muted-foreground text-sm md:text-base">{description}</p>
+            )}
+          </div>
         </div>
-        <div className="flex items-center space-x-4">
-          {/* Slack Integration Button */}
+        <div className="flex items-center space-x-2 md:space-x-4">
+          {/* Slack Integration Button - Hide text on mobile */}
           <Button
             variant="secondary"
             className="flex items-center space-x-2"
             data-testid="button-slack-integration"
           >
             <Slack className="w-4 h-4" />
-            <span>Connected to Slack</span>
+            <span className="hidden sm:inline">Connected to Slack</span>
           </Button>
           {/* Notifications */}
           <Button

@@ -259,20 +259,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/wins/:id", async (req, res) => {
     try {
-      // Only allow updating specific fields for security
-      const updateSchema = z.object({
-        title: z.string().min(1, "Title is required").optional(),
-        description: z.string().min(1, "Description is required").optional(),
-        isPublic: z.boolean().optional(),
-      });
-      const updates = updateSchema.parse(req.body);
+      // Use the partial insert schema for consistent validation
+      const updates = insertWinSchema.partial().parse(req.body);
       const win = await storage.updateWin(req.params.id, updates);
       if (!win) {
         return res.status(404).json({ message: "Win not found" });
       }
       res.json(win);
     } catch (error) {
-      res.status(400).json({ message: "Invalid win data" });
+      console.error("Win update validation error:", error);
+      res.status(400).json({ 
+        message: "Invalid win data",
+        details: error instanceof Error ? error.message : "Unknown validation error"
+      });
     }
   });
 
