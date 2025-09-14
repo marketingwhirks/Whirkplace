@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { z } from "zod";
 import { storage } from "./storage";
 import { 
   insertUserSchema, insertTeamSchema, insertCheckinSchema, 
@@ -253,6 +254,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(win);
     } catch (error) {
       res.status(400).json({ message: "Invalid win data" });
+    }
+  });
+
+  app.patch("/api/wins/:id", async (req, res) => {
+    try {
+      // Only allow updating specific fields for security
+      const updateSchema = z.object({
+        title: z.string().min(1, "Title is required").optional(),
+        description: z.string().min(1, "Description is required").optional(),
+        isPublic: z.boolean().optional(),
+      });
+      const updates = updateSchema.parse(req.body);
+      const win = await storage.updateWin(req.params.id, updates);
+      if (!win) {
+        return res.status(404).json({ message: "Win not found" });
+      }
+      res.json(win);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid win data" });
+    }
+  });
+
+  app.delete("/api/wins/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteWin(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Win not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete win" });
     }
   });
 
