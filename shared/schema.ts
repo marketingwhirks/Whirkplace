@@ -247,3 +247,77 @@ export type PulseMetricsDaily = typeof pulseMetricsDaily.$inferSelect;
 
 export type InsertShoutoutMetricsDaily = z.infer<typeof insertShoutoutMetricsDailySchema>;
 export type ShoutoutMetricsDaily = typeof shoutoutMetricsDaily.$inferSelect;
+
+// Analytics types
+export type AnalyticsScope = 'organization' | 'team' | 'user';
+export type AnalyticsPeriod = 'day' | 'week' | 'month' | 'quarter' | 'year';
+export type ShoutoutDirection = 'given' | 'received' | 'all';
+export type ShoutoutVisibility = 'public' | 'private' | 'all';
+export type LeaderboardMetric = 'shoutouts_received' | 'shoutouts_given' | 'pulse_avg';
+
+export interface AnalyticsTimeFilter {
+  from?: Date;
+  to?: Date;
+}
+
+export interface PulseMetricsOptions extends AnalyticsTimeFilter {
+  scope: AnalyticsScope;
+  entityId?: string; // teamId or userId when scope is team/user
+  period: AnalyticsPeriod;
+}
+
+export interface ShoutoutMetricsOptions extends AnalyticsTimeFilter {
+  scope: AnalyticsScope;
+  entityId?: string;
+  direction?: ShoutoutDirection;
+  visibility?: ShoutoutVisibility;
+  period: AnalyticsPeriod;
+}
+
+export interface LeaderboardOptions extends AnalyticsTimeFilter {
+  metric: LeaderboardMetric;
+  scope: AnalyticsScope;
+  entityId?: string; // parent entityId (teamId when scope is user)
+  period: AnalyticsPeriod;
+  limit?: number;
+}
+
+export interface PulseMetricsResult {
+  periodStart: Date;
+  avgMood: number;
+  checkinCount: number;
+}
+
+export interface ShoutoutMetricsResult {
+  periodStart: Date;
+  count: number;
+}
+
+export interface LeaderboardEntry {
+  entityId: string;
+  entityName: string;
+  value: number;
+}
+
+export interface AnalyticsOverview {
+  pulseAvg: {
+    current: number;
+    previous: number;
+    change: number;
+  };
+  totalShoutouts: {
+    current: number;
+    previous: number;
+    change: number;
+  };
+  activeUsers: {
+    current: number;
+    previous: number;
+    change: number;
+  };
+  completedCheckins: {
+    current: number;
+    previous: number;
+    change: number;
+  };
+}

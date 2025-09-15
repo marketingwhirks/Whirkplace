@@ -6,11 +6,15 @@ import {
   type Win, type InsertWin,
   type Comment, type InsertComment,
   type Shoutout, type InsertShoutout,
+  type PulseMetricsOptions, type PulseMetricsResult,
+  type ShoutoutMetricsOptions, type ShoutoutMetricsResult,
+  type LeaderboardOptions, type LeaderboardEntry,
+  type AnalyticsOverview, type AnalyticsPeriod,
   users, teams, checkins, questions, wins, comments, shoutouts
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { eq, desc, and, gte, or } from "drizzle-orm";
+import { eq, desc, and, gte, or, sql, sum, count, avg, lt, lte, inArray } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -68,6 +72,12 @@ export interface IStorage {
   getShoutoutsByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Shoutout[]>;
   getRecentShoutouts(organizationId: string, limit?: number): Promise<Shoutout[]>;
   getPublicShoutouts(organizationId: string, limit?: number): Promise<Shoutout[]>;
+
+  // Analytics
+  getPulseMetrics(organizationId: string, options: PulseMetricsOptions): Promise<PulseMetricsResult[]>;
+  getShoutoutMetrics(organizationId: string, options: ShoutoutMetricsOptions): Promise<ShoutoutMetricsResult[]>;
+  getLeaderboard(organizationId: string, options: LeaderboardOptions): Promise<LeaderboardEntry[]>;
+  getAnalyticsOverview(organizationId: string, period: AnalyticsPeriod, from: Date, to: Date): Promise<AnalyticsOverview>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -499,6 +509,405 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(shoutouts.createdAt))
       .limit(limit);
+  }
+
+  // Analytics methods
+  private getDateTruncExpression(period: string, column: any) {
+    switch (period) {
+      case 'day': return sql`date_trunc('day', ${column})`;
+      case 'week': return sql`date_trunc('week', ${column})`;
+      case 'month': return sql`date_trunc('month', ${column})`;
+      case 'quarter': return sql`date_trunc('quarter', ${column})`;
+      case 'year': return sql`date_trunc('year', ${column})`;
+      default: return sql`date_trunc('day', ${column})`;
+    }
+  }
+
+  private buildScopeCondition(organizationId: string, scope: string, entityId?: string, table?: any) {
+    let baseCondition = eq(table.organizationId, organizationId);
+    
+    if (scope === 'team' && entityId) {
+      return and(baseCondition, eq(table.teamId, entityId));
+    } else if (scope === 'user' && entityId) {
+      return and(baseCondition, eq(table.userId, entityId));
+    }
+    
+    return baseCondition;
+  }
+
+  async getPulseMetrics(organizationId: string, options: PulseMetricsOptions): Promise<PulseMetricsResult[]> {
+    const { scope, entityId, period, from, to } = options;
+    
+    let baseQuery = db
+      .select({
+        periodStart: this.getDateTruncExpression(period, checkins.weekOf),
+        avgMood: sql<number>`AVG(${checkins.overallMood})::float`,
+        checkinCount: count(checkins.id)
+      })
+      .from(checkins);
+
+    let whereConditions = [eq(checkins.organizationId, organizationId), eq(checkins.isComplete, true)];
+
+    if (scope === 'team' && entityId) {
+      // Join with users table to filter by team
+      baseQuery = baseQuery.innerJoin(users, eq(checkins.userId, users.id));
+      whereConditions.push(eq(users.teamId, entityId));
+    } else if (scope === 'user' && entityId) {
+      whereConditions.push(eq(checkins.userId, entityId));
+    }
+
+    if (from) whereConditions.push(gte(checkins.weekOf, from));
+    if (to) whereConditions.push(lte(checkins.weekOf, to));
+
+    const results = await baseQuery
+      .where(and(...whereConditions))
+      .groupBy(this.getDateTruncExpression(period, checkins.weekOf))
+      .orderBy(this.getDateTruncExpression(period, checkins.weekOf));
+
+    return results.map(row => ({
+      periodStart: new Date(row.periodStart),
+      avgMood: Number(row.avgMood || 0),
+      checkinCount: Number(row.checkinCount || 0)
+    }));
+  }
+
+  async getShoutoutMetrics(organizationId: string, options: ShoutoutMetricsOptions): Promise<ShoutoutMetricsResult[]> {
+    const { scope, entityId, direction = 'all', visibility = 'all', period, from, to } = options;
+
+    let baseQuery = db
+      .select({
+        periodStart: this.getDateTruncExpression(period, shoutouts.createdAt),
+        count: count(shoutouts.id)
+      })
+      .from(shoutouts);
+
+    let whereConditions = [eq(shoutouts.organizationId, organizationId)];
+
+    // Handle scope and direction filtering
+    if (scope === 'user' && entityId) {
+      if (direction === 'received') {
+        whereConditions.push(eq(shoutouts.toUserId, entityId));
+      } else if (direction === 'given') {
+        whereConditions.push(eq(shoutouts.fromUserId, entityId));
+      } else {
+        // For 'all' direction with user scope, include both given and received
+        whereConditions.push(or(
+          eq(shoutouts.fromUserId, entityId),
+          eq(shoutouts.toUserId, entityId)
+        ));
+      }
+    } else if (scope === 'team' && entityId) {
+      if (direction === 'received') {
+        // Join with users table to filter recipients by team
+        baseQuery = baseQuery.innerJoin(users, eq(shoutouts.toUserId, users.id));
+        whereConditions.push(eq(users.teamId, entityId));
+      } else if (direction === 'given') {
+        // Join with users table to filter givers by team
+        baseQuery = baseQuery.innerJoin(users, eq(shoutouts.fromUserId, users.id));
+        whereConditions.push(eq(users.teamId, entityId));
+      } else {
+        // For 'all' direction with team scope, we need to count both given and received
+        // Use a subquery approach to handle the complex OR condition with joins
+        const teamUserIds = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(and(
+            eq(users.teamId, entityId),
+            eq(users.organizationId, organizationId)
+          ));
+        
+        const userIds = teamUserIds.map(u => u.id);
+        if (userIds.length > 0) {
+          whereConditions.push(or(
+            inArray(shoutouts.fromUserId, userIds),
+            inArray(shoutouts.toUserId, userIds)
+          ));
+        } else {
+          // No users in team - return empty results
+          whereConditions.push(sql`false`);
+        }
+      }
+    }
+
+    // Handle visibility filtering
+    if (visibility === 'public') {
+      whereConditions.push(eq(shoutouts.isPublic, true));
+    } else if (visibility === 'private') {
+      whereConditions.push(eq(shoutouts.isPublic, false));
+    }
+
+    if (from) whereConditions.push(gte(shoutouts.createdAt, from));
+    if (to) whereConditions.push(lte(shoutouts.createdAt, to));
+
+    const results = await baseQuery
+      .where(and(...whereConditions))
+      .groupBy(this.getDateTruncExpression(period, shoutouts.createdAt))
+      .orderBy(this.getDateTruncExpression(period, shoutouts.createdAt));
+
+    return results.map(row => ({
+      periodStart: new Date(row.periodStart),
+      count: Number(row.count || 0)
+    }));
+  }
+
+  async getLeaderboard(organizationId: string, options: LeaderboardOptions): Promise<LeaderboardEntry[]> {
+    const { metric, scope, entityId, period, from, to, limit = 10 } = options;
+
+    let results: LeaderboardEntry[] = [];
+
+    if (metric === 'shoutouts_received') {
+      let baseQuery = db
+        .select({
+          entityId: scope === 'user' ? shoutouts.toUserId : users.teamId,
+          value: count(shoutouts.id)
+        })
+        .from(shoutouts)
+        .innerJoin(users, eq(shoutouts.toUserId, users.id));
+
+      let whereConditions = [eq(shoutouts.organizationId, organizationId)];
+      
+      if (scope === 'user' && entityId) {
+        // Filter by team when showing user leaderboard within a team
+        whereConditions.push(eq(users.teamId, entityId));
+      }
+      
+      if (from) whereConditions.push(gte(shoutouts.createdAt, from));
+      if (to) whereConditions.push(lte(shoutouts.createdAt, to));
+
+      const queryResults = await baseQuery
+        .where(and(...whereConditions))
+        .groupBy(scope === 'user' ? shoutouts.toUserId : users.teamId)
+        .orderBy(desc(count(shoutouts.id)))
+        .limit(limit);
+
+      // Get names for entities
+      const entityIds = queryResults.map(r => r.entityId).filter(Boolean);
+      if (entityIds.length > 0) {
+        if (scope === 'user') {
+          const userNames = await db
+            .select({ id: users.id, name: users.name })
+            .from(users)
+            .where(and(inArray(users.id, entityIds), eq(users.organizationId, organizationId)));
+          
+          results = queryResults.map(r => ({
+            entityId: r.entityId,
+            entityName: userNames.find(u => u.id === r.entityId)?.name || 'Unknown',
+            value: Number(r.value)
+          }));
+        } else {
+          const teamNames = await db
+            .select({ id: teams.id, name: teams.name })
+            .from(teams)
+            .where(and(inArray(teams.id, entityIds), eq(teams.organizationId, organizationId)));
+          
+          results = queryResults.map(r => ({
+            entityId: r.entityId,
+            entityName: teamNames.find(t => t.id === r.entityId)?.name || 'Unknown',
+            value: Number(r.value)
+          }));
+        }
+      }
+    } else if (metric === 'shoutouts_given') {
+      // Similar logic for shoutouts given
+      let baseQuery = db
+        .select({
+          entityId: scope === 'user' ? shoutouts.fromUserId : users.teamId,
+          value: count(shoutouts.id)
+        })
+        .from(shoutouts)
+        .innerJoin(users, eq(shoutouts.fromUserId, users.id));
+
+      let whereConditions = [eq(shoutouts.organizationId, organizationId)];
+      
+      if (scope === 'user' && entityId) {
+        whereConditions.push(eq(users.teamId, entityId));
+      }
+      
+      if (from) whereConditions.push(gte(shoutouts.createdAt, from));
+      if (to) whereConditions.push(lte(shoutouts.createdAt, to));
+
+      const queryResults = await baseQuery
+        .where(and(...whereConditions))
+        .groupBy(scope === 'user' ? shoutouts.fromUserId : users.teamId)
+        .orderBy(desc(count(shoutouts.id)))
+        .limit(limit);
+
+      // Get names for entities - similar logic as above
+      const entityIds = queryResults.map(r => r.entityId).filter(Boolean);
+      if (entityIds.length > 0) {
+        if (scope === 'user') {
+          const userNames = await db
+            .select({ id: users.id, name: users.name })
+            .from(users)
+            .where(and(inArray(users.id, entityIds), eq(users.organizationId, organizationId)));
+          
+          results = queryResults.map(r => ({
+            entityId: r.entityId,
+            entityName: userNames.find(u => u.id === r.entityId)?.name || 'Unknown',
+            value: Number(r.value)
+          }));
+        }
+      }
+    } else if (metric === 'pulse_avg') {
+      // Pulse average leaderboard
+      let baseQuery = db
+        .select({
+          entityId: scope === 'user' ? checkins.userId : users.teamId,
+          value: sql<number>`AVG(${checkins.overallMood})::float`
+        })
+        .from(checkins);
+
+      if (scope === 'team') {
+        baseQuery = baseQuery.innerJoin(users, eq(checkins.userId, users.id));
+      }
+
+      let whereConditions = [
+        eq(checkins.organizationId, organizationId),
+        eq(checkins.isComplete, true)
+      ];
+      
+      if (scope === 'user' && entityId) {
+        whereConditions.push(eq(users.teamId, entityId));
+      }
+      
+      if (from) whereConditions.push(gte(checkins.createdAt, from));
+      if (to) whereConditions.push(lte(checkins.createdAt, to));
+
+      const queryResults = await baseQuery
+        .where(and(...whereConditions))
+        .groupBy(scope === 'user' ? checkins.userId : users.teamId)
+        .orderBy(desc(sql<number>`AVG(${checkins.overallMood})::float`))
+        .limit(limit);
+
+      // Get names for entities
+      const entityIds = queryResults.map(r => r.entityId).filter(Boolean);
+      if (entityIds.length > 0) {
+        if (scope === 'user') {
+          const userNames = await db
+            .select({ id: users.id, name: users.name })
+            .from(users)
+            .where(and(inArray(users.id, entityIds), eq(users.organizationId, organizationId)));
+          
+          results = queryResults.map(r => ({
+            entityId: r.entityId,
+            entityName: userNames.find(u => u.id === r.entityId)?.name || 'Unknown',
+            value: Number(r.value || 0)
+          }));
+        }
+      }
+    }
+
+    return results;
+  }
+
+  async getAnalyticsOverview(organizationId: string, period: AnalyticsPeriod, from: Date, to: Date): Promise<AnalyticsOverview> {
+    const periodLength = to.getTime() - from.getTime();
+    const previousFrom = new Date(from.getTime() - periodLength);
+    const previousTo = from;
+
+    // Current period metrics
+    const [currentPulse] = await db
+      .select({
+        avg: sql<number>`AVG(${checkins.overallMood})::float`,
+        count: count(checkins.id)
+      })
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        eq(checkins.isComplete, true),
+        gte(checkins.createdAt, from),
+        lte(checkins.createdAt, to)
+      ));
+
+    const [currentShoutouts] = await db
+      .select({
+        count: count(shoutouts.id)
+      })
+      .from(shoutouts)
+      .where(and(
+        eq(shoutouts.organizationId, organizationId),
+        gte(shoutouts.createdAt, from),
+        lte(shoutouts.createdAt, to)
+      ));
+
+    const [currentUsers] = await db
+      .select({
+        count: sql<number>`COUNT(DISTINCT ${checkins.userId})`
+      })
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        gte(checkins.createdAt, from),
+        lte(checkins.createdAt, to)
+      ));
+
+    // Previous period metrics
+    const [previousPulse] = await db
+      .select({
+        avg: sql<number>`AVG(${checkins.overallMood})::float`,
+        count: count(checkins.id)
+      })
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        eq(checkins.isComplete, true),
+        gte(checkins.createdAt, previousFrom),
+        lt(checkins.createdAt, previousTo)
+      ));
+
+    const [previousShoutouts] = await db
+      .select({
+        count: count(shoutouts.id)
+      })
+      .from(shoutouts)
+      .where(and(
+        eq(shoutouts.organizationId, organizationId),
+        gte(shoutouts.createdAt, previousFrom),
+        lt(shoutouts.createdAt, previousTo)
+      ));
+
+    const [previousUsers] = await db
+      .select({
+        count: sql<number>`COUNT(DISTINCT ${checkins.userId})`
+      })
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        gte(checkins.createdAt, previousFrom),
+        lt(checkins.createdAt, previousTo)
+      ));
+
+    const currentPulseAvg = Number(currentPulse?.avg || 0);
+    const previousPulseAvg = Number(previousPulse?.avg || 0);
+    const currentShoutoutCount = Number(currentShoutouts?.count || 0);
+    const previousShoutoutCount = Number(previousShoutouts?.count || 0);
+    const currentActiveUsers = Number(currentUsers?.count || 0);
+    const previousActiveUsers = Number(previousUsers?.count || 0);
+    const currentCompletedCheckins = Number(currentPulse?.count || 0);
+    const previousCompletedCheckins = Number(previousPulse?.count || 0);
+
+    return {
+      pulseAvg: {
+        current: currentPulseAvg,
+        previous: previousPulseAvg,
+        change: previousPulseAvg > 0 ? ((currentPulseAvg - previousPulseAvg) / previousPulseAvg) * 100 : 0
+      },
+      totalShoutouts: {
+        current: currentShoutoutCount,
+        previous: previousShoutoutCount,
+        change: previousShoutoutCount > 0 ? ((currentShoutoutCount - previousShoutoutCount) / previousShoutoutCount) * 100 : 0
+      },
+      activeUsers: {
+        current: currentActiveUsers,
+        previous: previousActiveUsers,
+        change: previousActiveUsers > 0 ? ((currentActiveUsers - previousActiveUsers) / previousActiveUsers) * 100 : 0
+      },
+      completedCheckins: {
+        current: currentCompletedCheckins,
+        previous: previousCompletedCheckins,
+        change: previousCompletedCheckins > 0 ? ((currentCompletedCheckins - previousCompletedCheckins) / previousCompletedCheckins) * 100 : 0
+      }
+    };
   }
 }
 
@@ -932,6 +1341,389 @@ export class MemStorage implements IStorage {
       .filter(shoutoutRecord => shoutoutRecord.isPublic && shoutoutRecord.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
+  }
+
+  // Analytics helper methods
+  private truncateDate(date: Date, period: string): Date {
+    const d = new Date(date);
+    
+    switch (period) {
+      case 'day':
+        d.setHours(0, 0, 0, 0);
+        break;
+      case 'week':
+        d.setDate(d.getDate() - d.getDay()); // Start of week (Sunday)
+        d.setHours(0, 0, 0, 0);
+        break;
+      case 'month':
+        d.setDate(1);
+        d.setHours(0, 0, 0, 0);
+        break;
+      case 'quarter':
+        const quarterStartMonth = Math.floor(d.getMonth() / 3) * 3;
+        d.setMonth(quarterStartMonth);
+        d.setDate(1);
+        d.setHours(0, 0, 0, 0);
+        break;
+      case 'year':
+        d.setMonth(0);
+        d.setDate(1);
+        d.setHours(0, 0, 0, 0);
+        break;
+      default:
+        d.setHours(0, 0, 0, 0);
+    }
+    
+    return d;
+  }
+
+  private isInDateRange(date: Date, from?: Date, to?: Date): boolean {
+    if (from && date < from) return false;
+    if (to && date > to) return false;
+    return true;
+  }
+
+  // Analytics methods
+  async getPulseMetrics(organizationId: string, options: PulseMetricsOptions): Promise<PulseMetricsResult[]> {
+    const { scope, entityId, period, from, to } = options;
+
+    // Get all relevant checkins
+    let relevantCheckins = Array.from(this.checkins.values())
+      .filter(checkin => checkin.organizationId === organizationId && checkin.isComplete);
+
+    // Apply date filtering - use weekOf for consistency with database implementation
+    if (from || to) {
+      relevantCheckins = relevantCheckins.filter(checkin => this.isInDateRange(checkin.weekOf, from, to));
+    }
+
+    // Apply scope filtering
+    if (scope === 'user' && entityId) {
+      relevantCheckins = relevantCheckins.filter(checkin => checkin.userId === entityId);
+    } else if (scope === 'team' && entityId) {
+      const teamUsers = Array.from(this.users.values())
+        .filter(user => user.teamId === entityId && user.organizationId === organizationId)
+        .map(user => user.id);
+      relevantCheckins = relevantCheckins.filter(checkin => teamUsers.includes(checkin.userId));
+    }
+
+    // Group by period
+    const groupedData = new Map<string, { moodSum: number; count: number }>();
+    
+    relevantCheckins.forEach(checkin => {
+      const periodStart = this.truncateDate(checkin.weekOf, period);
+      const periodKey = periodStart.toISOString();
+      
+      const existing = groupedData.get(periodKey) || { moodSum: 0, count: 0 };
+      existing.moodSum += checkin.overallMood;
+      existing.count += 1;
+      groupedData.set(periodKey, existing);
+    });
+
+    // Convert to results
+    const results: PulseMetricsResult[] = Array.from(groupedData.entries())
+      .map(([periodKey, data]) => ({
+        periodStart: new Date(periodKey),
+        avgMood: data.count > 0 ? data.moodSum / data.count : 0,
+        checkinCount: data.count
+      }))
+      .sort((a, b) => a.periodStart.getTime() - b.periodStart.getTime());
+
+    return results;
+  }
+
+  async getShoutoutMetrics(organizationId: string, options: ShoutoutMetricsOptions): Promise<ShoutoutMetricsResult[]> {
+    const { scope, entityId, direction = 'all', visibility = 'all', period, from, to } = options;
+
+    // Get all relevant shoutouts
+    let relevantShoutouts = Array.from(this.shoutoutsMap.values())
+      .filter(shoutout => shoutout.organizationId === organizationId);
+
+    // Apply date filtering
+    if (from || to) {
+      relevantShoutouts = relevantShoutouts.filter(shoutout => this.isInDateRange(shoutout.createdAt, from, to));
+    }
+
+    // Apply scope and direction filtering
+    if (scope === 'user' && entityId) {
+      if (direction === 'received') {
+        relevantShoutouts = relevantShoutouts.filter(shoutout => shoutout.toUserId === entityId);
+      } else if (direction === 'given') {
+        relevantShoutouts = relevantShoutouts.filter(shoutout => shoutout.fromUserId === entityId);
+      } else {
+        relevantShoutouts = relevantShoutouts.filter(shoutout => 
+          shoutout.toUserId === entityId || shoutout.fromUserId === entityId);
+      }
+    } else if (scope === 'team' && entityId) {
+      const teamUsers = Array.from(this.users.values())
+        .filter(user => user.teamId === entityId && user.organizationId === organizationId)
+        .map(user => user.id);
+      
+      if (direction === 'received') {
+        relevantShoutouts = relevantShoutouts.filter(shoutout => teamUsers.includes(shoutout.toUserId));
+      } else if (direction === 'given') {
+        relevantShoutouts = relevantShoutouts.filter(shoutout => teamUsers.includes(shoutout.fromUserId));
+      } else {
+        relevantShoutouts = relevantShoutouts.filter(shoutout => 
+          teamUsers.includes(shoutout.toUserId) || teamUsers.includes(shoutout.fromUserId));
+      }
+    }
+
+    // Apply visibility filtering
+    if (visibility === 'public') {
+      relevantShoutouts = relevantShoutouts.filter(shoutout => shoutout.isPublic);
+    } else if (visibility === 'private') {
+      relevantShoutouts = relevantShoutouts.filter(shoutout => !shoutout.isPublic);
+    }
+
+    // Group by period
+    const groupedData = new Map<string, number>();
+    
+    relevantShoutouts.forEach(shoutout => {
+      const periodStart = this.truncateDate(shoutout.createdAt, period);
+      const periodKey = periodStart.toISOString();
+      
+      const existing = groupedData.get(periodKey) || 0;
+      groupedData.set(periodKey, existing + 1);
+    });
+
+    // Convert to results
+    const results: ShoutoutMetricsResult[] = Array.from(groupedData.entries())
+      .map(([periodKey, count]) => ({
+        periodStart: new Date(periodKey),
+        count
+      }))
+      .sort((a, b) => a.periodStart.getTime() - b.periodStart.getTime());
+
+    return results;
+  }
+
+  async getLeaderboard(organizationId: string, options: LeaderboardOptions): Promise<LeaderboardEntry[]> {
+    const { metric, scope, entityId, from, to, limit = 10 } = options;
+
+    let results: LeaderboardEntry[] = [];
+
+    if (metric === 'shoutouts_received') {
+      let relevantShoutouts = Array.from(this.shoutoutsMap.values())
+        .filter(shoutout => shoutout.organizationId === organizationId);
+
+      // Apply date filtering
+      if (from || to) {
+        relevantShoutouts = relevantShoutouts.filter(shoutout => this.isInDateRange(shoutout.createdAt, from, to));
+      }
+
+      if (scope === 'user') {
+        // Filter by team if entityId is provided (showing users within a team)
+        let eligibleUsers = Array.from(this.users.values())
+          .filter(user => user.organizationId === organizationId);
+        
+        if (entityId) {
+          eligibleUsers = eligibleUsers.filter(user => user.teamId === entityId);
+        }
+
+        // Count shoutouts received per user
+        const userCounts = new Map<string, number>();
+        relevantShoutouts.forEach(shoutout => {
+          if (eligibleUsers.some(user => user.id === shoutout.toUserId)) {
+            const current = userCounts.get(shoutout.toUserId) || 0;
+            userCounts.set(shoutout.toUserId, current + 1);
+          }
+        });
+
+        results = Array.from(userCounts.entries())
+          .map(([userId, count]) => ({
+            entityId: userId,
+            entityName: eligibleUsers.find(user => user.id === userId)?.name || 'Unknown',
+            value: count
+          }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, limit);
+      } else if (scope === 'team') {
+        const teams = Array.from(this.teams.values())
+          .filter(team => team.organizationId === organizationId);
+
+        // Count shoutouts received per team
+        const teamCounts = new Map<string, number>();
+        relevantShoutouts.forEach(shoutout => {
+          const user = Array.from(this.users.values()).find(u => u.id === shoutout.toUserId);
+          if (user && user.teamId) {
+            const current = teamCounts.get(user.teamId) || 0;
+            teamCounts.set(user.teamId, current + 1);
+          }
+        });
+
+        results = Array.from(teamCounts.entries())
+          .map(([teamId, count]) => ({
+            entityId: teamId,
+            entityName: teams.find(team => team.id === teamId)?.name || 'Unknown',
+            value: count
+          }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, limit);
+      }
+    } else if (metric === 'shoutouts_given') {
+      let relevantShoutouts = Array.from(this.shoutoutsMap.values())
+        .filter(shoutout => shoutout.organizationId === organizationId);
+
+      // Apply date filtering
+      if (from || to) {
+        relevantShoutouts = relevantShoutouts.filter(shoutout => this.isInDateRange(shoutout.createdAt, from, to));
+      }
+
+      if (scope === 'user') {
+        let eligibleUsers = Array.from(this.users.values())
+          .filter(user => user.organizationId === organizationId);
+        
+        if (entityId) {
+          eligibleUsers = eligibleUsers.filter(user => user.teamId === entityId);
+        }
+
+        // Count shoutouts given per user
+        const userCounts = new Map<string, number>();
+        relevantShoutouts.forEach(shoutout => {
+          if (eligibleUsers.some(user => user.id === shoutout.fromUserId)) {
+            const current = userCounts.get(shoutout.fromUserId) || 0;
+            userCounts.set(shoutout.fromUserId, current + 1);
+          }
+        });
+
+        results = Array.from(userCounts.entries())
+          .map(([userId, count]) => ({
+            entityId: userId,
+            entityName: eligibleUsers.find(user => user.id === userId)?.name || 'Unknown',
+            value: count
+          }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, limit);
+      }
+    } else if (metric === 'pulse_avg') {
+      let relevantCheckins = Array.from(this.checkins.values())
+        .filter(checkin => checkin.organizationId === organizationId && checkin.isComplete);
+
+      // Apply date filtering - use weekOf for consistency with database implementation
+      if (from || to) {
+        relevantCheckins = relevantCheckins.filter(checkin => this.isInDateRange(checkin.weekOf, from, to));
+      }
+
+      if (scope === 'user') {
+        let eligibleUsers = Array.from(this.users.values())
+          .filter(user => user.organizationId === organizationId);
+        
+        if (entityId) {
+          eligibleUsers = eligibleUsers.filter(user => user.teamId === entityId);
+        }
+
+        // Calculate average mood per user
+        const userMoods = new Map<string, { sum: number; count: number }>();
+        relevantCheckins.forEach(checkin => {
+          if (eligibleUsers.some(user => user.id === checkin.userId)) {
+            const existing = userMoods.get(checkin.userId) || { sum: 0, count: 0 };
+            existing.sum += checkin.overallMood;
+            existing.count += 1;
+            userMoods.set(checkin.userId, existing);
+          }
+        });
+
+        results = Array.from(userMoods.entries())
+          .map(([userId, data]) => ({
+            entityId: userId,
+            entityName: eligibleUsers.find(user => user.id === userId)?.name || 'Unknown',
+            value: data.count > 0 ? data.sum / data.count : 0
+          }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, limit);
+      } else if (scope === 'team') {
+        const teams = Array.from(this.teams.values())
+          .filter(team => team.organizationId === organizationId);
+
+        // Calculate average mood per team
+        const teamMoods = new Map<string, { sum: number; count: number }>();
+        relevantCheckins.forEach(checkin => {
+          const user = Array.from(this.users.values()).find(u => u.id === checkin.userId);
+          if (user && user.teamId) {
+            const existing = teamMoods.get(user.teamId) || { sum: 0, count: 0 };
+            existing.sum += checkin.overallMood;
+            existing.count += 1;
+            teamMoods.set(user.teamId, existing);
+          }
+        });
+
+        results = Array.from(teamMoods.entries())
+          .map(([teamId, data]) => ({
+            entityId: teamId,
+            entityName: teams.find(team => team.id === teamId)?.name || 'Unknown',
+            value: data.count > 0 ? data.sum / data.count : 0
+          }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, limit);
+      }
+    }
+
+    return results;
+  }
+
+  async getAnalyticsOverview(organizationId: string, period: AnalyticsPeriod, from: Date, to: Date): Promise<AnalyticsOverview> {
+    const periodLength = to.getTime() - from.getTime();
+    const previousFrom = new Date(from.getTime() - periodLength);
+    const previousTo = from;
+
+    // Current period data
+    const currentCheckins = Array.from(this.checkins.values())
+      .filter(checkin => checkin.organizationId === organizationId && checkin.isComplete &&
+        this.isInDateRange(checkin.createdAt, from, to));
+
+    const currentShoutouts = Array.from(this.shoutoutsMap.values())
+      .filter(shoutout => shoutout.organizationId === organizationId &&
+        this.isInDateRange(shoutout.createdAt, from, to));
+
+    const currentActiveUsers = new Set(currentCheckins.map(c => c.userId)).size;
+
+    // Previous period data
+    const previousCheckins = Array.from(this.checkins.values())
+      .filter(checkin => checkin.organizationId === organizationId && checkin.isComplete &&
+        this.isInDateRange(checkin.createdAt, previousFrom, previousTo));
+
+    const previousShoutouts = Array.from(this.shoutoutsMap.values())
+      .filter(shoutout => shoutout.organizationId === organizationId &&
+        this.isInDateRange(shoutout.createdAt, previousFrom, previousTo));
+
+    const previousActiveUsers = new Set(previousCheckins.map(c => c.userId)).size;
+
+    // Calculate metrics
+    const currentPulseAvg = currentCheckins.length > 0 
+      ? currentCheckins.reduce((sum, c) => sum + c.overallMood, 0) / currentCheckins.length 
+      : 0;
+    
+    const previousPulseAvg = previousCheckins.length > 0 
+      ? previousCheckins.reduce((sum, c) => sum + c.overallMood, 0) / previousCheckins.length 
+      : 0;
+
+    const currentShoutoutCount = currentShoutouts.length;
+    const previousShoutoutCount = previousShoutouts.length;
+    const currentCompletedCheckins = currentCheckins.length;
+    const previousCompletedCheckins = previousCheckins.length;
+
+    return {
+      pulseAvg: {
+        current: currentPulseAvg,
+        previous: previousPulseAvg,
+        change: previousPulseAvg > 0 ? ((currentPulseAvg - previousPulseAvg) / previousPulseAvg) * 100 : 0
+      },
+      totalShoutouts: {
+        current: currentShoutoutCount,
+        previous: previousShoutoutCount,
+        change: previousShoutoutCount > 0 ? ((currentShoutoutCount - previousShoutoutCount) / previousShoutoutCount) * 100 : 0
+      },
+      activeUsers: {
+        current: currentActiveUsers,
+        previous: previousActiveUsers,
+        change: previousActiveUsers > 0 ? ((currentActiveUsers - previousActiveUsers) / previousActiveUsers) * 100 : 0
+      },
+      completedCheckins: {
+        current: currentCompletedCheckins,
+        previous: previousCompletedCheckins,
+        change: previousCompletedCheckins > 0 ? ((currentCompletedCheckins - previousCompletedCheckins) / previousCompletedCheckins) * 100 : 0
+      }
+    };
   }
 }
 
