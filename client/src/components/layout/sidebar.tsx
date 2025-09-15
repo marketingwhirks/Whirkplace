@@ -1,9 +1,9 @@
 import React, { useMemo } from "react";
 import { Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu, Gift, 
-  ClipboardCheck, Shield, Crown 
+  ClipboardCheck, Shield, Crown, LogOut 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -11,7 +11,57 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 import type { Checkin } from "@shared/schema";
+
+// Logout functionality
+function LogoutButton() {
+  const { toast } = useToast();
+  
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        throw new Error('Logout failed');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      // Clear all cached data
+      queryClient.clear();
+      // Force a refresh to show login page
+      window.location.reload();
+    },
+    onError: (error) => {
+      toast({
+        title: "Logout failed",
+        description: "Please try again",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const handleLogout = () => {
+    logoutMutation.mutate();
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={handleLogout}
+      disabled={logoutMutation.isPending}
+      className="text-muted-foreground hover:text-foreground"
+      data-testid="logout-button"
+    >
+      <LogOut className="w-4 h-4" />
+    </Button>
+  );
+}
 
 // Base navigation items available to all users
 const baseNavigation = [
@@ -161,9 +211,7 @@ function SidebarContent() {
                 )}
               </p>
             </div>
-            <button className="text-muted-foreground hover:text-foreground">
-              <Settings className="w-4 h-4" />
-            </button>
+            <LogoutButton />
           </div>
         ) : (
           <div className="text-center text-sm text-muted-foreground">

@@ -1940,6 +1940,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Authentication endpoints
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        console.error("Session destroy error:", err);
+        return res.status(500).json({ message: "Failed to logout" });
+      }
+      res.clearCookie('connect.sid'); // Clear session cookie
+      res.json({ message: "Logged out successfully" });
+    });
+  });
+
   // User Sync Endpoints
   app.post("/api/admin/sync-users", requireAuth(), async (req, res) => {
     try {

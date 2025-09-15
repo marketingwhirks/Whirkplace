@@ -3,6 +3,8 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Checkins from "@/pages/checkins";
@@ -14,6 +16,7 @@ import Reviews from "@/pages/reviews";
 import LeadershipDashboard from "@/pages/leadership-dashboard";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
+import LoginPage from "@/pages/login";
 import Sidebar from "@/components/layout/sidebar";
 
 function Router() {
@@ -39,12 +42,37 @@ function Router() {
   );
 }
 
+function AuthenticatedApp() {
+  const { data: currentUser, isLoading, error } = useCurrentUser();
+
+  // Show loading screen while checking authentication
+  if (isLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <Skeleton className="w-12 h-12 mx-auto rounded-lg" />
+          <Skeleton className="w-32 h-6 mx-auto" />
+          <Skeleton className="w-24 h-4 mx-auto" />
+        </div>
+      </div>
+    );
+  }
+
+  // Show login page if not authenticated or authentication failed
+  if (!currentUser || error) {
+    return <LoginPage />;
+  }
+
+  // Show main app if authenticated
+  return <Router />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <Router />
+        <AuthenticatedApp />
       </TooltipProvider>
     </QueryClientProvider>
   );
