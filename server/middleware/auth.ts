@@ -51,6 +51,7 @@ export function authenticateUser() {
                 email: "demo@example.com",
                 role: "member",
                 organizationId: req.orgId,
+                authProvider: "local" as const,
               });
               req.currentUser = defaultUser;
             } catch (error) {

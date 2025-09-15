@@ -24,6 +24,14 @@ export const ReviewStatus = {
 
 export type ReviewStatusType = typeof ReviewStatus[keyof typeof ReviewStatus];
 
+// Auth Provider Constants
+export const AuthProvider = {
+  LOCAL: "local",
+  SLACK: "slack",
+} as const;
+
+export type AuthProviderType = typeof AuthProvider[keyof typeof AuthProvider];
+
 // Organizations table for multi-tenancy
 export const organizations = pgTable("organizations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -31,6 +39,7 @@ export const organizations = pgTable("organizations", {
   slug: text("slug").notNull().unique(), // for URL routing: company.whirkplace.com
   customValues: text("custom_values").array().notNull().default(defaultCompanyValuesArray),
   plan: text("plan").notNull().default("starter"), // starter, professional, enterprise
+  slackWorkspaceId: text("slack_workspace_id"), // Slack workspace ID for validation
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
@@ -46,9 +55,26 @@ export const users = pgTable("users", {
   teamId: varchar("team_id"),
   managerId: varchar("manager_id"),
   avatar: text("avatar"),
+  // Slack integration fields
+  slackUserId: text("slack_user_id"), // Unique Slack user ID
+  slackUsername: text("slack_username"), // Slack username for tagging (@username)
+  slackDisplayName: text("slack_display_name"), // User's display name from Slack
+  slackEmail: text("slack_email"), // Slack-verified email
+  slackAvatar: text("slack_avatar"), // Slack profile image URL
+  slackWorkspaceId: text("slack_workspace_id"), // Slack workspace association
+  authProvider: text("auth_provider").notNull().default("local"), // local, slack
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
-});
+}, (table) => ({
+  // Unique index on Slack user ID for fast lookups
+  slackUserIdIdx: unique("users_slack_user_id_unique").on(table.slackUserId),
+  // Index on Slack username for tagging functionality
+  slackUsernameIdx: index("users_slack_username_idx").on(table.slackUsername),
+  // Composite index for workspace-based queries
+  orgSlackWorkspaceIdx: index("users_org_slack_workspace_idx").on(table.organizationId, table.slackWorkspaceId),
+  // Index on auth provider for filtering users by authentication method
+  authProviderIdx: index("users_auth_provider_idx").on(table.authProvider),
+}));
 
 export const teams = pgTable("teams", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -227,6 +253,19 @@ export const aggregationWatermarks = pgTable("aggregation_watermarks", {
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   createdAt: true,
+}).extend({
+  // Enhanced validation for core fields
+  email: z.string().email("Invalid email format"),
+  username: z.string().min(3, "Username must be at least 3 characters").max(50, "Username too long"),
+  password: z.string().min(8, "Password must be at least 8 characters").optional(), // Optional for Slack users
+  // Slack field validation
+  slackUserId: z.string().min(1, "Slack user ID required").optional(),
+  slackUsername: z.string().regex(/^[a-z0-9._-]+$/, "Invalid Slack username format").max(21, "Slack username too long").optional(),
+  slackDisplayName: z.string().max(80, "Display name too long").optional(),
+  slackEmail: z.string().email("Invalid Slack email format").optional(),
+  slackAvatar: z.string().url("Invalid avatar URL").optional(),
+  slackWorkspaceId: z.string().min(1, "Slack workspace ID required").optional(),
+  authProvider: z.enum([AuthProvider.LOCAL, AuthProvider.SLACK]).default(AuthProvider.LOCAL),
 });
 
 export const insertTeamSchema = createInsertSchema(teams).omit({

@@ -13,7 +13,7 @@ import {
   type LeaderboardOptions, type LeaderboardEntry,
   type AnalyticsOverview, type AnalyticsPeriod,
   type ComplianceMetricsOptions, type ComplianceMetricsResult,
-  users, teams, checkins, questions, wins, comments, shoutouts, vacations,
+  users, teams, checkins, questions, wins, comments, shoutouts, vacations, organizations,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   ReviewStatus
 } from "@shared/schema";
@@ -83,10 +83,14 @@ class AnalyticsCache {
 }
 
 export interface IStorage {
+  // Organizations
+  getAllOrganizations(): Promise<any[]>;
+  
   // Users
   getUser(organizationId: string, id: string): Promise<User | undefined>;
   getUserByUsername(organizationId: string, username: string): Promise<User | undefined>;
   getUserByEmail(organizationId: string, email: string): Promise<User | undefined>;
+  getUserBySlackId(organizationId: string, slackUserId: string): Promise<User | undefined>;
   createUser(organizationId: string, user: InsertUser): Promise<User>;
   updateUser(organizationId: string, id: string, user: Partial<InsertUser>): Promise<User | undefined>;
   getUsersByTeam(organizationId: string, teamId: string): Promise<User[]>;
@@ -176,6 +180,16 @@ export class DatabaseStorage implements IStorage {
     }, 10 * 60 * 1000);
   }
 
+  // Organizations
+  async getAllOrganizations() {
+    try {
+      return await db.select().from(organizations);
+    } catch (error) {
+      console.error("Failed to fetch organizations:", error);
+      throw error;
+    }
+  }
+
   // Users
   async getUser(organizationId: string, id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(
@@ -194,6 +208,13 @@ export class DatabaseStorage implements IStorage {
   async getUserByEmail(organizationId: string, email: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(
       and(eq(users.email, email), eq(users.organizationId, organizationId))
+    );
+    return user || undefined;
+  }
+
+  async getUserBySlackId(organizationId: string, slackUserId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(
+      and(eq(users.slackUserId, slackUserId), eq(users.organizationId, organizationId))
     );
     return user || undefined;
   }

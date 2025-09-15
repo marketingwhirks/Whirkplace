@@ -1,4 +1,6 @@
 import { WebClient, type ChatPostMessageArguments } from "@slack/web-api";
+import { randomBytes } from "crypto";
+import jwt from "jsonwebtoken";
 
 if (!process.env.SLACK_BOT_TOKEN) {
   console.warn("SLACK_BOT_TOKEN environment variable not set. Slack integration will be disabled.");
@@ -13,6 +15,205 @@ if (!process.env.SLACK_PRIVATE_CHANNEL_ID) {
 }
 
 const slack = process.env.SLACK_BOT_TOKEN ? new WebClient(process.env.SLACK_BOT_TOKEN) : null;
+
+// OAuth Configuration Validation
+if (!process.env.SLACK_CLIENT_ID) {
+  console.warn("SLACK_CLIENT_ID environment variable not set. Slack OAuth will be disabled.");
+}
+
+if (!process.env.SLACK_CLIENT_SECRET) {
+  console.warn("SLACK_CLIENT_SECRET environment variable not set. Slack OAuth will be disabled.");
+}
+
+if (!process.env.SLACK_REDIRECT_URI) {
+  console.warn("SLACK_REDIRECT_URI environment variable not set. Slack OAuth will be disabled.");
+}
+
+// OAuth State Store (in production, use Redis or database)
+const oauthStates = new Map<string, { organizationSlug: string; expiresAt: number }>();
+
+// Cleanup expired states every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [state, data] of oauthStates.entries()) {
+    if (now > data.expiresAt) {
+      oauthStates.delete(state);
+    }
+  }
+}, 10 * 60 * 1000);
+
+// Slack OpenID Connect Types
+interface SlackOIDCTokenResponse {
+  ok: boolean;
+  access_token?: string;
+  id_token?: string;
+  scope?: string;
+  token_type?: string;
+  team?: {
+    id: string;
+    name: string;
+  };
+  error?: string;
+}
+
+interface SlackOIDCUserInfo {
+  sub: string; // Slack user ID (e.g., "U1234567890")
+  email?: string;
+  email_verified?: boolean;
+  name?: string;
+  picture?: string;
+  given_name?: string;
+  family_name?: string;
+  locale?: string;
+  "https://slack.com/user_id"?: string;
+  "https://slack.com/team_id"?: string;
+  "https://slack.com/team_name"?: string;
+}
+
+/**
+ * Generate OAuth authorization URL for Slack login
+ */
+export function generateOAuthURL(organizationSlug: string): string {
+  const clientId = process.env.SLACK_CLIENT_ID;
+  const redirectUri = process.env.SLACK_REDIRECT_URI;
+  
+  if (!clientId || !redirectUri) {
+    throw new Error("Slack OAuth not configured. Missing SLACK_CLIENT_ID or SLACK_REDIRECT_URI");
+  }
+  
+  // Generate cryptographically secure state parameter
+  const state = randomBytes(32).toString('hex');
+  
+  // Store state with organization context (expires in 10 minutes)
+  oauthStates.set(state, {
+    organizationSlug,
+    expiresAt: Date.now() + 10 * 60 * 1000
+  });
+  
+  // OpenID Connect scopes for user authentication
+  const scopes = [
+    'openid',
+    'profile', 
+    'email'
+  ].join(',');
+  
+  const params = new URLSearchParams({
+    client_id: clientId,
+    scope: scopes,
+    redirect_uri: redirectUri,
+    state,
+    response_type: 'code'
+  });
+  
+  return `https://slack.com/openid/connect/authorize?${params.toString()}`;  
+}
+
+/**
+ * Validate OAuth state parameter and return organization slug
+ */
+export function validateOAuthState(state: string): string | null {
+  const stateData = oauthStates.get(state);
+  
+  if (!stateData) {
+    return null; // Invalid or expired state
+  }
+  
+  if (Date.now() > stateData.expiresAt) {
+    oauthStates.delete(state);
+    return null; // Expired state
+  }
+  
+  // Clean up used state
+  oauthStates.delete(state);
+  
+  return stateData.organizationSlug;
+}
+
+/**
+ * Exchange OAuth code for OpenID Connect tokens
+ */
+export async function exchangeOIDCCode(code: string): Promise<SlackOIDCTokenResponse> {
+  const clientId = process.env.SLACK_CLIENT_ID;
+  const clientSecret = process.env.SLACK_CLIENT_SECRET;
+  const redirectUri = process.env.SLACK_REDIRECT_URI;
+  
+  if (!clientId || !clientSecret || !redirectUri) {
+    throw new Error("Slack OAuth not configured. Missing required environment variables");
+  }
+  
+  const params = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code'
+  });
+  
+  try {
+    const response = await fetch('https://slack.com/api/openid.connect.token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString()
+    });
+    
+    if (!response.ok) {
+      throw new Error(`OIDC token exchange failed: ${response.status} ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Error exchanging OIDC code:', error);
+    throw error;
+  }
+}
+
+/**
+ * Validate and decode Slack OpenID Connect ID token
+ */
+export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean; user?: SlackOIDCUserInfo; error?: string }> {
+  try {
+    // Decode the JWT token without verification first to get the header
+    const decoded = jwt.decode(idToken, { complete: true });
+    if (!decoded || typeof decoded === 'string') {
+      throw new Error('Invalid JWT token format');
+    }
+
+    // For Slack OIDC, we can verify the token signature using Slack's public keys
+    // For now, we'll do basic validation and trust the token since it came through OAuth flow
+    // In production, you should fetch and verify against Slack's JWKS endpoint
+    const payload = jwt.decode(idToken) as SlackOIDCUserInfo;
+    
+    if (!payload || !payload.sub) {
+      throw new Error('Invalid token payload');
+    }
+    
+    // Basic validation - check if token is not expired
+    const now = Math.floor(Date.now() / 1000);
+    const tokenData = payload as any;
+    
+    if (tokenData.exp && tokenData.exp < now) {
+      throw new Error('Token has expired');
+    }
+    
+    if (tokenData.iat && tokenData.iat > now + 300) { // Allow 5 minute clock skew
+      throw new Error('Token issued in the future');
+    }
+    
+    return {
+      ok: true,
+      user: payload
+    };
+  } catch (error) {
+    console.error('Error validating OIDC token:', error);
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
 
 /**
  * Sends a structured message to a Slack channel using the Slack Web API

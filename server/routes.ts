@@ -9,13 +9,248 @@ import {
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType
 } from "@shared/schema";
-import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed } from "./services/slack";
+import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken } from "./services/slack";
+import { randomBytes } from "crypto";
 import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
 import { authenticateUser, requireAuth, requireRole, requireTeamLead } from "./middleware/auth";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // OAuth endpoints (before organization middleware as they need to work without org context)
+  
+  // GET /auth/slack/login - Initiate Slack OAuth flow
+  app.get("/auth/slack/login", async (req, res) => {
+    try {
+      const { org } = req.query;
+      
+      // Validate organization slug parameter
+      if (!org || typeof org !== 'string') {
+        return res.status(400).json({ 
+          message: "Organization slug is required. Use ?org=your-organization-slug" 
+        });
+      }
+      
+      // Generate OAuth URL with organization context
+      const oauthUrl = generateOAuthURL(org);
+      
+      // Redirect to Slack OAuth
+      res.redirect(oauthUrl);
+    } catch (error) {
+      console.error("Slack OAuth initiation error:", error);
+      res.status(500).json({ 
+        message: "Failed to initiate Slack authentication. Please check OAuth configuration." 
+      });
+    }
+  });
+  
+  // GET /auth/slack/callback - Handle OAuth callback from Slack
+  app.get("/auth/slack/callback", async (req, res) => {
+    try {
+      const { code, state, error: oauthError } = req.query;
+      
+      // Check for OAuth errors from Slack
+      if (oauthError) {
+        console.error("Slack OAuth error:", oauthError);
+        return res.status(400).json({ 
+          message: `OAuth error: ${oauthError}` 
+        });
+      }
+      
+      // Validate required parameters
+      if (!code || !state || typeof code !== 'string' || typeof state !== 'string') {
+        return res.status(400).json({ 
+          message: "Invalid OAuth callback parameters" 
+        });
+      }
+      
+      // Validate state parameter and get organization slug
+      const organizationSlug = validateOAuthState(state);
+      if (!organizationSlug) {
+        return res.status(400).json({ 
+          message: "Invalid or expired OAuth state. Please try again." 
+        });
+      }
+      
+      // Exchange code for OpenID Connect tokens
+      const tokenResponse = await exchangeOIDCCode(code);
+      if (!tokenResponse.ok || !tokenResponse.id_token) {
+        console.error("OIDC token exchange failed:", tokenResponse.error);
+        return res.status(400).json({ 
+          message: "Failed to exchange OAuth code for tokens" 
+        });
+      }
+      
+      // Validate and decode the ID token
+      const userInfoResponse = await validateOIDCToken(tokenResponse.id_token);
+      if (!userInfoResponse.ok || !userInfoResponse.user) {
+        console.error("Failed to validate ID token:", userInfoResponse.error);
+        return res.status(400).json({ 
+          message: "Failed to validate user identity token" 
+        });
+      }
+      
+      const user = userInfoResponse.user;
+      const team = tokenResponse.team;
+      
+      // Resolve organization (we know the slug from state validation)
+      // Note: We need to manually resolve the organization here since we're before the org middleware
+      let organization;
+      try {
+        const allOrgs = await storage.getAllOrganizations();
+        organization = allOrgs.find(org => org.slug === organizationSlug);
+        if (!organization) {
+          return res.status(404).json({ 
+            message: `Organization '${organizationSlug}' not found` 
+          });
+        }
+      } catch (error) {
+        console.error("Failed to resolve organization:", error);
+        return res.status(500).json({ 
+          message: "Failed to resolve organization" 
+        });
+      }
+      
+      // Validate organization mapping with Slack team
+      if (team?.id && organization.slackWorkspaceId && organization.slackWorkspaceId !== team.id) {
+        return res.status(403).json({
+          message: "Slack workspace does not match this organization. Please contact your administrator."
+        });
+      }
+      
+      // Check if user already exists by Slack ID or email (using efficient lookups)
+      let existingUser;
+      try {
+        // First try to find by Slack user ID using indexed query
+        if (user.sub) {
+          existingUser = await storage.getUserBySlackId(organization.id, user.sub);
+        }
+        
+        // If not found by Slack ID, try by email using indexed query
+        if (!existingUser && user.email) {
+          existingUser = await storage.getUserByEmail(organization.id, user.email);
+        }
+      } catch (error) {
+        console.error("Failed to check existing user:", error);
+        return res.status(500).json({ 
+          message: "Failed to check existing user" 
+        });
+      }
+      
+      let authenticatedUser;
+      
+      if (existingUser) {
+        // Update existing user with Slack OIDC data
+        try {
+          const slackUserId = user.sub;
+          const displayName = user.name || user.given_name || slackUserId;
+          
+          authenticatedUser = await storage.updateUser(organization.id, existingUser.id, {
+            slackUserId: slackUserId,
+            slackUsername: slackUserId, // OIDC doesn't provide username, use ID
+            slackDisplayName: displayName,
+            slackEmail: user.email,
+            slackAvatar: user.picture,
+            slackWorkspaceId: team?.id || user["https://slack.com/team_id"],
+            authProvider: "slack" as const,
+            avatar: user.picture || existingUser.avatar,
+            // Update email if not set and Slack provides one
+            email: existingUser.email || user.email || existingUser.email,
+            // Update name if it's just the default email
+            name: existingUser.name === existingUser.email && displayName ? 
+                  displayName : existingUser.name
+          });
+        } catch (error) {
+          console.error("Failed to update user with Slack data:", error);
+          return res.status(500).json({ 
+            message: "Failed to update user account" 
+          });
+        }
+      } else {
+        // Create new user with Slack OIDC data
+        try {
+          // Generate secure random password for Slack users (never used for login)
+          const securePassword = randomBytes(32).toString('hex');
+          const slackUserId = user.sub;
+          const displayName = user.name || user.given_name || slackUserId;
+          
+          const userData = {
+            username: slackUserId, // Use Slack user ID as username for uniqueness
+            password: securePassword, // Secure random password for Slack users
+            name: displayName,
+            email: user.email || `${slackUserId}@slack.local`,
+            role: "member",
+            organizationId: organization.id,
+            slackUserId: slackUserId,
+            slackUsername: slackUserId, // OIDC doesn't provide username
+            slackDisplayName: displayName,
+            slackEmail: user.email,
+            slackAvatar: user.picture,
+            slackWorkspaceId: team?.id || user["https://slack.com/team_id"],
+            authProvider: "slack" as const,
+            avatar: user.picture,
+          };
+          
+          authenticatedUser = await storage.createUser(organization.id, userData);
+        } catch (error) {
+          console.error("Failed to create user from Slack:", error);
+          return res.status(500).json({ 
+            message: "Failed to create user account" 
+          });
+        }
+      }
+      
+      if (!authenticatedUser) {
+        return res.status(500).json({ 
+          message: "Failed to authenticate user" 
+        });
+      }
+      
+      // Establish authentication session
+      try {
+        // Set HTTP-only secure cookies for authentication
+        const sessionToken = randomBytes(32).toString('hex');
+        
+        res.cookie('auth_user_id', authenticatedUser.id, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        });
+        
+        res.cookie('auth_org_id', organization.id, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        });
+        
+        res.cookie('auth_session_token', sessionToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        });
+        
+        console.log(`User ${authenticatedUser.name} (${authenticatedUser.email}) successfully authenticated via Slack OAuth for organization ${organization.name}`);
+      } catch (error) {
+        console.error("Failed to establish session:", error);
+        // Continue anyway - user is authenticated, just session might not be optimal
+      }
+      
+      // Redirect to the organization's dashboard
+      const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
+      const dashboardUrl = `${appUrl}/#/dashboard?org=${organizationSlug}`;
+      
+      res.redirect(dashboardUrl);
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      res.status(500).json({ 
+        message: "Authentication failed. Please try again." 
+      });
+    }
+  });
+  
   // Apply organization middleware to all API routes
   app.use("/api", requireOrganization());
   
