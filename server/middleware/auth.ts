@@ -35,16 +35,37 @@ export function authenticateUser() {
         const user = await storage.getUser(req.orgId, hardcodedUserId);
         
         if (!user) {
-          // Create a default user for testing - DEVELOPMENT ONLY
-          const defaultUser = await storage.createUser(req.orgId, {
-            username: "demo-user",
-            password: "password", // This is only for development
-            name: "Demo User",
-            email: "demo@example.com",
-            role: "member",
-            organizationId: req.orgId,
-          });
-          req.currentUser = defaultUser;
+          // Try to find existing demo user by email/username
+          let existingUser = await storage.getUserByUsername(req.orgId, "demo-user");
+          if (!existingUser) {
+            existingUser = await storage.getUserByEmail(req.orgId, "demo@example.com");
+          }
+          
+          if (!existingUser) {
+            // Create a default user for testing - DEVELOPMENT ONLY
+            try {
+              const defaultUser = await storage.createUser(req.orgId, {
+                username: "demo-user",
+                password: "password", // This is only for development
+                name: "Demo User",
+                email: "demo@example.com",
+                role: "member",
+                organizationId: req.orgId,
+              });
+              req.currentUser = defaultUser;
+            } catch (error) {
+              // If creation fails (e.g., due to race condition), try to get user again
+              existingUser = await storage.getUserByUsername(req.orgId, "demo-user") || 
+                             await storage.getUserByEmail(req.orgId, "demo@example.com");
+              if (existingUser) {
+                req.currentUser = existingUser;
+              } else {
+                throw error; // Re-throw if still can't find user
+              }
+            }
+          } else {
+            req.currentUser = existingUser;
+          }
         } else {
           req.currentUser = user;
         }
@@ -92,5 +113,76 @@ export function requireAuth() {
       });
     }
     next();
+  };
+}
+
+/**
+ * Middleware to require specific role(s)
+ * Use this on routes that need specific user roles
+ */
+export function requireRole(roles: string[] | string) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.currentUser) {
+      return res.status(401).json({ 
+        message: "Authentication required" 
+      });
+    }
+
+    const allowedRoles = Array.isArray(roles) ? roles : [roles];
+    
+    if (!allowedRoles.includes(req.currentUser.role)) {
+      return res.status(403).json({ 
+        message: `Access denied. Required role(s): ${allowedRoles.join(', ')}` 
+      });
+    }
+    
+    next();
+  };
+}
+
+/**
+ * Middleware to require team lead authorization
+ * User must be either:
+ * - Admin role (can access all)
+ * - Manager role with teamId matching the resource
+ * - Team leader (leaderId) for the specific team
+ */
+export function requireTeamLead() {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.currentUser) {
+      return res.status(401).json({ 
+        message: "Authentication required" 
+      });
+    }
+
+    const user = req.currentUser;
+    
+    // Admins can access everything
+    if (user.role === "admin") {
+      return next();
+    }
+    
+    // For other operations, we need to check if user is a team lead
+    // This can be used in conjunction with route-specific logic
+    if (user.role === "manager" && user.teamId) {
+      return next();
+    }
+    
+    // Check if user is a team leader by looking up teams they lead
+    try {
+      const teams = await storage.getAllTeams(req.orgId);
+      const isTeamLeader = teams.some(team => team.leaderId === user.id);
+      
+      if (isTeamLeader) {
+        return next();
+      }
+      
+      return res.status(403).json({ 
+        message: "Access denied. Team leadership role required." 
+      });
+    } catch (error) {
+      console.error("Team leadership check error:", error);
+      return res.status(500).json({ message: "Authorization check failed" });
+    }
   };
 }

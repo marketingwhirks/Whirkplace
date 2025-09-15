@@ -5,12 +5,14 @@ import { storage } from "./storage";
 import { 
   insertUserSchema, insertTeamSchema, insertCheckinSchema, 
   insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema,
-  type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric 
+  reviewCheckinSchema, ReviewStatus,
+  type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
+  type ReviewStatusType
 } from "@shared/schema";
 import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout } from "./services/slack";
 import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
-import { authenticateUser, requireAuth } from "./middleware/auth";
+import { authenticateUser, requireAuth, requireRole, requireTeamLead } from "./middleware/auth";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -244,6 +246,284 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(checkin || null);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch current check-in" });
+    }
+  });
+
+  // Check-in Review Endpoints
+  app.get("/api/checkins/pending", requireAuth(), requireTeamLead(), async (req, res) => {
+    try {
+      const user = req.currentUser!;
+      let checkins;
+      
+      if (user.role === "admin") {
+        // Admins can see all pending check-ins
+        checkins = await storage.getPendingCheckins(req.orgId);
+      } else {
+        // Get all pending check-ins for filtering
+        checkins = await storage.getPendingCheckins(req.orgId);
+        
+        // Get users under this person's authority (direct reports + team members)
+        const directReports = await storage.getUsersByManager(req.orgId, user.id);
+        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, user.id);
+        
+        // Combine and deduplicate user IDs
+        const authorizedUserIds = new Set([
+          ...directReports.map(u => u.id),
+          ...teamMembers.map(u => u.id)
+        ]);
+        
+        // Filter check-ins to only include those from authorized users
+        checkins = checkins.filter(checkin => authorizedUserIds.has(checkin.userId));
+      }
+      
+      // Enhance with user information
+      const enhancedCheckins = await Promise.all(
+        checkins.map(async (checkin) => {
+          const checkinUser = await storage.getUser(req.orgId, checkin.userId);
+          const team = checkinUser?.teamId ? await storage.getTeam(req.orgId, checkinUser.teamId) : null;
+          
+          return {
+            ...checkin,
+            user: checkinUser ? {
+              id: checkinUser.id,
+              name: checkinUser.name,
+              email: checkinUser.email,
+              teamId: checkinUser.teamId,
+              teamName: team?.name || null
+            } : null
+          };
+        })
+      );
+      
+      res.json(enhancedCheckins);
+    } catch (error) {
+      console.error("Failed to fetch pending check-ins:", error);
+      res.status(500).json({ message: "Failed to fetch pending check-ins" });
+    }
+  });
+
+  app.get("/api/checkins/review-status/:status", requireAuth(), requireTeamLead(), async (req, res) => {
+    try {
+      const status = req.params.status as ReviewStatusType;
+      
+      // Validate status parameter
+      if (!Object.values(ReviewStatus).includes(status)) {
+        return res.status(400).json({ message: "Invalid review status" });
+      }
+      
+      const user = req.currentUser!;
+      let checkins = await storage.getCheckinsByReviewStatus(req.orgId, status);
+      
+      // Filter by team if not admin
+      if (user.role !== "admin") {
+        // Get users under this person's authority (direct reports + team members)
+        const directReports = await storage.getUsersByManager(req.orgId, user.id);
+        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, user.id);
+        
+        // Combine and deduplicate user IDs
+        const authorizedUserIds = new Set([
+          ...directReports.map(u => u.id),
+          ...teamMembers.map(u => u.id)
+        ]);
+        
+        // Filter check-ins to only include those from authorized users
+        checkins = checkins.filter(checkin => authorizedUserIds.has(checkin.userId));
+      }
+      
+      // Enhance with user and reviewer information
+      const enhancedCheckins = await Promise.all(
+        checkins.map(async (checkin) => {
+          const checkinUser = await storage.getUser(req.orgId, checkin.userId);
+          const team = checkinUser?.teamId ? await storage.getTeam(req.orgId, checkinUser.teamId) : null;
+          const reviewer = checkin.reviewedBy ? await storage.getUser(req.orgId, checkin.reviewedBy) : null;
+          
+          return {
+            ...checkin,
+            user: checkinUser ? {
+              id: checkinUser.id,
+              name: checkinUser.name,
+              email: checkinUser.email,
+              teamId: checkinUser.teamId,
+              teamName: team?.name || null
+            } : null,
+            reviewer: reviewer ? {
+              id: reviewer.id,
+              name: reviewer.name,
+              email: reviewer.email
+            } : null
+          };
+        })
+      );
+      
+      res.json(enhancedCheckins);
+    } catch (error) {
+      console.error("Failed to fetch check-ins by review status:", error);
+      res.status(500).json({ message: "Failed to fetch check-ins by review status" });
+    }
+  });
+
+  app.patch("/api/checkins/:id/review", requireAuth(), requireTeamLead(), async (req, res) => {
+    try {
+      const reviewData = reviewCheckinSchema.parse(req.body);
+      const user = req.currentUser!;
+      const checkinId = req.params.id;
+      
+      // Check if check-in exists
+      const existingCheckin = await storage.getCheckin(req.orgId, checkinId);
+      if (!existingCheckin) {
+        return res.status(404).json({ message: "Check-in not found" });
+      }
+      
+      // Verify authorization - check if user can review this check-in
+      if (user.role !== "admin") {
+        const checkinUser = await storage.getUser(req.orgId, existingCheckin.userId);
+        if (!checkinUser) {
+          return res.status(404).json({ message: "User not found" });
+        }
+
+        // Check if user is the direct manager
+        const isDirectManager = checkinUser.managerId === user.id;
+        
+        // Check if user is a team leader of the check-in user's team
+        let isTeamLeader = false;
+        if (checkinUser.teamId) {
+          const team = await storage.getTeam(req.orgId, checkinUser.teamId);
+          isTeamLeader = team?.leaderId === user.id;
+        }
+
+        if (!isDirectManager && !isTeamLeader) {
+          return res.status(403).json({ 
+            message: "You can only review check-ins from your direct reports or team members" 
+          });
+        }
+      }
+      
+      // Validate workflow state before allowing review
+      if (existingCheckin.reviewStatus !== ReviewStatus.PENDING) {
+        return res.status(409).json({ 
+          message: "Check-in has already been reviewed and cannot be reviewed again",
+          currentStatus: existingCheckin.reviewStatus 
+        });
+      }
+
+      if (!existingCheckin.submittedAt || !existingCheckin.isComplete) {
+        return res.status(400).json({ 
+          message: "Check-in must be completed and submitted before it can be reviewed" 
+        });
+      }
+
+      // Perform the review
+      const updatedCheckin = await storage.reviewCheckin(req.orgId, checkinId, user.id, reviewData);
+      
+      if (!updatedCheckin) {
+        return res.status(404).json({ message: "Check-in not found" });
+      }
+      
+      // Enhance response with user and reviewer information
+      const checkinUser = await storage.getUser(req.orgId, updatedCheckin.userId);
+      const team = checkinUser?.teamId ? await storage.getTeam(req.orgId, checkinUser.teamId) : null;
+      const reviewer = await storage.getUser(req.orgId, user.id);
+      
+      const enhancedCheckin = {
+        ...updatedCheckin,
+        user: checkinUser ? {
+          id: checkinUser.id,
+          name: checkinUser.name,
+          email: checkinUser.email,
+          teamId: checkinUser.teamId,
+          teamName: team?.name || null
+        } : null,
+        reviewer: reviewer ? {
+          id: reviewer.id,
+          name: reviewer.name,
+          email: reviewer.email
+        } : null
+      };
+      
+      res.json(enhancedCheckin);
+    } catch (error) {
+      console.error("Check-in review error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid review data",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to review check-in" });
+    }
+  });
+
+  app.get("/api/checkins/leadership-view", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { from, to, teamId, status, limit } = req.query;
+      
+      // Get all check-ins (we'll filter them based on query parameters)
+      let checkins = await storage.getAllCheckins ? 
+        await storage.getAllCheckins(req.orgId) : 
+        await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : 1000);
+      
+      // Apply filters
+      if (status && Object.values(ReviewStatus).includes(status as ReviewStatusType)) {
+        checkins = checkins.filter(checkin => checkin.reviewStatus === status);
+      }
+      
+      if (from) {
+        const fromDate = new Date(from as string);
+        checkins = checkins.filter(checkin => new Date(checkin.createdAt) >= fromDate);
+      }
+      
+      if (to) {
+        const toDate = new Date(to as string);
+        checkins = checkins.filter(checkin => new Date(checkin.createdAt) <= toDate);
+      }
+      
+      // Enhance with complete user, team, and reviewer information
+      const enhancedCheckins = await Promise.all(
+        checkins.map(async (checkin) => {
+          const checkinUser = await storage.getUser(req.orgId, checkin.userId);
+          const team = checkinUser?.teamId ? await storage.getTeam(req.orgId, checkinUser.teamId) : null;
+          const reviewer = checkin.reviewedBy ? await storage.getUser(req.orgId, checkin.reviewedBy) : null;
+          
+          return {
+            ...checkin,
+            user: checkinUser ? {
+              id: checkinUser.id,
+              name: checkinUser.name,
+              email: checkinUser.email,
+              role: checkinUser.role,
+              teamId: checkinUser.teamId,
+              teamName: team?.name || null,
+              managerId: checkinUser.managerId
+            } : null,
+            team: team ? {
+              id: team.id,
+              name: team.name,
+              description: team.description
+            } : null,
+            reviewer: reviewer ? {
+              id: reviewer.id,
+              name: reviewer.name,
+              email: reviewer.email,
+              role: reviewer.role
+            } : null
+          };
+        })
+      );
+      
+      // Apply team filter after enhancement (if specified)
+      const filteredCheckins = teamId ? 
+        enhancedCheckins.filter(checkin => checkin.user?.teamId === teamId) : 
+        enhancedCheckins;
+      
+      // Sort by creation date (newest first)
+      filteredCheckins.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      
+      res.json(filteredCheckins);
+    } catch (error) {
+      console.error("Failed to fetch leadership view:", error);
+      res.status(500).json({ message: "Failed to fetch leadership view" });
     }
   });
 

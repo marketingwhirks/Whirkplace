@@ -29,6 +29,7 @@ export interface IStorage {
   updateUser(organizationId: string, id: string, user: Partial<InsertUser>): Promise<User | undefined>;
   getUsersByTeam(organizationId: string, teamId: string): Promise<User[]>;
   getUsersByManager(organizationId: string, managerId: string): Promise<User[]>;
+  getUsersByTeamLeadership(organizationId: string, leaderId: string): Promise<User[]>;
   getAllUsers(organizationId: string): Promise<User[]>;
 
   // Teams
@@ -218,6 +219,26 @@ export class DatabaseStorage implements IStorage {
   async getUsersByManager(organizationId: string, managerId: string): Promise<User[]> {
     return await db.select().from(users).where(
       and(eq(users.managerId, managerId), eq(users.organizationId, organizationId))
+    );
+  }
+
+  async getUsersByTeamLeadership(organizationId: string, leaderId: string): Promise<User[]> {
+    // Find teams where the user is the leader
+    const leaderTeams = await db.select({ id: teams.id })
+      .from(teams)
+      .where(and(eq(teams.leaderId, leaderId), eq(teams.organizationId, organizationId)));
+    
+    if (leaderTeams.length === 0) {
+      return [];
+    }
+
+    // Get all users from those teams
+    const teamIds = leaderTeams.map(team => team.id);
+    return await db.select().from(users).where(
+      and(
+        inArray(users.teamId, teamIds),
+        eq(users.organizationId, organizationId)
+      )
     );
   }
 
@@ -1441,6 +1462,23 @@ export class MemStorage implements IStorage {
   async getUsersByManager(organizationId: string, managerId: string): Promise<User[]> {
     return Array.from(this.users.values()).filter(user => 
       user.managerId === managerId && user.organizationId === organizationId
+    );
+  }
+
+  async getUsersByTeamLeadership(organizationId: string, leaderId: string): Promise<User[]> {
+    // Find teams where the user is the leader
+    const leaderTeams = Array.from(this.teams.values()).filter(team => 
+      team.leaderId === leaderId && team.organizationId === organizationId
+    );
+    
+    if (leaderTeams.length === 0) {
+      return [];
+    }
+
+    // Get all users from those teams
+    const teamIds = leaderTeams.map(team => team.id);
+    return Array.from(this.users.values()).filter(user => 
+      user.teamId && teamIds.includes(user.teamId) && user.organizationId === organizationId
     );
   }
 
