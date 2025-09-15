@@ -884,6 +884,8 @@ export async function syncUsersFromSlack(organizationId: string, storage: any): 
       // New user - create them
       try {
         const newUser = await storage.createUser(organizationId, {
+          username: member.email?.split('@')[0] || member.name?.toLowerCase().replace(/\s+/g, '.') || member.id,
+          password: randomBytes(32).toString('hex'), // Generate secure random password for Slack users
           name: member.name,
           email: member.email || `${member.id}@slack.local`, // Fallback email
           role: 'member',
