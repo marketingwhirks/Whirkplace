@@ -1720,11 +1720,6 @@ export class DatabaseStorage implements IStorage {
       }];
     }
 
-    // Cache results
-    const isOldData = from && (Date.now() - from.getTime()) > (7 * 24 * 60 * 60 * 1000);
-    const ttl = isOldData ? 30 * 60 * 1000 : 5 * 60 * 1000;
-    this.analyticsCache.set(cacheKey, complianceResults, ttl);
-
     return complianceResults;
   }
 

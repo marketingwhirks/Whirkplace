@@ -65,6 +65,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }, "Invalid 'to' date format").transform(val => val ? new Date(val) : undefined),
   });
   
+  const complianceAnalyticsSchema = analyticsBaseSchema.extend({
+    // Compliance analytics uses the same base parameters as other analytics
+  });
+  
   // Admin backfill schema
   const backfillSchema = z.object({
     from: z.string().refine((val) => {
@@ -1130,11 +1134,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const recentCheckins = await storage.getRecentCheckins(req.orgId, 100);
       const totalCheckins = recentCheckins.length;
       
+      // Get compliance metrics for the last 30 days
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const [checkinCompliance, reviewCompliance] = await Promise.all([
+        storage.getCheckinComplianceMetrics(req.orgId, {
+          scope: 'organization',
+          from: thirtyDaysAgo
+        }),
+        storage.getReviewComplianceMetrics(req.orgId, {
+          scope: 'organization', 
+          from: thirtyDaysAgo
+        })
+      ]);
+      
+      // Extract latest compliance metrics (most recent period if multiple, or aggregate if single)
+      const latestCheckinCompliance = checkinCompliance.length > 0 ? 
+        checkinCompliance[checkinCompliance.length - 1].metrics || checkinCompliance[0] : 
+        { totalCount: 0, onTimeCount: 0, onTimePercentage: 0, averageDaysEarly: 0, averageDaysLate: 0 };
+        
+      const latestReviewCompliance = reviewCompliance.length > 0 ? 
+        reviewCompliance[reviewCompliance.length - 1].metrics || reviewCompliance[0] : 
+        { totalCount: 0, onTimeCount: 0, onTimePercentage: 0, averageDaysEarly: 0, averageDaysLate: 0 };
+      
       if (totalCheckins === 0) {
         return res.json({
           averageRating: 0,
           completionRate: 0,
-          totalCheckins: 0
+          totalCheckins: 0,
+          checkinCompliance: latestCheckinCompliance,
+          reviewCompliance: latestReviewCompliance
         });
       }
       
@@ -1156,9 +1186,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         averageRating: Math.round(averageRating * 10) / 10,
         completionRate,
-        totalCheckins
+        totalCheckins,
+        checkinCompliance: latestCheckinCompliance,
+        reviewCompliance: latestReviewCompliance
       });
     } catch (error) {
+      console.error("Team health analytics error:", error);
       res.status(500).json({ message: "Failed to fetch team health analytics" });
     }
   });
@@ -1297,6 +1330,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       res.status(500).json({ message: "Failed to fetch analytics overview" });
+    }
+  });
+
+  // Analytics - Check-in Compliance
+  app.get("/api/analytics/checkin-compliance", requireAuth(), authorizeAnalyticsAccess(), async (req, res) => {
+    try {
+      const query = complianceAnalyticsSchema.parse(req.query);
+      
+      // Validate scope and id relationship
+      if ((query.scope === 'team' || query.scope === 'user') && !query.id) {
+        return res.status(400).json({ message: "ID is required for team and user scopes" });
+      }
+      
+      // Validate date range
+      if (query.from && query.to && query.from > query.to) {
+        return res.status(400).json({ message: "From date must be before to date" });
+      }
+      
+      const metrics = await storage.getCheckinComplianceMetrics(req.orgId, {
+        scope: query.scope as AnalyticsScope,
+        entityId: query.id,
+        period: query.period as AnalyticsPeriod,
+        from: query.from,
+        to: query.to,
+      });
+      
+      res.json(metrics);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to fetch check-in compliance metrics" });
+    }
+  });
+
+  // Analytics - Review Compliance
+  app.get("/api/analytics/review-compliance", requireAuth(), authorizeAnalyticsAccess(), async (req, res) => {
+    try {
+      const query = complianceAnalyticsSchema.parse(req.query);
+      
+      // Validate scope and id relationship
+      if ((query.scope === 'team' || query.scope === 'user') && !query.id) {
+        return res.status(400).json({ message: "ID is required for team and user scopes" });
+      }
+      
+      // Validate date range
+      if (query.from && query.to && query.from > query.to) {
+        return res.status(400).json({ message: "From date must be before to date" });
+      }
+      
+      const metrics = await storage.getReviewComplianceMetrics(req.orgId, {
+        scope: query.scope as AnalyticsScope,
+        entityId: query.id,
+        period: query.period as AnalyticsPeriod,
+        from: query.from,
+        to: query.to,
+      });
+      
+      res.json(metrics);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to fetch review compliance metrics" });
     }
   });
 
