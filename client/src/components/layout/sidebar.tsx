@@ -71,7 +71,7 @@ const baseNavigation = [
   { name: "Team", href: "/team", icon: Users, roles: ["member", "manager", "admin"] },
   { name: "Wins", href: "/wins", icon: Trophy, roles: ["member", "manager", "admin"] },
   { name: "Shout Outs", href: "/shoutouts", icon: Gift, roles: ["member", "manager", "admin"] },
-  { name: "Questions", href: "/questions", icon: HelpCircle, roles: ["member", "manager", "admin"] },
+  { name: "Questions", href: "/questions", icon: HelpCircle, roles: ["manager", "admin"] },
   { name: "Reviews", href: "/reviews", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
   { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
