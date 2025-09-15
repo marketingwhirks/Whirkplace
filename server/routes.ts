@@ -1898,11 +1898,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ challenge });
       }
 
-      // Handle actual events (for future implementation)
+      // Handle actual events
       if (type === "event_callback" && event) {
         console.log("Slack event received:", event.type);
-        // TODO: Handle different event types as needed
-        // For now, just acknowledge receipt
+        
+        // Handle channel membership events for user sync
+        if (event.type === "member_joined_channel" || event.type === "member_left_channel") {
+          // For now, we'll handle all orgs - in a real multi-tenant app,
+          // you'd need to determine which organization this event belongs to
+          try {
+            const { handleChannelMembershipEvent } = await import("./services/slack");
+            const organizations = await storage.getAllOrganizations();
+            
+            // Process event for all organizations (or determine the specific org)
+            for (const org of organizations) {
+              await handleChannelMembershipEvent(event, org.id, storage);
+            }
+          } catch (syncError) {
+            console.error("Failed to sync users from channel event:", syncError);
+            // Don't fail the request - Slack expects a 200 response
+          }
+        }
+        
         res.status(200).json({ ok: true });
       } else {
         // Unknown event type
@@ -1911,6 +1928,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Slack events error:", error);
       res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // User Sync Endpoints
+  app.post("/api/admin/sync-users", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is admin
+      if (!req.currentUser || req.currentUser.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { syncUsersFromSlack } = await import("./services/slack");
+      const result = await syncUsersFromSlack(req.orgId, storage);
+      
+      res.json({
+        message: "User sync completed successfully",
+        ...result
+      });
+    } catch (error) {
+      console.error("Manual user sync failed:", error);
+      res.status(500).json({ message: "User sync failed" });
+    }
+  });
+
+  app.get("/api/admin/channel-members", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is admin
+      if (!req.currentUser || req.currentUser.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { getChannelMembers } = await import("./services/slack");
+      const members = await getChannelMembers();
+      
+      res.json({
+        members,
+        count: members.length,
+        channelName: "whirkplace-pulse"
+      });
+    } catch (error) {
+      console.error("Failed to fetch channel members:", error);
+      res.status(500).json({ message: "Failed to fetch channel members" });
     }
   });
 

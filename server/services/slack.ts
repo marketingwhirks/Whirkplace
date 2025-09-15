@@ -16,6 +16,9 @@ if (!process.env.SLACK_PRIVATE_CHANNEL_ID) {
 
 const slack = process.env.SLACK_BOT_TOKEN ? new WebClient(process.env.SLACK_BOT_TOKEN) : null;
 
+// Channel configuration
+const WHIRKPLACE_CHANNEL = "whirkplace-pulse"; // Channel name for automatic user sync
+
 // OAuth Configuration Validation
 if (!process.env.SLACK_CLIENT_ID) {
   console.warn("SLACK_CLIENT_ID environment variable not set. Slack OAuth will be disabled.");
@@ -659,4 +662,187 @@ export async function notifyCheckinReviewed(
   });
 
   return messageId;
+}
+
+// User Sync Functions for Channel-based Membership
+
+/**
+ * Fetch all members of the whirkplace-pulse channel
+ */
+export async function getChannelMembers(): Promise<{ id: string; name: string; email?: string; active: boolean }[]> {
+  if (!slack) {
+    console.warn("Slack client not initialized. Cannot fetch channel members.");
+    return [];
+  }
+
+  try {
+    // First, find the channel ID by name
+    const channelsResult = await slack.conversations.list({
+      types: 'public_channel,private_channel'
+    });
+
+    const channel = channelsResult.channels?.find(c => c.name === WHIRKPLACE_CHANNEL);
+    if (!channel?.id) {
+      console.warn(`Channel "${WHIRKPLACE_CHANNEL}" not found. Cannot sync users.`);
+      return [];
+    }
+
+    // Fetch channel members
+    const membersResult = await slack.conversations.members({
+      channel: channel.id
+    });
+
+    if (!membersResult.members) {
+      console.warn(`No members found in channel "${WHIRKPLACE_CHANNEL}"`);
+      return [];
+    }
+
+    // Get detailed user info for each member
+    const userPromises = membersResult.members.map(async (memberId) => {
+      try {
+        const userInfo = await slack.users.info({ user: memberId });
+        if (userInfo.user) {
+          return {
+            id: userInfo.user.id!,
+            name: userInfo.user.real_name || userInfo.user.name || 'Unknown User',
+            email: userInfo.user.profile?.email,
+            active: !userInfo.user.deleted && !userInfo.user.is_bot
+          };
+        }
+        return null;
+      } catch (error) {
+        console.warn(`Failed to fetch user info for ${memberId}:`, error);
+        return null;
+      }
+    });
+
+    const users = await Promise.all(userPromises);
+    return users.filter((user): user is NonNullable<typeof user> => user !== null);
+  } catch (error) {
+    console.error("Failed to fetch channel members:", error);
+    return [];
+  }
+}
+
+/**
+ * Sync users based on Slack channel membership
+ * This function should be called periodically or on channel events
+ */
+export async function syncUsersFromSlack(organizationId: string, storage: any): Promise<{
+  created: number;
+  activated: number;
+  deactivated: number;
+}> {
+  console.log(`Starting user sync for organization ${organizationId}...`);
+  
+  const channelMembers = await getChannelMembers();
+  if (channelMembers.length === 0) {
+    console.warn("No channel members found. Skipping user sync.");
+    return { created: 0, activated: 0, deactivated: 0 };
+  }
+
+  const existingUsers = await storage.getAllUsers(organizationId);
+  const stats = { created: 0, activated: 0, deactivated: 0 };
+
+  // Create map of existing users by Slack ID and email
+  const existingUsersBySlackId = new Map();
+  const existingUsersByEmail = new Map();
+  
+  existingUsers.forEach((user: any) => {
+    if (user.slackUserId) {
+      existingUsersBySlackId.set(user.slackUserId, user);
+    }
+    if (user.email) {
+      existingUsersByEmail.set(user.email, user);
+    }
+  });
+
+  // Process channel members
+  for (const member of channelMembers) {
+    if (!member.active) continue; // Skip inactive/deleted Slack users
+
+    let existingUser = existingUsersBySlackId.get(member.id);
+    
+    // If not found by Slack ID, try by email
+    if (!existingUser && member.email) {
+      existingUser = existingUsersByEmail.get(member.email);
+    }
+
+    if (existingUser) {
+      // User exists - update if needed
+      const updates: any = {};
+      
+      // Update Slack user ID if missing
+      if (!existingUser.slackUserId) {
+        updates.slackUserId = member.id;
+      }
+      
+      // Reactivate if they were inactive
+      if (!existingUser.isActive) {
+        updates.isActive = true;
+        stats.activated++;
+        console.log(`Reactivated user: ${existingUser.name} (${member.id})`);
+      }
+
+      // Update name if different
+      if (existingUser.name !== member.name) {
+        updates.name = member.name;
+      }
+
+      // Apply updates if any
+      if (Object.keys(updates).length > 0) {
+        await storage.updateUser(organizationId, existingUser.id, updates);
+      }
+    } else {
+      // New user - create them
+      try {
+        const newUser = await storage.createUser(organizationId, {
+          name: member.name,
+          email: member.email || `${member.id}@slack.local`, // Fallback email
+          role: 'member',
+          isActive: true,
+          slackUserId: member.id
+        });
+        
+        stats.created++;
+        console.log(`Created new user: ${member.name} (${member.id})`);
+      } catch (error) {
+        console.error(`Failed to create user ${member.name}:`, error);
+      }
+    }
+  }
+
+  // Deactivate users who are no longer in the channel (but keep historical data)
+  const activeChannelSlackIds = new Set(channelMembers.filter(m => m.active).map(m => m.id));
+  
+  for (const user of existingUsers) {
+    if (user.slackUserId && user.isActive && !activeChannelSlackIds.has(user.slackUserId)) {
+      await storage.updateUser(organizationId, user.id, { isActive: false });
+      stats.deactivated++;
+      console.log(`Deactivated user: ${user.name} (${user.slackUserId})`);
+    }
+  }
+
+  console.log(`User sync completed for organization ${organizationId}:`, stats);
+  return stats;
+}
+
+/**
+ * Handle Slack events for real-time user sync
+ */
+export async function handleChannelMembershipEvent(
+  event: { type: string; user: string; channel: string },
+  organizationId: string,
+  storage: any
+): Promise<void> {
+  // Only process events for the whirkplace-pulse channel
+  // Note: In practice, you'd need to resolve channel ID to name first
+  
+  if (event.type === 'member_joined_channel') {
+    console.log(`User ${event.user} joined channel. Triggering user sync...`);
+    await syncUsersFromSlack(organizationId, storage);
+  } else if (event.type === 'member_left_channel') {
+    console.log(`User ${event.user} left channel. Triggering user sync...`);
+    await syncUsersFromSlack(organizationId, storage);
+  }
 }
