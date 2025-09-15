@@ -15,6 +15,15 @@ export const DefaultCompanyValues = {
 export type CompanyValue = string;
 export const defaultCompanyValuesArray = Object.values(DefaultCompanyValues);
 
+// Review Status Constants
+export const ReviewStatus = {
+  PENDING: "pending",
+  APPROVED: "approved", 
+  REJECTED: "rejected",
+} as const;
+
+export type ReviewStatusType = typeof ReviewStatus[keyof typeof ReviewStatus];
+
 // Organizations table for multi-tenancy
 export const organizations = pgTable("organizations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -59,10 +68,16 @@ export const checkins = pgTable("checkins", {
   responses: jsonb("responses").notNull().default({}), // question_id -> response
   isComplete: boolean("is_complete").notNull().default(false),
   submittedAt: timestamp("submitted_at"),
+  reviewStatus: text("review_status").notNull().default("pending"), // pending, approved, rejected
+  reviewedBy: varchar("reviewed_by"), // ID of reviewing team leader (nullable)
+  reviewedAt: timestamp("reviewed_at"), // When review was completed (nullable)
+  reviewComments: text("review_comments"), // Optional feedback (nullable)
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 }, (table) => ({
   orgWeekOfIdx: index("checkins_org_week_of_idx").on(table.organizationId, table.weekOf),
   orgUserWeekOfIdx: index("checkins_org_user_week_of_idx").on(table.organizationId, table.userId, table.weekOf),
+  orgReviewStatusIdx: index("checkins_org_review_status_idx").on(table.organizationId, table.reviewStatus),
+  reviewedByDateIdx: index("checkins_reviewed_by_date_idx").on(table.reviewedBy, table.reviewedAt),
 }));
 
 export const questions = pgTable("questions", {
@@ -179,6 +194,10 @@ export const insertCheckinSchema = createInsertSchema(checkins).omit({
   id: true,
   createdAt: true,
   submittedAt: true,
+  reviewStatus: true, // Always starts as "pending", not user-settable
+  reviewedBy: true, // Only set by reviewers
+  reviewedAt: true, // Only set by reviewers
+  reviewComments: true, // Only set by reviewers
 }).extend({
   weekOf: z.coerce.date(),
 });
@@ -241,6 +260,13 @@ export const updateShoutoutSchema = z.object({
   // fromUserId and toUserId are NEVER updatable for security
 });
 
+// Schema for reviewing check-ins - only managers/leaders can use this
+export const reviewCheckinSchema = z.object({
+  reviewStatus: z.enum([ReviewStatus.PENDING, ReviewStatus.APPROVED, ReviewStatus.REJECTED]),
+  reviewComments: z.string().max(1000, "Review comments too long").optional(),
+  // reviewedBy and reviewedAt are set automatically server-side
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -271,6 +297,8 @@ export type ShoutoutMetricsDaily = typeof shoutoutMetricsDaily.$inferSelect;
 
 export type InsertAggregationWatermark = z.infer<typeof insertAggregationWatermarkSchema>;
 export type AggregationWatermark = typeof aggregationWatermarks.$inferSelect;
+
+export type ReviewCheckin = z.infer<typeof reviewCheckinSchema>;
 
 // Analytics types
 export type AnalyticsScope = 'organization' | 'team' | 'user';
