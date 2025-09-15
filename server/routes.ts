@@ -1994,6 +1994,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin user role management endpoint
+  app.patch("/api/admin/users/:id/role", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is admin
+      if (!req.currentUser || req.currentUser.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      const { role } = req.body;
+
+      // Validate role
+      const validRoles = ['admin', 'manager', 'member'];
+      if (!role || !validRoles.includes(role)) {
+        return res.status(400).json({ 
+          message: "Invalid role. Must be one of: admin, manager, member" 
+        });
+      }
+
+      // Get target user to verify they exist
+      const targetUser = await storage.getUser(req.orgId, targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Prevent admins from demoting themselves if they're the only admin
+      if (req.currentUser.id === targetUserId && req.currentUser.role === 'admin' && role !== 'admin') {
+        const allUsers = await storage.getAllUsers(req.orgId, true);
+        const adminCount = allUsers.filter(u => u.role === 'admin' && u.isActive).length;
+        
+        if (adminCount <= 1) {
+          return res.status(400).json({ 
+            message: "Cannot demote yourself - you are the only admin. Promote another user to admin first." 
+          });
+        }
+      }
+
+      // Update user role
+      const updatedUser = await storage.updateUser(req.orgId, targetUserId, { role });
+      if (!updatedUser) {
+        return res.status(500).json({ message: "Failed to update user role" });
+      }
+
+      res.json({
+        message: `User role updated to ${role}`,
+        user: updatedUser
+      });
+    } catch (error) {
+      console.error("Failed to update user role:", error);
+      res.status(500).json({ message: "Failed to update user role" });
+    }
+  });
+
   // Admin aggregation endpoints
   app.post("/api/admin/aggregation/backfill", requireAuth(), async (req, res) => {
     try {

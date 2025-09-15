@@ -74,6 +74,7 @@ const baseNavigation = [
   { name: "Reviews", href: "/reviews", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
   { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
+  { name: "Admin Panel", href: "/admin", icon: Shield, roles: ["admin"] },
   { name: "Settings", href: "/settings", icon: Settings, roles: ["member", "manager", "admin"] },
 ];
 

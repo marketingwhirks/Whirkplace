@@ -16,6 +16,7 @@ import Reviews from "@/pages/reviews";
 import LeadershipDashboard from "@/pages/leadership-dashboard";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
+import Admin from "@/pages/admin";
 import LoginPage from "@/pages/login";
 import Sidebar from "@/components/layout/sidebar";
 
@@ -35,6 +36,7 @@ function Router() {
           <Route path="/leadership-dashboard" component={LeadershipDashboard} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/settings" component={Settings} />
+          <Route path="/admin" component={Admin} />
           <Route component={NotFound} />
         </Switch>
       </div>
