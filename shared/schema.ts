@@ -385,3 +385,25 @@ export interface AnalyticsOverview {
     change: number;
   };
 }
+
+// Compliance Metrics types for on-time tracking
+export type ComplianceScope = 'organization' | 'team' | 'user';
+
+export interface ComplianceMetricsOptions extends AnalyticsTimeFilter {
+  scope: ComplianceScope;
+  entityId?: string; // teamId or userId when scope is team/user
+  period?: AnalyticsPeriod;
+}
+
+export interface ComplianceMetrics {
+  totalCount: number;
+  onTimeCount: number;
+  onTimePercentage: number;
+  averageDaysEarly?: number; // Positive for early, negative for late
+  averageDaysLate?: number; // For late submissions only
+}
+
+export interface ComplianceMetricsResult {
+  periodStart?: Date; // Optional for aggregated results
+  metrics: ComplianceMetrics;
+}

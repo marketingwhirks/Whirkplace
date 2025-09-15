@@ -11,6 +11,7 @@ import {
   type ShoutoutMetricsOptions, type ShoutoutMetricsResult,
   type LeaderboardOptions, type LeaderboardEntry,
   type AnalyticsOverview, type AnalyticsPeriod,
+  type ComplianceMetricsOptions, type ComplianceMetricsResult,
   users, teams, checkins, questions, wins, comments, shoutouts,
   pulseMetricsDaily, shoutoutMetricsDaily, aggregationWatermarks,
   ReviewStatus
@@ -19,6 +20,7 @@ import { randomUUID } from "crypto";
 import { db } from "./db";
 import { eq, desc, and, gte, or, sql, sum, count, avg, lt, lte, inArray } from "drizzle-orm";
 import { AggregationService } from "./services/aggregation";
+import { getCheckinDueDate, getReviewDueDate, isSubmittedOnTime, isReviewedOnTime } from "@shared/utils/dueDates";
 
 export interface IStorage {
   // Users
@@ -89,6 +91,10 @@ export interface IStorage {
   getShoutoutMetrics(organizationId: string, options: ShoutoutMetricsOptions): Promise<ShoutoutMetricsResult[]>;
   getLeaderboard(organizationId: string, options: LeaderboardOptions): Promise<LeaderboardEntry[]>;
   getAnalyticsOverview(organizationId: string, period: AnalyticsPeriod, from: Date, to: Date): Promise<AnalyticsOverview>;
+
+  // Compliance Metrics
+  getCheckinComplianceMetrics(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]>;
+  getReviewComplianceMetrics(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]>;
 }
 
 // Simple in-memory cache with TTL for analytics queries
@@ -288,16 +294,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createCheckin(organizationId: string, insertCheckin: InsertCheckin): Promise<Checkin> {
+    const isCompleting = insertCheckin.isComplete ?? false;
+    const now = new Date();
+    
+    // Calculate due dates using utility functions
+    const dueDate = insertCheckin.dueDate ?? getCheckinDueDate(insertCheckin.weekOf);
+    const reviewDueDate = insertCheckin.reviewDueDate ?? getReviewDueDate(insertCheckin.weekOf);
+    
+    // Calculate if submitted on time (only if being submitted now)
+    const submittedAt = isCompleting ? now : null;
+    const submittedOnTime = submittedAt ? isSubmittedOnTime(submittedAt, dueDate) : false;
+    
     const [checkin] = await db
       .insert(checkins)
       .values({
         ...insertCheckin,
         organizationId,
         responses: insertCheckin.responses ?? {},
-        isComplete: insertCheckin.isComplete ?? false,
+        isComplete: isCompleting,
+        submittedAt,
+        dueDate,
+        submittedOnTime,
+        reviewDueDate,
         reviewStatus: ReviewStatus.PENDING,
         reviewedBy: null,
         reviewedAt: null,
+        reviewedOnTime: false,
         reviewComments: null,
       })
       .returning();
@@ -319,9 +341,40 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCheckin(organizationId: string, id: string, checkinUpdate: Partial<InsertCheckin>): Promise<Checkin | undefined> {
+    // First get the existing checkin to determine if it's being completed now
+    const existing = await this.getCheckin(organizationId, id);
+    if (!existing) return undefined;
+
+    const isBeingCompleted = checkinUpdate.isComplete && !existing.isComplete;
+    const now = new Date();
+    
+    // Prepare the update with calculated fields
+    const updateData: any = { ...checkinUpdate };
+    
+    // If checkin is being completed now, set submission timestamp and calculate on-time status
+    if (isBeingCompleted) {
+      updateData.submittedAt = now;
+      updateData.submittedOnTime = isSubmittedOnTime(now, existing.dueDate);
+    }
+    
+    // If due dates are being updated, recalculate them using utility functions  
+    if (checkinUpdate.weekOf) {
+      if (!checkinUpdate.dueDate) {
+        updateData.dueDate = getCheckinDueDate(checkinUpdate.weekOf);
+      }
+      if (!checkinUpdate.reviewDueDate) {
+        updateData.reviewDueDate = getReviewDueDate(checkinUpdate.weekOf);
+      }
+      
+      // Recalculate submittedOnTime if checkin was already submitted
+      if (existing.submittedAt) {
+        updateData.submittedOnTime = isSubmittedOnTime(existing.submittedAt, updateData.dueDate);
+      }
+    }
+    
     const [checkin] = await db
       .update(checkins)
-      .set(checkinUpdate)
+      .set(updateData)
       .where(and(eq(checkins.id, id), eq(checkins.organizationId, organizationId)))
       .returning();
     return checkin || undefined;
@@ -410,12 +463,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async reviewCheckin(organizationId: string, checkinId: string, reviewedBy: string, reviewData: ReviewCheckin): Promise<Checkin | undefined> {
+    // First get the existing checkin to access the reviewDueDate
+    const existing = await this.getCheckin(organizationId, checkinId);
+    if (!existing) return undefined;
+
+    const reviewedAt = new Date();
+    const reviewedOnTime = isReviewedOnTime(reviewedAt, existing.reviewDueDate);
+    
     const [checkin] = await db
       .update(checkins)
       .set({
         reviewStatus: reviewData.reviewStatus,
         reviewedBy,
-        reviewedAt: new Date(),
+        reviewedAt,
+        reviewedOnTime,
         reviewComments: reviewData.reviewComments || null,
       })
       .where(and(
@@ -1330,6 +1391,290 @@ export class DatabaseStorage implements IStorage {
 
     return result;
   }
+
+  async getCheckinComplianceMetrics(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
+    const { scope = 'organization', entityId, period, from, to } = options || {};
+    
+    // Check cache first
+    const cacheKey = this.generateCacheKey('getCheckinComplianceMetrics', organizationId, options || {});
+    const cachedResult = this.analyticsCache.get<ComplianceMetricsResult[]>(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
+
+    // Base query for submitted check-ins only
+    let baseQuery = db
+      .select({
+        id: checkins.id,
+        userId: checkins.userId,
+        teamId: sql<string>`${users.teamId}`,
+        submittedAt: checkins.submittedAt,
+        dueDate: checkins.dueDate,
+        submittedOnTime: checkins.submittedOnTime,
+        weekOf: checkins.weekOf
+      })
+      .from(checkins)
+      .innerJoin(users, eq(checkins.userId, users.id))
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        eq(checkins.isComplete, true) // Only completed check-ins
+      ));
+
+    // Apply scope filtering
+    if (scope === 'user' && entityId) {
+      baseQuery = baseQuery.where(and(
+        eq(checkins.organizationId, organizationId),
+        eq(checkins.isComplete, true),
+        eq(checkins.userId, entityId)
+      ));
+    } else if (scope === 'team' && entityId) {
+      baseQuery = baseQuery.where(and(
+        eq(checkins.organizationId, organizationId),
+        eq(checkins.isComplete, true),
+        eq(users.teamId, entityId)
+      ));
+    }
+
+    // Apply date filtering
+    const whereConditions: any[] = [
+      eq(checkins.organizationId, organizationId),
+      eq(checkins.isComplete, true)
+    ];
+
+    if (from) whereConditions.push(gte(checkins.weekOf, from));
+    if (to) whereConditions.push(lte(checkins.weekOf, to));
+    
+    if (scope === 'user' && entityId) {
+      whereConditions.push(eq(checkins.userId, entityId));
+    } else if (scope === 'team' && entityId) {
+      whereConditions.push(eq(users.teamId, entityId));
+    }
+
+    const results = await db
+      .select({
+        id: checkins.id,
+        userId: checkins.userId,
+        teamId: sql<string>`${users.teamId}`,
+        submittedAt: checkins.submittedAt,
+        dueDate: checkins.dueDate,
+        submittedOnTime: checkins.submittedOnTime,
+        weekOf: checkins.weekOf
+      })
+      .from(checkins)
+      .innerJoin(users, eq(checkins.userId, users.id))
+      .where(and(...whereConditions));
+
+    let complianceResults: ComplianceMetricsResult[] = [];
+
+    if (period) {
+      // Group by period
+      const groupedData = new Map<string, any[]>();
+      
+      results.forEach(checkin => {
+        const periodStart = this.truncateDate(checkin.weekOf, period);
+        const periodKey = periodStart.toISOString();
+        
+        if (!groupedData.has(periodKey)) {
+          groupedData.set(periodKey, []);
+        }
+        groupedData.get(periodKey)!.push(checkin);
+      });
+
+      // Calculate metrics for each period
+      complianceResults = Array.from(groupedData.entries()).map(([periodKey, checkins]) => ({
+        periodStart: new Date(periodKey),
+        metrics: this.calculateComplianceMetrics(checkins)
+      })).sort((a, b) => a.periodStart!.getTime() - b.periodStart!.getTime());
+
+    } else {
+      // Aggregate metrics
+      complianceResults = [{
+        metrics: this.calculateComplianceMetrics(results)
+      }];
+    }
+
+    // Cache results
+    const isOldData = from && (Date.now() - from.getTime()) > (7 * 24 * 60 * 60 * 1000);
+    const ttl = isOldData ? 30 * 60 * 1000 : 5 * 60 * 1000;
+    this.analyticsCache.set(cacheKey, complianceResults, ttl);
+
+    return complianceResults;
+  }
+
+  async getReviewComplianceMetrics(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
+    const { scope = 'organization', entityId, period, from, to } = options || {};
+    
+    // Check cache first
+    const cacheKey = this.generateCacheKey('getReviewComplianceMetrics', organizationId, options || {});
+    const cachedResult = this.analyticsCache.get<ComplianceMetricsResult[]>(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
+
+    // Base query for reviewed check-ins only
+    const whereConditions: any[] = [
+      eq(checkins.organizationId, organizationId),
+      eq(checkins.isComplete, true),
+      sql`${checkins.reviewedAt} IS NOT NULL` // Only reviewed check-ins
+    ];
+
+    // Apply scope filtering
+    if (scope === 'user' && entityId) {
+      // For user scope in reviews, we filter by the reviewer (reviewedBy)
+      whereConditions.push(eq(checkins.reviewedBy, entityId));
+    } else if (scope === 'team' && entityId) {
+      // For team scope, get reviews done by team leaders
+      const teamLeaders = await db
+        .select({ leaderId: teams.leaderId })
+        .from(teams)
+        .where(and(eq(teams.id, entityId), eq(teams.organizationId, organizationId)));
+      
+      if (teamLeaders.length > 0) {
+        whereConditions.push(inArray(checkins.reviewedBy, teamLeaders.map(t => t.leaderId)));
+      } else {
+        // No team leaders found - return empty results
+        return [{ metrics: { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 } }];
+      }
+    }
+
+    // Apply date filtering
+    if (from) whereConditions.push(gte(checkins.weekOf, from));
+    if (to) whereConditions.push(lte(checkins.weekOf, to));
+
+    const results = await db
+      .select({
+        id: checkins.id,
+        reviewedBy: checkins.reviewedBy,
+        reviewedAt: checkins.reviewedAt,
+        reviewDueDate: checkins.reviewDueDate,
+        reviewedOnTime: checkins.reviewedOnTime,
+        weekOf: checkins.weekOf
+      })
+      .from(checkins)
+      .where(and(...whereConditions));
+
+    let complianceResults: ComplianceMetricsResult[] = [];
+
+    if (period) {
+      // Group by period
+      const groupedData = new Map<string, any[]>();
+      
+      results.forEach(review => {
+        const periodStart = this.truncateDate(review.weekOf, period);
+        const periodKey = periodStart.toISOString();
+        
+        if (!groupedData.has(periodKey)) {
+          groupedData.set(periodKey, []);
+        }
+        groupedData.get(periodKey)!.push(review);
+      });
+
+      // Calculate metrics for each period
+      complianceResults = Array.from(groupedData.entries()).map(([periodKey, reviews]) => ({
+        periodStart: new Date(periodKey),
+        metrics: this.calculateReviewComplianceMetrics(reviews)
+      })).sort((a, b) => a.periodStart!.getTime() - b.periodStart!.getTime());
+
+    } else {
+      // Aggregate metrics
+      complianceResults = [{
+        metrics: this.calculateReviewComplianceMetrics(results)
+      }];
+    }
+
+    // Cache results
+    const isOldData = from && (Date.now() - from.getTime()) > (7 * 24 * 60 * 60 * 1000);
+    const ttl = isOldData ? 30 * 60 * 1000 : 5 * 60 * 1000;
+    this.analyticsCache.set(cacheKey, complianceResults, ttl);
+
+    return complianceResults;
+  }
+
+  private calculateComplianceMetrics(checkins: any[]): any {
+    if (checkins.length === 0) {
+      return { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
+    }
+
+    const totalCount = checkins.length;
+    const onTimeCount = checkins.filter(c => c.submittedOnTime).length;
+    const onTimePercentage = totalCount > 0 ? (onTimeCount / totalCount) * 100 : 0;
+
+    // Calculate average days early/late
+    let totalDaysDiff = 0;
+    let earlyCount = 0;
+    let lateSubmissions = [];
+
+    checkins.forEach(checkin => {
+      if (checkin.submittedAt && checkin.dueDate) {
+        const diffMs = new Date(checkin.submittedAt).getTime() - new Date(checkin.dueDate).getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        
+        totalDaysDiff += diffDays;
+        
+        if (diffDays < 0) { // Early submission (negative difference)
+          earlyCount++;
+        } else if (diffDays > 0) { // Late submission
+          lateSubmissions.push(diffDays);
+        }
+      }
+    });
+
+    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / totalCount) : undefined;
+    const averageDaysLate = lateSubmissions.length > 0 
+      ? lateSubmissions.reduce((sum, days) => sum + days, 0) / lateSubmissions.length 
+      : undefined;
+
+    return {
+      totalCount,
+      onTimeCount,
+      onTimePercentage: Math.round(onTimePercentage * 100) / 100,
+      averageDaysEarly,
+      averageDaysLate
+    };
+  }
+
+  private calculateReviewComplianceMetrics(reviews: any[]): any {
+    if (reviews.length === 0) {
+      return { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
+    }
+
+    const totalCount = reviews.length;
+    const onTimeCount = reviews.filter(r => r.reviewedOnTime).length;
+    const onTimePercentage = totalCount > 0 ? (onTimeCount / totalCount) * 100 : 0;
+
+    // Calculate average days early/late for reviews
+    let totalDaysDiff = 0;
+    let earlyCount = 0;
+    let lateReviews = [];
+
+    reviews.forEach(review => {
+      if (review.reviewedAt && review.reviewDueDate) {
+        const diffMs = new Date(review.reviewedAt).getTime() - new Date(review.reviewDueDate).getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        
+        totalDaysDiff += diffDays;
+        
+        if (diffDays < 0) { // Early review (negative difference)
+          earlyCount++;
+        } else if (diffDays > 0) { // Late review
+          lateReviews.push(diffDays);
+        }
+      }
+    });
+
+    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / totalCount) : undefined;
+    const averageDaysLate = lateReviews.length > 0 
+      ? lateReviews.reduce((sum, days) => sum + days, 0) / lateReviews.length 
+      : undefined;
+
+    return {
+      totalCount,
+      onTimeCount,
+      onTimePercentage: Math.round(onTimePercentage * 100) / 100,
+      averageDaysEarly,
+      averageDaysLate
+    };
+  }
 }
 
 export class MemStorage implements IStorage {
@@ -1528,17 +1873,32 @@ export class MemStorage implements IStorage {
   }
 
   async createCheckin(organizationId: string, insertCheckin: InsertCheckin): Promise<Checkin> {
+    const isCompleting = insertCheckin.isComplete ?? false;
+    const now = new Date();
+    
+    // Calculate due dates using utility functions
+    const dueDate = insertCheckin.dueDate ?? getCheckinDueDate(insertCheckin.weekOf);
+    const reviewDueDate = insertCheckin.reviewDueDate ?? getReviewDueDate(insertCheckin.weekOf);
+    
+    // Calculate if submitted on time (only if being submitted now)
+    const submittedAt = isCompleting ? now : null;
+    const submittedOnTime = submittedAt ? isSubmittedOnTime(submittedAt, dueDate) : false;
+    
     const checkin: Checkin = {
       ...insertCheckin,
       id: randomUUID(),
       organizationId,
-      submittedAt: (insertCheckin.isComplete ?? false) ? new Date() : null,
-      createdAt: new Date(),
+      submittedAt,
+      dueDate,
+      submittedOnTime,
+      reviewDueDate,
+      createdAt: now,
       responses: insertCheckin.responses ?? {},
-      isComplete: insertCheckin.isComplete ?? false,
+      isComplete: isCompleting,
       reviewStatus: ReviewStatus.PENDING,
       reviewedBy: null,
       reviewedAt: null,
+      reviewedOnTime: false,
       reviewComments: null,
     };
     this.checkins.set(checkin.id, checkin);
@@ -1546,13 +1906,39 @@ export class MemStorage implements IStorage {
   }
 
   async updateCheckin(organizationId: string, id: string, checkinUpdate: Partial<InsertCheckin>): Promise<Checkin | undefined> {
-    const checkin = this.checkins.get(id);
-    if (!checkin || checkin.organizationId !== organizationId) return undefined;
+    const existing = this.checkins.get(id);
+    if (!existing || existing.organizationId !== organizationId) return undefined;
+
+    const isBeingCompleted = checkinUpdate.isComplete && !existing.isComplete;
+    const now = new Date();
+    
+    // Prepare the update with calculated fields
+    const updateData: any = { ...checkinUpdate };
+    
+    // If checkin is being completed now, set submission timestamp and calculate on-time status
+    if (isBeingCompleted) {
+      updateData.submittedAt = now;
+      updateData.submittedOnTime = isSubmittedOnTime(now, existing.dueDate);
+    }
+    
+    // If due dates are being updated, recalculate them using utility functions  
+    if (checkinUpdate.weekOf) {
+      if (!checkinUpdate.dueDate) {
+        updateData.dueDate = getCheckinDueDate(checkinUpdate.weekOf);
+      }
+      if (!checkinUpdate.reviewDueDate) {
+        updateData.reviewDueDate = getReviewDueDate(checkinUpdate.weekOf);
+      }
+      
+      // Recalculate submittedOnTime if checkin was already submitted
+      if (existing.submittedAt) {
+        updateData.submittedOnTime = isSubmittedOnTime(existing.submittedAt, updateData.dueDate);
+      }
+    }
     
     const updatedCheckin = { 
-      ...checkin, 
-      ...checkinUpdate,
-      submittedAt: checkinUpdate.isComplete ? new Date() : checkin.submittedAt,
+      ...existing, 
+      ...updateData,
     };
     this.checkins.set(id, updatedCheckin);
     return updatedCheckin;
@@ -1614,14 +2000,18 @@ export class MemStorage implements IStorage {
   }
 
   async reviewCheckin(organizationId: string, checkinId: string, reviewedBy: string, reviewData: ReviewCheckin): Promise<Checkin | undefined> {
-    const checkin = this.checkins.get(checkinId);
-    if (!checkin || checkin.organizationId !== organizationId) return undefined;
+    const existing = this.checkins.get(checkinId);
+    if (!existing || existing.organizationId !== organizationId) return undefined;
+
+    const reviewedAt = new Date();
+    const reviewedOnTime = isReviewedOnTime(reviewedAt, existing.reviewDueDate);
     
     const updatedCheckin = {
-      ...checkin,
+      ...existing,
       reviewStatus: reviewData.reviewStatus,
       reviewedBy,
-      reviewedAt: new Date(),
+      reviewedAt,
+      reviewedOnTime,
       reviewComments: reviewData.reviewComments || null,
     };
     
@@ -2222,6 +2612,209 @@ export class MemStorage implements IStorage {
         previous: previousCompletedCheckins,
         change: previousCompletedCheckins > 0 ? ((currentCompletedCheckins - previousCompletedCheckins) / previousCompletedCheckins) * 100 : 0
       }
+    };
+  }
+
+  async getCheckinComplianceMetrics(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
+    const { scope = 'organization', entityId, period, from, to } = options || {};
+
+    // Filter submitted check-ins only
+    let relevantCheckins = Array.from(this.checkins.values())
+      .filter(checkin => checkin.organizationId === organizationId && checkin.isComplete);
+
+    // Apply scope filtering
+    if (scope === 'user' && entityId) {
+      relevantCheckins = relevantCheckins.filter(checkin => checkin.userId === entityId);
+    } else if (scope === 'team' && entityId) {
+      const teamUsers = Array.from(this.users.values())
+        .filter(user => user.teamId === entityId && user.organizationId === organizationId)
+        .map(user => user.id);
+      relevantCheckins = relevantCheckins.filter(checkin => teamUsers.includes(checkin.userId));
+    }
+
+    // Apply date filtering
+    if (from || to) {
+      relevantCheckins = relevantCheckins.filter(checkin => this.isInDateRange(checkin.weekOf, from, to));
+    }
+
+    let complianceResults: ComplianceMetricsResult[] = [];
+
+    if (period) {
+      // Group by period
+      const groupedData = new Map<string, any[]>();
+      
+      relevantCheckins.forEach(checkin => {
+        const periodStart = this.truncateDate(checkin.weekOf, period);
+        const periodKey = periodStart.toISOString();
+        
+        if (!groupedData.has(periodKey)) {
+          groupedData.set(periodKey, []);
+        }
+        groupedData.get(periodKey)!.push(checkin);
+      });
+
+      // Calculate metrics for each period
+      complianceResults = Array.from(groupedData.entries()).map(([periodKey, checkins]) => ({
+        periodStart: new Date(periodKey),
+        metrics: this.calculateMemComplianceMetrics(checkins)
+      })).sort((a, b) => a.periodStart!.getTime() - b.periodStart!.getTime());
+
+    } else {
+      // Aggregate metrics
+      complianceResults = [{
+        metrics: this.calculateMemComplianceMetrics(relevantCheckins)
+      }];
+    }
+
+    return complianceResults;
+  }
+
+  async getReviewComplianceMetrics(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
+    const { scope = 'organization', entityId, period, from, to } = options || {};
+
+    // Filter reviewed check-ins only
+    let relevantReviews = Array.from(this.checkins.values())
+      .filter(checkin => 
+        checkin.organizationId === organizationId && 
+        checkin.isComplete && 
+        checkin.reviewedAt !== null
+      );
+
+    // Apply scope filtering
+    if (scope === 'user' && entityId) {
+      // For user scope in reviews, we filter by the reviewer (reviewedBy)
+      relevantReviews = relevantReviews.filter(checkin => checkin.reviewedBy === entityId);
+    } else if (scope === 'team' && entityId) {
+      // For team scope, get reviews done by team leaders
+      const team = Array.from(this.teams.values()).find(t => t.id === entityId && t.organizationId === organizationId);
+      if (team) {
+        relevantReviews = relevantReviews.filter(checkin => checkin.reviewedBy === team.leaderId);
+      } else {
+        // No team found - return empty results
+        return [{ metrics: { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 } }];
+      }
+    }
+
+    // Apply date filtering
+    if (from || to) {
+      relevantReviews = relevantReviews.filter(checkin => this.isInDateRange(checkin.weekOf, from, to));
+    }
+
+    let complianceResults: ComplianceMetricsResult[] = [];
+
+    if (period) {
+      // Group by period
+      const groupedData = new Map<string, any[]>();
+      
+      relevantReviews.forEach(review => {
+        const periodStart = this.truncateDate(review.weekOf, period);
+        const periodKey = periodStart.toISOString();
+        
+        if (!groupedData.has(periodKey)) {
+          groupedData.set(periodKey, []);
+        }
+        groupedData.get(periodKey)!.push(review);
+      });
+
+      // Calculate metrics for each period
+      complianceResults = Array.from(groupedData.entries()).map(([periodKey, reviews]) => ({
+        periodStart: new Date(periodKey),
+        metrics: this.calculateMemReviewComplianceMetrics(reviews)
+      })).sort((a, b) => a.periodStart!.getTime() - b.periodStart!.getTime());
+
+    } else {
+      // Aggregate metrics
+      complianceResults = [{
+        metrics: this.calculateMemReviewComplianceMetrics(relevantReviews)
+      }];
+    }
+
+    return complianceResults;
+  }
+
+  private calculateMemComplianceMetrics(checkins: any[]): any {
+    if (checkins.length === 0) {
+      return { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
+    }
+
+    const totalCount = checkins.length;
+    const onTimeCount = checkins.filter(c => c.submittedOnTime).length;
+    const onTimePercentage = totalCount > 0 ? (onTimeCount / totalCount) * 100 : 0;
+
+    // Calculate average days early/late
+    let totalDaysDiff = 0;
+    let earlyCount = 0;
+    let lateSubmissions = [];
+
+    checkins.forEach(checkin => {
+      if (checkin.submittedAt && checkin.dueDate) {
+        const diffMs = checkin.submittedAt.getTime() - checkin.dueDate.getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        
+        totalDaysDiff += diffDays;
+        
+        if (diffDays < 0) { // Early submission (negative difference)
+          earlyCount++;
+        } else if (diffDays > 0) { // Late submission
+          lateSubmissions.push(diffDays);
+        }
+      }
+    });
+
+    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / totalCount) : undefined;
+    const averageDaysLate = lateSubmissions.length > 0 
+      ? lateSubmissions.reduce((sum, days) => sum + days, 0) / lateSubmissions.length 
+      : undefined;
+
+    return {
+      totalCount,
+      onTimeCount,
+      onTimePercentage: Math.round(onTimePercentage * 100) / 100,
+      averageDaysEarly,
+      averageDaysLate
+    };
+  }
+
+  private calculateMemReviewComplianceMetrics(reviews: any[]): any {
+    if (reviews.length === 0) {
+      return { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
+    }
+
+    const totalCount = reviews.length;
+    const onTimeCount = reviews.filter(r => r.reviewedOnTime).length;
+    const onTimePercentage = totalCount > 0 ? (onTimeCount / totalCount) * 100 : 0;
+
+    // Calculate average days early/late for reviews
+    let totalDaysDiff = 0;
+    let earlyCount = 0;
+    let lateReviews = [];
+
+    reviews.forEach(review => {
+      if (review.reviewedAt && review.reviewDueDate) {
+        const diffMs = review.reviewedAt.getTime() - review.reviewDueDate.getTime();
+        const diffDays = diffMs / (1000 * 60 * 60 * 24);
+        
+        totalDaysDiff += diffDays;
+        
+        if (diffDays < 0) { // Early review (negative difference)
+          earlyCount++;
+        } else if (diffDays > 0) { // Late review
+          lateReviews.push(diffDays);
+        }
+      }
+    });
+
+    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / totalCount) : undefined;
+    const averageDaysLate = lateReviews.length > 0 
+      ? lateReviews.reduce((sum, days) => sum + days, 0) / lateReviews.length 
+      : undefined;
+
+    return {
+      totalCount,
+      onTimeCount,
+      onTimePercentage: Math.round(onTimePercentage * 100) / 100,
+      averageDaysEarly,
+      averageDaysLate
     };
   }
 }
