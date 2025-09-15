@@ -2009,6 +2009,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Debug endpoint to list all Slack channels the bot can see
+  app.get("/api/admin/slack-channels", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is admin
+      if (!req.currentUser || req.currentUser.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const { WebClient } = await import("@slack/web-api");
+      const slack = process.env.SLACK_BOT_TOKEN ? new WebClient(process.env.SLACK_BOT_TOKEN) : null;
+      
+      if (!slack) {
+        return res.json({
+          error: "Slack bot token not configured",
+          channels: [],
+          botTokenConfigured: false
+        });
+      }
+
+      let channelsResult;
+      try {
+        channelsResult = await slack.conversations.list({
+          types: 'public_channel,private_channel',
+          limit: 200
+        });
+      } catch (error: any) {
+        console.error("Failed to list Slack channels:", error);
+        return res.status(500).json({ 
+          error: `Slack API error: ${error?.data?.error || error.message}`,
+          details: error?.data,
+          botTokenConfigured: true
+        });
+      }
+
+      const channels = (channelsResult.channels || []).map(channel => ({
+        id: channel.id,
+        name: channel.name,
+        isPrivate: channel.is_private,
+        isMember: channel.is_member,
+        isArchived: channel.is_archived,
+        memberCount: channel.num_members
+      }));
+
+      const targetChannel = channels.find(c => c.name === 'whirkplace-pulse');
+      
+      res.json({
+        botTokenConfigured: true,
+        totalChannels: channels.length,
+        channels: channels,
+        targetChannel: targetChannel || null,
+        targetChannelFound: !!targetChannel,
+        targetChannelBotIsMember: targetChannel?.isMember || false,
+        recommendations: !targetChannel 
+          ? ["Channel 'whirkplace-pulse' not found. Please create it or check the channel name."]
+          : !targetChannel.isMember 
+          ? ["Bot is not a member of 'whirkplace-pulse'. Please invite the bot to the channel."]
+          : ["Channel access looks good!"]
+      });
+    } catch (error) {
+      console.error("Failed to debug Slack channels:", error);
+      res.status(500).json({ message: "Failed to debug Slack channels" });
+    }
+  });
+
   // Admin user role management endpoint
   app.patch("/api/admin/users/:id/role", requireAuth(), async (req, res) => {
     try {

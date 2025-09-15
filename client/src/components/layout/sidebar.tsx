@@ -33,8 +33,9 @@ function LogoutButton() {
     onSuccess: () => {
       // Clear all cached data
       queryClient.clear();
-      // Force a refresh to show login page
-      window.location.reload();
+      // Specifically invalidate the current user query to trigger authentication check
+      queryClient.invalidateQueries({ queryKey: ['/api/users/current'] });
+      // Let the AuthenticatedApp component handle the redirect to login
     },
     onError: (error) => {
       toast({
