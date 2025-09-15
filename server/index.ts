@@ -1,10 +1,14 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { resolveOrganization } from "./middleware/organization";
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Organization resolution middleware - must be before API routes
+app.use(resolveOrganization());
 
 app.use((req, res, next) => {
   const start = Date.now();

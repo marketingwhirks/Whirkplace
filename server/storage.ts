@@ -13,51 +13,51 @@ import { eq, desc, and, gte } from "drizzle-orm";
 
 export interface IStorage {
   // Users
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  getUserByEmail(email: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
-  updateUser(id: string, user: Partial<InsertUser>): Promise<User | undefined>;
-  getUsersByTeam(teamId: string): Promise<User[]>;
-  getUsersByManager(managerId: string): Promise<User[]>;
-  getAllUsers(): Promise<User[]>;
+  getUser(organizationId: string, id: string): Promise<User | undefined>;
+  getUserByUsername(organizationId: string, username: string): Promise<User | undefined>;
+  getUserByEmail(organizationId: string, email: string): Promise<User | undefined>;
+  createUser(organizationId: string, user: InsertUser): Promise<User>;
+  updateUser(organizationId: string, id: string, user: Partial<InsertUser>): Promise<User | undefined>;
+  getUsersByTeam(organizationId: string, teamId: string): Promise<User[]>;
+  getUsersByManager(organizationId: string, managerId: string): Promise<User[]>;
+  getAllUsers(organizationId: string): Promise<User[]>;
 
   // Teams
-  getTeam(id: string): Promise<Team | undefined>;
-  createTeam(team: InsertTeam): Promise<Team>;
-  updateTeam(id: string, team: Partial<InsertTeam>): Promise<Team | undefined>;
-  getAllTeams(): Promise<Team[]>;
+  getTeam(organizationId: string, id: string): Promise<Team | undefined>;
+  createTeam(organizationId: string, team: InsertTeam): Promise<Team>;
+  updateTeam(organizationId: string, id: string, team: Partial<InsertTeam>): Promise<Team | undefined>;
+  getAllTeams(organizationId: string): Promise<Team[]>;
 
   // Check-ins
-  getCheckin(id: string): Promise<Checkin | undefined>;
-  createCheckin(checkin: InsertCheckin): Promise<Checkin>;
-  updateCheckin(id: string, checkin: Partial<InsertCheckin>): Promise<Checkin | undefined>;
-  getCheckinsByUser(userId: string): Promise<Checkin[]>;
-  getCheckinsByManager(managerId: string): Promise<Checkin[]>;
-  getCurrentWeekCheckin(userId: string): Promise<Checkin | undefined>;
-  getRecentCheckins(limit?: number): Promise<Checkin[]>;
+  getCheckin(organizationId: string, id: string): Promise<Checkin | undefined>;
+  createCheckin(organizationId: string, checkin: InsertCheckin): Promise<Checkin>;
+  updateCheckin(organizationId: string, id: string, checkin: Partial<InsertCheckin>): Promise<Checkin | undefined>;
+  getCheckinsByUser(organizationId: string, userId: string): Promise<Checkin[]>;
+  getCheckinsByManager(organizationId: string, managerId: string): Promise<Checkin[]>;
+  getCurrentWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined>;
+  getRecentCheckins(organizationId: string, limit?: number): Promise<Checkin[]>;
 
   // Questions
-  getQuestion(id: string): Promise<Question | undefined>;
-  createQuestion(question: InsertQuestion): Promise<Question>;
-  updateQuestion(id: string, question: Partial<InsertQuestion>): Promise<Question | undefined>;
-  deleteQuestion(id: string): Promise<boolean>;
-  getActiveQuestions(): Promise<Question[]>;
+  getQuestion(organizationId: string, id: string): Promise<Question | undefined>;
+  createQuestion(organizationId: string, question: InsertQuestion): Promise<Question>;
+  updateQuestion(organizationId: string, id: string, question: Partial<InsertQuestion>): Promise<Question | undefined>;
+  deleteQuestion(organizationId: string, id: string): Promise<boolean>;
+  getActiveQuestions(organizationId: string): Promise<Question[]>;
 
   // Wins
-  getWin(id: string): Promise<Win | undefined>;
-  createWin(win: InsertWin): Promise<Win>;
-  updateWin(id: string, win: Partial<InsertWin>): Promise<Win | undefined>;
-  deleteWin(id: string): Promise<boolean>;
-  getRecentWins(limit?: number): Promise<Win[]>;
-  getPublicWins(limit?: number): Promise<Win[]>;
+  getWin(organizationId: string, id: string): Promise<Win | undefined>;
+  createWin(organizationId: string, win: InsertWin): Promise<Win>;
+  updateWin(organizationId: string, id: string, win: Partial<InsertWin>): Promise<Win | undefined>;
+  deleteWin(organizationId: string, id: string): Promise<boolean>;
+  getRecentWins(organizationId: string, limit?: number): Promise<Win[]>;
+  getPublicWins(organizationId: string, limit?: number): Promise<Win[]>;
 
   // Comments
-  getComment(id: string): Promise<Comment | undefined>;
-  createComment(comment: InsertComment): Promise<Comment>;
-  updateComment(id: string, comment: Partial<InsertComment>): Promise<Comment | undefined>;
-  deleteComment(id: string): Promise<boolean>;
-  getCommentsByCheckin(checkinId: string): Promise<Comment[]>;
+  getComment(organizationId: string, id: string): Promise<Comment | undefined>;
+  createComment(organizationId: string, comment: InsertComment): Promise<Comment>;
+  updateComment(organizationId: string, id: string, comment: Partial<InsertComment>): Promise<Comment | undefined>;
+  deleteComment(organizationId: string, id: string): Promise<boolean>;
+  getCommentsByCheckin(organizationId: string, checkinId: string): Promise<Comment[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -66,26 +66,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Users
-  async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+  async getUser(organizationId: string, id: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(
+      and(eq(users.id, id), eq(users.organizationId, organizationId))
+    );
     return user || undefined;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.username, username));
+  async getUserByUsername(organizationId: string, username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(
+      and(eq(users.username, username), eq(users.organizationId, organizationId))
+    );
     return user || undefined;
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+  async getUserByEmail(organizationId: string, email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(
+      and(eq(users.email, email), eq(users.organizationId, organizationId))
+    );
     return user || undefined;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(organizationId: string, insertUser: InsertUser): Promise<User> {
     const [user] = await db
       .insert(users)
       .values({
         ...insertUser,
+        organizationId,
         isActive: insertUser.isActive ?? true,
         role: insertUser.role ?? "member",
         teamId: insertUser.teamId ?? null,
@@ -96,68 +103,78 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async updateUser(id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
+  async updateUser(organizationId: string, id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
     const [user] = await db
       .update(users)
       .set(userUpdate)
-      .where(eq(users.id, id))
+      .where(and(eq(users.id, id), eq(users.organizationId, organizationId)))
       .returning();
     return user || undefined;
   }
 
-  async getUsersByTeam(teamId: string): Promise<User[]> {
-    return await db.select().from(users).where(eq(users.teamId, teamId));
+  async getUsersByTeam(organizationId: string, teamId: string): Promise<User[]> {
+    return await db.select().from(users).where(
+      and(eq(users.teamId, teamId), eq(users.organizationId, organizationId))
+    );
   }
 
-  async getUsersByManager(managerId: string): Promise<User[]> {
-    return await db.select().from(users).where(eq(users.managerId, managerId));
+  async getUsersByManager(organizationId: string, managerId: string): Promise<User[]> {
+    return await db.select().from(users).where(
+      and(eq(users.managerId, managerId), eq(users.organizationId, organizationId))
+    );
   }
 
-  async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users);
+  async getAllUsers(organizationId: string): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.organizationId, organizationId));
   }
 
   // Teams
-  async getTeam(id: string): Promise<Team | undefined> {
-    const [team] = await db.select().from(teams).where(eq(teams.id, id));
+  async getTeam(organizationId: string, id: string): Promise<Team | undefined> {
+    const [team] = await db.select().from(teams).where(
+      and(eq(teams.id, id), eq(teams.organizationId, organizationId))
+    );
     return team || undefined;
   }
 
-  async createTeam(insertTeam: InsertTeam): Promise<Team> {
+  async createTeam(organizationId: string, insertTeam: InsertTeam): Promise<Team> {
     const [team] = await db
       .insert(teams)
       .values({
         ...insertTeam,
+        organizationId,
         description: insertTeam.description ?? null,
       })
       .returning();
     return team;
   }
 
-  async updateTeam(id: string, teamUpdate: Partial<InsertTeam>): Promise<Team | undefined> {
+  async updateTeam(organizationId: string, id: string, teamUpdate: Partial<InsertTeam>): Promise<Team | undefined> {
     const [team] = await db
       .update(teams)
       .set(teamUpdate)
-      .where(eq(teams.id, id))
+      .where(and(eq(teams.id, id), eq(teams.organizationId, organizationId)))
       .returning();
     return team || undefined;
   }
 
-  async getAllTeams(): Promise<Team[]> {
-    return await db.select().from(teams);
+  async getAllTeams(organizationId: string): Promise<Team[]> {
+    return await db.select().from(teams).where(eq(teams.organizationId, organizationId));
   }
 
   // Check-ins
-  async getCheckin(id: string): Promise<Checkin | undefined> {
-    const [checkin] = await db.select().from(checkins).where(eq(checkins.id, id));
+  async getCheckin(organizationId: string, id: string): Promise<Checkin | undefined> {
+    const [checkin] = await db.select().from(checkins).where(
+      and(eq(checkins.id, id), eq(checkins.organizationId, organizationId))
+    );
     return checkin || undefined;
   }
 
-  async createCheckin(insertCheckin: InsertCheckin): Promise<Checkin> {
+  async createCheckin(organizationId: string, insertCheckin: InsertCheckin): Promise<Checkin> {
     const [checkin] = await db
       .insert(checkins)
       .values({
         ...insertCheckin,
+        organizationId,
         responses: insertCheckin.responses ?? {},
         isComplete: insertCheckin.isComplete ?? false,
       })
@@ -165,25 +182,28 @@ export class DatabaseStorage implements IStorage {
     return checkin;
   }
 
-  async updateCheckin(id: string, checkinUpdate: Partial<InsertCheckin>): Promise<Checkin | undefined> {
+  async updateCheckin(organizationId: string, id: string, checkinUpdate: Partial<InsertCheckin>): Promise<Checkin | undefined> {
     const [checkin] = await db
       .update(checkins)
       .set(checkinUpdate)
-      .where(eq(checkins.id, id))
+      .where(and(eq(checkins.id, id), eq(checkins.organizationId, organizationId)))
       .returning();
     return checkin || undefined;
   }
 
-  async getCheckinsByUser(userId: string): Promise<Checkin[]> {
+  async getCheckinsByUser(organizationId: string, userId: string): Promise<Checkin[]> {
     return await db
       .select()
       .from(checkins)
-      .where(eq(checkins.userId, userId))
+      .where(and(
+        eq(checkins.userId, userId),
+        eq(checkins.organizationId, organizationId)
+      ))
       .orderBy(desc(checkins.createdAt));
   }
 
-  async getCheckinsByManager(managerId: string): Promise<Checkin[]> {
-    const reports = await this.getUsersByManager(managerId);
+  async getCheckinsByManager(organizationId: string, managerId: string): Promise<Checkin[]> {
+    const reports = await this.getUsersByManager(organizationId, managerId);
     const reportIds = reports.map(user => user.id);
     
     if (reportIds.length === 0) return [];
@@ -192,11 +212,14 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(checkins)
-      .where(eq(checkins.userId, reportIds[0]))
+      .where(and(
+        eq(checkins.userId, reportIds[0]),
+        eq(checkins.organizationId, organizationId)
+      ))
       .orderBy(desc(checkins.createdAt));
   }
 
-  async getCurrentWeekCheckin(userId: string): Promise<Checkin | undefined> {
+  async getCurrentWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined> {
     const now = new Date();
     const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
     startOfWeek.setHours(0, 0, 0, 0);
@@ -206,6 +229,7 @@ export class DatabaseStorage implements IStorage {
       .from(checkins)
       .where(and(
         eq(checkins.userId, userId),
+        eq(checkins.organizationId, organizationId),
         gte(checkins.weekOf, startOfWeek)
       ))
       .limit(1);
@@ -213,26 +237,32 @@ export class DatabaseStorage implements IStorage {
     return checkin || undefined;
   }
 
-  async getRecentCheckins(limit = 10): Promise<Checkin[]> {
+  async getRecentCheckins(organizationId: string, limit = 10): Promise<Checkin[]> {
     return await db
       .select()
       .from(checkins)
-      .where(eq(checkins.isComplete, true))
+      .where(and(
+        eq(checkins.isComplete, true),
+        eq(checkins.organizationId, organizationId)
+      ))
       .orderBy(desc(checkins.createdAt))
       .limit(limit);
   }
 
   // Questions
-  async getQuestion(id: string): Promise<Question | undefined> {
-    const [question] = await db.select().from(questions).where(eq(questions.id, id));
+  async getQuestion(organizationId: string, id: string): Promise<Question | undefined> {
+    const [question] = await db.select().from(questions).where(
+      and(eq(questions.id, id), eq(questions.organizationId, organizationId))
+    );
     return question || undefined;
   }
 
-  async createQuestion(insertQuestion: InsertQuestion): Promise<Question> {
+  async createQuestion(organizationId: string, insertQuestion: InsertQuestion): Promise<Question> {
     const [question] = await db
       .insert(questions)
       .values({
         ...insertQuestion,
+        organizationId,
         isActive: insertQuestion.isActive ?? true,
         order: insertQuestion.order ?? 0,
       })
@@ -240,39 +270,47 @@ export class DatabaseStorage implements IStorage {
     return question;
   }
 
-  async updateQuestion(id: string, questionUpdate: Partial<InsertQuestion>): Promise<Question | undefined> {
+  async updateQuestion(organizationId: string, id: string, questionUpdate: Partial<InsertQuestion>): Promise<Question | undefined> {
     const [question] = await db
       .update(questions)
       .set(questionUpdate)
-      .where(eq(questions.id, id))
+      .where(and(eq(questions.id, id), eq(questions.organizationId, organizationId)))
       .returning();
     return question || undefined;
   }
 
-  async deleteQuestion(id: string): Promise<boolean> {
-    const result = await db.delete(questions).where(eq(questions.id, id));
+  async deleteQuestion(organizationId: string, id: string): Promise<boolean> {
+    const result = await db.delete(questions).where(
+      and(eq(questions.id, id), eq(questions.organizationId, organizationId))
+    );
     return (result.rowCount ?? 0) > 0;
   }
 
-  async getActiveQuestions(): Promise<Question[]> {
+  async getActiveQuestions(organizationId: string): Promise<Question[]> {
     return await db
       .select()
       .from(questions)
-      .where(eq(questions.isActive, true))
+      .where(and(
+        eq(questions.isActive, true),
+        eq(questions.organizationId, organizationId)
+      ))
       .orderBy(questions.order);
   }
 
   // Wins
-  async getWin(id: string): Promise<Win | undefined> {
-    const [win] = await db.select().from(wins).where(eq(wins.id, id));
+  async getWin(organizationId: string, id: string): Promise<Win | undefined> {
+    const [win] = await db.select().from(wins).where(
+      and(eq(wins.id, id), eq(wins.organizationId, organizationId))
+    );
     return win || undefined;
   }
 
-  async createWin(insertWin: InsertWin): Promise<Win> {
+  async createWin(organizationId: string, insertWin: InsertWin): Promise<Win> {
     const [win] = await db
       .insert(wins)
       .values({
         ...insertWin,
+        organizationId,
         nominatedBy: insertWin.nominatedBy ?? null,
         isPublic: insertWin.isPublic ?? true,
         slackMessageId: insertWin.slackMessageId ?? null,
@@ -281,70 +319,86 @@ export class DatabaseStorage implements IStorage {
     return win;
   }
 
-  async updateWin(id: string, winUpdate: Partial<InsertWin>): Promise<Win | undefined> {
+  async updateWin(organizationId: string, id: string, winUpdate: Partial<InsertWin>): Promise<Win | undefined> {
     const [win] = await db
       .update(wins)
       .set(winUpdate)
-      .where(eq(wins.id, id))
+      .where(and(eq(wins.id, id), eq(wins.organizationId, organizationId)))
       .returning();
     return win || undefined;
   }
 
-  async deleteWin(id: string): Promise<boolean> {
-    const result = await db.delete(wins).where(eq(wins.id, id));
+  async deleteWin(organizationId: string, id: string): Promise<boolean> {
+    const result = await db.delete(wins).where(
+      and(eq(wins.id, id), eq(wins.organizationId, organizationId))
+    );
     return (result.rowCount ?? 0) > 0;
   }
 
-  async getRecentWins(limit = 10): Promise<Win[]> {
+  async getRecentWins(organizationId: string, limit = 10): Promise<Win[]> {
     return await db
       .select()
       .from(wins)
+      .where(eq(wins.organizationId, organizationId))
       .orderBy(desc(wins.createdAt))
       .limit(limit);
   }
 
-  async getPublicWins(limit = 10): Promise<Win[]> {
+  async getPublicWins(organizationId: string, limit = 10): Promise<Win[]> {
     return await db
       .select()
       .from(wins)
-      .where(eq(wins.isPublic, true))
+      .where(and(
+        eq(wins.isPublic, true),
+        eq(wins.organizationId, organizationId)
+      ))
       .orderBy(desc(wins.createdAt))
       .limit(limit);
   }
 
   // Comments
-  async getComment(id: string): Promise<Comment | undefined> {
-    const [comment] = await db.select().from(comments).where(eq(comments.id, id));
+  async getComment(organizationId: string, id: string): Promise<Comment | undefined> {
+    const [comment] = await db.select().from(comments).where(
+      and(eq(comments.id, id), eq(comments.organizationId, organizationId))
+    );
     return comment || undefined;
   }
 
-  async createComment(insertComment: InsertComment): Promise<Comment> {
+  async createComment(organizationId: string, insertComment: InsertComment): Promise<Comment> {
     const [comment] = await db
       .insert(comments)
-      .values(insertComment)
+      .values({
+        ...insertComment,
+        organizationId,
+      })
       .returning();
     return comment;
   }
 
-  async updateComment(id: string, commentUpdate: Partial<InsertComment>): Promise<Comment | undefined> {
+  async updateComment(organizationId: string, id: string, commentUpdate: Partial<InsertComment>): Promise<Comment | undefined> {
     const [comment] = await db
       .update(comments)
       .set(commentUpdate)
-      .where(eq(comments.id, id))
+      .where(and(eq(comments.id, id), eq(comments.organizationId, organizationId)))
       .returning();
     return comment || undefined;
   }
 
-  async deleteComment(id: string): Promise<boolean> {
-    const result = await db.delete(comments).where(eq(comments.id, id));
+  async deleteComment(organizationId: string, id: string): Promise<boolean> {
+    const result = await db.delete(comments).where(
+      and(eq(comments.id, id), eq(comments.organizationId, organizationId))
+    );
     return (result.rowCount ?? 0) > 0;
   }
 
-  async getCommentsByCheckin(checkinId: string): Promise<Comment[]> {
+  async getCommentsByCheckin(organizationId: string, checkinId: string): Promise<Comment[]> {
     return await db
       .select()
       .from(comments)
-      .where(eq(comments.checkinId, checkinId))
+      .where(and(
+        eq(comments.checkinId, checkinId),
+        eq(comments.organizationId, organizationId)
+      ))
       .orderBy(desc(comments.createdAt));
   }
 }
@@ -362,6 +416,8 @@ export class MemStorage implements IStorage {
   }
 
   private seedData() {
+    const defaultOrgId = "default-org";
+    
     // Create default admin user
     const adminUser: User = {
       id: randomUUID(),
@@ -370,6 +426,7 @@ export class MemStorage implements IStorage {
       name: "Admin User",
       email: "admin@teampulse.com",
       role: "admin",
+      organizationId: defaultOrgId,
       teamId: null,
       managerId: null,
       avatar: null,
@@ -383,6 +440,7 @@ export class MemStorage implements IStorage {
       id: randomUUID(),
       name: "Engineering",
       description: "Software development team",
+      organizationId: defaultOrgId,
       leaderId: adminUser.id,
       createdAt: new Date(),
     };
@@ -393,6 +451,7 @@ export class MemStorage implements IStorage {
       {
         id: randomUUID(),
         text: "What are you most proud of this week?",
+        organizationId: defaultOrgId,
         createdBy: adminUser.id,
         isActive: true,
         order: 1,
@@ -401,6 +460,7 @@ export class MemStorage implements IStorage {
       {
         id: randomUUID(),
         text: "What challenges did you face?",
+        organizationId: defaultOrgId,
         createdBy: adminUser.id,
         isActive: true,
         order: 2,
@@ -409,6 +469,7 @@ export class MemStorage implements IStorage {
       {
         id: randomUUID(),
         text: "How can your manager support you?",
+        organizationId: defaultOrgId,
         createdBy: adminUser.id,
         isActive: true,
         order: 3,
@@ -420,22 +481,28 @@ export class MemStorage implements IStorage {
   }
 
   // Users
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getUser(organizationId: string, id: string): Promise<User | undefined> {
+    const user = this.users.get(id);
+    return user && user.organizationId === organizationId ? user : undefined;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.username === username);
+  async getUserByUsername(organizationId: string, username: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => 
+      user.username === username && user.organizationId === organizationId
+    );
   }
 
-  async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(user => user.email === email);
+  async getUserByEmail(organizationId: string, email: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => 
+      user.email === email && user.organizationId === organizationId
+    );
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(organizationId: string, insertUser: InsertUser): Promise<User> {
     const user: User = {
       ...insertUser,
       id: randomUUID(),
+      organizationId,
       createdAt: new Date(),
       isActive: insertUser.isActive ?? true,
       role: insertUser.role ?? "member",
@@ -447,36 +514,44 @@ export class MemStorage implements IStorage {
     return user;
   }
 
-  async updateUser(id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
+  async updateUser(organizationId: string, id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
     const user = this.users.get(id);
-    if (!user) return undefined;
+    if (!user || user.organizationId !== organizationId) return undefined;
     
     const updatedUser = { ...user, ...userUpdate };
     this.users.set(id, updatedUser);
     return updatedUser;
   }
 
-  async getUsersByTeam(teamId: string): Promise<User[]> {
-    return Array.from(this.users.values()).filter(user => user.teamId === teamId);
+  async getUsersByTeam(organizationId: string, teamId: string): Promise<User[]> {
+    return Array.from(this.users.values()).filter(user => 
+      user.teamId === teamId && user.organizationId === organizationId
+    );
   }
 
-  async getUsersByManager(managerId: string): Promise<User[]> {
-    return Array.from(this.users.values()).filter(user => user.managerId === managerId);
+  async getUsersByManager(organizationId: string, managerId: string): Promise<User[]> {
+    return Array.from(this.users.values()).filter(user => 
+      user.managerId === managerId && user.organizationId === organizationId
+    );
   }
 
-  async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
+  async getAllUsers(organizationId: string): Promise<User[]> {
+    return Array.from(this.users.values()).filter(user => 
+      user.organizationId === organizationId
+    );
   }
 
   // Teams
-  async getTeam(id: string): Promise<Team | undefined> {
-    return this.teams.get(id);
+  async getTeam(organizationId: string, id: string): Promise<Team | undefined> {
+    const team = this.teams.get(id);
+    return team && team.organizationId === organizationId ? team : undefined;
   }
 
-  async createTeam(insertTeam: InsertTeam): Promise<Team> {
+  async createTeam(organizationId: string, insertTeam: InsertTeam): Promise<Team> {
     const team: Team = {
       ...insertTeam,
       id: randomUUID(),
+      organizationId,
       createdAt: new Date(),
       description: insertTeam.description ?? null,
     };
@@ -484,28 +559,32 @@ export class MemStorage implements IStorage {
     return team;
   }
 
-  async updateTeam(id: string, teamUpdate: Partial<InsertTeam>): Promise<Team | undefined> {
+  async updateTeam(organizationId: string, id: string, teamUpdate: Partial<InsertTeam>): Promise<Team | undefined> {
     const team = this.teams.get(id);
-    if (!team) return undefined;
+    if (!team || team.organizationId !== organizationId) return undefined;
     
     const updatedTeam = { ...team, ...teamUpdate };
     this.teams.set(id, updatedTeam);
     return updatedTeam;
   }
 
-  async getAllTeams(): Promise<Team[]> {
-    return Array.from(this.teams.values());
+  async getAllTeams(organizationId: string): Promise<Team[]> {
+    return Array.from(this.teams.values()).filter(team => 
+      team.organizationId === organizationId
+    );
   }
 
   // Check-ins
-  async getCheckin(id: string): Promise<Checkin | undefined> {
-    return this.checkins.get(id);
+  async getCheckin(organizationId: string, id: string): Promise<Checkin | undefined> {
+    const checkin = this.checkins.get(id);
+    return checkin && checkin.organizationId === organizationId ? checkin : undefined;
   }
 
-  async createCheckin(insertCheckin: InsertCheckin): Promise<Checkin> {
+  async createCheckin(organizationId: string, insertCheckin: InsertCheckin): Promise<Checkin> {
     const checkin: Checkin = {
       ...insertCheckin,
       id: randomUUID(),
+      organizationId,
       submittedAt: (insertCheckin.isComplete ?? false) ? new Date() : null,
       createdAt: new Date(),
       responses: insertCheckin.responses ?? {},
@@ -515,9 +594,9 @@ export class MemStorage implements IStorage {
     return checkin;
   }
 
-  async updateCheckin(id: string, checkinUpdate: Partial<InsertCheckin>): Promise<Checkin | undefined> {
+  async updateCheckin(organizationId: string, id: string, checkinUpdate: Partial<InsertCheckin>): Promise<Checkin | undefined> {
     const checkin = this.checkins.get(id);
-    if (!checkin) return undefined;
+    if (!checkin || checkin.organizationId !== organizationId) return undefined;
     
     const updatedCheckin = { 
       ...checkin, 
@@ -528,22 +607,22 @@ export class MemStorage implements IStorage {
     return updatedCheckin;
   }
 
-  async getCheckinsByUser(userId: string): Promise<Checkin[]> {
+  async getCheckinsByUser(organizationId: string, userId: string): Promise<Checkin[]> {
     return Array.from(this.checkins.values())
-      .filter(checkin => checkin.userId === userId)
+      .filter(checkin => checkin.userId === userId && checkin.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
-  async getCheckinsByManager(managerId: string): Promise<Checkin[]> {
-    const reports = await this.getUsersByManager(managerId);
+  async getCheckinsByManager(organizationId: string, managerId: string): Promise<Checkin[]> {
+    const reports = await this.getUsersByManager(organizationId, managerId);
     const reportIds = reports.map(user => user.id);
     
     return Array.from(this.checkins.values())
-      .filter(checkin => reportIds.includes(checkin.userId))
+      .filter(checkin => reportIds.includes(checkin.userId) && checkin.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
-  async getCurrentWeekCheckin(userId: string): Promise<Checkin | undefined> {
+  async getCurrentWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined> {
     const now = new Date();
     const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
     startOfWeek.setHours(0, 0, 0, 0);
@@ -551,26 +630,29 @@ export class MemStorage implements IStorage {
     return Array.from(this.checkins.values())
       .find(checkin => 
         checkin.userId === userId && 
+        checkin.organizationId === organizationId &&
         checkin.weekOf >= startOfWeek
       );
   }
 
-  async getRecentCheckins(limit = 10): Promise<Checkin[]> {
+  async getRecentCheckins(organizationId: string, limit = 10): Promise<Checkin[]> {
     return Array.from(this.checkins.values())
-      .filter(checkin => checkin.isComplete)
+      .filter(checkin => checkin.isComplete && checkin.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
   }
 
   // Questions
-  async getQuestion(id: string): Promise<Question | undefined> {
-    return this.questions.get(id);
+  async getQuestion(organizationId: string, id: string): Promise<Question | undefined> {
+    const question = this.questions.get(id);
+    return question && question.organizationId === organizationId ? question : undefined;
   }
 
-  async createQuestion(insertQuestion: InsertQuestion): Promise<Question> {
+  async createQuestion(organizationId: string, insertQuestion: InsertQuestion): Promise<Question> {
     const question: Question = {
       ...insertQuestion,
       id: randomUUID(),
+      organizationId,
       createdAt: new Date(),
       isActive: insertQuestion.isActive ?? true,
       order: insertQuestion.order ?? 0,
@@ -579,34 +661,38 @@ export class MemStorage implements IStorage {
     return question;
   }
 
-  async updateQuestion(id: string, questionUpdate: Partial<InsertQuestion>): Promise<Question | undefined> {
+  async updateQuestion(organizationId: string, id: string, questionUpdate: Partial<InsertQuestion>): Promise<Question | undefined> {
     const question = this.questions.get(id);
-    if (!question) return undefined;
+    if (!question || question.organizationId !== organizationId) return undefined;
     
     const updatedQuestion = { ...question, ...questionUpdate };
     this.questions.set(id, updatedQuestion);
     return updatedQuestion;
   }
 
-  async deleteQuestion(id: string): Promise<boolean> {
+  async deleteQuestion(organizationId: string, id: string): Promise<boolean> {
+    const question = this.questions.get(id);
+    if (!question || question.organizationId !== organizationId) return false;
     return this.questions.delete(id);
   }
 
-  async getActiveQuestions(): Promise<Question[]> {
+  async getActiveQuestions(organizationId: string): Promise<Question[]> {
     return Array.from(this.questions.values())
-      .filter(question => question.isActive)
+      .filter(question => question.isActive && question.organizationId === organizationId)
       .sort((a, b) => a.order - b.order);
   }
 
   // Wins
-  async getWin(id: string): Promise<Win | undefined> {
-    return this.wins.get(id);
+  async getWin(organizationId: string, id: string): Promise<Win | undefined> {
+    const win = this.wins.get(id);
+    return win && win.organizationId === organizationId ? win : undefined;
   }
 
-  async createWin(insertWin: InsertWin): Promise<Win> {
+  async createWin(organizationId: string, insertWin: InsertWin): Promise<Win> {
     const win: Win = {
       ...insertWin,
       id: randomUUID(),
+      organizationId,
       createdAt: new Date(),
       nominatedBy: insertWin.nominatedBy ?? null,
       isPublic: insertWin.isPublic ?? true,
@@ -616,63 +702,70 @@ export class MemStorage implements IStorage {
     return win;
   }
 
-  async updateWin(id: string, winUpdate: Partial<InsertWin>): Promise<Win | undefined> {
+  async updateWin(organizationId: string, id: string, winUpdate: Partial<InsertWin>): Promise<Win | undefined> {
     const win = this.wins.get(id);
-    if (!win) return undefined;
+    if (!win || win.organizationId !== organizationId) return undefined;
     
     const updatedWin = { ...win, ...winUpdate };
     this.wins.set(id, updatedWin);
     return updatedWin;
   }
 
-  async deleteWin(id: string): Promise<boolean> {
+  async deleteWin(organizationId: string, id: string): Promise<boolean> {
+    const win = this.wins.get(id);
+    if (!win || win.organizationId !== organizationId) return false;
     return this.wins.delete(id);
   }
 
-  async getRecentWins(limit = 10): Promise<Win[]> {
+  async getRecentWins(organizationId: string, limit = 10): Promise<Win[]> {
     return Array.from(this.wins.values())
+      .filter(win => win.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
   }
 
-  async getPublicWins(limit = 10): Promise<Win[]> {
+  async getPublicWins(organizationId: string, limit = 10): Promise<Win[]> {
     return Array.from(this.wins.values())
-      .filter(win => win.isPublic)
+      .filter(win => win.isPublic && win.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
   }
 
   // Comments
-  async getComment(id: string): Promise<Comment | undefined> {
-    return this.comments.get(id);
+  async getComment(organizationId: string, id: string): Promise<Comment | undefined> {
+    const comment = this.comments.get(id);
+    return comment && comment.organizationId === organizationId ? comment : undefined;
   }
 
-  async createComment(insertComment: InsertComment): Promise<Comment> {
+  async createComment(organizationId: string, insertComment: InsertComment): Promise<Comment> {
     const comment: Comment = {
       ...insertComment,
       id: randomUUID(),
+      organizationId,
       createdAt: new Date(),
     };
     this.comments.set(comment.id, comment);
     return comment;
   }
 
-  async updateComment(id: string, commentUpdate: Partial<InsertComment>): Promise<Comment | undefined> {
+  async updateComment(organizationId: string, id: string, commentUpdate: Partial<InsertComment>): Promise<Comment | undefined> {
     const comment = this.comments.get(id);
-    if (!comment) return undefined;
+    if (!comment || comment.organizationId !== organizationId) return undefined;
     
     const updatedComment = { ...comment, ...commentUpdate };
     this.comments.set(id, updatedComment);
     return updatedComment;
   }
 
-  async deleteComment(id: string): Promise<boolean> {
+  async deleteComment(organizationId: string, id: string): Promise<boolean> {
+    const comment = this.comments.get(id);
+    if (!comment || comment.organizationId !== organizationId) return false;
     return this.comments.delete(id);
   }
 
-  async getCommentsByCheckin(checkinId: string): Promise<Comment[]> {
+  async getCommentsByCheckin(organizationId: string, checkinId: string): Promise<Comment[]> {
     return Array.from(this.comments.values())
-      .filter(comment => comment.checkinId === checkinId)
+      .filter(comment => comment.checkinId === checkinId && comment.organizationId === organizationId)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
   }
 }

@@ -7,12 +7,16 @@ import {
   insertQuestionSchema, insertWinSchema, insertCommentSchema 
 } from "@shared/schema";
 import { sendCheckinReminder, announceWin, sendTeamHealthUpdate } from "./services/slack";
+import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Apply organization middleware to all API routes
+  app.use("/api", requireOrganization());
+  
   // Users
   app.get("/api/users", async (req, res) => {
     try {
-      const users = await storage.getAllUsers();
+      const users = await storage.getAllUsers(req.orgId);
       res.json(users);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch users" });
@@ -21,7 +25,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/users/:id", async (req, res) => {
     try {
-      const user = await storage.getUser(req.params.id);
+      const user = await storage.getUser(req.orgId, req.params.id);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -34,7 +38,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/users", async (req, res) => {
     try {
       const userData = insertUserSchema.parse(req.body);
-      const user = await storage.createUser(userData);
+      const sanitizedData = sanitizeForOrganization(userData, req.orgId);
+      const user = await storage.createUser(req.orgId, sanitizedData);
       res.status(201).json(user);
     } catch (error) {
       res.status(400).json({ message: "Invalid user data" });
@@ -44,7 +49,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/users/:id", async (req, res) => {
     try {
       const updates = insertUserSchema.partial().parse(req.body);
-      const user = await storage.updateUser(req.params.id, updates);
+      const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
+      const user = await storage.updateUser(req.orgId, req.params.id, sanitizedUpdates);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -56,7 +62,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/users/:id/reports", async (req, res) => {
     try {
-      const reports = await storage.getUsersByManager(req.params.id);
+      const reports = await storage.getUsersByManager(req.orgId, req.params.id);
       res.json(reports);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch reports" });
@@ -66,7 +72,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Teams
   app.get("/api/teams", async (req, res) => {
     try {
-      const teams = await storage.getAllTeams();
+      const teams = await storage.getAllTeams(req.orgId);
       res.json(teams);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch teams" });
@@ -76,7 +82,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/teams", async (req, res) => {
     try {
       const teamData = insertTeamSchema.parse(req.body);
-      const team = await storage.createTeam(teamData);
+      const sanitizedData = sanitizeForOrganization(teamData, req.orgId);
+      const team = await storage.createTeam(req.orgId, sanitizedData);
       res.status(201).json(team);
     } catch (error) {
       res.status(400).json({ message: "Invalid team data" });
@@ -85,7 +92,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/teams/:id/members", async (req, res) => {
     try {
-      const members = await storage.getUsersByTeam(req.params.id);
+      const members = await storage.getUsersByTeam(req.orgId, req.params.id);
       res.json(members);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch team members" });
@@ -99,11 +106,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let checkins;
       
       if (userId) {
-        checkins = await storage.getCheckinsByUser(userId as string);
+        checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
       } else if (managerId) {
-        checkins = await storage.getCheckinsByManager(managerId as string);
+        checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
       } else {
-        checkins = await storage.getRecentCheckins(limit ? parseInt(limit as string) : undefined);
+        checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
       }
       
       res.json(checkins);
@@ -114,7 +121,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/checkins/:id", async (req, res) => {
     try {
-      const checkin = await storage.getCheckin(req.params.id);
+      const checkin = await storage.getCheckin(req.orgId, req.params.id);
       if (!checkin) {
         return res.status(404).json({ message: "Check-in not found" });
       }
@@ -127,7 +134,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/checkins", async (req, res) => {
     try {
       const checkinData = insertCheckinSchema.parse(req.body);
-      const checkin = await storage.createCheckin(checkinData);
+      const sanitizedData = sanitizeForOrganization(checkinData, req.orgId);
+      const checkin = await storage.createCheckin(req.orgId, sanitizedData);
       res.status(201).json(checkin);
     } catch (error) {
       console.error("Check-in validation error:", error);
@@ -141,7 +149,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/checkins/:id", async (req, res) => {
     try {
       const updates = insertCheckinSchema.partial().parse(req.body);
-      const checkin = await storage.updateCheckin(req.params.id, updates);
+      const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
+      const checkin = await storage.updateCheckin(req.orgId, req.params.id, sanitizedUpdates);
       if (!checkin) {
         return res.status(404).json({ message: "Check-in not found" });
       }
@@ -157,7 +166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/users/:id/current-checkin", async (req, res) => {
     try {
-      const checkin = await storage.getCurrentWeekCheckin(req.params.id);
+      const checkin = await storage.getCurrentWeekCheckin(req.orgId, req.params.id);
       res.json(checkin || null);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch current check-in" });
@@ -167,7 +176,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Questions
   app.get("/api/questions", async (req, res) => {
     try {
-      const questions = await storage.getActiveQuestions();
+      const questions = await storage.getActiveQuestions(req.orgId);
       res.json(questions);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch questions" });
@@ -177,7 +186,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/questions", async (req, res) => {
     try {
       const questionData = insertQuestionSchema.parse(req.body);
-      const question = await storage.createQuestion(questionData);
+      const sanitizedData = sanitizeForOrganization(questionData, req.orgId);
+      const question = await storage.createQuestion(req.orgId, sanitizedData);
       res.status(201).json(question);
     } catch (error) {
       res.status(400).json({ message: "Invalid question data" });
@@ -187,7 +197,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/questions/:id", async (req, res) => {
     try {
       const updates = insertQuestionSchema.partial().parse(req.body);
-      const question = await storage.updateQuestion(req.params.id, updates);
+      const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
+      const question = await storage.updateQuestion(req.orgId, req.params.id, sanitizedUpdates);
       if (!question) {
         return res.status(404).json({ message: "Question not found" });
       }
@@ -199,7 +210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/questions/:id", async (req, res) => {
     try {
-      const deleted = await storage.deleteQuestion(req.params.id);
+      const deleted = await storage.deleteQuestion(req.orgId, req.params.id);
       if (!deleted) {
         return res.status(404).json({ message: "Question not found" });
       }
@@ -216,9 +227,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let wins;
       
       if (isPublic === "true") {
-        wins = await storage.getPublicWins(limit ? parseInt(limit as string) : undefined);
+        wins = await storage.getPublicWins(req.orgId, limit ? parseInt(limit as string) : undefined);
       } else {
-        wins = await storage.getRecentWins(limit ? parseInt(limit as string) : undefined);
+        wins = await storage.getRecentWins(req.orgId, limit ? parseInt(limit as string) : undefined);
       }
       
       res.json(wins);
@@ -230,12 +241,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/wins", async (req, res) => {
     try {
       const winData = insertWinSchema.parse(req.body);
-      const win = await storage.createWin(winData);
+      const sanitizedData = sanitizeForOrganization(winData, req.orgId);
+      const win = await storage.createWin(req.orgId, sanitizedData);
       
       // Announce to Slack if public
       if (win.isPublic) {
-        const user = await storage.getUser(win.userId);
-        const nominator = win.nominatedBy ? await storage.getUser(win.nominatedBy) : null;
+        const user = await storage.getUser(req.orgId, win.userId);
+        const nominator = win.nominatedBy ? await storage.getUser(req.orgId, win.nominatedBy) : null;
         
         if (user) {
           const slackMessageId = await announceWin(
@@ -246,7 +258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
           
           if (slackMessageId) {
-            await storage.updateWin(win.id, { slackMessageId });
+            await storage.updateWin(req.orgId, win.id, { slackMessageId });
           }
         }
       }
@@ -261,7 +273,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Use the partial insert schema for consistent validation
       const updates = insertWinSchema.partial().parse(req.body);
-      const win = await storage.updateWin(req.params.id, updates);
+      const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
+      const win = await storage.updateWin(req.orgId, req.params.id, sanitizedUpdates);
       if (!win) {
         return res.status(404).json({ message: "Win not found" });
       }
@@ -277,7 +290,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/wins/:id", async (req, res) => {
     try {
-      const deleted = await storage.deleteWin(req.params.id);
+      const deleted = await storage.deleteWin(req.orgId, req.params.id);
       if (!deleted) {
         return res.status(404).json({ message: "Win not found" });
       }
@@ -290,7 +303,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Comments
   app.get("/api/checkins/:id/comments", async (req, res) => {
     try {
-      const comments = await storage.getCommentsByCheckin(req.params.id);
+      const comments = await storage.getCommentsByCheckin(req.orgId, req.params.id);
       res.json(comments);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch comments" });
@@ -303,7 +316,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...req.body,
         checkinId: req.params.id,
       });
-      const comment = await storage.createComment(commentData);
+      const sanitizedData = sanitizeForOrganization(commentData, req.orgId);
+      const comment = await storage.createComment(req.orgId, sanitizedData);
       res.status(201).json(comment);
     } catch (error) {
       res.status(400).json({ message: "Invalid comment data" });
@@ -315,7 +329,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Only allow updating the content field for security
       const updateSchema = z.object({ content: z.string().min(1, "Content is required") });
       const updates = updateSchema.parse(req.body);
-      const comment = await storage.updateComment(req.params.id, updates);
+      const comment = await storage.updateComment(req.orgId, req.params.id, updates);
       if (!comment) {
         return res.status(404).json({ message: "Comment not found" });
       }
@@ -327,7 +341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/comments/:id", async (req, res) => {
     try {
-      const deleted = await storage.deleteComment(req.params.id);
+      const deleted = await storage.deleteComment(req.orgId, req.params.id);
       if (!deleted) {
         return res.status(404).json({ message: "Comment not found" });
       }
@@ -340,7 +354,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Analytics & Stats
   app.get("/api/analytics/team-health", async (req, res) => {
     try {
-      const recentCheckins = await storage.getRecentCheckins(100);
+      const recentCheckins = await storage.getRecentCheckins(req.orgId, 100);
       const totalCheckins = recentCheckins.length;
       
       if (totalCheckins === 0) {
@@ -355,7 +369,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const averageRating = sumRatings / totalCheckins;
       
       // Calculate completion rate for current week
-      const allUsers = await storage.getAllUsers();
+      const allUsers = await storage.getAllUsers(req.orgId);
       const activeUsers = allUsers.filter(user => user.isActive);
       const completedThisWeek = recentCheckins.filter(checkin => {
         const weekStart = new Date();
@@ -379,7 +393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Slack Integration
   app.post("/api/slack/send-checkin-reminder", async (req, res) => {
     try {
-      const users = await storage.getAllUsers();
+      const users = await storage.getAllUsers(req.orgId);
       const activeUsers = users.filter(user => user.isActive);
       
       // Find users who haven't completed this week's check-in
@@ -389,7 +403,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const usersNeedingReminder = [];
       for (const user of activeUsers) {
-        const currentCheckin = await storage.getCurrentWeekCheckin(user.id);
+        const currentCheckin = await storage.getCurrentWeekCheckin(req.orgId, user.id);
         if (!currentCheckin || !currentCheckin.isComplete) {
           usersNeedingReminder.push(user.name);
         }
@@ -397,14 +411,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (usersNeedingReminder.length > 0) {
         // Fetch active questions to include in the reminder
-        const questions = await storage.getActiveQuestions();
+        const questions = await storage.getActiveQuestions(req.orgId);
         await sendCheckinReminder(usersNeedingReminder, questions);
       }
       
       res.json({ 
         message: "Reminder sent", 
         userCount: usersNeedingReminder.length,
-        questionsIncluded: await storage.getActiveQuestions().then(q => q.length)
+        questionsIncluded: await storage.getActiveQuestions(req.orgId).then(q => q.length)
       });
     } catch (error) {
       console.error("Failed to send check-in reminder:", error);
@@ -414,9 +428,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/slack/send-team-health-update", async (req, res) => {
     try {
-      const recentCheckins = await storage.getRecentCheckins(50);
-      const recentWins = await storage.getRecentWins(20);
-      const allUsers = await storage.getAllUsers();
+      const recentCheckins = await storage.getRecentCheckins(req.orgId, 50);
+      const recentWins = await storage.getRecentWins(req.orgId, 20);
+      const allUsers = await storage.getAllUsers(req.orgId);
       const activeUsers = allUsers.filter(user => user.isActive);
       
       const averageRating = recentCheckins.length > 0 
