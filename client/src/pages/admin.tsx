@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { User as UserType } from "@shared/schema";
+import type { User as UserType, Team as TeamType } from "@shared/schema";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 interface ChannelMember {
@@ -46,11 +46,19 @@ interface ChannelMembersResponse {
   channelName: string;
 }
 
+interface TeamAssignmentResult {
+  message: string;
+  user: UserType;
+  teamName?: string;
+}
+
 export default function Admin() {
   const { toast } = useToast();
   const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [newRole, setNewRole] = useState<string>("");
+  const [selectedUserForTeam, setSelectedUserForTeam] = useState<UserType | null>(null);
+  const [newTeamId, setNewTeamId] = useState<string>("");
 
   const { data: currentUser } = useCurrentUser();
 
@@ -108,9 +116,45 @@ export default function Admin() {
     },
   });
 
+  // Fetch all teams
+  const { data: teams = [], isLoading: teamsLoading } = useQuery<TeamType[]>({
+    queryKey: ["/api/teams"],
+    enabled: currentUser?.role === "admin",
+  });
+
+  // Update user team assignment mutation
+  const updateTeamMutation = useMutation({
+    mutationFn: ({ userId, teamId }: { userId: string; teamId: string | null }) =>
+      apiRequest<TeamAssignmentResult>("PATCH", `/api/admin/users/${userId}/team`, { teamId }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "Team assignment updated",
+        description: data.message,
+      });
+      setSelectedUserForTeam(null);
+      setNewTeamId("");
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to update team assignment",
+        description: error.message || "An error occurred while updating the team assignment.",
+      });
+    },
+  });
+
   const handleRoleUpdate = () => {
     if (selectedUser && newRole) {
       updateRoleMutation.mutate({ userId: selectedUser.id, role: newRole });
+    }
+  };
+
+  const handleTeamUpdate = () => {
+    if (selectedUserForTeam) {
+      // Convert empty string to null for "Unassigned"
+      const teamId = newTeamId === "" ? null : newTeamId;
+      updateTeamMutation.mutate({ userId: selectedUserForTeam.id, teamId });
     }
   };
 
@@ -131,6 +175,17 @@ export default function Admin() {
     } else {
       return <XCircle className="w-4 h-4 text-red-500" data-testid={`icon-slack-not-connected-${user.id}`} />;
     }
+  };
+
+  const getTeamBadge = (user: UserType) => {
+    if (!user.teamId) {
+      return <Badge variant="outline" className="text-xs" data-testid={`badge-team-unassigned-${user.id}`}>Unassigned</Badge>;
+    }
+    
+    const team = teams.find(t => t.id === user.teamId);
+    const teamName = team?.name || "Unknown Team";
+    
+    return <Badge variant="secondary" className="text-xs" data-testid={`badge-team-${user.id}`}>{teamName}</Badge>;
   };
 
   if (currentUser?.role !== "admin") {
@@ -303,6 +358,7 @@ export default function Admin() {
                         </span>
                       </div>
                       {getRoleBadge(user.role)}
+                      {getTeamBadge(user)}
                       <Button
                         variant="outline"
                         size="sm"
@@ -313,6 +369,17 @@ export default function Admin() {
                         data-testid={`button-change-role-${user.id}`}
                       >
                         Change Role
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedUserForTeam(user);
+                          setNewTeamId(user.teamId || "");
+                        }}
+                        data-testid={`button-assign-team-${user.id}`}
+                      >
+                        Assign Team
                       </Button>
                     </div>
                   </div>
@@ -395,6 +462,61 @@ export default function Admin() {
               >
                 {updateRoleMutation.isPending && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
                 Update Role
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Team Assignment Dialog */}
+        <Dialog open={!!selectedUserForTeam} onOpenChange={() => setSelectedUserForTeam(null)}>
+          <DialogContent data-testid="dialog-team-assignment">
+            <DialogHeader>
+              <DialogTitle>Assign User to Team</DialogTitle>
+              <DialogDescription>
+                Assign {selectedUserForTeam?.name} to a team. This will help organize users and manage team-based permissions.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">Current team:</span>
+                {selectedUserForTeam && getTeamBadge(selectedUserForTeam)}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="team-select">New Team</Label>
+                <Select value={newTeamId} onValueChange={setNewTeamId}>
+                  <SelectTrigger data-testid="select-new-team">
+                    <SelectValue placeholder="Select a team" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="" data-testid="option-team-unassigned">Unassigned</SelectItem>
+                    {teams.map((team) => (
+                      <SelectItem 
+                        key={team.id} 
+                        value={team.id} 
+                        data-testid={`option-team-${team.id}`}
+                      >
+                        {team.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setSelectedUserForTeam(null)}
+                data-testid="button-cancel-team-assignment"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleTeamUpdate}
+                disabled={newTeamId === (selectedUserForTeam?.teamId || "") || updateTeamMutation.isPending}
+                data-testid="button-confirm-team-assignment"
+              >
+                {updateTeamMutation.isPending && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
+                Update Team
               </Button>
             </div>
           </DialogContent>

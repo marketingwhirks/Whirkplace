@@ -2126,6 +2126,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin route to assign users to teams
+  app.patch("/api/admin/users/:id/team", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is admin
+      if (!req.currentUser || req.currentUser.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const targetUserId = req.params.id;
+      const { teamId } = req.body;
+
+      // Validate teamId - should be either null (unassigned) or a valid UUID
+      if (teamId !== null && teamId !== undefined) {
+        if (typeof teamId !== 'string' || teamId.length === 0) {
+          return res.status(400).json({ 
+            message: "Invalid teamId. Must be a valid team ID or null for unassigned." 
+          });
+        }
+
+        // Verify team exists and belongs to this organization
+        const team = await storage.getTeam(req.orgId, teamId);
+        if (!team) {
+          return res.status(400).json({ 
+            message: "Team not found or does not belong to this organization" 
+          });
+        }
+      }
+
+      // Get target user to verify they exist and belong to this organization
+      const targetUser = await storage.getUser(req.orgId, targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Update user team assignment
+      const updatedUser = await storage.updateUser(req.orgId, targetUserId, { 
+        teamId: teamId || null 
+      });
+      if (!updatedUser) {
+        return res.status(500).json({ message: "Failed to update user team assignment" });
+      }
+
+      // Get team name for response
+      const teamName = teamId ? (await storage.getTeam(req.orgId, teamId))?.name || null : null;
+
+      res.json({
+        message: teamId 
+          ? `User assigned to team: ${teamName}` 
+          : "User unassigned from team",
+        user: updatedUser,
+        teamName
+      });
+    } catch (error) {
+      console.error("Failed to update user team assignment:", error);
+      res.status(500).json({ message: "Failed to update user team assignment" });
+    }
+  });
+
   // Admin aggregation endpoints
   app.post("/api/admin/aggregation/backfill", requireAuth(), async (req, res) => {
     try {
