@@ -1001,9 +1001,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { from, to, teamId, status, limit } = req.query;
       
       // Get all check-ins (we'll filter them based on query parameters)
-      let checkins = await storage.getAllCheckins ? 
-        await storage.getAllCheckins(req.orgId) : 
-        await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : 1000);
+      let checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : 1000);
       
       // Apply filters
       if (status && Object.values(ReviewStatus).includes(status as ReviewStatusType)) {
@@ -1800,7 +1798,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Get all teams for the organization
-      const teams = await storage.getTeamsByOrganization(req.orgId);
+      const teams = await storage.getAllTeams(req.orgId);
       
       // Fetch compliance metrics for all teams in parallel
       const teamCompliancePromises = teams.map(async (team) => {

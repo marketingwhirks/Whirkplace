@@ -75,7 +75,10 @@ export default function Admin() {
 
   // Sync users mutation
   const syncUsersMutation = useMutation({
-    mutationFn: () => apiRequest<SyncResult>("POST", "/api/admin/sync-users"),
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/admin/sync-users");
+      return await response.json() as SyncResult;
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/channel-members"] });
@@ -96,9 +99,11 @@ export default function Admin() {
 
   // Update user role mutation
   const updateRoleMutation = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
-      apiRequest("PATCH", `/api/admin/users/${userId}/role`, { role }),
-    onSuccess: (data) => {
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      const response = await apiRequest("PATCH", `/api/admin/users/${userId}/role`, { role });
+      return await response.json();
+    },
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({
         title: "Role updated",
@@ -124,8 +129,10 @@ export default function Admin() {
 
   // Update user team assignment mutation
   const updateTeamMutation = useMutation({
-    mutationFn: ({ userId, teamId }: { userId: string; teamId: string | null }) =>
-      apiRequest<TeamAssignmentResult>("PATCH", `/api/admin/users/${userId}/team`, { teamId }),
+    mutationFn: async ({ userId, teamId }: { userId: string; teamId: string | null }) => {
+      const response = await apiRequest("PATCH", `/api/admin/users/${userId}/team`, { teamId });
+      return await response.json() as TeamAssignmentResult;
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({
@@ -211,7 +218,7 @@ export default function Admin() {
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      <Header title="Admin Panel" icon={<Settings className="w-5 h-5" />} />
+      <Header title="Admin Panel" />
       
       <div className="flex-1 overflow-auto p-6 space-y-6">
         {/* Quick Stats */}
@@ -331,7 +338,7 @@ export default function Admin() {
                   >
                     <div className="flex items-center space-x-4">
                       <Avatar>
-                        <AvatarImage src={user.avatar || user.slackAvatar} />
+                        <AvatarImage src={user.avatar || user.slackAvatar || undefined} />
                         <AvatarFallback>
                           {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
                         </AvatarFallback>

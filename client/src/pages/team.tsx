@@ -9,12 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import TeamMemberCard from "@/components/team/team-member-card";
-import { Plus, Users, UserCog, Building } from "lucide-react";
+import { Plus, Users, UserCog, Building, AlertCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import type { User, Team, InsertUser, InsertTeam } from "@shared/schema";
 
 // Form schemas
@@ -31,7 +32,7 @@ const createUserSchema = z.object({
 const createTeamSchema = z.object({
   name: z.string().min(2, "Team name must be at least 2 characters"),
   description: z.string().optional(),
-  leaderId: z.string().refine(val => val !== "none", "Please select a team leader"),
+  leaderId: z.string().refine(val => val !== "no-leader", "Please select a team leader"),
 });
 
 type CreateUserForm = z.infer<typeof createUserSchema>;
@@ -41,6 +42,8 @@ export default function Team() {
   const { toast } = useToast();
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showCreateTeam, setShowCreateTeam] = useState(false);
+
+  const { data: currentUser } = useCurrentUser();
 
   // Fetch data
   const { data: users = [] } = useQuery<User[]>({
@@ -60,8 +63,8 @@ export default function Team() {
       email: "",
       password: "",
       role: "member",
-      teamId: "none",
-      managerId: "none",
+      teamId: "no-team",
+      managerId: "no-manager",
     },
   });
 
@@ -70,7 +73,7 @@ export default function Team() {
     defaultValues: {
       name: "",
       description: "",
-      leaderId: "none",
+      leaderId: "no-leader",
     },
   });
 
@@ -85,15 +88,16 @@ export default function Team() {
 
   const handleCreateUser = async (data: CreateUserForm) => {
     try {
-      const userData: InsertUser = {
+      const userData = {
         username: data.username,
         name: data.name,
         email: data.email,
         password: data.password,
         role: data.role,
-        teamId: data.teamId && data.teamId !== "none" ? data.teamId : null,
-        managerId: data.managerId && data.managerId !== "none" ? data.managerId : null,
+        teamId: data.teamId && data.teamId !== "no-team" ? data.teamId : null,
+        managerId: data.managerId && data.managerId !== "no-manager" ? data.managerId : null,
         avatar: null,
+        authProvider: "local" as const,
         isActive: true,
       };
 
@@ -118,7 +122,7 @@ export default function Team() {
 
   const handleCreateTeam = async (data: CreateTeamForm) => {
     try {
-      const teamData: InsertTeam = {
+      const teamData = {
         name: data.name,
         description: data.description || null,
         leaderId: data.leaderId,
@@ -163,6 +167,27 @@ export default function Team() {
       });
     }
   };
+
+  if (currentUser?.role !== "admin") {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Header title="Team Management" />
+        <div className="flex-1 flex items-center justify-center">
+          <Card className="w-96">
+            <CardHeader className="text-center">
+              <AlertCircle className="w-12 h-12 mx-auto text-orange-500 mb-2" />
+              <CardTitle>Access Denied</CardTitle>
+            </CardHeader>
+            <CardContent className="text-center">
+              <p className="text-muted-foreground">
+                You need admin privileges to access team management.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -238,6 +263,7 @@ export default function Team() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
+                              <SelectItem value="no-leader">Select a leader</SelectItem>
                               {users
                                 .filter(user => user.role === "manager" || user.role === "admin")
                                 .map(user => (
@@ -375,7 +401,7 @@ export default function Team() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="none">No Team</SelectItem>
+                              <SelectItem value="no-team">No Team</SelectItem>
                               {teams.map(team => (
                                 <SelectItem key={team.id} value={team.id}>
                                   {team.name}
@@ -401,7 +427,7 @@ export default function Team() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="none">No Manager</SelectItem>
+                              <SelectItem value="no-manager">No Manager</SelectItem>
                               {users
                                 .filter(user => user.role === "manager" || user.role === "admin")
                                 .map(user => (
