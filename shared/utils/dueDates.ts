@@ -141,3 +141,43 @@ export function getDueDateString(weekOf: Date): string {
   
   return dueDate.toLocaleDateString('en-US', options);
 }
+
+/**
+ * Calculates the Monday 00:00 Central Time (start of week) for the week containing the given date.
+ * 
+ * This function finds the Monday of the week that contains the `date` and sets
+ * the time to 00:00 AM Central Time, properly handling DST transitions. The week is
+ * considered to start on Monday.
+ * 
+ * @param date - The date within the week for which to calculate the week start
+ * @returns A Date object representing Monday at 00:00 AM Central Time (in UTC)
+ * 
+ * @example
+ * ```typescript
+ * // For a date in the week of Jan 13-19, 2025 (Monday is Jan 13)
+ * const weekStart = getWeekStartCentral(new Date('2025-01-15')); // Wednesday
+ * // Returns: Monday, Jan 13, 2025 at 00:00 AM Central Time (stored as UTC)
+ * ```
+ */
+export function getWeekStartCentral(date: Date): Date {
+  // First, convert the input date to Central Time to find the correct Monday
+  const centralDate = toZonedTime(date, CENTRAL_TIME_ZONE);
+  
+  // Get the Monday of the week in Central Time (week starts on Monday = 1)
+  const monday = startOfWeek(centralDate, { weekStartsOn: 1 });
+  
+  // Set time to 00:00 AM (00:00:00.000) in Central Time
+  const mondayAt00AM = setMilliseconds(
+    setSeconds(
+      setMinutes(
+        setHours(monday, 0),
+        0
+      ),
+      0
+    ),
+    0
+  );
+  
+  // Convert the Central Time date to UTC for storage
+  return fromZonedTime(mondayAt00AM, CENTRAL_TIME_ZONE);
+}

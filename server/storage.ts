@@ -6,13 +6,14 @@ import {
   type Win, type InsertWin,
   type Comment, type InsertComment,
   type Shoutout, type InsertShoutout,
+  type Vacation, type InsertVacation,
   type ReviewCheckin, type ReviewStatusType,
   type PulseMetricsOptions, type PulseMetricsResult,
   type ShoutoutMetricsOptions, type ShoutoutMetricsResult,
   type LeaderboardOptions, type LeaderboardEntry,
   type AnalyticsOverview, type AnalyticsPeriod,
   type ComplianceMetricsOptions, type ComplianceMetricsResult,
-  users, teams, checkins, questions, wins, comments, shoutouts,
+  users, teams, checkins, questions, wins, comments, shoutouts, vacations,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   ReviewStatus
 } from "@shared/schema";
@@ -20,7 +21,66 @@ import { randomUUID } from "crypto";
 import { db } from "./db";
 import { eq, desc, and, gte, or, sql, sum, count, avg, lt, lte, inArray } from "drizzle-orm";
 import { AggregationService } from "./services/aggregation";
-import { getCheckinDueDate, getReviewDueDate, isSubmittedOnTime, isReviewedOnTime } from "@shared/utils/dueDates";
+import { getCheckinDueDate, getReviewDueDate, isSubmittedOnTime, isReviewedOnTime, getWeekStartCentral } from "@shared/utils/dueDates";
+
+// Simple in-memory cache with TTL for analytics queries
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+class AnalyticsCache {
+  private cache = new Map<string, CacheEntry<any>>();
+  private readonly defaultTTL = 5 * 60 * 1000; // 5 minutes
+
+  get<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    
+    if (Date.now() > entry.expiresAt) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return entry.data;
+  }
+
+  set<T>(key: string, data: T, ttlMs?: number): void {
+    const ttl = ttlMs || this.defaultTTL;
+    this.cache.set(key, {
+      data,
+      expiresAt: Date.now() + ttl
+    });
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  // Invalidate cache entries by pattern matching
+  invalidateByPattern(pattern: string): void {
+    for (const key of this.cache.keys()) {
+      if (key.includes(pattern)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  // Invalidate analytics cache for a specific organization
+  invalidateForOrganization(organizationId: string): void {
+    this.invalidateByPattern(`:${organizationId}:`);
+  }
+
+  // Cleanup expired entries periodically
+  cleanup(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.cache.entries()) {
+      if (now > entry.expiresAt) {
+        this.cache.delete(key);
+      }
+    }
+  }
+}
 
 export interface IStorage {
   // Users
@@ -95,65 +155,12 @@ export interface IStorage {
   // Compliance Metrics
   getCheckinComplianceMetrics(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]>;
   getReviewComplianceMetrics(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]>;
-}
 
-// Simple in-memory cache with TTL for analytics queries
-interface CacheEntry<T> {
-  data: T;
-  expiresAt: number;
-}
-
-class AnalyticsCache {
-  private cache = new Map<string, CacheEntry<any>>();
-  private readonly defaultTTL = 5 * 60 * 1000; // 5 minutes
-
-  get<T>(key: string): T | null {
-    const entry = this.cache.get(key);
-    if (!entry) return null;
-    
-    if (Date.now() > entry.expiresAt) {
-      this.cache.delete(key);
-      return null;
-    }
-    
-    return entry.data;
-  }
-
-  set<T>(key: string, data: T, ttlMs?: number): void {
-    const ttl = ttlMs || this.defaultTTL;
-    this.cache.set(key, {
-      data,
-      expiresAt: Date.now() + ttl
-    });
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-
-  // Invalidate cache entries by pattern matching
-  invalidateByPattern(pattern: string): void {
-    for (const key of this.cache.keys()) {
-      if (key.includes(pattern)) {
-        this.cache.delete(key);
-      }
-    }
-  }
-
-  // Invalidate analytics cache for a specific organization
-  invalidateForOrganization(organizationId: string): void {
-    this.invalidateByPattern(`:${organizationId}:`);
-  }
-
-  // Cleanup expired entries periodically
-  cleanup(): void {
-    const now = Date.now();
-    for (const [key, entry] of this.cache.entries()) {
-      if (now > entry.expiresAt) {
-        this.cache.delete(key);
-      }
-    }
-  }
+  // Vacations
+  getUserVacationsByRange(organizationId: string, userId: string, from?: Date, to?: Date): Promise<Vacation[]>;
+  upsertVacationWeek(organizationId: string, userId: string, weekOf: Date, note?: string): Promise<Vacation>;
+  deleteVacationWeek(organizationId: string, userId: string, weekOf: Date): Promise<boolean>;
+  isUserOnVacation(organizationId: string, userId: string, weekOf: Date): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1474,39 +1481,6 @@ export class DatabaseStorage implements IStorage {
   private async getCheckinComplianceMetricsFromRaw(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
     const { scope = 'organization', entityId, period, from, to } = options || {};
 
-    // Base query for submitted check-ins only
-    let baseQuery = db
-      .select({
-        id: checkins.id,
-        userId: checkins.userId,
-        teamId: sql<string>`${users.teamId}`,
-        submittedAt: checkins.submittedAt,
-        dueDate: checkins.dueDate,
-        submittedOnTime: checkins.submittedOnTime,
-        weekOf: checkins.weekOf
-      })
-      .from(checkins)
-      .innerJoin(users, eq(checkins.userId, users.id))
-      .where(and(
-        eq(checkins.organizationId, organizationId),
-        eq(checkins.isComplete, true) // Only completed check-ins
-      ));
-
-    // Apply scope filtering
-    if (scope === 'user' && entityId) {
-      baseQuery = baseQuery.where(and(
-        eq(checkins.organizationId, organizationId),
-        eq(checkins.isComplete, true),
-        eq(checkins.userId, entityId)
-      ));
-    } else if (scope === 'team' && entityId) {
-      baseQuery = baseQuery.where(and(
-        eq(checkins.organizationId, organizationId),
-        eq(checkins.isComplete, true),
-        eq(users.teamId, entityId)
-      ));
-    }
-
     // Apply date filtering
     const whereConditions: any[] = [
       eq(checkins.organizationId, organizationId),
@@ -1522,6 +1496,7 @@ export class DatabaseStorage implements IStorage {
       whereConditions.push(eq(users.teamId, entityId));
     }
 
+    // Query submitted check-ins with vacation status
     const results = await db
       .select({
         id: checkins.id,
@@ -1530,10 +1505,16 @@ export class DatabaseStorage implements IStorage {
         submittedAt: checkins.submittedAt,
         dueDate: checkins.dueDate,
         submittedOnTime: checkins.submittedOnTime,
-        weekOf: checkins.weekOf
+        weekOf: checkins.weekOf,
+        isOnVacation: sql<boolean>`CASE WHEN ${vacations.id} IS NOT NULL THEN true ELSE false END`
       })
       .from(checkins)
       .innerJoin(users, eq(checkins.userId, users.id))
+      .leftJoin(vacations, and(
+        eq(vacations.organizationId, organizationId),
+        eq(vacations.userId, checkins.userId),
+        eq(vacations.weekOf, checkins.weekOf)
+      ))
       .where(and(...whereConditions));
 
     let complianceResults: ComplianceMetricsResult[] = [];
@@ -1679,6 +1660,7 @@ export class DatabaseStorage implements IStorage {
     if (from) whereConditions.push(gte(checkins.weekOf, from));
     if (to) whereConditions.push(lte(checkins.weekOf, to));
 
+    // Query reviewed check-ins with reviewer vacation status
     const results = await db
       .select({
         id: checkins.id,
@@ -1686,9 +1668,15 @@ export class DatabaseStorage implements IStorage {
         reviewedAt: checkins.reviewedAt,
         reviewDueDate: checkins.reviewDueDate,
         reviewedOnTime: checkins.reviewedOnTime,
-        weekOf: checkins.weekOf
+        weekOf: checkins.weekOf,
+        reviewerOnVacation: sql<boolean>`CASE WHEN ${vacations.id} IS NOT NULL THEN true ELSE false END`
       })
       .from(checkins)
+      .leftJoin(vacations, and(
+        eq(vacations.organizationId, organizationId),
+        eq(vacations.userId, checkins.reviewedBy),
+        eq(vacations.weekOf, checkins.weekOf)
+      ))
       .where(and(...whereConditions));
 
     let complianceResults: ComplianceMetricsResult[] = [];
@@ -1728,11 +1716,18 @@ export class DatabaseStorage implements IStorage {
       return { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
     }
 
-    const totalCount = checkins.length;
-    const onTimeCount = checkins.filter(c => c.submittedOnTime).length;
-    const onTimePercentage = totalCount > 0 ? (onTimeCount / totalCount) * 100 : 0;
+    // Separate vacation and non-vacation weeks
+    const nonVacationCheckins = checkins.filter(c => !c.isOnVacation);
+    const vacationCheckins = checkins.filter(c => c.isOnVacation);
 
-    // Calculate average days early/late
+    // For compliance calculation:
+    // - totalCount = non-vacation weeks only (these are "due" weeks)
+    // - onTimeCount = on-time submissions from both vacation and non-vacation weeks
+    const totalDueCount = nonVacationCheckins.length;
+    const onTimeCount = checkins.filter(c => c.submittedOnTime).length;
+    const onTimePercentage = totalDueCount > 0 ? (onTimeCount / totalDueCount) * 100 : 0;
+
+    // Calculate average days early/late for all submissions
     let totalDaysDiff = 0;
     let earlyCount = 0;
     let lateSubmissions = [];
@@ -1752,17 +1747,18 @@ export class DatabaseStorage implements IStorage {
       }
     });
 
-    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / totalCount) : undefined;
+    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / checkins.length) : undefined;
     const averageDaysLate = lateSubmissions.length > 0 
       ? lateSubmissions.reduce((sum, days) => sum + days, 0) / lateSubmissions.length 
       : undefined;
 
     return {
-      totalCount,
-      onTimeCount,
+      totalCount: totalDueCount, // Only non-vacation weeks count as "due"
+      onTimeCount, // All on-time submissions count positively
       onTimePercentage: Math.round(onTimePercentage * 100) / 100,
       averageDaysEarly,
-      averageDaysLate
+      averageDaysLate,
+      vacationWeeks: vacationCheckins.length // Additional info for debugging
     };
   }
 
@@ -1771,11 +1767,18 @@ export class DatabaseStorage implements IStorage {
       return { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
     }
 
-    const totalCount = reviews.length;
-    const onTimeCount = reviews.filter(r => r.reviewedOnTime).length;
-    const onTimePercentage = totalCount > 0 ? (onTimeCount / totalCount) * 100 : 0;
+    // Separate vacation and non-vacation weeks for reviewers
+    const nonVacationReviews = reviews.filter(r => !r.reviewerOnVacation);
+    const vacationReviews = reviews.filter(r => r.reviewerOnVacation);
 
-    // Calculate average days early/late for reviews
+    // For review compliance calculation:
+    // - totalCount = non-vacation weeks only (weeks when reviewer was expected to review)
+    // - onTimeCount = on-time reviews from both vacation and non-vacation weeks
+    const totalDueCount = nonVacationReviews.length;
+    const onTimeCount = reviews.filter(r => r.reviewedOnTime).length;
+    const onTimePercentage = totalDueCount > 0 ? (onTimeCount / totalDueCount) * 100 : 0;
+
+    // Calculate average days early/late for all reviews
     let totalDaysDiff = 0;
     let earlyCount = 0;
     let lateReviews = [];
@@ -1795,18 +1798,124 @@ export class DatabaseStorage implements IStorage {
       }
     });
 
-    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / totalCount) : undefined;
+    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / reviews.length) : undefined;
     const averageDaysLate = lateReviews.length > 0 
       ? lateReviews.reduce((sum, days) => sum + days, 0) / lateReviews.length 
       : undefined;
 
     return {
-      totalCount,
-      onTimeCount,
+      totalCount: totalDueCount, // Only non-vacation weeks count as "due"
+      onTimeCount, // All on-time reviews count positively
       onTimePercentage: Math.round(onTimePercentage * 100) / 100,
       averageDaysEarly,
-      averageDaysLate
+      averageDaysLate,
+      reviewerVacationWeeks: vacationReviews.length // Additional info for debugging
     };
+  }
+
+  // Vacations
+  async getUserVacationsByRange(organizationId: string, userId: string, from?: Date, to?: Date): Promise<Vacation[]> {
+    let whereConditions = [
+      eq(vacations.organizationId, organizationId),
+      eq(vacations.userId, userId)
+    ];
+
+    if (from) {
+      whereConditions.push(gte(vacations.weekOf, from));
+    }
+    if (to) {
+      whereConditions.push(lte(vacations.weekOf, to));
+    }
+
+    return await db.select()
+      .from(vacations)
+      .where(and(...whereConditions))
+      .orderBy(desc(vacations.weekOf));
+  }
+
+  async upsertVacationWeek(organizationId: string, userId: string, weekOf: Date, note?: string): Promise<Vacation> {
+    // Normalize weekOf to Monday 00:00 Central Time
+    const normalizedWeekOf = getWeekStartCentral(weekOf);
+
+    const [vacation] = await db
+      .insert(vacations)
+      .values({
+        organizationId,
+        userId,
+        weekOf: normalizedWeekOf,
+        note: note ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [vacations.organizationId, vacations.userId, vacations.weekOf],
+        set: {
+          note: note ?? null,
+        }
+      })
+      .returning();
+
+    // Invalidate analytics cache for this organization since vacation status affects compliance metrics
+    this.analyticsCache.invalidateForOrganization(organizationId);
+    
+    // Trigger re-aggregation for the affected week (fire-and-forget)
+    // This ensures compliance metrics are recalculated with the new vacation status
+    AggregationService.getInstance().recomputeUserDayAggregates(
+      organizationId, 
+      userId, 
+      normalizedWeekOf
+    ).catch(error => {
+      console.error(`Failed to recompute aggregates after vacation upsert for user ${userId}:`, error);
+    });
+
+    return vacation;
+  }
+
+  async deleteVacationWeek(organizationId: string, userId: string, weekOf: Date): Promise<boolean> {
+    // Normalize weekOf to Monday 00:00 Central Time
+    const normalizedWeekOf = getWeekStartCentral(weekOf);
+
+    const result = await db
+      .delete(vacations)
+      .where(and(
+        eq(vacations.organizationId, organizationId),
+        eq(vacations.userId, userId),
+        eq(vacations.weekOf, normalizedWeekOf)
+      ))
+      .returning({ id: vacations.id });
+
+    const wasDeleted = result.length > 0;
+    
+    if (wasDeleted) {
+      // Invalidate analytics cache for this organization since vacation status affects compliance metrics
+      this.analyticsCache.invalidateForOrganization(organizationId);
+      
+      // Trigger re-aggregation for the affected week (fire-and-forget)
+      // This ensures compliance metrics are recalculated with the updated vacation status
+      AggregationService.getInstance().recomputeUserDayAggregates(
+        organizationId, 
+        userId, 
+        normalizedWeekOf
+      ).catch(error => {
+        console.error(`Failed to recompute aggregates after vacation deletion for user ${userId}:`, error);
+      });
+    }
+
+    return wasDeleted;
+  }
+
+  async isUserOnVacation(organizationId: string, userId: string, weekOf: Date): Promise<boolean> {
+    // Normalize weekOf to Monday 00:00 Central Time
+    const normalizedWeekOf = getWeekStartCentral(weekOf);
+
+    const [vacation] = await db.select({ id: vacations.id })
+      .from(vacations)
+      .where(and(
+        eq(vacations.organizationId, organizationId),
+        eq(vacations.userId, userId),
+        eq(vacations.weekOf, normalizedWeekOf)
+      ))
+      .limit(1);
+
+    return !!vacation;
   }
 }
 
@@ -1818,6 +1927,8 @@ export class MemStorage implements IStorage {
   private wins: Map<string, Win> = new Map();
   private comments: Map<string, Comment> = new Map();
   private shoutoutsMap: Map<string, Shoutout> = new Map();
+  private vacations: Map<string, Vacation> = new Map();
+  private analyticsCache = new AnalyticsCache();
 
   constructor() {
     this.seedData();
@@ -2770,13 +2881,21 @@ export class MemStorage implements IStorage {
       relevantCheckins = relevantCheckins.filter(checkin => this.isInDateRange(checkin.weekOf, from, to));
     }
 
+    // Add vacation status to each checkin
+    const checkinsWithVacationStatus = await Promise.all(
+      relevantCheckins.map(async (checkin) => {
+        const isOnVacation = await this.isUserOnVacation(organizationId, checkin.userId, checkin.weekOf);
+        return { ...checkin, isOnVacation };
+      })
+    );
+
     let complianceResults: ComplianceMetricsResult[] = [];
 
     if (period) {
       // Group by period
       const groupedData = new Map<string, any[]>();
       
-      relevantCheckins.forEach(checkin => {
+      checkinsWithVacationStatus.forEach(checkin => {
         const periodStart = this.truncateDate(checkin.weekOf, period);
         const periodKey = periodStart.toISOString();
         
@@ -2795,7 +2914,7 @@ export class MemStorage implements IStorage {
     } else {
       // Aggregate metrics
       complianceResults = [{
-        metrics: this.calculateMemComplianceMetrics(relevantCheckins)
+        metrics: this.calculateMemComplianceMetrics(checkinsWithVacationStatus)
       }];
     }
 
@@ -2833,13 +2952,22 @@ export class MemStorage implements IStorage {
       relevantReviews = relevantReviews.filter(checkin => this.isInDateRange(checkin.weekOf, from, to));
     }
 
+    // Add reviewer vacation status to each review
+    const reviewsWithVacationStatus = await Promise.all(
+      relevantReviews.map(async (review) => {
+        const reviewerOnVacation = review.reviewedBy ? 
+          await this.isUserOnVacation(organizationId, review.reviewedBy, review.weekOf) : false;
+        return { ...review, reviewerOnVacation };
+      })
+    );
+
     let complianceResults: ComplianceMetricsResult[] = [];
 
     if (period) {
       // Group by period
       const groupedData = new Map<string, any[]>();
       
-      relevantReviews.forEach(review => {
+      reviewsWithVacationStatus.forEach(review => {
         const periodStart = this.truncateDate(review.weekOf, period);
         const periodKey = periodStart.toISOString();
         
@@ -2858,7 +2986,7 @@ export class MemStorage implements IStorage {
     } else {
       // Aggregate metrics
       complianceResults = [{
-        metrics: this.calculateMemReviewComplianceMetrics(relevantReviews)
+        metrics: this.calculateMemReviewComplianceMetrics(reviewsWithVacationStatus)
       }];
     }
 
@@ -2870,11 +2998,18 @@ export class MemStorage implements IStorage {
       return { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
     }
 
-    const totalCount = checkins.length;
-    const onTimeCount = checkins.filter(c => c.submittedOnTime).length;
-    const onTimePercentage = totalCount > 0 ? (onTimeCount / totalCount) * 100 : 0;
+    // Separate vacation and non-vacation weeks
+    const nonVacationCheckins = checkins.filter(c => !c.isOnVacation);
+    const vacationCheckins = checkins.filter(c => c.isOnVacation);
 
-    // Calculate average days early/late
+    // For compliance calculation:
+    // - totalCount = non-vacation weeks only (these are "due" weeks)
+    // - onTimeCount = on-time submissions from both vacation and non-vacation weeks
+    const totalDueCount = nonVacationCheckins.length;
+    const onTimeCount = checkins.filter(c => c.submittedOnTime).length;
+    const onTimePercentage = totalDueCount > 0 ? (onTimeCount / totalDueCount) * 100 : 0;
+
+    // Calculate average days early/late for all submissions
     let totalDaysDiff = 0;
     let earlyCount = 0;
     let lateSubmissions = [];
@@ -2894,17 +3029,18 @@ export class MemStorage implements IStorage {
       }
     });
 
-    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / totalCount) : undefined;
+    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / checkins.length) : undefined;
     const averageDaysLate = lateSubmissions.length > 0 
       ? lateSubmissions.reduce((sum, days) => sum + days, 0) / lateSubmissions.length 
       : undefined;
 
     return {
-      totalCount,
-      onTimeCount,
+      totalCount: totalDueCount, // Only non-vacation weeks count as "due"
+      onTimeCount, // All on-time submissions count positively
       onTimePercentage: Math.round(onTimePercentage * 100) / 100,
       averageDaysEarly,
-      averageDaysLate
+      averageDaysLate,
+      vacationWeeks: vacationCheckins.length // Additional info for debugging
     };
   }
 
@@ -2913,11 +3049,18 @@ export class MemStorage implements IStorage {
       return { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
     }
 
-    const totalCount = reviews.length;
-    const onTimeCount = reviews.filter(r => r.reviewedOnTime).length;
-    const onTimePercentage = totalCount > 0 ? (onTimeCount / totalCount) * 100 : 0;
+    // Separate vacation and non-vacation weeks for reviewers
+    const nonVacationReviews = reviews.filter(r => !r.reviewerOnVacation);
+    const vacationReviews = reviews.filter(r => r.reviewerOnVacation);
 
-    // Calculate average days early/late for reviews
+    // For review compliance calculation:
+    // - totalCount = non-vacation weeks only (weeks when reviewer was expected to review)
+    // - onTimeCount = on-time reviews from both vacation and non-vacation weeks
+    const totalDueCount = nonVacationReviews.length;
+    const onTimeCount = reviews.filter(r => r.reviewedOnTime).length;
+    const onTimePercentage = totalDueCount > 0 ? (onTimeCount / totalDueCount) * 100 : 0;
+
+    // Calculate average days early/late for all reviews
     let totalDaysDiff = 0;
     let earlyCount = 0;
     let lateReviews = [];
@@ -2937,18 +3080,128 @@ export class MemStorage implements IStorage {
       }
     });
 
-    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / totalCount) : undefined;
+    const averageDaysEarly = earlyCount > 0 ? Math.abs(totalDaysDiff / reviews.length) : undefined;
     const averageDaysLate = lateReviews.length > 0 
       ? lateReviews.reduce((sum, days) => sum + days, 0) / lateReviews.length 
       : undefined;
 
     return {
-      totalCount,
-      onTimeCount,
+      totalCount: totalDueCount, // Only non-vacation weeks count as "due"
+      onTimeCount, // All on-time reviews count positively
       onTimePercentage: Math.round(onTimePercentage * 100) / 100,
       averageDaysEarly,
-      averageDaysLate
+      averageDaysLate,
+      reviewerVacationWeeks: vacationReviews.length // Additional info for debugging
     };
+  }
+
+  // Vacations
+  async getUserVacationsByRange(organizationId: string, userId: string, from?: Date, to?: Date): Promise<Vacation[]> {
+    const allVacations = Array.from(this.vacations.values())
+      .filter(vacation => 
+        vacation.organizationId === organizationId && 
+        vacation.userId === userId
+      );
+
+    let filteredVacations = allVacations;
+    
+    if (from) {
+      filteredVacations = filteredVacations.filter(vacation => vacation.weekOf >= from);
+    }
+    if (to) {
+      filteredVacations = filteredVacations.filter(vacation => vacation.weekOf <= to);
+    }
+
+    return filteredVacations.sort((a, b) => b.weekOf.getTime() - a.weekOf.getTime());
+  }
+
+  async upsertVacationWeek(organizationId: string, userId: string, weekOf: Date, note?: string): Promise<Vacation> {
+    // Normalize weekOf to Monday 00:00 Central Time
+    const normalizedWeekOf = getWeekStartCentral(weekOf);
+
+    // Create a key for finding existing vacation
+    const key = `${organizationId}:${userId}:${normalizedWeekOf.getTime()}`;
+    
+    // Check if vacation already exists
+    const existingVacation = Array.from(this.vacations.values())
+      .find(v => 
+        v.organizationId === organizationId && 
+        v.userId === userId && 
+        v.weekOf.getTime() === normalizedWeekOf.getTime()
+      );
+
+    const vacation: Vacation = {
+      id: existingVacation?.id || randomUUID(),
+      organizationId,
+      userId,
+      weekOf: normalizedWeekOf,
+      note: note ?? null,
+      createdAt: existingVacation?.createdAt || new Date(),
+    };
+
+    this.vacations.set(vacation.id, vacation);
+    
+    // Invalidate analytics cache for this organization since vacation status affects compliance metrics
+    this.analyticsCache.invalidateForOrganization(organizationId);
+    
+    // Trigger re-aggregation for the affected week (fire-and-forget)
+    // This ensures compliance metrics are recalculated with the new vacation status
+    AggregationService.getInstance().recomputeUserDayAggregates(
+      organizationId, 
+      userId, 
+      normalizedWeekOf
+    ).catch(error => {
+      console.error(`Failed to recompute aggregates after vacation upsert for user ${userId}:`, error);
+    });
+    
+    return vacation;
+  }
+
+  async deleteVacationWeek(organizationId: string, userId: string, weekOf: Date): Promise<boolean> {
+    // Normalize weekOf to Monday 00:00 Central Time
+    const normalizedWeekOf = getWeekStartCentral(weekOf);
+
+    const vacationToDelete = Array.from(this.vacations.values())
+      .find(v => 
+        v.organizationId === organizationId && 
+        v.userId === userId && 
+        v.weekOf.getTime() === normalizedWeekOf.getTime()
+      );
+
+    if (vacationToDelete) {
+      this.vacations.delete(vacationToDelete.id);
+      
+      // Invalidate analytics cache for this organization since vacation status affects compliance metrics
+      this.analyticsCache.invalidateForOrganization(organizationId);
+      
+      // Trigger re-aggregation for the affected week (fire-and-forget)
+      // This ensures compliance metrics are recalculated with the updated vacation status
+      AggregationService.getInstance().recomputeUserDayAggregates(
+        organizationId, 
+        userId, 
+        normalizedWeekOf
+      ).catch(error => {
+        console.error(`Failed to recompute aggregates after vacation deletion for user ${userId}:`, error);
+      });
+      
+      return true;
+    }
+
+    return false;
+  }
+
+  async isUserOnVacation(organizationId: string, userId: string, weekOf: Date): Promise<boolean> {
+    // Normalize weekOf to Monday 00:00 Central Time
+    const normalizedWeekOf = getWeekStartCentral(weekOf);
+
+    const vacation = Array.from(this.vacations.values())
+      .find(v => 
+        v.organizationId === organizationId && 
+        v.userId === userId && 
+        v.weekOf.getTime() === normalizedWeekOf.getTime()
+      );
+
+    return !!vacation;
   }
 }
 

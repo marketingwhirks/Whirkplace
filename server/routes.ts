@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { 
   insertUserSchema, insertTeamSchema, insertCheckinSchema, 
   insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema,
-  reviewCheckinSchema, ReviewStatus,
+  insertVacationSchema, reviewCheckinSchema, ReviewStatus,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType
 } from "@shared/schema";
@@ -79,6 +79,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const date = new Date(val);
       return !isNaN(date.getTime());
     }, "Invalid 'to' date format").transform(val => new Date(val)),
+  });
+  
+  // Vacation validation schemas
+  const vacationQuerySchema = z.object({
+    from: z.string().optional().refine((val) => {
+      if (!val) return true;
+      const date = new Date(val);
+      return !isNaN(date.getTime());
+    }, "Invalid 'from' date format").transform(val => val ? new Date(val) : undefined),
+    to: z.string().optional().refine((val) => {
+      if (!val) return true;
+      const date = new Date(val);
+      return !isNaN(date.getTime());
+    }, "Invalid 'to' date format").transform(val => val ? new Date(val) : undefined),
+  });
+  
+  const vacationParamSchema = z.object({
+    weekOf: z.string().refine((val) => {
+      const date = new Date(val);
+      return !isNaN(date.getTime());
+    }, "Invalid 'weekOf' date format").transform(val => new Date(val)),
   });
   
   // Users
@@ -1125,6 +1146,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete comment" });
+    }
+  });
+
+  // Vacations
+  app.get("/api/vacations", requireAuth(), async (req, res) => {
+    try {
+      const currentUser = req.currentUser!;
+      const query = vacationQuerySchema.parse(req.query);
+      
+      // Validate date range
+      if (query.from && query.to && query.from > query.to) {
+        return res.status(400).json({ message: "From date must be before to date" });
+      }
+      
+      // Users can only view their own vacations
+      const vacations = await storage.getUserVacationsByRange(
+        req.orgId, 
+        currentUser.id, 
+        query.from, 
+        query.to
+      );
+      
+      res.json(vacations);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters",
+          details: error.errors
+        });
+      }
+      console.error("Failed to fetch vacations:", error);
+      res.status(500).json({ message: "Failed to fetch vacations" });
+    }
+  });
+
+  app.post("/api/vacations", requireAuth(), async (req, res) => {
+    try {
+      const currentUser = req.currentUser!;
+      const vacationData = insertVacationSchema.parse(req.body);
+      
+      // Security: Always use the current user's ID, never trust client data
+      const sanitizedData = {
+        ...vacationData,
+        userId: currentUser.id,
+      };
+      
+      const vacation = await storage.upsertVacationWeek(
+        req.orgId,
+        currentUser.id,
+        sanitizedData.weekOf,
+        sanitizedData.note
+      );
+      
+      res.status(201).json(vacation);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid vacation data",
+          details: error.errors
+        });
+      }
+      console.error("Failed to create/update vacation:", error);
+      res.status(500).json({ message: "Failed to create/update vacation" });
+    }
+  });
+
+  app.delete("/api/vacations/:weekOf", requireAuth(), async (req, res) => {
+    try {
+      const currentUser = req.currentUser!;
+      const params = vacationParamSchema.parse(req.params);
+      
+      // Users can only delete their own vacations
+      const deleted = await storage.deleteVacationWeek(
+        req.orgId,
+        currentUser.id,
+        params.weekOf
+      );
+      
+      if (!deleted) {
+        return res.status(404).json({ message: "Vacation week not found" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid weekOf parameter",
+          details: error.errors
+        });
+      }
+      console.error("Failed to delete vacation:", error);
+      res.status(500).json({ message: "Failed to delete vacation" });
     }
   });
 

@@ -1,11 +1,12 @@
 import { db } from "../db";
 import { 
-  checkins, shoutouts, users, teams,
+  checkins, shoutouts, users, teams, vacations,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   type InsertPulseMetricsDaily, type InsertShoutoutMetricsDaily,
   type InsertComplianceMetricsDaily, type InsertAggregationWatermark
 } from "@shared/schema";
 import { eq, and, gte, lte, sum, count, avg, sql, asc, desc } from "drizzle-orm";
+import { getWeekStartCentral } from "@shared/utils/dueDates";
 
 /**
  * AggregationService handles pre-computing daily analytics aggregates for improved performance
@@ -192,6 +193,7 @@ export class AggregationService {
 
   /**
    * Recompute compliance metrics for a specific user and date
+   * This method now handles vacation exclusions to match real-time calculations
    */
   private async recomputeComplianceMetrics(
     organizationId: string,
@@ -201,11 +203,15 @@ export class AggregationService {
     startOfDay: Date,
     endOfDay: Date
   ): Promise<void> {
-    // Query checkin compliance data for the day
-    const checkinComplianceData = await db
+    // Query checkin compliance data for the day with vacation awareness
+    const checkinData = await db
       .select({
-        totalCount: count(checkins.id),
-        onTimeCount: sum(sql`CASE WHEN ${checkins.submittedOnTime} = true THEN 1 ELSE 0 END`)
+        checkinId: checkins.id,
+        weekOf: checkins.weekOf,
+        submittedOnTime: checkins.submittedOnTime,
+        reviewedBy: checkins.reviewedBy,
+        reviewedOnTime: checkins.reviewedOnTime,
+        reviewedAt: checkins.reviewedAt
       })
       .from(checkins)
       .where(and(
@@ -216,11 +222,40 @@ export class AggregationService {
         eq(checkins.isComplete, true) // Only completed check-ins
       ));
 
+    // Query vacation status for each check-in week
+    const checkinVacationStatus = await Promise.all(
+      checkinData.map(async (checkin) => {
+        const normalizedWeekOf = getWeekStartCentral(checkin.weekOf);
+        const [vacation] = await db
+          .select({ id: vacations.id })
+          .from(vacations)
+          .where(and(
+            eq(vacations.organizationId, organizationId),
+            eq(vacations.userId, userId),
+            eq(vacations.weekOf, normalizedWeekOf)
+          ))
+          .limit(1);
+        
+        return {
+          ...checkin,
+          isOnVacation: !!vacation
+        };
+      })
+    );
+
+    // Calculate checkin compliance with vacation exclusions
+    const nonVacationCheckins = checkinVacationStatus.filter(c => !c.isOnVacation);
+    const checkinComplianceCount = nonVacationCheckins.length; // Only non-vacation weeks count as "due"
+    const checkinOnTimeCount = checkinVacationStatus.filter(c => c.submittedOnTime).length; // All on-time submissions count
+
     // Query review compliance data for the day (where user is the reviewer)
-    const reviewComplianceData = await db
+    const reviewData = await db
       .select({
-        totalCount: count(checkins.id),
-        onTimeCount: sum(sql`CASE WHEN ${checkins.reviewedOnTime} = true THEN 1 ELSE 0 END`)
+        checkinId: checkins.id,
+        weekOf: checkins.weekOf,
+        reviewedBy: checkins.reviewedBy,
+        reviewedOnTime: checkins.reviewedOnTime,
+        reviewedAt: checkins.reviewedAt
       })
       .from(checkins)
       .where(and(
@@ -231,10 +266,31 @@ export class AggregationService {
         sql`${checkins.reviewedAt} IS NOT NULL` // Only reviewed check-ins
       ));
 
-    const checkinComplianceCount = Number(checkinComplianceData[0]?.totalCount) || 0;
-    const checkinOnTimeCount = Number(checkinComplianceData[0]?.onTimeCount) || 0;
-    const reviewComplianceCount = Number(reviewComplianceData[0]?.totalCount) || 0;
-    const reviewOnTimeCount = Number(reviewComplianceData[0]?.onTimeCount) || 0;
+    // Query vacation status for each review week (for the reviewer)
+    const reviewVacationStatus = await Promise.all(
+      reviewData.map(async (review) => {
+        const normalizedWeekOf = getWeekStartCentral(review.weekOf);
+        const [vacation] = await db
+          .select({ id: vacations.id })
+          .from(vacations)
+          .where(and(
+            eq(vacations.organizationId, organizationId),
+            eq(vacations.userId, userId), // Reviewer's vacation status
+            eq(vacations.weekOf, normalizedWeekOf)
+          ))
+          .limit(1);
+        
+        return {
+          ...review,
+          reviewerOnVacation: !!vacation
+        };
+      })
+    );
+
+    // Calculate review compliance with vacation exclusions
+    const nonVacationReviews = reviewVacationStatus.filter(r => !r.reviewerOnVacation);
+    const reviewComplianceCount = nonVacationReviews.length; // Only non-vacation weeks count as "due"
+    const reviewOnTimeCount = reviewVacationStatus.filter(r => r.reviewedOnTime).length; // All on-time reviews count
 
     // Delete existing aggregate for this day and user (if any)
     await db

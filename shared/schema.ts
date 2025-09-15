@@ -134,6 +134,22 @@ export const shoutouts = pgTable("shoutouts", {
   orgToUserCreatedAtIdx: index("shoutouts_org_to_user_created_at_idx").on(table.organizationId, table.toUserId, table.createdAt),
 }));
 
+export const vacations = pgTable("vacations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  weekOf: timestamp("week_of").notNull(), // Monday 00:00 Central Time for the vacation week (stored as UTC)
+  note: text("note"), // Optional vacation notes/description
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgIdx: index("vacations_org_idx").on(table.organizationId),
+  orgUserIdx: index("vacations_org_user_idx").on(table.organizationId, table.userId),
+  orgWeekOfIdx: index("vacations_org_week_of_idx").on(table.organizationId, table.weekOf),
+  orgUserWeekOfIdx: index("vacations_org_user_week_of_idx").on(table.organizationId, table.userId, table.weekOf),
+  // Unique constraint to prevent duplicate vacation entries for the same user and week
+  orgUserWeekOfUnique: unique("vacations_org_user_week_of_unique").on(table.organizationId, table.userId, table.weekOf),
+}));
+
 // Analytics Tables for Daily Aggregates
 export const pulseMetricsDaily = pgTable("pulse_metrics_daily", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -261,6 +277,15 @@ export const insertShoutoutSchema = createInsertSchema(shoutouts).omit({
   message: z.string().min(1, "Message is required").max(500, "Message too long"),
 });
 
+export const insertVacationSchema = createInsertSchema(vacations).omit({
+  id: true,
+  createdAt: true,
+  organizationId: true, // Set by middleware, not user-settable
+}).extend({
+  weekOf: z.coerce.date(),
+  note: z.string().max(500, "Vacation note too long").optional(),
+});
+
 export const insertPulseMetricsDailySchema = createInsertSchema(pulseMetricsDaily).omit({
   id: true,
   createdAt: true,
@@ -329,6 +354,9 @@ export type Comment = typeof comments.$inferSelect;
 
 export type InsertShoutout = z.infer<typeof insertShoutoutSchema>;
 export type Shoutout = typeof shoutouts.$inferSelect;
+
+export type InsertVacation = z.infer<typeof insertVacationSchema>;
+export type Vacation = typeof vacations.$inferSelect;
 
 export type InsertPulseMetricsDaily = z.infer<typeof insertPulseMetricsDailySchema>;
 export type PulseMetricsDaily = typeof pulseMetricsDaily.$inferSelect;
