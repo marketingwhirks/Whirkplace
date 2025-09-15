@@ -468,11 +468,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/teams", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
-      const teamData = insertTeamSchema.parse(req.body);
+      // Create team schema that excludes organizationId from client validation
+      const createTeamSchema = insertTeamSchema.omit({ organizationId: true });
+      
+      const teamData = createTeamSchema.parse(req.body);
       const sanitizedData = sanitizeForOrganization(teamData, req.orgId);
       const team = await storage.createTeam(req.orgId, sanitizedData);
       res.status(201).json(team);
     } catch (error) {
+      console.error("POST /api/teams - Validation error:", error);
       res.status(400).json({ message: "Invalid team data" });
     }
   });

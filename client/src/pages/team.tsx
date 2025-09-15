@@ -266,6 +266,7 @@ export default function Team() {
                               <SelectItem value="no-leader">Select a leader</SelectItem>
                               {users
                                 .filter(user => user.role === "manager" || user.role === "admin")
+                                .filter(user => user.id && user.id.trim() !== "") // Ensure valid user IDs
                                 .map(user => (
                                   <SelectItem key={user.id} value={user.id}>
                                     {user.name} ({user.role})
@@ -402,11 +403,13 @@ export default function Team() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="no-team">No Team</SelectItem>
-                              {teams.map(team => (
-                                <SelectItem key={team.id} value={team.id}>
-                                  {team.name}
-                                </SelectItem>
-                              ))}
+                              {teams
+                                .filter(team => team.id && team.id.trim() !== "") // Ensure valid team IDs
+                                .map(team => (
+                                  <SelectItem key={team.id} value={team.id}>
+                                    {team.name}
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                           <FormMessage />
@@ -430,6 +433,7 @@ export default function Team() {
                               <SelectItem value="no-manager">No Manager</SelectItem>
                               {users
                                 .filter(user => user.role === "manager" || user.role === "admin")
+                                .filter(user => user.id && user.id.trim() !== "") // Ensure valid user IDs
                                 .map(user => (
                                   <SelectItem key={user.id} value={user.id}>
                                     {user.name}
