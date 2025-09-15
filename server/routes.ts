@@ -4,7 +4,8 @@ import { z } from "zod";
 import { storage } from "./storage";
 import { 
   insertUserSchema, insertTeamSchema, insertCheckinSchema, 
-  insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema 
+  insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema,
+  type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric 
 } from "@shared/schema";
 import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout } from "./services/slack";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
@@ -12,6 +13,46 @@ import { requireOrganization, sanitizeForOrganization } from "./middleware/organ
 export async function registerRoutes(app: Express): Promise<Server> {
   // Apply organization middleware to all API routes
   app.use("/api", requireOrganization());
+  
+  // Analytics validation schemas
+  const analyticsBaseSchema = z.object({
+    scope: z.enum(['organization', 'team', 'user']).default('organization'),
+    id: z.string().optional(),
+    period: z.enum(['day', 'week', 'month', 'quarter', 'year']).default('month'),
+    from: z.string().optional().refine((val) => {
+      if (!val) return true;
+      const date = new Date(val);
+      return !isNaN(date.getTime());
+    }, "Invalid 'from' date format").transform(val => val ? new Date(val) : undefined),
+    to: z.string().optional().refine((val) => {
+      if (!val) return true;
+      const date = new Date(val);
+      return !isNaN(date.getTime());
+    }, "Invalid 'to' date format").transform(val => val ? new Date(val) : undefined),
+  });
+  
+  const shoutoutAnalyticsSchema = analyticsBaseSchema.extend({
+    direction: z.enum(['given', 'received', 'all']).default('all'),
+    visibility: z.enum(['public', 'private', 'all']).default('all'),
+  });
+  
+  const leaderboardSchema = analyticsBaseSchema.extend({
+    metric: z.enum(['shoutouts_received', 'shoutouts_given', 'pulse_avg']).default('shoutouts_received'),
+  });
+  
+  const overviewSchema = z.object({
+    period: z.enum(['day', 'week', 'month', 'quarter', 'year']).default('month'),
+    from: z.string().optional().refine((val) => {
+      if (!val) return true;
+      const date = new Date(val);
+      return !isNaN(date.getTime());
+    }, "Invalid 'from' date format").transform(val => val ? new Date(val) : undefined),
+    to: z.string().optional().refine((val) => {
+      if (!val) return true;
+      const date = new Date(val);
+      return !isNaN(date.getTime());
+    }, "Invalid 'to' date format").transform(val => val ? new Date(val) : undefined),
+  });
   
   // Users
   app.get("/api/users", async (req, res) => {
@@ -557,6 +598,143 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch team health analytics" });
+    }
+  });
+
+  // Analytics - Pulse Metrics
+  app.get("/api/analytics/pulse", async (req, res) => {
+    try {
+      const query = analyticsBaseSchema.parse(req.query);
+      
+      // Validate scope and id relationship
+      if ((query.scope === 'team' || query.scope === 'user') && !query.id) {
+        return res.status(400).json({ message: "ID is required for team and user scopes" });
+      }
+      
+      // Validate date range
+      if (query.from && query.to && query.from > query.to) {
+        return res.status(400).json({ message: "From date must be before to date" });
+      }
+      
+      const metrics = await storage.getPulseMetrics(req.orgId, {
+        scope: query.scope as AnalyticsScope,
+        entityId: query.id,
+        period: query.period as AnalyticsPeriod,
+        from: query.from,
+        to: query.to,
+      });
+      
+      res.json(metrics);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to fetch pulse analytics" });
+    }
+  });
+
+  // Analytics - Shoutout Metrics  
+  app.get("/api/analytics/shoutouts", async (req, res) => {
+    try {
+      const query = shoutoutAnalyticsSchema.parse(req.query);
+      
+      // Validate scope and id relationship
+      if ((query.scope === 'team' || query.scope === 'user') && !query.id) {
+        return res.status(400).json({ message: "ID is required for team and user scopes" });
+      }
+      
+      // Validate date range
+      if (query.from && query.to && query.from > query.to) {
+        return res.status(400).json({ message: "From date must be before to date" });
+      }
+      
+      const metrics = await storage.getShoutoutMetrics(req.orgId, {
+        scope: query.scope as AnalyticsScope,
+        entityId: query.id,
+        period: query.period as AnalyticsPeriod,
+        direction: query.direction as ShoutoutDirection,
+        visibility: query.visibility as ShoutoutVisibility,
+        from: query.from,
+        to: query.to,
+      });
+      
+      res.json(metrics);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to fetch shoutout analytics" });
+    }
+  });
+
+  // Analytics - Leaderboard
+  app.get("/api/analytics/leaderboard", async (req, res) => {
+    try {
+      const query = leaderboardSchema.parse(req.query);
+      
+      // Validate scope and id relationship
+      if ((query.scope === 'team' || query.scope === 'user') && !query.id) {
+        return res.status(400).json({ message: "ID is required for team and user scopes" });
+      }
+      
+      // Validate date range
+      if (query.from && query.to && query.from > query.to) {
+        return res.status(400).json({ message: "From date must be before to date" });
+      }
+      
+      const leaderboard = await storage.getLeaderboard(req.orgId, {
+        metric: query.metric as LeaderboardMetric,
+        scope: query.scope as AnalyticsScope,
+        entityId: query.id,
+        period: query.period as AnalyticsPeriod,
+        from: query.from,
+        to: query.to,
+      });
+      
+      res.json(leaderboard);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to fetch leaderboard analytics" });
+    }
+  });
+
+  // Analytics - Overview
+  app.get("/api/analytics/overview", async (req, res) => {
+    try {
+      const query = overviewSchema.parse(req.query);
+      
+      // Validate date range
+      if (query.from && query.to && query.from > query.to) {
+        return res.status(400).json({ message: "From date must be before to date" });
+      }
+      
+      const overview = await storage.getAnalyticsOverview(
+        req.orgId,
+        query.period as AnalyticsPeriod,
+        query.from,
+        query.to
+      );
+      
+      res.json(overview);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to fetch analytics overview" });
     }
   });
 
