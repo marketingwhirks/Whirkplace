@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useCurrentUser, useUserPermissions } from "@/hooks/useCurrentUser";
 import {
   BarChart,
   Bar,
@@ -102,7 +103,8 @@ interface Team {
 interface User {
   id: string;
   name: string;
-  teamId?: string;
+  role: string;
+  teamId: string | null;
 }
 
 // Default filter values
@@ -238,18 +240,41 @@ const FiltersBar = ({
   filters, 
   onFiltersChange,
   teams,
-  users 
+  users,
+  currentUser,
+  canViewScope
 }: {
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
   teams: Team[];
   users: User[];
+  currentUser?: User;
+  canViewScope: (scope: "organization" | "team" | "user") => boolean;
 }) => {
   const entityOptions = useMemo(() => {
     if (filters.scope === 'team') return teams;
     if (filters.scope === 'user') return users;
     return [];
   }, [filters.scope, teams, users]);
+  
+  // Get available scope options based on user role
+  const availableScopeOptions = useMemo(() => {
+    const options = [];
+    
+    if (canViewScope('organization')) {
+      options.push({ value: 'organization', label: 'Organization' });
+    }
+    
+    if (canViewScope('team')) {
+      options.push({ value: 'team', label: 'Team' });
+    }
+    
+    if (canViewScope('user')) {
+      options.push({ value: 'user', label: 'User' });
+    }
+    
+    return options;
+  }, [canViewScope]);
 
   const defaultRange = getDefaultDateRange(filters.period);
   const actualFrom = filters.from || defaultRange.from;
@@ -268,16 +293,32 @@ const FiltersBar = ({
                 onFiltersChange({ ...filters, scope, id: undefined })
               }
               data-testid="filter-scope"
+              disabled={availableScopeOptions.length <= 1}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select scope" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="organization">Organization</SelectItem>
-                <SelectItem value="team">Team</SelectItem>
-                <SelectItem value="user">User</SelectItem>
+                {availableScopeOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
+            {/* Show role restriction hint */}
+            {currentUser?.role === 'member' && (
+              <div className="text-xs text-muted-foreground">
+                <AlertCircle className="inline h-3 w-3 mr-1" />
+                Restricted to your personal data
+              </div>
+            )}
+            {currentUser?.role === 'manager' && (
+              <div className="text-xs text-muted-foreground">
+                <AlertCircle className="inline h-3 w-3 mr-1" />
+                Restricted to your team data
+              </div>
+            )}
           </div>
 
           {/* Entity Picker */}
@@ -290,6 +331,7 @@ const FiltersBar = ({
                 value={filters.id || ''} 
                 onValueChange={(id) => onFiltersChange({ ...filters, id: id || undefined })}
                 data-testid="filter-entity"
+                disabled={entityOptions.length <= 1}
               >
                 <SelectTrigger>
                   <SelectValue placeholder={`Select ${filters.scope}`} />
@@ -298,10 +340,21 @@ const FiltersBar = ({
                   {entityOptions.map((entity) => (
                     <SelectItem key={entity.id} value={entity.id}>
                       {entity.name}
+                      {/* Show "you" indicator for current user */}
+                      {entity.id === currentUser?.id && (
+                        <span className="text-muted-foreground ml-1">(you)</span>
+                      )}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {/* Show locked entity hint */}
+              {entityOptions.length === 1 && (
+                <div className="text-xs text-muted-foreground">
+                  <AlertCircle className="inline h-3 w-3 mr-1" />
+                  {currentUser?.role === 'member' ? 'Locked to your account' : 'Locked to your team'}
+                </div>
+              )}
             </div>
           )}
 
@@ -802,19 +855,108 @@ const Leaderboard = ({ filters }: { filters: FilterState }) => {
 
 // Main Analytics Component
 export default function Analytics() {
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  // Get current user and permissions
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const { canViewScope, getDefaultScope, getEntityId } = useUserPermissions();
+  
+  // Initialize filters based on user role
+  const getInitialFilters = (): FilterState => {
+    if (!currentUser) return DEFAULT_FILTERS;
+    
+    const defaultScope = getDefaultScope();
+    const defaultEntityId = getEntityId(defaultScope);
+    
+    return {
+      ...DEFAULT_FILTERS,
+      scope: defaultScope,
+      id: defaultEntityId
+    };
+  };
+
+  const [filters, setFilters] = useState<FilterState>(getInitialFilters);
   const updateUrl = useUrlSync(filters, setFilters);
 
-  // Load teams and users for filter options
+  // Update filters when user data loads
+  useEffect(() => {
+    if (currentUser && filters.scope === DEFAULT_FILTERS.scope) {
+      const roleBasedFilters = getInitialFilters();
+      setFilters(roleBasedFilters);
+      updateUrl(roleBasedFilters);
+    }
+  }, [currentUser]);
+
+  // Load teams and users for filter options (filtered by user permissions)
   const { data: teams = [] } = useQuery<Team[]>({
-    queryKey: ['/api/teams']
+    queryKey: ['/api/teams'],
+    enabled: !!currentUser
   });
 
   const { data: users = [] } = useQuery<User[]>({
-    queryKey: ['/api/users']
+    queryKey: ['/api/users'], 
+    enabled: !!currentUser
   });
 
+  // Filter teams and users based on user permissions
+  const availableTeams = useMemo(() => {
+    if (!currentUser) return [];
+    
+    switch (currentUser.role) {
+      case 'admin':
+        return teams; // Admins see all teams
+      case 'manager':
+        return teams.filter(team => team.id === currentUser.teamId); // Managers see only their team
+      case 'member':
+        return []; // Members don't see team options
+      default:
+        return [];
+    }
+  }, [teams, currentUser]);
+
+  const availableUsers = useMemo(() => {
+    if (!currentUser) return [];
+    
+    switch (currentUser.role) {
+      case 'admin':
+        return users; // Admins see all users
+      case 'manager':
+        return users.filter(user => user.teamId === currentUser.teamId); // Managers see team members
+      case 'member':
+        return users.filter(user => user.id === currentUser.id); // Members see only themselves
+      default:
+        return [];
+    }
+  }, [users, currentUser]);
+
   const handleFiltersChange = (newFilters: FilterState) => {
+    // Validate that the new filters are allowed for the current user
+    if (!canViewScope(newFilters.scope)) {
+      // If scope is not allowed, enforce the user's default scope
+      const allowedScope = getDefaultScope();
+      const allowedEntityId = getEntityId(allowedScope);
+      
+      newFilters = {
+        ...newFilters,
+        scope: allowedScope,
+        id: allowedEntityId
+      };
+    }
+    
+    // For members, always enforce their own user ID
+    if (currentUser?.role === 'member' && newFilters.scope === 'user') {
+      newFilters = {
+        ...newFilters,
+        id: currentUser.id
+      };
+    }
+    
+    // For managers with team scope, enforce their team ID
+    if (currentUser?.role === 'manager' && newFilters.scope === 'team') {
+      newFilters = {
+        ...newFilters,
+        id: currentUser.teamId || undefined
+      };
+    }
+    
     setFilters(newFilters);
     updateUrl(newFilters);
   };
@@ -829,6 +971,30 @@ export default function Analytics() {
     };
   }, [filters]);
 
+  // Show loading state while user data is being fetched
+  if (userLoading || !currentUser) {
+    return (
+      <>
+        <Header
+          title="Analytics"
+          description="View team performance insights and trends"
+        />
+        <main className="flex-1 overflow-auto p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <OverviewCardSkeleton key={i} />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ChartSkeleton />
+            <ChartSkeleton />
+          </div>
+          <TableSkeleton />
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
       <Header
@@ -837,12 +1003,31 @@ export default function Analytics() {
       />
 
       <main className="flex-1 overflow-auto p-6 space-y-6">
+        {/* User Role Badge */}
+        {currentUser && (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Badge 
+                variant={currentUser.role === 'admin' ? 'default' : currentUser.role === 'manager' ? 'secondary' : 'outline'}
+                data-testid="user-role-badge"
+              >
+                {currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1)} Access
+              </Badge>
+              <span className="text-sm text-muted-foreground">
+                Viewing as: {currentUser.name}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Filters */}
         <FiltersBar 
           filters={filters}
           onFiltersChange={handleFiltersChange}
-          teams={teams}
-          users={users}
+          teams={availableTeams}
+          users={availableUsers}
+          currentUser={currentUser}
+          canViewScope={canViewScope}
         />
 
         {/* Overview Cards */}

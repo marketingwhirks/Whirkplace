@@ -9,10 +9,18 @@ import {
 } from "@shared/schema";
 import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout } from "./services/slack";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
+import { authenticateUser, requireAuth } from "./middleware/auth";
+import { authorizeAnalyticsAccess } from "./middleware/authorization";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Apply organization middleware to all API routes
   app.use("/api", requireOrganization());
+  
+  // Apply authentication middleware to all API routes
+  app.use("/api", authenticateUser());
+  
+  // Apply authentication requirement to all protected routes
+  // (Not all routes need authentication, so we'll add requireAuth() selectively)
   
   // Analytics validation schemas
   const analyticsBaseSchema = z.object({
@@ -61,6 +69,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(users);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // Get current authenticated user
+  app.get("/api/users/current", requireAuth(), async (req, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      res.json(req.currentUser);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch current user" });
     }
   });
 
@@ -563,7 +583,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Analytics & Stats
-  app.get("/api/analytics/team-health", async (req, res) => {
+  app.get("/api/analytics/team-health", requireAuth(), authorizeAnalyticsAccess(), async (req, res) => {
     try {
       const recentCheckins = await storage.getRecentCheckins(req.orgId, 100);
       const totalCheckins = recentCheckins.length;
@@ -602,7 +622,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Analytics - Pulse Metrics
-  app.get("/api/analytics/pulse", async (req, res) => {
+  app.get("/api/analytics/pulse", requireAuth(), authorizeAnalyticsAccess(), async (req, res) => {
     try {
       const query = analyticsBaseSchema.parse(req.query);
       
@@ -637,7 +657,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Analytics - Shoutout Metrics  
-  app.get("/api/analytics/shoutouts", async (req, res) => {
+  app.get("/api/analytics/shoutouts", requireAuth(), authorizeAnalyticsAccess(), async (req, res) => {
     try {
       const query = shoutoutAnalyticsSchema.parse(req.query);
       
@@ -674,7 +694,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Analytics - Leaderboard
-  app.get("/api/analytics/leaderboard", async (req, res) => {
+  app.get("/api/analytics/leaderboard", requireAuth(), authorizeAnalyticsAccess(), async (req, res) => {
     try {
       const query = leaderboardSchema.parse(req.query);
       
@@ -710,7 +730,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Analytics - Overview
-  app.get("/api/analytics/overview", async (req, res) => {
+  app.get("/api/analytics/overview", requireAuth(), authorizeAnalyticsAccess(), async (req, res) => {
     try {
       const query = overviewSchema.parse(req.query);
       
