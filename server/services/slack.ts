@@ -148,9 +148,9 @@ export async function announceWin(winTitle: string, winDescription: string, user
 }
 
 /**
- * Announce kudos to Slack with rich formatting and company values
+ * Announce shoutout to Slack with rich formatting and company values
  */
-export async function announceKudos(
+export async function announceShoutout(
   message: string, 
   fromUserName: string, 
   toUserName: string, 
@@ -182,7 +182,7 @@ export async function announceKudos(
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `🙌 *${fromUserName}* gave kudos to *${toUserName}*!`
+        text: `🙌 *${fromUserName}* gave a shoutout to *${toUserName}*!`
       }
     },
     {

@@ -8,7 +8,7 @@ import Dashboard from "@/pages/dashboard";
 import Checkins from "@/pages/checkins";
 import Team from "@/pages/team";
 import Wins from "@/pages/wins";
-import Kudos from "@/pages/kudos";
+import ShoutoutsPage from "@/pages/shoutouts";
 import Questions from "@/pages/questions";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
@@ -24,7 +24,7 @@ function Router() {
           <Route path="/checkins" component={Checkins} />
           <Route path="/team" component={Team} />
           <Route path="/wins" component={Wins} />
-          <Route path="/kudos" component={Kudos} />
+          <Route path="/shoutouts" component={ShoutoutsPage} />
           <Route path="/questions" component={Questions} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/settings" component={Settings} />

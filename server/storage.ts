@@ -5,8 +5,8 @@ import {
   type Question, type InsertQuestion,
   type Win, type InsertWin,
   type Comment, type InsertComment,
-  type Kudos, type InsertKudos,
-  users, teams, checkins, questions, wins, comments, kudos
+  type Shoutout, type InsertShoutout,
+  users, teams, checkins, questions, wins, comments, shoutouts
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
@@ -60,14 +60,14 @@ export interface IStorage {
   deleteComment(organizationId: string, id: string): Promise<boolean>;
   getCommentsByCheckin(organizationId: string, checkinId: string): Promise<Comment[]>;
 
-  // Kudos
-  getKudos(organizationId: string, id: string): Promise<Kudos | undefined>;
-  createKudos(organizationId: string, kudos: InsertKudos & { fromUserId: string }): Promise<Kudos>;
-  updateKudos(organizationId: string, id: string, kudos: Partial<InsertKudos>): Promise<Kudos | undefined>;
-  deleteKudos(organizationId: string, id: string): Promise<boolean>;
-  getKudosByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Kudos[]>;
-  getRecentKudos(organizationId: string, limit?: number): Promise<Kudos[]>;
-  getPublicKudos(organizationId: string, limit?: number): Promise<Kudos[]>;
+  // Shoutouts
+  getShoutout(organizationId: string, id: string): Promise<Shoutout | undefined>;
+  createShoutout(organizationId: string, shoutout: InsertShoutout & { fromUserId: string }): Promise<Shoutout>;
+  updateShoutout(organizationId: string, id: string, shoutout: Partial<InsertShoutout>): Promise<Shoutout | undefined>;
+  deleteShoutout(organizationId: string, id: string): Promise<boolean>;
+  getShoutoutsByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Shoutout[]>;
+  getRecentShoutouts(organizationId: string, limit?: number): Promise<Shoutout[]>;
+  getPublicShoutouts(organizationId: string, limit?: number): Promise<Shoutout[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -412,92 +412,92 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(comments.createdAt));
   }
 
-  // Kudos
-  async getKudos(organizationId: string, id: string): Promise<Kudos | undefined> {
-    const [kudosRecord] = await db.select().from(kudos).where(
-      and(eq(kudos.id, id), eq(kudos.organizationId, organizationId))
+  // Shoutouts
+  async getShoutout(organizationId: string, id: string): Promise<Shoutout | undefined> {
+    const [shoutoutRecord] = await db.select().from(shoutouts).where(
+      and(eq(shoutouts.id, id), eq(shoutouts.organizationId, organizationId))
     );
-    return kudosRecord || undefined;
+    return shoutoutRecord || undefined;
   }
 
-  async createKudos(organizationId: string, insertKudos: InsertKudos & { fromUserId: string }): Promise<Kudos> {
-    const [kudosRecord] = await db
-      .insert(kudos)
+  async createShoutout(organizationId: string, insertShoutout: InsertShoutout & { fromUserId: string }): Promise<Shoutout> {
+    const [shoutoutRecord] = await db
+      .insert(shoutouts)
       .values({
-        ...insertKudos,
+        ...insertShoutout,
         organizationId,
-        isPublic: insertKudos.isPublic ?? true,
-        slackMessageId: insertKudos.slackMessageId ?? null,
+        isPublic: insertShoutout.isPublic ?? true,
+        slackMessageId: insertShoutout.slackMessageId ?? null,
       })
       .returning();
-    return kudosRecord;
+    return shoutoutRecord;
   }
 
-  async updateKudos(organizationId: string, id: string, kudosUpdate: Partial<InsertKudos>): Promise<Kudos | undefined> {
-    const [kudosRecord] = await db
-      .update(kudos)
-      .set(kudosUpdate)
-      .where(and(eq(kudos.id, id), eq(kudos.organizationId, organizationId)))
+  async updateShoutout(organizationId: string, id: string, shoutoutUpdate: Partial<InsertShoutout>): Promise<Shoutout | undefined> {
+    const [shoutoutRecord] = await db
+      .update(shoutouts)
+      .set(shoutoutUpdate)
+      .where(and(eq(shoutouts.id, id), eq(shoutouts.organizationId, organizationId)))
       .returning();
-    return kudosRecord || undefined;
+    return shoutoutRecord || undefined;
   }
 
-  async deleteKudos(organizationId: string, id: string): Promise<boolean> {
-    const result = await db.delete(kudos).where(
-      and(eq(kudos.id, id), eq(kudos.organizationId, organizationId))
+  async deleteShoutout(organizationId: string, id: string): Promise<boolean> {
+    const result = await db.delete(shoutouts).where(
+      and(eq(shoutouts.id, id), eq(shoutouts.organizationId, organizationId))
     );
     return (result.rowCount ?? 0) > 0;
   }
 
-  async getKudosByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Kudos[]> {
+  async getShoutoutsByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Shoutout[]> {
     let whereCondition;
     
     if (type === 'received') {
       whereCondition = and(
-        eq(kudos.toUserId, userId),
-        eq(kudos.organizationId, organizationId)
+        eq(shoutouts.toUserId, userId),
+        eq(shoutouts.organizationId, organizationId)
       );
     } else if (type === 'given') {
       whereCondition = and(
-        eq(kudos.fromUserId, userId),
-        eq(kudos.organizationId, organizationId)
+        eq(shoutouts.fromUserId, userId),
+        eq(shoutouts.organizationId, organizationId)
       );
     } else {
       // Return both received and given - user must be either giver OR receiver
       whereCondition = and(
         or(
-          eq(kudos.fromUserId, userId),
-          eq(kudos.toUserId, userId)
+          eq(shoutouts.fromUserId, userId),
+          eq(shoutouts.toUserId, userId)
         ),
-        eq(kudos.organizationId, organizationId)
+        eq(shoutouts.organizationId, organizationId)
       );
     }
 
     return await db
       .select()
-      .from(kudos)
+      .from(shoutouts)
       .where(whereCondition)
-      .orderBy(desc(kudos.createdAt));
+      .orderBy(desc(shoutouts.createdAt));
   }
 
-  async getRecentKudos(organizationId: string, limit = 20): Promise<Kudos[]> {
+  async getRecentShoutouts(organizationId: string, limit = 20): Promise<Shoutout[]> {
     return await db
       .select()
-      .from(kudos)
-      .where(eq(kudos.organizationId, organizationId))
-      .orderBy(desc(kudos.createdAt))
+      .from(shoutouts)
+      .where(eq(shoutouts.organizationId, organizationId))
+      .orderBy(desc(shoutouts.createdAt))
       .limit(limit);
   }
 
-  async getPublicKudos(organizationId: string, limit = 20): Promise<Kudos[]> {
+  async getPublicShoutouts(organizationId: string, limit = 20): Promise<Shoutout[]> {
     return await db
       .select()
-      .from(kudos)
+      .from(shoutouts)
       .where(and(
-        eq(kudos.isPublic, true),
-        eq(kudos.organizationId, organizationId)
+        eq(shoutouts.isPublic, true),
+        eq(shoutouts.organizationId, organizationId)
       ))
-      .orderBy(desc(kudos.createdAt))
+      .orderBy(desc(shoutouts.createdAt))
       .limit(limit);
   }
 }
@@ -509,7 +509,7 @@ export class MemStorage implements IStorage {
   private questions: Map<string, Question> = new Map();
   private wins: Map<string, Win> = new Map();
   private comments: Map<string, Comment> = new Map();
-  private kudosMap: Map<string, Kudos> = new Map();
+  private shoutoutsMap: Map<string, Shoutout> = new Map();
 
   constructor() {
     this.seedData();
@@ -870,66 +870,66 @@ export class MemStorage implements IStorage {
   }
 
   // Kudos
-  async getKudos(organizationId: string, id: string): Promise<Kudos | undefined> {
-    const kudosRecord = this.kudosMap.get(id);
-    return kudosRecord && kudosRecord.organizationId === organizationId ? kudosRecord : undefined;
+  async getShoutout(organizationId: string, id: string): Promise<Shoutout | undefined> {
+    const shoutoutRecord = this.shoutoutsMap.get(id);
+    return shoutoutRecord && shoutoutRecord.organizationId === organizationId ? shoutoutRecord : undefined;
   }
 
-  async createKudos(organizationId: string, insertKudos: InsertKudos & { fromUserId: string }): Promise<Kudos> {
-    const kudosRecord: Kudos = {
-      ...insertKudos,
+  async createShoutout(organizationId: string, insertShoutout: InsertShoutout & { fromUserId: string }): Promise<Shoutout> {
+    const shoutoutRecord: Shoutout = {
+      ...insertShoutout,
       id: randomUUID(),
       organizationId,
       createdAt: new Date(),
-      isPublic: insertKudos.isPublic ?? true,
-      slackMessageId: insertKudos.slackMessageId ?? null,
+      isPublic: insertShoutout.isPublic ?? true,
+      slackMessageId: insertShoutout.slackMessageId ?? null,
     };
-    this.kudosMap.set(kudosRecord.id, kudosRecord);
-    return kudosRecord;
+    this.shoutoutsMap.set(shoutoutRecord.id, shoutoutRecord);
+    return shoutoutRecord;
   }
 
-  async updateKudos(organizationId: string, id: string, kudosUpdate: Partial<InsertKudos>): Promise<Kudos | undefined> {
-    const kudosRecord = this.kudosMap.get(id);
-    if (!kudosRecord || kudosRecord.organizationId !== organizationId) return undefined;
+  async updateShoutout(organizationId: string, id: string, shoutoutUpdate: Partial<InsertShoutout>): Promise<Shoutout | undefined> {
+    const shoutoutRecord = this.shoutoutsMap.get(id);
+    if (!shoutoutRecord || shoutoutRecord.organizationId !== organizationId) return undefined;
     
-    const updatedKudos = { ...kudosRecord, ...kudosUpdate };
-    this.kudosMap.set(id, updatedKudos);
-    return updatedKudos;
+    const updatedShoutout = { ...shoutoutRecord, ...shoutoutUpdate };
+    this.shoutoutsMap.set(id, updatedShoutout);
+    return updatedShoutout;
   }
 
-  async deleteKudos(organizationId: string, id: string): Promise<boolean> {
-    const kudosRecord = this.kudosMap.get(id);
-    if (!kudosRecord || kudosRecord.organizationId !== organizationId) return false;
-    return this.kudosMap.delete(id);
+  async deleteShoutout(organizationId: string, id: string): Promise<boolean> {
+    const shoutoutRecord = this.shoutoutsMap.get(id);
+    if (!shoutoutRecord || shoutoutRecord.organizationId !== organizationId) return false;
+    return this.shoutoutsMap.delete(id);
   }
 
-  async getKudosByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Kudos[]> {
-    return Array.from(this.kudosMap.values())
-      .filter(kudosRecord => {
-        if (kudosRecord.organizationId !== organizationId) return false;
+  async getShoutoutsByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Shoutout[]> {
+    return Array.from(this.shoutoutsMap.values())
+      .filter(shoutoutRecord => {
+        if (shoutoutRecord.organizationId !== organizationId) return false;
         
         if (type === 'received') {
-          return kudosRecord.toUserId === userId;
+          return shoutoutRecord.toUserId === userId;
         } else if (type === 'given') {
-          return kudosRecord.fromUserId === userId;
+          return shoutoutRecord.fromUserId === userId;
         } else {
           // Return both received and given
-          return kudosRecord.toUserId === userId || kudosRecord.fromUserId === userId;
+          return shoutoutRecord.toUserId === userId || shoutoutRecord.fromUserId === userId;
         }
       })
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   }
 
-  async getRecentKudos(organizationId: string, limit = 20): Promise<Kudos[]> {
-    return Array.from(this.kudosMap.values())
-      .filter(kudosRecord => kudosRecord.organizationId === organizationId)
+  async getRecentShoutouts(organizationId: string, limit = 20): Promise<Shoutout[]> {
+    return Array.from(this.shoutoutsMap.values())
+      .filter(shoutoutRecord => shoutoutRecord.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
   }
 
-  async getPublicKudos(organizationId: string, limit = 20): Promise<Kudos[]> {
-    return Array.from(this.kudosMap.values())
-      .filter(kudosRecord => kudosRecord.isPublic && kudosRecord.organizationId === organizationId)
+  async getPublicShoutouts(organizationId: string, limit = 20): Promise<Shoutout[]> {
+    return Array.from(this.shoutoutsMap.values())
+      .filter(shoutoutRecord => shoutoutRecord.isPublic && shoutoutRecord.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
   }

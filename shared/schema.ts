@@ -94,10 +94,10 @@ export const comments = pgTable("comments", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
-export const kudos = pgTable("kudos", {
+export const shoutouts = pgTable("shoutouts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  fromUserId: varchar("from_user_id").notNull(), // who gave the kudos
-  toUserId: varchar("to_user_id").notNull(), // who received the kudos
+  fromUserId: varchar("from_user_id").notNull(), // who gave the shoutout
+  toUserId: varchar("to_user_id").notNull(), // who received the shoutout
   message: text("message").notNull(),
   organizationId: varchar("organization_id").notNull(),
   values: text("values").array().notNull().default([]), // company values associated
@@ -142,7 +142,7 @@ export const insertCommentSchema = createInsertSchema(comments).omit({
   createdAt: true,
 });
 
-export const insertKudosSchema = createInsertSchema(kudos).omit({
+export const insertShoutoutSchema = createInsertSchema(shoutouts).omit({
   id: true,
   createdAt: true,
   fromUserId: true, // Never accept fromUserId from client - set server-side
@@ -152,7 +152,7 @@ export const insertKudosSchema = createInsertSchema(kudos).omit({
 });
 
 // Separate schema for updates - only allow certain fields to be modified
-export const updateKudosSchema = z.object({
+export const updateShoutoutSchema = z.object({
   message: z.string().min(1, "Message is required").max(500, "Message too long").optional(),
   isPublic: z.boolean().optional(),
   values: z.array(z.string()).min(1, "At least one company value must be selected").optional(),
@@ -178,5 +178,5 @@ export type Win = typeof wins.$inferSelect;
 export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Comment = typeof comments.$inferSelect;
 
-export type InsertKudos = z.infer<typeof insertKudosSchema>;
-export type Kudos = typeof kudos.$inferSelect;
+export type InsertShoutout = z.infer<typeof insertShoutoutSchema>;
+export type Shoutout = typeof shoutouts.$inferSelect;

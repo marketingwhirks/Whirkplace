@@ -11,7 +11,7 @@ const navigation = [
   { name: "Check-ins", href: "/checkins", icon: ClipboardList, badge: 2 },
   { name: "Team", href: "/team", icon: Users },
   { name: "Wins", href: "/wins", icon: Trophy, badge: 4 },
-  { name: "Kudos", href: "/kudos", icon: Gift },
+  { name: "Shout Outs", href: "/shoutouts", icon: Gift },
   { name: "Questions", href: "/questions", icon: HelpCircle },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Settings", href: "/settings", icon: Settings },

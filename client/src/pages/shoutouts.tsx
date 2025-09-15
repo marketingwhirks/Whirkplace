@@ -22,27 +22,27 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
-import type { Kudos, User, InsertKudos } from "@shared/schema";
-import { insertKudosSchema, defaultCompanyValuesArray } from "@shared/schema";
+import type { Shoutout, User, InsertShoutout } from "@shared/schema";
+import { insertShoutoutSchema, defaultCompanyValuesArray } from "@shared/schema";
 
-// Form schema for kudos creation - fromUserId is set server-side
-const kudosFormSchema = insertKudosSchema.extend({
+// Form schema for shoutout creation - fromUserId is set server-side
+const shoutoutFormSchema = insertShoutoutSchema.extend({
   message: z.string().min(1, "Message is required").max(500, "Message too long"),
   toUserId: z.string().min(1, "Please select a recipient"),
 });
 
-type KudosForm = z.infer<typeof kudosFormSchema>;
+type ShoutoutForm = z.infer<typeof shoutoutFormSchema>;
 
-export default function KudosPage() {
+export default function ShoutoutsPage() {
   const { toast } = useToast();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [editingKudos, setEditingKudos] = useState<Kudos | null>(null);
+  const [editingShoutout, setEditingShoutout] = useState<Shoutout | null>(null);
   const [filter, setFilter] = useState<"all" | "received" | "given" | "public">("all");
-  const [deleteKudos, setDeleteKudos] = useState<Kudos | null>(null);
+  const [deleteShoutout, setDeleteShoutout] = useState<Shoutout | null>(null);
 
-  // Fetch kudos with proper filter parameters
-  const { data: kudos = [], isLoading: kudosLoading } = useQuery<Kudos[]>({
-    queryKey: ["/api/kudos", {
+  // Fetch shoutouts with proper filter parameters
+  const { data: shoutouts = [], isLoading: shoutoutsLoading } = useQuery<Shoutout[]>({
+    queryKey: ["/api/shoutouts", {
       ...(filter === "public" && { public: "true" }),
       ...(filter === "received" && { userId: "current-user-id", type: "received" }),
       ...(filter === "given" && { userId: "current-user-id", type: "given" }),
@@ -54,9 +54,9 @@ export default function KudosPage() {
     queryKey: ["/api/users"],
   });
 
-  // Create kudos form
-  const createForm = useForm<KudosForm>({
-    resolver: zodResolver(kudosFormSchema),
+  // Create shoutout form
+  const createForm = useForm<ShoutoutForm>({
+    resolver: zodResolver(shoutoutFormSchema),
     defaultValues: {
       message: "",
       toUserId: "",
@@ -65,7 +65,7 @@ export default function KudosPage() {
     },
   });
 
-  // Edit kudos form
+  // Edit shoutout form
   const editFormSchema = z.object({
     message: z.string().min(1, "Message is required").max(500, "Message too long"),
     isPublic: z.boolean().default(true),
@@ -81,69 +81,69 @@ export default function KudosPage() {
     },
   });
 
-  // Create kudos mutation
-  const createKudosMutation = useMutation({
-    mutationFn: async (data: KudosForm) => {
-      return apiRequest("POST", "/api/kudos", data);
+  // Create shoutout mutation
+  const createShoutoutMutation = useMutation({
+    mutationFn: async (data: ShoutoutForm) => {
+      return apiRequest("POST", "/api/shoutouts", data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/kudos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shoutouts"] });
       createForm.reset();
       setShowCreateDialog(false);
       toast({
         title: "Success",
-        description: "Kudos sent successfully! 🎉",
+        description: "Shoutout sent successfully! 🎉",
       });
     },
     onError: (error) => {
-      console.error("Kudos creation error:", error);
+      console.error("Shoutout creation error:", error);
       toast({
         title: "Error",
-        description: "Failed to send kudos",
+        description: "Failed to send shoutout",
         variant: "destructive",
       });
     },
   });
 
-  // Update kudos mutation
-  const updateKudosMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<KudosForm> }) => {
-      return apiRequest("PATCH", `/api/kudos/${id}`, data);
+  // Update shoutout mutation
+  const updateShoutoutMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<ShoutoutForm> }) => {
+      return apiRequest("PATCH", `/api/shoutouts/${id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/kudos"] });
-      setEditingKudos(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/shoutouts"] });
+      setEditingShoutout(null);
       editForm.reset();
       toast({
         title: "Success",
-        description: "Kudos updated successfully!",
+        description: "Shoutout updated successfully!",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to update kudos",
+        description: "Failed to update shoutout",
         variant: "destructive",
       });
     },
   });
 
-  // Delete kudos mutation
-  const deleteKudosMutation = useMutation({
+  // Delete shoutout mutation
+  const deleteShoutoutMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/kudos/${id}`);
+      return apiRequest("DELETE", `/api/shoutouts/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/kudos"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/shoutouts"] });
       toast({
         title: "Success",
-        description: "Kudos deleted successfully",
+        description: "Shoutout deleted successfully",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to delete kudos",
+        description: "Failed to delete shoutout",
         variant: "destructive",
       });
     },
@@ -170,25 +170,25 @@ export default function KudosPage() {
   // Handle create form submission
   const onCreateSubmit = createForm.handleSubmit((data) => {
     // fromUserId is now set server-side for security
-    createKudosMutation.mutate(data);
+    createShoutoutMutation.mutate(data);
   });
 
   // Handle edit form submission
   const onEditSubmit = editForm.handleSubmit((data) => {
-    if (!editingKudos) return;
-    updateKudosMutation.mutate({
-      id: editingKudos.id,
+    if (!editingShoutout) return;
+    updateShoutoutMutation.mutate({
+      id: editingShoutout.id,
       data,
     });
   });
 
   // Open edit dialog
-  const openEditDialog = (kudosItem: Kudos) => {
-    setEditingKudos(kudosItem);
+  const openEditDialog = (shoutoutItem: Shoutout) => {
+    setEditingShoutout(shoutoutItem);
     editForm.reset({
-      message: kudosItem.message,
-      isPublic: kudosItem.isPublic,
-      values: kudosItem.values,
+      message: shoutoutItem.message,
+      isPublic: shoutoutItem.isPublic,
+      values: shoutoutItem.values,
     });
   };
 
@@ -337,7 +337,7 @@ export default function KudosPage() {
                               Public Recognition
                             </FormLabel>
                             <FormDescription className="text-sm text-muted-foreground">
-                              Share this kudos with the team and post to Slack
+                              Share this shoutout with the team and post to Slack
                             </FormDescription>
                           </div>
                           <FormControl>
@@ -362,15 +362,15 @@ export default function KudosPage() {
                       </Button>
                       <Button 
                         type="submit" 
-                        disabled={createKudosMutation.isPending}
-                        data-testid="button-send-kudos"
+                        disabled={createShoutoutMutation.isPending}
+                        data-testid="button-send-shoutout"
                       >
-                        {createKudosMutation.isPending ? (
+                        {createShoutoutMutation.isPending ? (
                           <>Sending...</>
                         ) : (
                           <>
                             <Send className="mr-2 h-4 w-4" />
-                            Send Kudos
+                            Send Shoutout
                           </>
                         )}
                       </Button>
@@ -390,9 +390,9 @@ export default function KudosPage() {
               <TabsTrigger value="public" data-testid="tab-public">Public</TabsTrigger>
             </TabsList>
 
-            {/* Kudos Feed */}
+            {/* Shoutouts Feed */}
             <div className="mt-6">
-              {kudosLoading ? (
+              {shoutoutsLoading ? (
                 <div className="grid gap-4">
                   {[...Array(3)].map((_, i) => (
                     <Card key={i} data-testid={`skeleton-${i}`}>
@@ -405,58 +405,58 @@ export default function KudosPage() {
                     </Card>
                   ))}
                 </div>
-              ) : kudos.length === 0 ? (
+              ) : shoutouts.length === 0 ? (
                 <Card>
                   <CardContent className="p-12 text-center">
                     <Heart className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-medium mb-2">No kudos yet</h3>
+                    <h3 className="text-lg font-medium mb-2">No shoutouts yet</h3>
                     <p className="text-muted-foreground mb-4">
                       Be the first to recognize someone's great work!
                     </p>
                     <Button 
                       onClick={() => setShowCreateDialog(true)}
-                      data-testid="button-give-first-kudos"
+                      data-testid="button-give-first-shoutout"
                     >
                       <Gift className="mr-2 h-4 w-4" />
-                      Give First Kudos
+                      Give First Shoutout
                     </Button>
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid gap-4" data-testid="kudos-feed">
-                  {kudos.map((kudosItem) => (
-                    <Card key={kudosItem.id} data-testid={`kudos-${kudosItem.id}`}>
+                <div className="grid gap-4" data-testid="shoutouts-feed">
+                  {shoutouts.map((shoutoutItem) => (
+                    <Card key={shoutoutItem.id} data-testid={`shoutout-${shoutoutItem.id}`}>
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
                             <Avatar className="h-10 w-10">
                               <AvatarFallback>
-                                {getUserInitials(kudosItem.fromUserId)}
+                                {getUserInitials(shoutoutItem.fromUserId)}
                               </AvatarFallback>
                             </Avatar>
                             <div>
                               <p className="font-medium">
-                                <span data-testid={`text-from-${kudosItem.fromUserId}`}>
-                                  {getUserName(kudosItem.fromUserId)}
+                                <span data-testid={`text-from-${shoutoutItem.fromUserId}`}>
+                                  {getUserName(shoutoutItem.fromUserId)}
                                 </span>
                                 {" → "}
-                                <span data-testid={`text-to-${kudosItem.toUserId}`}>
-                                  {getUserName(kudosItem.toUserId)}
+                                <span data-testid={`text-to-${shoutoutItem.toUserId}`}>
+                                  {getUserName(shoutoutItem.toUserId)}
                                 </span>
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                {formatDistanceToNow(new Date(kudosItem.createdAt))} ago
+                                {formatDistanceToNow(new Date(shoutoutItem.createdAt))} ago
                               </p>
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            {kudosItem.isPublic ? (
-                              <Badge variant="secondary" data-testid={`badge-public-${kudosItem.id}`}>
+                            {shoutoutItem.isPublic ? (
+                              <Badge variant="secondary" data-testid={`badge-public-${shoutoutItem.id}`}>
                                 <Users className="mr-1 h-3 w-3" />
                                 Public
                               </Badge>
                             ) : (
-                              <Badge variant="outline" data-testid={`badge-private-${kudosItem.id}`}>
+                              <Badge variant="outline" data-testid={`badge-private-${shoutoutItem.id}`}>
                                 <Lock className="mr-1 h-3 w-3" />
                                 Private
                               </Badge>
@@ -465,17 +465,17 @@ export default function KudosPage() {
                         </div>
                       </CardHeader>
                       <CardContent className="pt-0">
-                        <p className="mb-3 text-sm leading-relaxed" data-testid={`text-message-${kudosItem.id}`}>
-                          {kudosItem.message}
+                        <p className="mb-3 text-sm leading-relaxed" data-testid={`text-message-${shoutoutItem.id}`}>
+                          {shoutoutItem.message}
                         </p>
-                        {kudosItem.values.length > 0 && (
+                        {shoutoutItem.values.length > 0 && (
                           <div className="flex flex-wrap gap-1">
-                            {kudosItem.values.map((value) => (
+                            {shoutoutItem.values.map((value) => (
                               <Badge 
                                 key={value} 
                                 variant="outline" 
                                 className="text-xs"
-                                data-testid={`badge-value-${value.replace(/\s+/g, '-')}-${kudosItem.id}`}
+                                data-testid={`badge-value-${value.replace(/\s+/g, '-')}-${shoutoutItem.id}`}
                               >
                                 <Star className="mr-1 h-3 w-3" />
                                 {value}

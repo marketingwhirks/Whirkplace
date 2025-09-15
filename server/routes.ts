@@ -4,9 +4,9 @@ import { z } from "zod";
 import { storage } from "./storage";
 import { 
   insertUserSchema, insertTeamSchema, insertCheckinSchema, 
-  insertQuestionSchema, insertWinSchema, insertCommentSchema, insertKudosSchema, updateKudosSchema 
+  insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema 
 } from "@shared/schema";
-import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceKudos } from "./services/slack";
+import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout } from "./services/slack";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -300,173 +300,173 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Helper function to check if user can access private kudos
-  const canAccessKudos = (kudos: any, currentUserId: string, user?: any): boolean => {
-    // Public kudos are always accessible
-    if (kudos.isPublic) return true;
+  // Helper function to check if user can access private shoutouts
+  const canAccessShoutouts = (shoutout: any, currentUserId: string, user?: any): boolean => {
+    // Public shoutouts are always accessible
+    if (shoutout.isPublic) return true;
     
-    // Private kudos are only accessible to:
+    // Private shoutouts are only accessible to:
     // 1. The giver (fromUserId)
     // 2. The recipient (toUserId)
     // 3. Admins/managers (future: when user roles are available)
-    return kudos.fromUserId === currentUserId || kudos.toUserId === currentUserId;
+    return shoutout.fromUserId === currentUserId || shoutout.toUserId === currentUserId;
   };
 
-  // Kudos
-  app.get("/api/kudos", async (req, res) => {
+  // Shoutouts
+  app.get("/api/shoutouts", async (req, res) => {
     try {
       const { public: isPublic, userId, type, limit } = req.query;
       // TODO: Replace with actual authenticated user ID when auth is implemented
       const currentUserId = "current-user-id";
-      let kudos;
+      let shoutouts;
       
       if (userId) {
-        kudos = await storage.getKudosByUser(req.orgId, userId as string, type as 'received' | 'given' | undefined);
+        shoutouts = await storage.getShoutoutsByUser(req.orgId, userId as string, type as 'received' | 'given' | undefined);
       } else if (isPublic === "true") {
-        kudos = await storage.getPublicKudos(req.orgId, limit ? parseInt(limit as string) : undefined);
+        shoutouts = await storage.getPublicShoutouts(req.orgId, limit ? parseInt(limit as string) : undefined);
       } else {
-        kudos = await storage.getRecentKudos(req.orgId, limit ? parseInt(limit as string) : undefined);
+        shoutouts = await storage.getRecentShoutouts(req.orgId, limit ? parseInt(limit as string) : undefined);
       }
       
-      // Filter private kudos based on user permissions
-      const filteredKudos = kudos.filter(k => canAccessKudos(k, currentUserId));
+      // Filter private shoutouts based on user permissions
+      const filteredShoutouts = shoutouts.filter(k => canAccessShoutouts(k, currentUserId));
       
-      res.json(filteredKudos);
+      res.json(filteredShoutouts);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch kudos" });
+      res.status(500).json({ message: "Failed to fetch shoutouts" });
     }
   });
 
-  app.get("/api/kudos/:id", async (req, res) => {
+  app.get("/api/shoutouts/:id", async (req, res) => {
     try {
-      const kudos = await storage.getKudos(req.orgId, req.params.id);
-      if (!kudos) {
-        return res.status(404).json({ message: "Kudos not found" });
+      const shoutout = await storage.getShoutout(req.orgId, req.params.id);
+      if (!shoutout) {
+        return res.status(404).json({ message: "Shoutout not found" });
       }
       
       // TODO: Replace with actual authenticated user ID when auth is implemented
       const currentUserId = "current-user-id";
       
-      // Check if user can access this kudos (privacy enforcement)
-      if (!canAccessKudos(kudos, currentUserId)) {
-        return res.status(404).json({ message: "Kudos not found" }); // Don't reveal existence
+      // Check if user can access this shoutout (privacy enforcement)
+      if (!canAccessShoutouts(shoutout, currentUserId)) {
+        return res.status(404).json({ message: "Shoutout not found" }); // Don't reveal existence
       }
       
-      res.json(kudos);
+      res.json(shoutout);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch kudos" });
+      res.status(500).json({ message: "Failed to fetch shoutout" });
     }
   });
 
-  app.post("/api/kudos", async (req, res) => {
+  app.post("/api/shoutouts", async (req, res) => {
     try {
-      const kudosData = insertKudosSchema.parse(req.body);
+      const shoutoutData = insertShoutoutSchema.parse(req.body);
       
       // TODO: Replace with actual authenticated user ID when auth is implemented
       const currentUserId = "current-user-id";
       
       // SECURITY: Never accept fromUserId from client - set server-side
-      const kudosWithSender = {
-        ...kudosData,
+      const shoutoutWithSender = {
+        ...shoutoutData,
         fromUserId: currentUserId
       };
       
-      const sanitizedData = sanitizeForOrganization(kudosWithSender, req.orgId);
-      const kudos = await storage.createKudos(req.orgId, sanitizedData);
+      const sanitizedData = sanitizeForOrganization(shoutoutWithSender, req.orgId);
+      const shoutout = await storage.createShoutout(req.orgId, sanitizedData);
       
       // Send Slack notification if public
-      if (kudos.isPublic) {
-        const fromUser = await storage.getUser(req.orgId, kudos.fromUserId);
-        const toUser = await storage.getUser(req.orgId, kudos.toUserId);
+      if (shoutout.isPublic) {
+        const fromUser = await storage.getUser(req.orgId, shoutout.fromUserId);
+        const toUser = await storage.getUser(req.orgId, shoutout.toUserId);
         
         if (fromUser && toUser) {
           try {
-            const slackMessageId = await announceKudos(
-              kudos.message,
+            const slackMessageId = await announceShoutout(
+              shoutout.message,
               fromUser.name,
               toUser.name,
-              kudos.values
+              shoutout.values
             );
             
             if (slackMessageId) {
-              await storage.updateKudos(req.orgId, kudos.id, { slackMessageId });
+              await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
             }
           } catch (slackError) {
-            console.warn("Failed to send Slack notification for kudos:", slackError);
+            console.warn("Failed to send Slack notification for shoutout:", slackError);
           }
         }
       }
       
-      res.status(201).json(kudos);
+      res.status(201).json(shoutout);
     } catch (error) {
-      console.error("Kudos creation validation error:", error);
+      console.error("Shoutout creation validation error:", error);
       res.status(400).json({ 
-        message: "Invalid kudos data",
+        message: "Invalid shoutout data",
         details: error instanceof Error ? error.message : "Unknown validation error"
       });
     }
   });
 
-  app.patch("/api/kudos/:id", async (req, res) => {
+  app.patch("/api/shoutouts/:id", async (req, res) => {
     try {
       // Use separate update schema that only allows safe fields
-      const updates = updateKudosSchema.parse(req.body);
+      const updates = updateShoutoutSchema.parse(req.body);
       
       // TODO: Replace with actual authenticated user ID when auth is implemented
       const currentUserId = "current-user-id";
       
-      // Check if kudos exists and user has permission to edit
-      const existingKudos = await storage.getKudos(req.orgId, req.params.id);
-      if (!existingKudos) {
-        return res.status(404).json({ message: "Kudos not found" });
+      // Check if shoutout exists and user has permission to edit
+      const existingShoutout = await storage.getShoutout(req.orgId, req.params.id);
+      if (!existingShoutout) {
+        return res.status(404).json({ message: "Shoutout not found" });
       }
       
-      // Only the original giver can edit kudos
-      if (existingKudos.fromUserId !== currentUserId) {
-        return res.status(403).json({ message: "You can only edit kudos you sent" });
+      // Only the original giver can edit shoutouts
+      if (existingShoutout.fromUserId !== currentUserId) {
+        return res.status(403).json({ message: "You can only edit shoutouts you sent" });
       }
       
       const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
-      const kudos = await storage.updateKudos(req.orgId, req.params.id, sanitizedUpdates);
-      if (!kudos) {
-        return res.status(404).json({ message: "Kudos not found" });
+      const shoutout = await storage.updateShoutout(req.orgId, req.params.id, sanitizedUpdates);
+      if (!shoutout) {
+        return res.status(404).json({ message: "Shoutout not found" });
       }
-      res.json(kudos);
+      res.json(shoutout);
     } catch (error) {
-      console.error("Kudos update validation error:", error);
+      console.error("Shoutout update validation error:", error);
       res.status(400).json({ 
-        message: "Invalid kudos data",
+        message: "Invalid shoutout data",
         details: error instanceof Error ? error.message : "Unknown validation error"
       });
     }
   });
 
-  app.delete("/api/kudos/:id", async (req, res) => {
+  app.delete("/api/shoutouts/:id", async (req, res) => {
     try {
-      const deleted = await storage.deleteKudos(req.orgId, req.params.id);
+      const deleted = await storage.deleteShoutout(req.orgId, req.params.id);
       if (!deleted) {
-        return res.status(404).json({ message: "Kudos not found" });
+        return res.status(404).json({ message: "Shoutout not found" });
       }
       res.status(204).send();
     } catch (error) {
-      res.status(500).json({ message: "Failed to delete kudos" });
+      res.status(500).json({ message: "Failed to delete shoutout" });
     }
   });
 
-  // User-specific kudos endpoint
-  app.get("/api/users/:id/kudos", async (req, res) => {
+  // User-specific shoutouts endpoint
+  app.get("/api/users/:id/shoutouts", async (req, res) => {
     try {
       const { type, limit } = req.query;
-      const kudos = await storage.getKudosByUser(
+      const shoutouts = await storage.getShoutoutsByUser(
         req.orgId, 
         req.params.id, 
         type as 'received' | 'given' | undefined
       );
       
-      const limitedKudos = limit ? kudos.slice(0, parseInt(limit as string)) : kudos;
-      res.json(limitedKudos);
+      const limitedShoutouts = limit ? shoutouts.slice(0, parseInt(limit as string)) : shoutouts;
+      res.json(limitedShoutouts);
     } catch (error) {
-      res.status(500).json({ message: "Failed to fetch user kudos" });
+      res.status(500).json({ message: "Failed to fetch user shoutouts" });
     }
   });
 
