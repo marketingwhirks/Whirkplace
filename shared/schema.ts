@@ -68,9 +68,13 @@ export const checkins = pgTable("checkins", {
   responses: jsonb("responses").notNull().default({}), // question_id -> response
   isComplete: boolean("is_complete").notNull().default(false),
   submittedAt: timestamp("submitted_at"),
+  dueDate: timestamp("due_date").notNull(), // When check-in is due (Monday 9am Central for that week)
+  submittedOnTime: boolean("submitted_on_time").notNull().default(false), // If submitted by due date
   reviewStatus: text("review_status").notNull().default("pending"), // pending, approved, rejected
   reviewedBy: varchar("reviewed_by"), // ID of reviewing team leader (nullable)
   reviewedAt: timestamp("reviewed_at"), // When review was completed (nullable)
+  reviewDueDate: timestamp("review_due_date").notNull(), // When review is due (Monday 9am Central)
+  reviewedOnTime: boolean("reviewed_on_time").notNull().default(false), // If review completed on time
   reviewComments: text("review_comments"), // Optional feedback (nullable)
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 }, (table) => ({
@@ -78,6 +82,9 @@ export const checkins = pgTable("checkins", {
   orgUserWeekOfIdx: index("checkins_org_user_week_of_idx").on(table.organizationId, table.userId, table.weekOf),
   orgReviewStatusIdx: index("checkins_org_review_status_idx").on(table.organizationId, table.reviewStatus),
   reviewedByDateIdx: index("checkins_reviewed_by_date_idx").on(table.reviewedBy, table.reviewedAt),
+  dueDateIdx: index("checkins_due_date_idx").on(table.dueDate),
+  orgSubmittedOnTimeIdx: index("checkins_org_submitted_on_time_idx").on(table.organizationId, table.submittedOnTime),
+  orgReviewedOnTimeIdx: index("checkins_org_reviewed_on_time_idx").on(table.organizationId, table.reviewedOnTime),
 }));
 
 export const questions = pgTable("questions", {
@@ -195,12 +202,16 @@ export const insertCheckinSchema = createInsertSchema(checkins).omit({
   createdAt: true,
   submittedAt: true,
   organizationId: true, // Set by middleware, not user-settable
+  submittedOnTime: true, // Computed server-side based on submission timing
   reviewStatus: true, // Always starts as "pending", not user-settable
   reviewedBy: true, // Only set by reviewers
   reviewedAt: true, // Only set by reviewers
+  reviewedOnTime: true, // Computed server-side based on review timing
   reviewComments: true, // Only set by reviewers
 }).extend({
   weekOf: z.coerce.date(),
+  dueDate: z.coerce.date(),
+  reviewDueDate: z.coerce.date(),
 });
 
 export const insertQuestionSchema = createInsertSchema(questions).omit({
