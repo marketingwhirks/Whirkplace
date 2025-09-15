@@ -1887,6 +1887,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Slack Events Endpoint - Handle event subscriptions and verification
+  app.post("/slack/events", async (req, res) => {
+    try {
+      const { type, challenge, event } = req.body;
+
+      // Handle URL verification challenge from Slack
+      if (type === "url_verification") {
+        console.log("Slack URL verification received");
+        return res.json({ challenge });
+      }
+
+      // Handle actual events (for future implementation)
+      if (type === "event_callback" && event) {
+        console.log("Slack event received:", event.type);
+        // TODO: Handle different event types as needed
+        // For now, just acknowledge receipt
+        res.status(200).json({ ok: true });
+      } else {
+        // Unknown event type
+        res.status(400).json({ error: "Unknown event type" });
+      }
+    } catch (error) {
+      console.error("Slack events error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
   // Admin aggregation endpoints
   app.post("/api/admin/aggregation/backfill", requireAuth(), async (req, res) => {
     try {
