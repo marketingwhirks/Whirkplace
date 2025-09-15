@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import RatingStars from "@/components/checkin/rating-stars";
 import WinCard from "@/components/wins/win-card";
 import TeamMemberCard from "@/components/team/team-member-card";
@@ -36,26 +37,32 @@ export default function Dashboard() {
   });
   const [selectedCheckin, setSelectedCheckin] = useState<(Checkin & { user?: User }) | null>(null);
 
-  // Fetch data
-  const { data: stats } = useQuery<DashboardStats>({
+  // Fetch data with loading and error states
+  const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/analytics/team-health"],
   });
 
-  const { data: recentCheckins = [] } = useQuery<Checkin[]>({
+  const { data: recentCheckins = [], isLoading: checkinsLoading, error: checkinsError } = useQuery<Checkin[]>({
     queryKey: ["/api/checkins"],
-    queryFn: () => fetch("/api/checkins?limit=5").then(res => res.json()),
+    queryFn: () => fetch("/api/checkins?limit=5").then(res => {
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+      return res.json();
+    }),
   });
 
-  const { data: recentWins = [] } = useQuery<Win[]>({
+  const { data: recentWins = [], isLoading: winsLoading, error: winsError } = useQuery<Win[]>({
     queryKey: ["/api/wins", "recent"],
-    queryFn: () => fetch("/api/wins?limit=5").then(res => res.json()),
+    queryFn: () => fetch("/api/wins?limit=5").then(res => {
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+      return res.json();
+    }),
   });
 
-  const { data: users = [] } = useQuery<User[]>({
+  const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
     queryKey: ["/api/users"],
   });
 
-  const { data: questions = [] } = useQuery<Question[]>({
+  const { data: questions = [], isLoading: questionsLoading } = useQuery<Question[]>({
     queryKey: ["/api/questions"],
   });
 
@@ -64,20 +71,20 @@ export default function Dashboard() {
     queryKey: ["/api/users", currentUser.id, "current-checkin"],
   });
 
-  // Enhanced data with user lookups
-  const enrichedCheckins = recentCheckins.map(checkin => ({
+  // Enhanced data with user lookups - with proper array guards
+  const enrichedCheckins = Array.isArray(recentCheckins) ? recentCheckins.map(checkin => ({
     ...checkin,
-    user: users.find(u => u.id === checkin.userId),
-  }));
+    user: Array.isArray(users) ? users.find(u => u.id === checkin.userId) : undefined,
+  })) : [];
 
-  const enrichedWins = recentWins.map(win => ({
+  const enrichedWins = Array.isArray(recentWins) ? recentWins.map(win => ({
     ...win,
-    user: users.find(u => u.id === win.userId),
-    nominator: win.nominatedBy ? users.find(u => u.id === win.nominatedBy) : undefined,
-  }));
+    user: Array.isArray(users) ? users.find(u => u.id === win.userId) : undefined,
+    nominator: win.nominatedBy && Array.isArray(users) ? users.find(u => u.id === win.nominatedBy) : undefined,
+  })) : [];
 
-  // Team structure (manager's reports)
-  const teamMembers = users.filter(user => user.managerId === currentUser.id);
+  // Team structure (manager's reports) - with proper array guard
+  const teamMembers = Array.isArray(users) ? users.filter(user => user.managerId === currentUser.id) : [];
 
   const handleRatingChange = (rating: number) => {
     setCheckinData(prev => ({ ...prev, overallMood: rating }));
@@ -162,10 +169,16 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Team Health</p>
-                  <p className="text-2xl font-bold text-foreground" data-testid="text-team-health">
-                    {stats?.averageRating.toFixed(1) || "0.0"}
+                  {statsLoading ? (
+                    <Skeleton className="h-8 w-16 my-1" />
+                  ) : (
+                    <p className="text-2xl font-bold text-foreground" data-testid="text-team-health">
+                      {stats?.averageRating?.toFixed(1) || "0.0"}
+                    </p>
+                  )}
+                  <p className="text-xs text-green-600">
+                    {stats?.averageRating && stats.averageRating > 0 ? "+0.3 from last week" : "No data yet"}
                   </p>
-                  <p className="text-xs text-green-600">+0.3 from last week</p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                   <Heart className="w-6 h-6 text-green-600" />
@@ -179,10 +192,16 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Check-ins Complete</p>
-                  <p className="text-2xl font-bold text-foreground" data-testid="text-checkin-complete">
-                    {stats?.completionRate || 0}%
+                  {statsLoading ? (
+                    <Skeleton className="h-8 w-20 my-1" />
+                  ) : (
+                    <p className="text-2xl font-bold text-foreground" data-testid="text-checkin-complete">
+                      {stats?.completionRate || 0}%
+                    </p>
+                  )}
+                  <p className="text-xs text-blue-600">
+                    {stats?.totalCheckins && stats.totalCheckins > 0 ? "12 of 14 team members" : "No check-ins yet"}
                   </p>
-                  <p className="text-xs text-blue-600">12 of 14 team members</p>
                 </div>
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                   <ClipboardCheck className="w-6 h-6 text-blue-600" />
@@ -196,10 +215,16 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Wins This Week</p>
-                  <p className="text-2xl font-bold text-foreground" data-testid="text-wins-count">
-                    {recentWins.length}
+                  {winsLoading ? (
+                    <Skeleton className="h-8 w-12 my-1" />
+                  ) : (
+                    <p className="text-2xl font-bold text-foreground" data-testid="text-wins-count">
+                      {Array.isArray(recentWins) ? recentWins.length : 0}
+                    </p>
+                  )}
+                  <p className="text-xs text-yellow-600">
+                    {Array.isArray(recentWins) && recentWins.length > 0 ? "+5 from last week" : "No wins yet"}
                   </p>
-                  <p className="text-xs text-yellow-600">+5 from last week</p>
                 </div>
                 <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
                   <Trophy className="w-6 h-6 text-yellow-600" />
@@ -213,10 +238,16 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Active Questions</p>
-                  <p className="text-2xl font-bold text-foreground" data-testid="text-questions-count">
-                    {questions.length}
+                  {questionsLoading ? (
+                    <Skeleton className="h-8 w-12 my-1" />
+                  ) : (
+                    <p className="text-2xl font-bold text-foreground" data-testid="text-questions-count">
+                      {Array.isArray(questions) ? questions.length : 0}
+                    </p>
+                  )}
+                  <p className="text-xs text-purple-600">
+                    {Array.isArray(questions) && questions.length > 0 ? "3 pending responses" : "No questions yet"}
                   </p>
-                  <p className="text-xs text-purple-600">3 pending responses</p>
                 </div>
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
                   <HelpCircle className="w-6 h-6 text-purple-600" />
@@ -240,7 +271,31 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {enrichedCheckins.length === 0 ? (
+                {checkinsLoading || usersLoading ? (
+                  // Loading state with skeletons
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="flex items-center space-x-4 p-4 bg-muted rounded-lg">
+                        <Skeleton className="w-12 h-12 rounded-full" />
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between">
+                            <Skeleton className="h-4 w-32" />
+                            <Skeleton className="h-4 w-20" />
+                          </div>
+                          <Skeleton className="h-3 w-full mt-2" />
+                          <div className="flex items-center justify-between mt-2">
+                            <Skeleton className="h-3 w-24" />
+                            <Skeleton className="h-6 w-20" />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : checkinsError ? (
+                  <p className="text-muted-foreground text-center py-8 text-red-500">
+                    Failed to load check-ins. Please refresh the page.
+                  </p>
+                ) : enrichedCheckins.length === 0 ? (
                   <p className="text-muted-foreground text-center py-8">
                     No check-ins yet. Encourage your team to submit their weekly check-ins!
                   </p>
@@ -271,7 +326,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <p className="text-sm text-muted-foreground mt-1" data-testid={`text-checkin-preview-${checkin.id}`}>
-                          {Object.values(checkin.responses)[0] || "No responses provided"}
+                          {Object.values(checkin.responses as Record<string, string>)[0] || "No responses provided"}
                         </p>
                         <div className="flex items-center justify-between mt-2">
                           <span className="text-xs text-muted-foreground" data-testid={`text-checkin-timestamp-${checkin.id}`}>
@@ -337,7 +392,31 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {enrichedWins.length === 0 ? (
+                {winsLoading || usersLoading ? (
+                  // Loading state with skeletons
+                  <div className="space-y-3">
+                    {[...Array(2)].map((_, i) => (
+                      <div key={i} className="p-4 bg-muted rounded-lg">
+                        <div className="flex items-start space-x-3">
+                          <Skeleton className="w-10 h-10 rounded-full" />
+                          <div className="flex-1">
+                            <Skeleton className="h-4 w-3/4 mb-2" />
+                            <Skeleton className="h-3 w-full" />
+                            <Skeleton className="h-3 w-2/3 mt-1" />
+                            <div className="flex items-center justify-between mt-2">
+                              <Skeleton className="h-3 w-24" />
+                              <Skeleton className="h-6 w-16" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : winsError ? (
+                  <p className="text-muted-foreground text-center py-4 text-red-500">
+                    Failed to load wins. Please refresh the page.
+                  </p>
+                ) : enrichedWins.length === 0 ? (
                   <p className="text-muted-foreground text-center py-4">
                     No wins yet. Start celebrating your team's achievements!
                   </p>
@@ -379,6 +458,7 @@ export default function Dashboard() {
                     username: "sarah.johnson",
                     password: "",
                     email: "sarah@teampulse.com",
+                    organizationId: "current-org-id",
                     teamId: null,
                     managerId: null,
                     avatar: null,
