@@ -93,10 +93,10 @@ export interface IStorage {
   getUserBySlackId(organizationId: string, slackUserId: string): Promise<User | undefined>;
   createUser(organizationId: string, user: InsertUser): Promise<User>;
   updateUser(organizationId: string, id: string, user: Partial<InsertUser>): Promise<User | undefined>;
-  getUsersByTeam(organizationId: string, teamId: string): Promise<User[]>;
-  getUsersByManager(organizationId: string, managerId: string): Promise<User[]>;
-  getUsersByTeamLeadership(organizationId: string, leaderId: string): Promise<User[]>;
-  getAllUsers(organizationId: string): Promise<User[]>;
+  getUsersByTeam(organizationId: string, teamId: string, includeInactive?: boolean): Promise<User[]>;
+  getUsersByManager(organizationId: string, managerId: string, includeInactive?: boolean): Promise<User[]>;
+  getUsersByTeamLeadership(organizationId: string, leaderId: string, includeInactive?: boolean): Promise<User[]>;
+  getAllUsers(organizationId: string, includeInactive?: boolean): Promise<User[]>;
 
   // Teams
   getTeam(organizationId: string, id: string): Promise<Team | undefined>;
@@ -244,19 +244,35 @@ export class DatabaseStorage implements IStorage {
     return user || undefined;
   }
 
-  async getUsersByTeam(organizationId: string, teamId: string): Promise<User[]> {
-    return await db.select().from(users).where(
-      and(eq(users.teamId, teamId), eq(users.organizationId, organizationId))
-    );
+  async getUsersByTeam(organizationId: string, teamId: string, includeInactive = false): Promise<User[]> {
+    const conditions = [
+      eq(users.teamId, teamId),
+      eq(users.organizationId, organizationId)
+    ];
+    
+    // Only filter active users if includeInactive is false
+    if (!includeInactive) {
+      conditions.push(eq(users.isActive, true));
+    }
+    
+    return await db.select().from(users).where(and(...conditions));
   }
 
-  async getUsersByManager(organizationId: string, managerId: string): Promise<User[]> {
-    return await db.select().from(users).where(
-      and(eq(users.managerId, managerId), eq(users.organizationId, organizationId))
-    );
+  async getUsersByManager(organizationId: string, managerId: string, includeInactive = false): Promise<User[]> {
+    const conditions = [
+      eq(users.managerId, managerId),
+      eq(users.organizationId, organizationId)
+    ];
+    
+    // Only filter active users if includeInactive is false
+    if (!includeInactive) {
+      conditions.push(eq(users.isActive, true));
+    }
+    
+    return await db.select().from(users).where(and(...conditions));
   }
 
-  async getUsersByTeamLeadership(organizationId: string, leaderId: string): Promise<User[]> {
+  async getUsersByTeamLeadership(organizationId: string, leaderId: string, includeInactive = false): Promise<User[]> {
     // Find teams where the user is the leader
     const leaderTeams = await db.select({ id: teams.id })
       .from(teams)
@@ -268,16 +284,28 @@ export class DatabaseStorage implements IStorage {
 
     // Get all users from those teams
     const teamIds = leaderTeams.map(team => team.id);
-    return await db.select().from(users).where(
-      and(
-        inArray(users.teamId, teamIds),
-        eq(users.organizationId, organizationId)
-      )
-    );
+    const conditions = [
+      inArray(users.teamId, teamIds),
+      eq(users.organizationId, organizationId)
+    ];
+    
+    // Only filter active users if includeInactive is false
+    if (!includeInactive) {
+      conditions.push(eq(users.isActive, true));
+    }
+    
+    return await db.select().from(users).where(and(...conditions));
   }
 
-  async getAllUsers(organizationId: string): Promise<User[]> {
-    return await db.select().from(users).where(eq(users.organizationId, organizationId));
+  async getAllUsers(organizationId: string, includeInactive = false): Promise<User[]> {
+    const conditions = [eq(users.organizationId, organizationId)];
+    
+    // Only filter active users if includeInactive is false
+    if (!includeInactive) {
+      conditions.push(eq(users.isActive, true));
+    }
+    
+    return await db.select().from(users).where(and(...conditions));
   }
 
   // Teams
@@ -420,7 +448,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCheckinsByManager(organizationId: string, managerId: string): Promise<Checkin[]> {
-    const reports = await this.getUsersByManager(organizationId, managerId);
+    // Include inactive users for historical check-in data
+    const reports = await this.getUsersByManager(organizationId, managerId, true);
     const reportIds = reports.map(user => user.id);
     
     if (reportIds.length === 0) return [];
@@ -474,8 +503,8 @@ export class DatabaseStorage implements IStorage {
     ];
 
     if (managerId) {
-      // Get pending check-ins for manager's team members
-      const reports = await this.getUsersByManager(organizationId, managerId);
+      // Get pending check-ins for manager's team members (include inactive for historical data)
+      const reports = await this.getUsersByManager(organizationId, managerId, true);
       const reportIds = reports.map(user => user.id);
       
       if (reportIds.length === 0) return [];
@@ -1951,8 +1980,20 @@ export class MemStorage implements IStorage {
   private vacations: Map<string, Vacation> = new Map();
   private analyticsCache = new AnalyticsCache();
 
+  // Organizations
+  async getAllOrganizations() {
+    // In-memory storage doesn't support organizations, return empty array
+    return [];
+  }
+
   constructor() {
     this.seedData();
+  }
+
+  async getUserBySlackId(organizationId: string, slackUserId: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(user => 
+      user.slackUserId === slackUserId && user.organizationId === organizationId
+    );
   }
 
   private seedData() {
@@ -1970,6 +2011,13 @@ export class MemStorage implements IStorage {
       teamId: null,
       managerId: null,
       avatar: null,
+      slackUserId: null,
+      slackUsername: null,
+      slackDisplayName: null,
+      slackEmail: null,
+      slackAvatar: null,
+      slackWorkspaceId: null,
+      authProvider: "local" as const,
       isActive: true,
       createdAt: new Date(),
     };
@@ -2049,6 +2097,14 @@ export class MemStorage implements IStorage {
       teamId: insertUser.teamId ?? null,
       managerId: insertUser.managerId ?? null,
       avatar: insertUser.avatar ?? null,
+      password: insertUser.password || "default-password",
+      slackUserId: insertUser.slackUserId ?? null,
+      slackUsername: insertUser.slackUsername ?? null,
+      slackDisplayName: insertUser.slackDisplayName ?? null,
+      slackEmail: insertUser.slackEmail ?? null,
+      slackAvatar: insertUser.slackAvatar ?? null,
+      slackWorkspaceId: insertUser.slackWorkspaceId ?? null,
+      authProvider: insertUser.authProvider ?? "local",
     };
     this.users.set(user.id, user);
     return user;
@@ -2063,19 +2119,27 @@ export class MemStorage implements IStorage {
     return updatedUser;
   }
 
-  async getUsersByTeam(organizationId: string, teamId: string): Promise<User[]> {
-    return Array.from(this.users.values()).filter(user => 
+  async getUsersByTeam(organizationId: string, teamId: string, includeInactive = false): Promise<User[]> {
+    const teamUsers = Array.from(this.users.values()).filter(user => 
       user.teamId === teamId && user.organizationId === organizationId
     );
+    if (includeInactive) {
+      return teamUsers;
+    }
+    return teamUsers.filter(user => user.isActive !== false);
   }
 
-  async getUsersByManager(organizationId: string, managerId: string): Promise<User[]> {
-    return Array.from(this.users.values()).filter(user => 
+  async getUsersByManager(organizationId: string, managerId: string, includeInactive = false): Promise<User[]> {
+    const managerUsers = Array.from(this.users.values()).filter(user => 
       user.managerId === managerId && user.organizationId === organizationId
     );
+    if (includeInactive) {
+      return managerUsers;
+    }
+    return managerUsers.filter(user => user.isActive !== false);
   }
 
-  async getUsersByTeamLeadership(organizationId: string, leaderId: string): Promise<User[]> {
+  async getUsersByTeamLeadership(organizationId: string, leaderId: string, includeInactive = false): Promise<User[]> {
     // Find teams where the user is the leader
     const leaderTeams = Array.from(this.teams.values()).filter(team => 
       team.leaderId === leaderId && team.organizationId === organizationId
@@ -2087,15 +2151,24 @@ export class MemStorage implements IStorage {
 
     // Get all users from those teams
     const teamIds = leaderTeams.map(team => team.id);
-    return Array.from(this.users.values()).filter(user => 
+    const teamUsers = Array.from(this.users.values()).filter(user => 
       user.teamId && teamIds.includes(user.teamId) && user.organizationId === organizationId
     );
+    
+    if (includeInactive) {
+      return teamUsers;
+    }
+    return teamUsers.filter(user => user.isActive !== false);
   }
 
-  async getAllUsers(organizationId: string): Promise<User[]> {
-    return Array.from(this.users.values()).filter(user => 
+  async getAllUsers(organizationId: string, includeInactive = false): Promise<User[]> {
+    const orgUsers = Array.from(this.users.values()).filter(user => 
       user.organizationId === organizationId
     );
+    if (includeInactive) {
+      return orgUsers;
+    }
+    return orgUsers.filter(user => user.isActive !== false);
   }
 
   // Teams

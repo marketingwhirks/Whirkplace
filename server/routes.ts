@@ -340,7 +340,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Users
   app.get("/api/users", requireAuth(), async (req, res) => {
     try {
-      const users = await storage.getAllUsers(req.orgId);
+      const currentUser = req.currentUser!;
+      // Admins can see all users including inactive, others see only active
+      const includeInactive = currentUser.role === "admin";
+      const users = await storage.getAllUsers(req.orgId, includeInactive);
       res.json(users);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch users" });
@@ -418,7 +421,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/users/:id/reports", requireAuth(), async (req, res) => {
     try {
-      const reports = await storage.getUsersByManager(req.orgId, req.params.id);
+      const currentUser = req.currentUser!;
+      // Include inactive users for admin/manager contexts
+      const includeInactive = currentUser.role === "admin" || currentUser.role === "manager";
+      const reports = await storage.getUsersByManager(req.orgId, req.params.id, includeInactive);
       res.json(reports);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch reports" });
@@ -448,7 +454,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/teams/:id/members", requireAuth(), async (req, res) => {
     try {
-      const members = await storage.getUsersByTeam(req.orgId, req.params.id);
+      const currentUser = req.currentUser!;
+      // Include inactive users for admin contexts for team management
+      const includeInactive = currentUser.role === "admin";
+      const members = await storage.getUsersByTeam(req.orgId, req.params.id, includeInactive);
       res.json(members);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch team members" });
@@ -473,9 +482,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
         }
       } else {
-        // Non-admin users: Get authorized user IDs they can view
-        const directReports = await storage.getUsersByManager(req.orgId, currentUser.id);
-        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, currentUser.id);
+        // Non-admin users: Get authorized user IDs they can view (include inactive for historical data)
+        const directReports = await storage.getUsersByManager(req.orgId, currentUser.id, true);
+        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, currentUser.id, true);
         
         // Include the current user's own ID and combine with authorized users
         const authorizedUserIds = new Set([
@@ -720,9 +729,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
       
-      // Check if current user is authorized to view this user's check-ins
-      const directReports = await storage.getUsersByManager(req.orgId, currentUser.id);
-      const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, currentUser.id);
+      // Check if current user is authorized to view this user's check-ins (include inactive for historical data)
+      const directReports = await storage.getUsersByManager(req.orgId, currentUser.id, true);
+      const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, currentUser.id, true);
       
       const authorizedUserIds = new Set([
         ...directReports.map(u => u.id),
@@ -756,9 +765,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Get all pending check-ins for filtering
         checkins = await storage.getPendingCheckins(req.orgId);
         
-        // Get users under this person's authority (direct reports + team members)
-        const directReports = await storage.getUsersByManager(req.orgId, user.id);
-        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, user.id);
+        // Get users under this person's authority (direct reports + team members, include inactive for historical data)
+        const directReports = await storage.getUsersByManager(req.orgId, user.id, true);
+        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, user.id, true);
         
         // Combine and deduplicate user IDs
         const authorizedUserIds = new Set([
@@ -810,9 +819,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Filter by team if not admin
       if (user.role !== "admin") {
-        // Get users under this person's authority (direct reports + team members)
-        const directReports = await storage.getUsersByManager(req.orgId, user.id);
-        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, user.id);
+        // Get users under this person's authority (direct reports + team members, include inactive for historical data)
+        const directReports = await storage.getUsersByManager(req.orgId, user.id, true);
+        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, user.id, true);
         
         // Combine and deduplicate user IDs
         const authorizedUserIds = new Set([
