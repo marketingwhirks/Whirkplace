@@ -6,12 +6,14 @@ import {
   type Win, type InsertWin,
   type Comment, type InsertComment,
   type Shoutout, type InsertShoutout,
+  type ReviewCheckin, type ReviewStatusType,
   type PulseMetricsOptions, type PulseMetricsResult,
   type ShoutoutMetricsOptions, type ShoutoutMetricsResult,
   type LeaderboardOptions, type LeaderboardEntry,
   type AnalyticsOverview, type AnalyticsPeriod,
   users, teams, checkins, questions, wins, comments, shoutouts,
-  pulseMetricsDaily, shoutoutMetricsDaily, aggregationWatermarks
+  pulseMetricsDaily, shoutoutMetricsDaily, aggregationWatermarks,
+  ReviewStatus
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
@@ -74,6 +76,12 @@ export interface IStorage {
   getShoutoutsByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Shoutout[]>;
   getRecentShoutouts(organizationId: string, limit?: number): Promise<Shoutout[]>;
   getPublicShoutouts(organizationId: string, limit?: number): Promise<Shoutout[]>;
+
+  // Check-in Review Methods
+  getPendingCheckins(organizationId: string, managerId?: string): Promise<Checkin[]>;
+  reviewCheckin(organizationId: string, checkinId: string, reviewedBy: string, reviewData: ReviewCheckin): Promise<Checkin | undefined>;
+  getCheckinsByReviewStatus(organizationId: string, status: ReviewStatusType): Promise<Checkin[]>;
+  getCheckinsByTeamLeader(organizationId: string, leaderId: string): Promise<Checkin[]>;
 
   // Analytics
   getPulseMetrics(organizationId: string, options: PulseMetricsOptions): Promise<PulseMetricsResult[]>;
@@ -266,6 +274,10 @@ export class DatabaseStorage implements IStorage {
         organizationId,
         responses: insertCheckin.responses ?? {},
         isComplete: insertCheckin.isComplete ?? false,
+        reviewStatus: ReviewStatus.PENDING,
+        reviewedBy: null,
+        reviewedAt: null,
+        reviewComments: null,
       })
       .returning();
     
@@ -311,12 +323,11 @@ export class DatabaseStorage implements IStorage {
     
     if (reportIds.length === 0) return [];
     
-    // TODO: Fix this to handle multiple report IDs using inArray
     return await db
       .select()
       .from(checkins)
       .where(and(
-        eq(checkins.userId, reportIds[0]),
+        inArray(checkins.userId, reportIds),
         eq(checkins.organizationId, organizationId)
       ))
       .orderBy(desc(checkins.createdAt));
@@ -350,6 +361,71 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(checkins.createdAt))
       .limit(limit);
+  }
+
+  // Check-in Review Methods
+  async getPendingCheckins(organizationId: string, managerId?: string): Promise<Checkin[]> {
+    let whereConditions = [
+      eq(checkins.organizationId, organizationId),
+      eq(checkins.reviewStatus, ReviewStatus.PENDING),
+      eq(checkins.isComplete, true)
+    ];
+
+    if (managerId) {
+      // Get pending check-ins for manager's team members
+      const reports = await this.getUsersByManager(organizationId, managerId);
+      const reportIds = reports.map(user => user.id);
+      
+      if (reportIds.length === 0) return [];
+      
+      whereConditions.push(inArray(checkins.userId, reportIds));
+    }
+
+    return await db
+      .select()
+      .from(checkins)
+      .where(and(...whereConditions))
+      .orderBy(desc(checkins.createdAt));
+  }
+
+  async reviewCheckin(organizationId: string, checkinId: string, reviewedBy: string, reviewData: ReviewCheckin): Promise<Checkin | undefined> {
+    const [checkin] = await db
+      .update(checkins)
+      .set({
+        reviewStatus: reviewData.reviewStatus,
+        reviewedBy,
+        reviewedAt: new Date(),
+        reviewComments: reviewData.reviewComments || null,
+      })
+      .where(and(
+        eq(checkins.id, checkinId),
+        eq(checkins.organizationId, organizationId)
+      ))
+      .returning();
+    
+    return checkin || undefined;
+  }
+
+  async getCheckinsByReviewStatus(organizationId: string, status: ReviewStatusType): Promise<Checkin[]> {
+    return await db
+      .select()
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        eq(checkins.reviewStatus, status)
+      ))
+      .orderBy(desc(checkins.createdAt));
+  }
+
+  async getCheckinsByTeamLeader(organizationId: string, leaderId: string): Promise<Checkin[]> {
+    return await db
+      .select()
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        eq(checkins.reviewedBy, leaderId)
+      ))
+      .orderBy(desc(checkins.reviewedAt));
   }
 
   // Questions
@@ -1422,6 +1498,10 @@ export class MemStorage implements IStorage {
       createdAt: new Date(),
       responses: insertCheckin.responses ?? {},
       isComplete: insertCheckin.isComplete ?? false,
+      reviewStatus: ReviewStatus.PENDING,
+      reviewedBy: null,
+      reviewedAt: null,
+      reviewComments: null,
     };
     this.checkins.set(checkin.id, checkin);
     return checkin;
@@ -1473,6 +1553,63 @@ export class MemStorage implements IStorage {
       .filter(checkin => checkin.isComplete && checkin.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
+  }
+
+  // Check-in Review Methods
+  async getPendingCheckins(organizationId: string, managerId?: string): Promise<Checkin[]> {
+    let checkins = Array.from(this.checkins.values())
+      .filter(checkin => 
+        checkin.organizationId === organizationId &&
+        checkin.reviewStatus === ReviewStatus.PENDING &&
+        checkin.isComplete
+      );
+
+    if (managerId) {
+      // Get pending check-ins for manager's team members
+      const reports = await this.getUsersByManager(organizationId, managerId);
+      const reportIds = reports.map(user => user.id);
+      
+      checkins = checkins.filter(checkin => reportIds.includes(checkin.userId));
+    }
+
+    return checkins.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async reviewCheckin(organizationId: string, checkinId: string, reviewedBy: string, reviewData: ReviewCheckin): Promise<Checkin | undefined> {
+    const checkin = this.checkins.get(checkinId);
+    if (!checkin || checkin.organizationId !== organizationId) return undefined;
+    
+    const updatedCheckin = {
+      ...checkin,
+      reviewStatus: reviewData.reviewStatus,
+      reviewedBy,
+      reviewedAt: new Date(),
+      reviewComments: reviewData.reviewComments || null,
+    };
+    
+    this.checkins.set(checkinId, updatedCheckin);
+    return updatedCheckin;
+  }
+
+  async getCheckinsByReviewStatus(organizationId: string, status: ReviewStatusType): Promise<Checkin[]> {
+    return Array.from(this.checkins.values())
+      .filter(checkin => 
+        checkin.organizationId === organizationId &&
+        checkin.reviewStatus === status
+      )
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getCheckinsByTeamLeader(organizationId: string, leaderId: string): Promise<Checkin[]> {
+    return Array.from(this.checkins.values())
+      .filter(checkin => 
+        checkin.organizationId === organizationId &&
+        checkin.reviewedBy === leaderId
+      )
+      .sort((a, b) => {
+        if (!a.reviewedAt || !b.reviewedAt) return 0;
+        return b.reviewedAt.getTime() - a.reviewedAt.getTime();
+      });
   }
 
   // Questions
