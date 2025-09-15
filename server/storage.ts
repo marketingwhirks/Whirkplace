@@ -13,7 +13,7 @@ import {
   type AnalyticsOverview, type AnalyticsPeriod,
   type ComplianceMetricsOptions, type ComplianceMetricsResult,
   users, teams, checkins, questions, wins, comments, shoutouts,
-  pulseMetricsDaily, shoutoutMetricsDaily, aggregationWatermarks,
+  pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   ReviewStatus
 } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -1402,6 +1402,78 @@ export class DatabaseStorage implements IStorage {
       return cachedResult;
     }
 
+    let results: ComplianceMetricsResult[];
+
+    // Determine if we should use aggregates
+    if (this.shouldUseAggregates(from, to, period)) {
+      results = await this.getCheckinComplianceMetricsFromAggregates(organizationId, options);
+      
+      // Shadow read for comparison if enabled
+      if (process.env.ENABLE_SHADOW_READS === 'true') {
+        const rawResults = await this.getCheckinComplianceMetricsFromRaw(organizationId, options);
+        await this.logShadowRead('getCheckinComplianceMetrics', organizationId, options, results, rawResults);
+      }
+    } else {
+      results = await this.getCheckinComplianceMetricsFromRaw(organizationId, options);
+    }
+
+    // Cache results
+    const isOldData = from && (Date.now() - from.getTime()) > (7 * 24 * 60 * 60 * 1000);
+    const ttl = isOldData ? 30 * 60 * 1000 : 5 * 60 * 1000;
+    this.analyticsCache.set(cacheKey, results, ttl);
+
+    return results;
+  }
+
+  private async getCheckinComplianceMetricsFromAggregates(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
+    const { scope = 'organization', entityId, period, from, to } = options || {};
+    
+    let baseQuery = db
+      .select({
+        periodStart: period ? this.getDateTruncExpression(period, sql`${complianceMetricsDaily.bucketDate}::timestamp`) : sql<Date>`NULL`,
+        totalCount: sum(complianceMetricsDaily.checkinComplianceCount),
+        onTimeCount: sum(complianceMetricsDaily.checkinOnTimeCount)
+      })
+      .from(complianceMetricsDaily);
+
+    let whereConditions = [eq(complianceMetricsDaily.organizationId, organizationId)];
+
+    if (scope === 'team' && entityId) {
+      whereConditions.push(eq(complianceMetricsDaily.teamId, entityId));
+    } else if (scope === 'user' && entityId) {
+      whereConditions.push(eq(complianceMetricsDaily.userId, entityId));
+    }
+
+    if (from) whereConditions.push(gte(sql`${complianceMetricsDaily.bucketDate}::timestamp`, from));
+    if (to) whereConditions.push(lte(sql`${complianceMetricsDaily.bucketDate}::timestamp`, to));
+
+    const results = period
+      ? await baseQuery
+          .where(and(...whereConditions))
+          .groupBy(this.getDateTruncExpression(period, sql`${complianceMetricsDaily.bucketDate}::timestamp`))
+          .orderBy(this.getDateTruncExpression(period, sql`${complianceMetricsDaily.bucketDate}::timestamp`))
+      : await baseQuery
+          .where(and(...whereConditions));
+
+    return results.map(row => {
+      const totalCount = Number(row.totalCount || 0);
+      const onTimeCount = Number(row.onTimeCount || 0);
+      const onTimePercentage = totalCount > 0 ? (onTimeCount / totalCount) * 100 : 0;
+
+      return {
+        periodStart: row.periodStart ? new Date(row.periodStart) : undefined,
+        metrics: {
+          totalCount,
+          onTimeCount,
+          onTimePercentage: Math.round(onTimePercentage * 100) / 100
+        }
+      };
+    });
+  }
+
+  private async getCheckinComplianceMetricsFromRaw(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
+    const { scope = 'organization', entityId, period, from, to } = options || {};
+
     // Base query for submitted check-ins only
     let baseQuery = db
       .select({
@@ -1484,19 +1556,13 @@ export class DatabaseStorage implements IStorage {
       complianceResults = Array.from(groupedData.entries()).map(([periodKey, checkins]) => ({
         periodStart: new Date(periodKey),
         metrics: this.calculateComplianceMetrics(checkins)
-      })).sort((a, b) => a.periodStart!.getTime() - b.periodStart!.getTime());
-
+      }));
     } else {
-      // Aggregate metrics
+      // No period grouping - aggregate all results
       complianceResults = [{
         metrics: this.calculateComplianceMetrics(results)
       }];
     }
-
-    // Cache results
-    const isOldData = from && (Date.now() - from.getTime()) > (7 * 24 * 60 * 60 * 1000);
-    const ttl = isOldData ? 30 * 60 * 1000 : 5 * 60 * 1000;
-    this.analyticsCache.set(cacheKey, complianceResults, ttl);
 
     return complianceResults;
   }
@@ -1510,6 +1576,78 @@ export class DatabaseStorage implements IStorage {
     if (cachedResult) {
       return cachedResult;
     }
+
+    let results: ComplianceMetricsResult[];
+
+    // Determine if we should use aggregates
+    if (this.shouldUseAggregates(from, to, period)) {
+      results = await this.getReviewComplianceMetricsFromAggregates(organizationId, options);
+      
+      // Shadow read for comparison if enabled
+      if (process.env.ENABLE_SHADOW_READS === 'true') {
+        const rawResults = await this.getReviewComplianceMetricsFromRaw(organizationId, options);
+        await this.logShadowRead('getReviewComplianceMetrics', organizationId, options, results, rawResults);
+      }
+    } else {
+      results = await this.getReviewComplianceMetricsFromRaw(organizationId, options);
+    }
+
+    // Cache results
+    const isOldData = from && (Date.now() - from.getTime()) > (7 * 24 * 60 * 60 * 1000);
+    const ttl = isOldData ? 30 * 60 * 1000 : 5 * 60 * 1000;
+    this.analyticsCache.set(cacheKey, results, ttl);
+
+    return results;
+  }
+
+  private async getReviewComplianceMetricsFromAggregates(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
+    const { scope = 'organization', entityId, period, from, to } = options || {};
+    
+    let baseQuery = db
+      .select({
+        periodStart: period ? this.getDateTruncExpression(period, sql`${complianceMetricsDaily.bucketDate}::timestamp`) : sql<Date>`NULL`,
+        totalCount: sum(complianceMetricsDaily.reviewComplianceCount),
+        onTimeCount: sum(complianceMetricsDaily.reviewOnTimeCount)
+      })
+      .from(complianceMetricsDaily);
+
+    let whereConditions = [eq(complianceMetricsDaily.organizationId, organizationId)];
+
+    if (scope === 'team' && entityId) {
+      whereConditions.push(eq(complianceMetricsDaily.teamId, entityId));
+    } else if (scope === 'user' && entityId) {
+      whereConditions.push(eq(complianceMetricsDaily.userId, entityId));
+    }
+
+    if (from) whereConditions.push(gte(sql`${complianceMetricsDaily.bucketDate}::timestamp`, from));
+    if (to) whereConditions.push(lte(sql`${complianceMetricsDaily.bucketDate}::timestamp`, to));
+
+    const results = period
+      ? await baseQuery
+          .where(and(...whereConditions))
+          .groupBy(this.getDateTruncExpression(period, sql`${complianceMetricsDaily.bucketDate}::timestamp`))
+          .orderBy(this.getDateTruncExpression(period, sql`${complianceMetricsDaily.bucketDate}::timestamp`))
+      : await baseQuery
+          .where(and(...whereConditions));
+
+    return results.map(row => {
+      const totalCount = Number(row.totalCount || 0);
+      const onTimeCount = Number(row.onTimeCount || 0);
+      const onTimePercentage = totalCount > 0 ? (onTimeCount / totalCount) * 100 : 0;
+
+      return {
+        periodStart: row.periodStart ? new Date(row.periodStart) : undefined,
+        metrics: {
+          totalCount,
+          onTimeCount,
+          onTimePercentage: Math.round(onTimePercentage * 100) / 100
+        }
+      };
+    });
+  }
+
+  private async getReviewComplianceMetricsFromRaw(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
+    const { scope = 'organization', entityId, period, from, to } = options || {};
 
     // Base query for reviewed check-ins only
     const whereConditions: any[] = [

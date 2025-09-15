@@ -1,9 +1,9 @@
 import { db } from "../db";
 import { 
   checkins, shoutouts, users, teams,
-  pulseMetricsDaily, shoutoutMetricsDaily, aggregationWatermarks,
+  pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   type InsertPulseMetricsDaily, type InsertShoutoutMetricsDaily,
-  type InsertAggregationWatermark
+  type InsertComplianceMetricsDaily, type InsertAggregationWatermark
 } from "@shared/schema";
 import { eq, and, gte, lte, sum, count, avg, sql, asc, desc } from "drizzle-orm";
 
@@ -54,6 +54,9 @@ export class AggregationService {
 
       // Compute shoutout metrics for the day
       await this.recomputeShoutoutMetrics(organizationId, userId, teamId, bucketDate, startOfDay, endOfDay);
+
+      // Compute compliance metrics for the day
+      await this.recomputeComplianceMetrics(organizationId, userId, teamId, bucketDate, startOfDay, endOfDay);
 
       console.log(`Successfully recomputed aggregates for user ${userId} on ${bucketDate.toISOString().split('T')[0]}`);
     } catch (error) {
@@ -182,6 +185,79 @@ export class AggregationService {
           givenCount,
           publicCount,
           privateCount,
+          updatedAt: sql`now()`
+        });
+    }
+  }
+
+  /**
+   * Recompute compliance metrics for a specific user and date
+   */
+  private async recomputeComplianceMetrics(
+    organizationId: string,
+    userId: string,
+    teamId: string | null,
+    bucketDate: Date,
+    startOfDay: Date,
+    endOfDay: Date
+  ): Promise<void> {
+    // Query checkin compliance data for the day
+    const checkinComplianceData = await db
+      .select({
+        totalCount: count(checkins.id),
+        onTimeCount: sum(sql`CASE WHEN ${checkins.submittedOnTime} = true THEN 1 ELSE 0 END`)
+      })
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        eq(checkins.userId, userId),
+        gte(checkins.createdAt, startOfDay),
+        lte(checkins.createdAt, endOfDay),
+        eq(checkins.isComplete, true) // Only completed check-ins
+      ));
+
+    // Query review compliance data for the day (where user is the reviewer)
+    const reviewComplianceData = await db
+      .select({
+        totalCount: count(checkins.id),
+        onTimeCount: sum(sql`CASE WHEN ${checkins.reviewedOnTime} = true THEN 1 ELSE 0 END`)
+      })
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        eq(checkins.reviewedBy, userId),
+        gte(checkins.createdAt, startOfDay),
+        lte(checkins.createdAt, endOfDay),
+        sql`${checkins.reviewedAt} IS NOT NULL` // Only reviewed check-ins
+      ));
+
+    const checkinComplianceCount = Number(checkinComplianceData[0]?.totalCount) || 0;
+    const checkinOnTimeCount = Number(checkinComplianceData[0]?.onTimeCount) || 0;
+    const reviewComplianceCount = Number(reviewComplianceData[0]?.totalCount) || 0;
+    const reviewOnTimeCount = Number(reviewComplianceData[0]?.onTimeCount) || 0;
+
+    // Delete existing aggregate for this day and user (if any)
+    await db
+      .delete(complianceMetricsDaily)
+      .where(and(
+        eq(complianceMetricsDaily.organizationId, organizationId),
+        eq(complianceMetricsDaily.userId, userId),
+        eq(complianceMetricsDaily.bucketDate, bucketDate.toISOString().split('T')[0])
+      ));
+
+    // Insert new aggregate (only if there's data)
+    if (checkinComplianceCount > 0 || reviewComplianceCount > 0) {
+      await db
+        .insert(complianceMetricsDaily)
+        .values({
+          organizationId,
+          userId,
+          teamId,
+          bucketDate: bucketDate.toISOString().split('T')[0],
+          checkinComplianceCount,
+          checkinOnTimeCount,
+          reviewComplianceCount,
+          reviewOnTimeCount,
           updatedAt: sql`now()`
         });
     }

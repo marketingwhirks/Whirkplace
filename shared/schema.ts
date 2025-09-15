@@ -173,6 +173,27 @@ export const shoutoutMetricsDaily = pgTable("shoutout_metrics_daily", {
   orgUserBucketDateUnique: unique("shoutout_metrics_org_user_bucket_date_unique").on(table.organizationId, table.userId, table.bucketDate),
 }));
 
+// Compliance Metrics Daily Aggregates
+export const complianceMetricsDaily = pgTable("compliance_metrics_daily", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  teamId: varchar("team_id"),
+  bucketDate: date("bucket_date").notNull(), // Date bucket
+  checkinComplianceCount: integer("checkin_compliance_count").notNull().default(0), // Total completed check-ins
+  checkinOnTimeCount: integer("checkin_on_time_count").notNull().default(0), // Check-ins submitted on time
+  reviewComplianceCount: integer("review_compliance_count").notNull().default(0), // Total reviews completed
+  reviewOnTimeCount: integer("review_on_time_count").notNull().default(0), // Reviews completed on time
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgBucketDateIdx: index("compliance_metrics_org_bucket_date_idx").on(table.organizationId, table.bucketDate),
+  orgUserBucketDateIdx: index("compliance_metrics_org_user_bucket_date_idx").on(table.organizationId, table.userId, table.bucketDate),
+  orgTeamBucketDateIdx: index("compliance_metrics_org_team_bucket_date_idx").on(table.organizationId, table.teamId, table.bucketDate),
+  // Unique constraint to prevent duplicate daily rows
+  orgUserBucketDateUnique: unique("compliance_metrics_org_user_bucket_date_unique").on(table.organizationId, table.userId, table.bucketDate),
+}));
+
 // Aggregation Watermarks for tracking processed data
 export const aggregationWatermarks = pgTable("aggregation_watermarks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -256,6 +277,14 @@ export const insertShoutoutMetricsDailySchema = createInsertSchema(shoutoutMetri
   bucketDate: z.coerce.date(),
 });
 
+export const insertComplianceMetricsDailySchema = createInsertSchema(complianceMetricsDaily).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  bucketDate: z.coerce.date(),
+});
+
 export const insertAggregationWatermarkSchema = createInsertSchema(aggregationWatermarks).omit({
   id: true,
   createdAt: true,
@@ -306,6 +335,9 @@ export type PulseMetricsDaily = typeof pulseMetricsDaily.$inferSelect;
 
 export type InsertShoutoutMetricsDaily = z.infer<typeof insertShoutoutMetricsDailySchema>;
 export type ShoutoutMetricsDaily = typeof shoutoutMetricsDaily.$inferSelect;
+
+export type InsertComplianceMetricsDaily = z.infer<typeof insertComplianceMetricsDailySchema>;
+export type ComplianceMetricsDaily = typeof complianceMetricsDaily.$inferSelect;
 
 export type InsertAggregationWatermark = z.infer<typeof insertAggregationWatermarkSchema>;
 export type AggregationWatermark = typeof aggregationWatermarks.$inferSelect;
