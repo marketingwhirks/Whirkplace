@@ -1,70 +1,34 @@
 import { startOfWeek, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
+import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
-/**
- * Determines if a given date is in Daylight Saving Time (DST) for US Central Time.
- * DST runs from the second Sunday in March to the first Sunday in November.
- * 
- * @param date - The date to check
- * @returns true if the date is in DST, false otherwise
- */
-function isInDST(date: Date): boolean {
-  const year = date.getFullYear();
-  
-  // Second Sunday in March (DST begins)
-  const march = new Date(year, 2, 1); // March 1st
-  const firstSunday = new Date(year, 2, 7 - march.getDay());
-  const dstStart = new Date(year, 2, firstSunday.getDate() + 7);
-  
-  // First Sunday in November (DST ends)
-  const november = new Date(year, 10, 1); // November 1st
-  const dstEnd = new Date(year, 10, 7 - november.getDay());
-  
-  return date >= dstStart && date < dstEnd;
-}
-
-/**
- * Converts a UTC date to Central Time.
- * 
- * @param utcDate - The UTC date to convert
- * @returns A new Date object representing the Central Time equivalent
- */
-function utcToCentral(utcDate: Date): Date {
-  const offsetHours = isInDST(utcDate) ? 5 : 6; // UTC-5 for CDT, UTC-6 for CST
-  return new Date(utcDate.getTime() - offsetHours * 60 * 60 * 1000);
-}
-
-/**
- * Converts a Central Time date to UTC.
- * 
- * @param centralDate - The Central Time date to convert
- * @returns A new Date object representing the UTC equivalent
- */
-function centralToUTC(centralDate: Date): Date {
-  const offsetHours = isInDST(centralDate) ? 5 : 6; // UTC-5 for CDT, UTC-6 for CST
-  return new Date(centralDate.getTime() + offsetHours * 60 * 60 * 1000);
-}
+// Central Time zone identifier
+const CENTRAL_TIME_ZONE = 'America/Chicago';
 
 /**
  * Calculates the Monday 9am Central Time due date for the week containing the given date.
  * 
  * This function finds the Monday of the week that contains the `weekOf` date and sets
- * the time to 9:00 AM Central Time. The week is considered to start on Monday.
+ * the time to 9:00 AM Central Time, properly handling DST transitions. The week is
+ * considered to start on Monday.
  * 
  * @param weekOf - The date within the week for which to calculate the due date
- * @returns A Date object representing Monday at 9:00 AM Central Time for that week
+ * @returns A Date object representing Monday at 9:00 AM Central Time (in UTC)
  * 
  * @example
  * ```typescript
  * // For a date in the week of Jan 13-19, 2025 (Monday is Jan 13)
  * const dueDate = getCheckinDueDate(new Date('2025-01-15')); // Wednesday
- * // Returns: Monday, Jan 13, 2025 at 9:00 AM Central Time
+ * // Returns: Monday, Jan 13, 2025 at 9:00 AM Central Time (stored as UTC)
  * ```
  */
 export function getCheckinDueDate(weekOf: Date): Date {
-  // Get the Monday of the week (week starts on Monday = 1)
-  const monday = startOfWeek(weekOf, { weekStartsOn: 1 });
+  // First, convert the input date to Central Time to find the correct Monday
+  const centralWeekOf = toZonedTime(weekOf, CENTRAL_TIME_ZONE);
   
-  // Set time to 9:00 AM (9:00:00.000)
+  // Get the Monday of the week in Central Time (week starts on Monday = 1)
+  const monday = startOfWeek(centralWeekOf, { weekStartsOn: 1 });
+  
+  // Set time to 9:00 AM (9:00:00.000) in Central Time
   const mondayAt9AM = setMilliseconds(
     setSeconds(
       setMinutes(
@@ -76,8 +40,8 @@ export function getCheckinDueDate(weekOf: Date): Date {
     0
   );
   
-  // Convert from local time to Central Time, then to UTC for storage
-  return centralToUTC(mondayAt9AM);
+  // Convert the Central Time date to UTC for storage
+  return fromZonedTime(mondayAt9AM, CENTRAL_TIME_ZONE);
 }
 
 /**
@@ -163,7 +127,6 @@ export function isReviewedOnTime(reviewedAt: Date | null, reviewDueDate: Date): 
  */
 export function getDueDateString(weekOf: Date): string {
   const dueDate = getCheckinDueDate(weekOf);
-  const centralDueDate = utcToCentral(dueDate);
   
   const options: Intl.DateTimeFormatOptions = {
     weekday: 'long',
@@ -172,9 +135,9 @@ export function getDueDateString(weekOf: Date): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'America/Chicago', // Central Time
+    timeZone: CENTRAL_TIME_ZONE,
     timeZoneName: 'short'
   };
   
-  return centralDueDate.toLocaleDateString('en-US', options);
+  return dueDate.toLocaleDateString('en-US', options);
 }

@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow, format, subDays, startOfWeek, endOfWeek } from "date-fns";
 import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Users, Filter,
-  Download, Calendar, BarChart3, PieChart, Eye, MessageSquare
+  Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer
 } from "lucide-react";
 import Header from "@/components/layout/header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import RatingStars from "@/components/checkin/rating-stars";
-import type { Checkin, User as UserType, Team, Question } from "@shared/schema";
+import type { Checkin, User as UserType, Team, Question, ComplianceMetricsResult } from "@shared/schema";
 import { DateRange } from "react-day-picker";
 
 interface EnhancedCheckinLeadership extends Checkin {
@@ -58,6 +58,23 @@ interface AnalyticsMetrics {
     rejected: number;
     avgMood: number;
   }>;
+}
+
+interface ComplianceMetrics {
+  checkinCompliance: {
+    totalCount: number;
+    onTimeCount: number;
+    onTimePercentage: number;
+    averageDaysEarly?: number;
+    averageDaysLate?: number;
+  };
+  reviewCompliance: {
+    totalCount: number;
+    onTimeCount: number;
+    onTimePercentage: number;
+    averageDaysEarly?: number;
+    averageDaysLate?: number;
+  };
 }
 
 export default function LeadershipDashboard() {
@@ -109,6 +126,67 @@ export default function LeadershipDashboard() {
   // Fetch questions for context
   const { data: questions = [] } = useQuery<Question[]>({
     queryKey: ["/api/questions"],
+  });
+
+  // Build compliance query parameters - reuse the same date range and team filters
+  const complianceQueryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    params.append("scope", "organization");
+    if (dateRange?.from) params.append("from", dateRange.from.toISOString());
+    if (dateRange?.to) params.append("to", dateRange.to.toISOString());
+    return params.toString();
+  }, [dateRange]);
+
+  // Fetch check-in compliance metrics
+  const { data: checkinComplianceResult, isLoading: checkinComplianceLoading } = useQuery<ComplianceMetricsResult>({
+    queryKey: ["/api/analytics/checkin-compliance", complianceQueryParams],
+    queryFn: () => fetch(`/api/analytics/checkin-compliance?${complianceQueryParams}`).then(res => {
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+      return res.json();
+    }),
+    enabled: !userLoading && !!currentUser && currentUser.role === "admin",
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+  });
+
+  // Fetch review compliance metrics  
+  const { data: reviewComplianceResult, isLoading: reviewComplianceLoading } = useQuery<ComplianceMetricsResult>({
+    queryKey: ["/api/analytics/review-compliance", complianceQueryParams],
+    queryFn: () => fetch(`/api/analytics/review-compliance?${complianceQueryParams}`).then(res => {
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+      return res.json();
+    }),
+    enabled: !userLoading && !!currentUser && currentUser.role === "admin",
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+  });
+
+  // Fetch team-level compliance metrics for all teams (batched for performance)
+  const { data: teamComplianceData, isLoading: teamComplianceLoading } = useQuery<Record<string, { checkin: ComplianceMetricsResult; review: ComplianceMetricsResult }>>({
+    queryKey: ["/api/analytics/team-compliance", complianceQueryParams],
+    queryFn: async () => {
+      // Use batched endpoint to eliminate N+1 queries
+      const batchQueryParams = new URLSearchParams();
+      if (dateRange?.from) batchQueryParams.append("from", dateRange.from.toISOString());
+      if (dateRange?.to) batchQueryParams.append("to", dateRange.to.toISOString());
+
+      const response = await fetch(`/api/analytics/team-compliance?${batchQueryParams.toString()}`);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch team compliance metrics`);
+      }
+
+      const teamComplianceArray = await response.json();
+      
+      // Convert to record with team name as key for compatibility with existing UI code
+      return teamComplianceArray.reduce((acc: any, teamData: any) => {
+        acc[teamData.teamName] = {
+          checkin: { metrics: teamData.checkinCompliance }, // Wrap in metrics object to match existing UI expectations
+          review: { metrics: teamData.reviewCompliance }
+        };
+        return acc;
+      }, {} as Record<string, { checkin: ComplianceMetricsResult; review: ComplianceMetricsResult }>);
+    },
+    enabled: !userLoading && !!currentUser && currentUser.role === "admin" && teams.length > 0,
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
   });
 
   // Calculate analytics metrics
@@ -361,6 +439,106 @@ export default function LeadershipDashboard() {
           </Card>
         </div>
 
+        {/* Compliance Metrics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              On-Time Compliance Metrics
+            </CardTitle>
+            <CardDescription>
+              Track adherence to Monday 9am Central deadline requirements
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Check-in Compliance */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium text-muted-foreground">Check-in Submission Compliance</h4>
+                  {checkinComplianceLoading ? (
+                    <Skeleton className="h-4 w-16" />
+                  ) : (
+                    <span className="text-2xl font-bold text-foreground" data-testid="text-checkin-compliance-rate">
+                      {checkinComplianceResult?.metrics.onTimePercentage.toFixed(1) || 0}%
+                    </span>
+                  )}
+                </div>
+                {checkinComplianceLoading ? (
+                  <Skeleton className="h-2 w-full" />
+                ) : (
+                  <Progress 
+                    value={checkinComplianceResult?.metrics.onTimePercentage || 0} 
+                    className={`h-2 ${
+                      (checkinComplianceResult?.metrics.onTimePercentage || 0) >= 80 ? 'text-green-600' : 
+                      (checkinComplianceResult?.metrics.onTimePercentage || 0) >= 60 ? 'text-yellow-600' : 
+                      'text-red-600'
+                    }`}
+                    data-testid="progress-checkin-compliance"
+                  />
+                )}
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    {checkinComplianceResult?.metrics.onTimeCount || 0} of {checkinComplianceResult?.metrics.totalCount || 0} on time
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3" />
+                    <span>Submitted by deadline</span>
+                  </div>
+                </div>
+                {checkinComplianceResult?.metrics.averageDaysLate && checkinComplianceResult.metrics.averageDaysLate > 0 && (
+                  <div className="flex items-center gap-1 text-xs text-red-600">
+                    <Clock className="w-3 h-3" />
+                    <span>Avg {checkinComplianceResult.metrics.averageDaysLate.toFixed(1)} days late for overdue items</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Review Compliance */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-sm font-medium text-muted-foreground">Review Completion Compliance</h4>
+                  {reviewComplianceLoading ? (
+                    <Skeleton className="h-4 w-16" />
+                  ) : (
+                    <span className="text-2xl font-bold text-foreground" data-testid="text-review-compliance-rate">
+                      {reviewComplianceResult?.metrics.onTimePercentage.toFixed(1) || 0}%
+                    </span>
+                  )}
+                </div>
+                {reviewComplianceLoading ? (
+                  <Skeleton className="h-2 w-full" />
+                ) : (
+                  <Progress 
+                    value={reviewComplianceResult?.metrics.onTimePercentage || 0} 
+                    className={`h-2 ${
+                      (reviewComplianceResult?.metrics.onTimePercentage || 0) >= 80 ? 'text-green-600' : 
+                      (reviewComplianceResult?.metrics.onTimePercentage || 0) >= 60 ? 'text-yellow-600' : 
+                      'text-red-600'
+                    }`}
+                    data-testid="progress-review-compliance"
+                  />
+                )}
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>
+                    {reviewComplianceResult?.metrics.onTimeCount || 0} of {reviewComplianceResult?.metrics.totalCount || 0} on time
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Timer className="w-3 h-3" />
+                    <span>Reviewed by deadline</span>
+                  </div>
+                </div>
+                {reviewComplianceResult?.metrics.averageDaysLate && reviewComplianceResult.metrics.averageDaysLate > 0 && (
+                  <div className="flex items-center gap-1 text-xs text-red-600">
+                    <Clock className="w-3 h-3" />
+                    <span>Avg {reviewComplianceResult.metrics.averageDaysLate.toFixed(1)} days late for overdue items</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Filters and Export */}
         <Card>
           <CardHeader>
@@ -481,6 +659,130 @@ export default function LeadershipDashboard() {
                       </div>
                       <div className="text-xs text-muted-foreground">
                         approval rate
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Team Compliance Breakdown */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Target className="w-5 h-5" />
+              Team Compliance Breakdown
+            </CardTitle>
+            <CardDescription>
+              On-time compliance rates by team for check-in submissions and review completions
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {teamComplianceLoading ? (
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="p-4 border rounded-lg">
+                    <div className="flex items-center justify-between mb-4">
+                      <Skeleton className="h-5 w-32" />
+                      <div className="flex space-x-2">
+                        <Skeleton className="h-6 w-16" />
+                        <Skeleton className="h-6 w-16" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Skeleton className="h-3 w-full mb-2" />
+                        <Skeleton className="h-2 w-full" />
+                      </div>
+                      <div>
+                        <Skeleton className="h-3 w-full mb-2" />
+                        <Skeleton className="h-2 w-full" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : !teamComplianceData || Object.keys(teamComplianceData).length === 0 ? (
+              <p className="text-center text-muted-foreground py-8">
+                No team compliance data available for the selected period
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {Object.entries(teamComplianceData).map(([teamName, compliance]) => (
+                  <div key={teamName} className="p-4 border rounded-lg" data-testid={`team-compliance-${teamName.toLowerCase().replace(/\s+/g, '-')}`}>
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="font-medium text-lg">{teamName}</h4>
+                      <div className="flex space-x-2">
+                        <Badge 
+                          variant={compliance.checkin.metrics.onTimePercentage >= 80 ? "default" : "secondary"}
+                          className={
+                            compliance.checkin.metrics.onTimePercentage >= 80 ? "bg-green-100 text-green-800" :
+                            compliance.checkin.metrics.onTimePercentage >= 60 ? "bg-yellow-100 text-yellow-800" :
+                            "bg-red-100 text-red-800"
+                          }
+                        >
+                          Check-ins: {compliance.checkin.metrics.onTimePercentage.toFixed(1)}%
+                        </Badge>
+                        <Badge 
+                          variant={compliance.review.metrics.onTimePercentage >= 80 ? "default" : "secondary"}
+                          className={
+                            compliance.review.metrics.onTimePercentage >= 80 ? "bg-green-100 text-green-800" :
+                            compliance.review.metrics.onTimePercentage >= 60 ? "bg-yellow-100 text-yellow-800" :
+                            "bg-red-100 text-red-800"
+                          }
+                        >
+                          Reviews: {compliance.review.metrics.onTimePercentage.toFixed(1)}%
+                        </Badge>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Team Check-in Compliance */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Check-in Submissions</span>
+                          <span className="font-medium">{compliance.checkin.metrics.onTimeCount}/{compliance.checkin.metrics.totalCount} on time</span>
+                        </div>
+                        <Progress 
+                          value={compliance.checkin.metrics.onTimePercentage || 0} 
+                          className={`h-2 ${
+                            compliance.checkin.metrics.onTimePercentage >= 80 ? 'text-green-600' : 
+                            compliance.checkin.metrics.onTimePercentage >= 60 ? 'text-yellow-600' : 
+                            'text-red-600'
+                          }`}
+                          data-testid={`progress-team-checkin-${teamName.toLowerCase().replace(/\s+/g, '-')}`}
+                        />
+                        {compliance.checkin.metrics.averageDaysLate && compliance.checkin.metrics.averageDaysLate > 0 && (
+                          <div className="flex items-center gap-1 text-xs text-red-600">
+                            <Clock className="w-3 h-3" />
+                            <span>Avg {compliance.checkin.metrics.averageDaysLate.toFixed(1)} days late</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Team Review Compliance */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Review Completions</span>
+                          <span className="font-medium">{compliance.review.metrics.onTimeCount}/{compliance.review.metrics.totalCount} on time</span>
+                        </div>
+                        <Progress 
+                          value={compliance.review.metrics.onTimePercentage || 0} 
+                          className={`h-2 ${
+                            compliance.review.metrics.onTimePercentage >= 80 ? 'text-green-600' : 
+                            compliance.review.metrics.onTimePercentage >= 60 ? 'text-yellow-600' : 
+                            'text-red-600'
+                          }`}
+                          data-testid={`progress-team-review-${teamName.toLowerCase().replace(/\s+/g, '-')}`}
+                        />
+                        {compliance.review.metrics.averageDaysLate && compliance.review.metrics.averageDaysLate > 0 && (
+                          <div className="flex items-center gap-1 text-xs text-red-600">
+                            <Timer className="w-3 h-3" />
+                            <span>Avg {compliance.review.metrics.averageDaysLate.toFixed(1)} days late</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

@@ -11,11 +11,12 @@ import RatingStars from "@/components/checkin/rating-stars";
 import WinCard from "@/components/wins/win-card";
 import TeamMemberCard from "@/components/team/team-member-card";
 import CheckinDetail from "@/components/checkin/checkin-detail";
-import { Heart, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog } from "lucide-react";
-import { useState } from "react";
+import { Heart, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer } from "lucide-react";
+import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Checkin, Win, User, Question } from "@shared/schema";
+import { Progress } from "@/components/ui/progress";
+import type { Checkin, Win, User, Question, ComplianceMetricsResult } from "@shared/schema";
 
 interface DashboardStats {
   averageRating: number;
@@ -70,6 +71,46 @@ export default function Dashboard() {
   // Get current week check-in
   const { data: currentCheckin } = useQuery<Checkin | null>({
     queryKey: ["/api/users", currentUser.id, "current-checkin"],
+  });
+
+  // Get current user's team info for compliance data (if manager)
+  const currentUserProfile = Array.isArray(users) ? users.find(u => u.id === currentUser.id) : undefined;
+
+  // Build compliance query parameters for team-level data
+  const complianceQueryParams = useMemo(() => {
+    if (!currentUserProfile?.teamId) return null;
+    
+    const params = new URLSearchParams();
+    params.append("scope", "team");
+    params.append("id", currentUserProfile.teamId);
+    // Default to last 30 days for team dashboard
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    params.append("from", thirtyDaysAgo.toISOString());
+    params.append("to", new Date().toISOString());
+    return params.toString();
+  }, [currentUserProfile?.teamId]);
+
+  // Fetch team check-in compliance metrics (for managers)
+  const { data: teamCheckinCompliance, isLoading: teamCheckinComplianceLoading } = useQuery<ComplianceMetricsResult>({
+    queryKey: ["/api/analytics/checkin-compliance", complianceQueryParams],
+    queryFn: () => fetch(`/api/analytics/checkin-compliance?${complianceQueryParams}`).then(res => {
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+      return res.json();
+    }),
+    enabled: currentUser.role === "manager" && !!complianceQueryParams,
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+  });
+
+  // Fetch team review compliance metrics (for managers)
+  const { data: teamReviewCompliance, isLoading: teamReviewComplianceLoading } = useQuery<ComplianceMetricsResult>({
+    queryKey: ["/api/analytics/review-compliance", complianceQueryParams],
+    queryFn: () => fetch(`/api/analytics/review-compliance?${complianceQueryParams}`).then(res => {
+      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
+      return res.json();
+    }),
+    enabled: currentUser.role === "manager" && !!complianceQueryParams,
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
   });
 
   // Enhanced data with user lookups - with proper array guards
@@ -211,51 +252,135 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Wins This Week</p>
-                  {winsLoading ? (
-                    <Skeleton className="h-8 w-12 my-1" />
-                  ) : (
-                    <p className="text-2xl font-bold text-foreground" data-testid="text-wins-count">
-                      {Array.isArray(recentWins) ? recentWins.length : 0}
-                    </p>
-                  )}
-                  <p className="text-xs text-yellow-600">
-                    {Array.isArray(recentWins) && recentWins.length > 0 ? "+5 from last week" : "No wins yet"}
-                  </p>
+          {/* Compliance Metrics for Managers */}
+          {currentUser.role === "manager" && (
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-muted-foreground">Team On-Time Submissions</p>
+                    {teamCheckinComplianceLoading ? (
+                      <Skeleton className="h-8 w-16 my-1" />
+                    ) : (
+                      <p className="text-2xl font-bold text-foreground" data-testid="text-team-checkin-compliance">
+                        {teamCheckinCompliance?.metrics.onTimePercentage.toFixed(1) || 0}%
+                      </p>
+                    )}
+                    {teamCheckinCompliance && (
+                      <p className={`text-xs ${
+                        teamCheckinCompliance.metrics.onTimePercentage >= 80 ? 'text-green-600' :
+                        teamCheckinCompliance.metrics.onTimePercentage >= 60 ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {teamCheckinCompliance.metrics.onTimeCount} of {teamCheckinCompliance.metrics.totalCount} on time
+                      </p>
+                    )}
+                  </div>
+                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                    (teamCheckinCompliance?.metrics.onTimePercentage || 0) >= 80 ? 'bg-green-100' :
+                    (teamCheckinCompliance?.metrics.onTimePercentage || 0) >= 60 ? 'bg-yellow-100' :
+                    'bg-red-100'
+                  }`}>
+                    <Target className={`w-6 h-6 ${
+                      (teamCheckinCompliance?.metrics.onTimePercentage || 0) >= 80 ? 'text-green-600' :
+                      (teamCheckinCompliance?.metrics.onTimePercentage || 0) >= 60 ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`} />
+                  </div>
                 </div>
-                <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
-                  <Trophy className="w-6 h-6 text-yellow-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Active Questions</p>
-                  {questionsLoading ? (
-                    <Skeleton className="h-8 w-12 my-1" />
-                  ) : (
-                    <p className="text-2xl font-bold text-foreground" data-testid="text-questions-count">
-                      {Array.isArray(questions) ? questions.length : 0}
+          {currentUser.role === "manager" && (
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-muted-foreground">Review Timeliness</p>
+                    {teamReviewComplianceLoading ? (
+                      <Skeleton className="h-8 w-16 my-1" />
+                    ) : (
+                      <p className="text-2xl font-bold text-foreground" data-testid="text-team-review-compliance">
+                        {teamReviewCompliance?.metrics.onTimePercentage.toFixed(1) || 0}%
+                      </p>
+                    )}
+                    {teamReviewCompliance && (
+                      <p className={`text-xs ${
+                        teamReviewCompliance.metrics.onTimePercentage >= 80 ? 'text-green-600' :
+                        teamReviewCompliance.metrics.onTimePercentage >= 60 ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {teamReviewCompliance.metrics.onTimeCount} of {teamReviewCompliance.metrics.totalCount} on time
+                      </p>
+                    )}
+                  </div>
+                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                    (teamReviewCompliance?.metrics.onTimePercentage || 0) >= 80 ? 'bg-green-100' :
+                    (teamReviewCompliance?.metrics.onTimePercentage || 0) >= 60 ? 'bg-yellow-100' :
+                    'bg-red-100'
+                  }`}>
+                    <Timer className={`w-6 h-6 ${
+                      (teamReviewCompliance?.metrics.onTimePercentage || 0) >= 80 ? 'text-green-600' :
+                      (teamReviewCompliance?.metrics.onTimePercentage || 0) >= 60 ? 'text-yellow-600' :
+                      'text-red-600'
+                    }`} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Show Wins and Questions for non-managers or when no compliance data */}
+          {(currentUser.role !== "manager" || !teamCheckinCompliance) && (
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-muted-foreground">Wins This Week</p>
+                    {winsLoading ? (
+                      <Skeleton className="h-8 w-12 my-1" />
+                    ) : (
+                      <p className="text-2xl font-bold text-foreground" data-testid="text-wins-count">
+                        {Array.isArray(recentWins) ? recentWins.length : 0}
+                      </p>
+                    )}
+                    <p className="text-xs text-yellow-600">
+                      {Array.isArray(recentWins) && recentWins.length > 0 ? "+5 from last week" : "No wins yet"}
                     </p>
-                  )}
-                  <p className="text-xs text-purple-600">
-                    {Array.isArray(questions) && questions.length > 0 ? "3 pending responses" : "No questions yet"}
-                  </p>
+                  </div>
+                  <div className="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center">
+                    <Trophy className="w-6 h-6 text-yellow-600" />
+                  </div>
                 </div>
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <HelpCircle className="w-6 h-6 text-purple-600" />
+              </CardContent>
+            </Card>
+          )}
+
+          {(currentUser.role !== "manager" || !teamReviewCompliance) && (
+            <Card>
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-muted-foreground">Active Questions</p>
+                    {questionsLoading ? (
+                      <Skeleton className="h-8 w-12 my-1" />
+                    ) : (
+                      <p className="text-2xl font-bold text-foreground" data-testid="text-questions-count">
+                        {Array.isArray(questions) ? questions.length : 0}
+                      </p>
+                    )}
+                    <p className="text-xs text-purple-600">
+                      {Array.isArray(questions) && questions.length > 0 ? "3 pending responses" : "No questions yet"}
+                    </p>
+                  </div>
+                  <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <HelpCircle className="w-6 h-6 text-purple-600" />
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Main Content Grid */}

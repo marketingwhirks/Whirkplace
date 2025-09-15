@@ -1403,6 +1403,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Analytics - Team Compliance Batch (eliminates N+1 queries)
+  app.get("/api/analytics/team-compliance", requireAuth(), authorizeAnalyticsAccess(), async (req, res) => {
+    try {
+      const query = z.object({
+        from: z.string().datetime().optional(),
+        to: z.string().datetime().optional(),
+        period: z.enum(['week', 'month', 'quarter', 'year']).optional()
+      }).parse(req.query);
+      
+      // Validate date range
+      if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
+        return res.status(400).json({ message: "From date must be before to date" });
+      }
+      
+      // Get all teams for the organization
+      const teams = await storage.getTeamsByOrganization(req.orgId);
+      
+      // Fetch compliance metrics for all teams in parallel
+      const teamCompliancePromises = teams.map(async (team) => {
+        const [checkinCompliance, reviewCompliance] = await Promise.all([
+          storage.getCheckinComplianceMetrics(req.orgId, {
+            scope: 'team',
+            entityId: team.id,
+            period: query.period as AnalyticsPeriod,
+            from: query.from ? new Date(query.from) : undefined,
+            to: query.to ? new Date(query.to) : undefined,
+          }),
+          storage.getReviewComplianceMetrics(req.orgId, {
+            scope: 'team',
+            entityId: team.id,
+            period: query.period as AnalyticsPeriod,
+            from: query.from ? new Date(query.from) : undefined,
+            to: query.to ? new Date(query.to) : undefined,
+          })
+        ]);
+        
+        // Extract latest metrics (most recent period if multiple, or aggregate if single)
+        const latestCheckinMetrics = checkinCompliance.length > 0 ? 
+          checkinCompliance[checkinCompliance.length - 1].metrics || checkinCompliance[0].metrics || checkinCompliance[0] : 
+          { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
+          
+        const latestReviewMetrics = reviewCompliance.length > 0 ? 
+          reviewCompliance[reviewCompliance.length - 1].metrics || reviewCompliance[0].metrics || reviewCompliance[0] : 
+          { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
+        
+        return {
+          teamId: team.id,
+          teamName: team.name,
+          checkinCompliance: latestCheckinMetrics,
+          reviewCompliance: latestReviewMetrics
+        };
+      });
+      
+      const teamCompliance = await Promise.all(teamCompliancePromises);
+      
+      res.json(teamCompliance);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters",
+          details: error.errors
+        });
+      }
+      console.error("Team compliance batch analytics error:", error);
+      res.status(500).json({ message: "Failed to fetch team compliance metrics" });
+    }
+  });
+
   // Slack Integration
   app.post("/api/slack/send-checkin-reminder", async (req, res) => {
     try {
