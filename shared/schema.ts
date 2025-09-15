@@ -3,8 +3,8 @@ import { pgTable, text, varchar, timestamp, integer, boolean, jsonb } from "driz
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Company Values Enum
-export const CompanyValues = {
+// Default Company Values (for backward compatibility)
+export const DefaultCompanyValues = {
   OWN_IT: "own it",
   CHALLENGE_IT: "challenge it",
   TEAM_FIRST: "team first",
@@ -12,9 +12,19 @@ export const CompanyValues = {
   PASSION_FOR_OUR_PURPOSE: "passion for our purpose",
 } as const;
 
-export type CompanyValue = typeof CompanyValues[keyof typeof CompanyValues];
+export type CompanyValue = string;
+export const defaultCompanyValuesArray = Object.values(DefaultCompanyValues);
 
-export const companyValuesArray = Object.values(CompanyValues);
+// Organizations table for multi-tenancy
+export const organizations = pgTable("organizations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(), // for URL routing: company.whirkplace.com
+  customValues: text("custom_values").array().notNull().default(defaultCompanyValuesArray),
+  plan: text("plan").notNull().default("starter"), // starter, professional, enterprise
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -23,6 +33,7 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   role: text("role").notNull().default("member"), // member, admin, manager
+  organizationId: varchar("organization_id").notNull(),
   teamId: varchar("team_id"),
   managerId: varchar("manager_id"),
   avatar: text("avatar"),
@@ -34,6 +45,7 @@ export const teams = pgTable("teams", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   description: text("description"),
+  organizationId: varchar("organization_id").notNull(),
   leaderId: varchar("leader_id").notNull(),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
@@ -41,6 +53,7 @@ export const teams = pgTable("teams", {
 export const checkins = pgTable("checkins", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
+  organizationId: varchar("organization_id").notNull(),
   weekOf: timestamp("week_of").notNull(),
   overallMood: integer("overall_mood").notNull(), // 1-5 rating
   responses: jsonb("responses").notNull().default({}), // question_id -> response
@@ -52,6 +65,7 @@ export const checkins = pgTable("checkins", {
 export const questions = pgTable("questions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   text: text("text").notNull(),
+  organizationId: varchar("organization_id").notNull(),
   createdBy: varchar("created_by").notNull(),
   isActive: boolean("is_active").notNull().default(true),
   order: integer("order").notNull().default(0),
@@ -63,6 +77,7 @@ export const wins = pgTable("wins", {
   title: text("title").notNull(),
   description: text("description").notNull(),
   userId: varchar("user_id").notNull(),
+  organizationId: varchar("organization_id").notNull(),
   nominatedBy: varchar("nominated_by"),
   isPublic: boolean("is_public").notNull().default(true),
   slackMessageId: text("slack_message_id"),
@@ -74,6 +89,7 @@ export const comments = pgTable("comments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   checkinId: varchar("checkin_id").notNull(),
   userId: varchar("user_id").notNull(),
+  organizationId: varchar("organization_id").notNull(),
   content: text("content").notNull(),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
@@ -106,7 +122,7 @@ export const insertWinSchema = createInsertSchema(wins).omit({
   id: true,
   createdAt: true,
 }).extend({
-  values: z.array(z.enum(["own it", "challenge it", "team first", "empathy for others", "passion for our purpose"])).min(1, "At least one company value must be selected"),
+  values: z.array(z.string()).min(1, "At least one company value must be selected"),
 });
 
 export const insertCommentSchema = createInsertSchema(comments).omit({

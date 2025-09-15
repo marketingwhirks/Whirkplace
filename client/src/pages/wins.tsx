@@ -24,7 +24,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
 import type { Win, User, InsertWin, CompanyValue } from "@shared/schema";
-import { insertWinSchema, CompanyValues, companyValuesArray } from "@shared/schema";
+import { insertWinSchema, DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
 
 // Form schemas - extend shared schema for UI-specific validation
 const winFormSchema = insertWinSchema.extend({
@@ -72,7 +72,7 @@ export default function Wins() {
     description: z.string().min(1, "Description is required").max(500, "Description too long"),
     isPublic: z.boolean().default(true),
     nominatedBy: z.string().optional().nullable(),
-    values: z.array(z.enum(["own it", "challenge it", "team first", "empathy for others", "passion for our purpose"])).min(1, "At least one company value must be selected"),
+    values: z.array(z.string()).min(1, "At least one company value must be selected"),
   });
   
   const editForm = useForm<z.infer<typeof editFormSchema>>({
@@ -340,7 +340,7 @@ export default function Wins() {
                             Select the company values this win demonstrates
                           </div>
                           <div className="grid grid-cols-1 gap-3">
-                            {companyValuesArray.map((value) => (
+                            {defaultCompanyValuesArray.map((value) => (
                               <div key={value} className="flex items-center space-x-2">
                                 <Checkbox
                                   id={`value-${value}`}
@@ -607,7 +607,7 @@ export default function Wins() {
                           Select the company values this win demonstrates
                         </div>
                         <div className="grid grid-cols-1 gap-3">
-                          {companyValuesArray.map((value) => (
+                          {defaultCompanyValuesArray.map((value) => (
                             <div key={value} className="flex items-center space-x-2">
                               <Checkbox
                                 id={`edit-value-${value}`}
