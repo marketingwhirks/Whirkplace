@@ -1,8 +1,18 @@
-# TeamPulse
+# Whirkplace
 
 ## Overview
 
-TeamPulse is a comprehensive team management and wellness application designed to help organizations track team health, conduct regular check-ins, celebrate wins, and maintain strong team connections. The application provides managers and team members with tools to monitor team morale, gather feedback through customizable questions, and foster a positive work environment through win recognition and Slack integration.
+Whirkplace is a comprehensive team management and wellness application designed to help organizations track team health, conduct regular check-ins, celebrate wins, and maintain strong team connections. The application provides managers and team members with tools to monitor team morale, gather feedback through customizable questions, and foster a positive work environment through win recognition and Slack integration.
+
+## Recent Changes
+
+### Multi-Tenant Architecture (September 2025)
+Successfully implemented multi-tenant database architecture to support multiple organizations:
+- **Organizations Table**: Added support for customizable company values per organization
+- **Data Isolation**: All tables now include organization_id for secure tenant separation  
+- **Dynamic Company Values**: Organizations can define their own values instead of hardcoded defaults
+- **Secure API Routes**: All endpoints are organization-aware with proper data filtering
+- **Scalable Foundation**: Ready for multiple customers with custom branding and values
 
 ## User Preferences
 
