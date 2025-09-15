@@ -29,7 +29,33 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(queryKey.join("/") as string, {
+    // Handle different query key patterns
+    let url: string;
+    
+    if (queryKey.length === 1) {
+      // Simple URL: ['/api/users']
+      url = queryKey[0] as string;
+    } else if (queryKey.length === 2 && typeof queryKey[1] === 'object' && queryKey[1] !== null) {
+      // URL with params object: ['/api/analytics/pulse', { scope: 'team', id: '123' }]
+      const baseUrl = queryKey[0] as string;
+      const params = queryKey[1] as Record<string, any>;
+      
+      // Filter out undefined/null values and build query string
+      const searchParams = new URLSearchParams();
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          searchParams.append(key, String(value));
+        }
+      });
+      
+      const queryString = searchParams.toString();
+      url = queryString ? `${baseUrl}?${queryString}` : baseUrl;
+    } else {
+      // Legacy path segments: ['/api/users', 'id'] or complex arrays
+      url = queryKey.join("/") as string;
+    }
+
+    const res = await fetch(url, {
       credentials: "include",
     });
 
