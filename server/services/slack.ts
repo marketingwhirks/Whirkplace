@@ -669,6 +669,68 @@ export async function notifyCheckinReviewed(
 /**
  * Fetch all members of the whirkplace-pulse channel
  */
+/**
+ * Find a channel by name with pagination and case-insensitive matching
+ */
+async function findChannelIdByName(channelName: string): Promise<string | null> {
+  if (!slack) return null;
+  
+  // Add diagnostic info about what the bot can see
+  try {
+    const authTest = await slack.auth.test();
+    console.log(`Bot workspace: ${authTest.team} (${authTest.team_id}), Bot user: ${authTest.user_id}`);
+  } catch (error) {
+    console.error("Failed to get bot auth info:", error);
+  }
+  
+  let cursor: string | undefined;
+  let totalChannels = 0;
+  
+  do {
+    try {
+      const result = await slack.conversations.list({
+        types: 'public_channel,private_channel',
+        exclude_archived: true,
+        limit: 1000,
+        cursor
+      });
+      
+      if (!result.ok) {
+        console.error(`Slack API error: ${result.error}`);
+        return null;
+      }
+      
+      const channelCount = result.channels?.length || 0;
+      totalChannels += channelCount;
+      console.log(`Found ${channelCount} channels in this page (${totalChannels} total so far)`);
+      
+      // Log a few sample channel names for debugging
+      if (result.channels?.length) {
+        const sampleNames = result.channels.slice(0, 3).map(c => c.name).join(", ");
+        console.log(`Sample channel names: ${sampleNames}`);
+      }
+      
+      // Search for channel by name (case-insensitive)
+      const channel = result.channels?.find(c => 
+        c.name?.toLowerCase() === channelName.toLowerCase() || 
+        (c as any).name_normalized?.toLowerCase() === channelName.toLowerCase()
+      );
+      
+      if (channel?.id) {
+        console.log(`Found channel "${channelName}" with ID: ${channel.id}`);
+        return channel.id;
+      }
+      
+      cursor = result.response_metadata?.next_cursor;
+    } catch (error) {
+      console.error(`Error searching for channel "${channelName}":`, error);
+      return null;
+    }
+  } while (cursor);
+  
+  return null;
+}
+
 export async function getChannelMembers(): Promise<{ id: string; name: string; email?: string; active: boolean }[]> {
   if (!slack) {
     console.warn("Slack client not initialized. Cannot fetch channel members.");
@@ -676,14 +738,15 @@ export async function getChannelMembers(): Promise<{ id: string; name: string; e
   }
 
   try {
-    // First, find the channel ID by name
-    const channelsResult = await slack.conversations.list({
-      types: 'public_channel,private_channel'
-    });
-
-    const channel = channelsResult.channels?.find(c => c.name === WHIRKPLACE_CHANNEL);
-    if (!channel?.id) {
+    // Use environment override if set, otherwise search by name
+    let channelId = process.env.SLACK_USER_SYNC_CHANNEL_ID;
+    if (!channelId) {
+      channelId = await findChannelIdByName(WHIRKPLACE_CHANNEL);
+    }
+    
+    if (!channelId) {
       console.warn(`Channel "${WHIRKPLACE_CHANNEL}" not found. Cannot sync users.`);
+      console.warn(`Tip: Set SLACK_USER_SYNC_CHANNEL_ID environment variable to the channel ID if the channel exists.`);
       return [];
     }
 
@@ -691,14 +754,13 @@ export async function getChannelMembers(): Promise<{ id: string; name: string; e
     let membersResult;
     try {
       membersResult = await slack.conversations.members({
-        channel: channel.id
+        channel: channelId
       });
     } catch (error: any) {
       // Handle missing scope error gracefully
       if (error?.data?.error === 'missing_scope') {
-        const requiredScope = channel.is_private ? 'groups:read' : 'channels:read';
-        console.error(`Missing Slack scope: ${requiredScope}. Cannot access ${channel.is_private ? 'private' : 'public'} channel "${WHIRKPLACE_CHANNEL}".`);
-        console.error(`Please update your Slack app permissions to include: ${requiredScope}`);
+        console.error(`Missing Slack scope for channel "${WHIRKPLACE_CHANNEL}". Try these scopes: groups:read, channels:read`);
+        console.error(`Please update your Slack app permissions to include these scopes.`);
         console.error(`Current scopes: ${error?.data?.needed || 'unknown'}`);
         console.error(`Visit your Slack app settings at https://api.slack.com/apps to update OAuth scopes.`);
         return [];
