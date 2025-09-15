@@ -9,7 +9,7 @@ import {
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType
 } from "@shared/schema";
-import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout } from "./services/slack";
+import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed } from "./services/slack";
 import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
 import { authenticateUser, requireAuth, requireRole, requireTeamLead } from "./middleware/auth";
@@ -78,7 +78,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Users
-  app.get("/api/users", async (req, res) => {
+  app.get("/api/users", requireAuth(), async (req, res) => {
     try {
       const users = await storage.getAllUsers(req.orgId);
       res.json(users);
@@ -99,7 +99,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/users/:id", async (req, res) => {
+  app.get("/api/users/:id", requireAuth(), async (req, res) => {
     try {
       const user = await storage.getUser(req.orgId, req.params.id);
       if (!user) {
@@ -111,7 +111,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/users", async (req, res) => {
+  app.post("/api/users", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
       const userData = insertUserSchema.parse(req.body);
       const sanitizedData = sanitizeForOrganization(userData, req.orgId);
@@ -122,10 +122,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/users/:id", async (req, res) => {
+  app.patch("/api/users/:id", requireAuth(), async (req, res) => {
     try {
+      const targetUserId = req.params.id;
+      const currentUser = req.currentUser!;
+      
+      // Authorization: Only admins or the user themselves can update user data
+      if (currentUser.role !== "admin" && currentUser.id !== targetUserId) {
+        return res.status(403).json({ 
+          message: "Access denied. You can only update your own profile or be an admin." 
+        });
+      }
+      
       const updates = insertUserSchema.partial().parse(req.body);
       const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
+      
+      // Additional security: Non-admins cannot change role, organizationId, or other sensitive fields
+      if (currentUser.role !== "admin") {
+        // Remove sensitive fields that only admins should be able to modify
+        delete sanitizedUpdates.role;
+        delete sanitizedUpdates.organizationId;
+        delete sanitizedUpdates.teamId;
+        delete sanitizedUpdates.managerId;
+      }
+      
       const user = await storage.updateUser(req.orgId, req.params.id, sanitizedUpdates);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
@@ -136,7 +156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/users/:id/reports", async (req, res) => {
+  app.get("/api/users/:id/reports", requireAuth(), async (req, res) => {
     try {
       const reports = await storage.getUsersByManager(req.orgId, req.params.id);
       res.json(reports);
@@ -146,7 +166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Teams
-  app.get("/api/teams", async (req, res) => {
+  app.get("/api/teams", requireAuth(), async (req, res) => {
     try {
       const teams = await storage.getAllTeams(req.orgId);
       res.json(teams);
@@ -155,7 +175,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/teams", async (req, res) => {
+  app.post("/api/teams", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
       const teamData = insertTeamSchema.parse(req.body);
       const sanitizedData = sanitizeForOrganization(teamData, req.orgId);
@@ -166,7 +186,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/teams/:id/members", async (req, res) => {
+  app.get("/api/teams/:id/members", requireAuth(), async (req, res) => {
     try {
       const members = await storage.getUsersByTeam(req.orgId, req.params.id);
       res.json(members);
@@ -176,42 +196,158 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Check-ins
-  app.get("/api/checkins", async (req, res) => {
+  app.get("/api/checkins", requireAuth(), async (req, res) => {
     try {
       const { userId, managerId, limit } = req.query;
+      const currentUser = req.currentUser!;
       let checkins;
       
-      if (userId) {
-        checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
-      } else if (managerId) {
-        checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
+      // Apply authorization based on user role
+      if (currentUser.role === "admin") {
+        // Admins can see all check-ins in their organization
+        if (userId) {
+          checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
+        } else if (managerId) {
+          checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
+        } else {
+          checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
+        }
       } else {
-        checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
+        // Non-admin users: Get authorized user IDs they can view
+        const directReports = await storage.getUsersByManager(req.orgId, currentUser.id);
+        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, currentUser.id);
+        
+        // Include the current user's own ID and combine with authorized users
+        const authorizedUserIds = new Set([
+          currentUser.id,
+          ...directReports.map(u => u.id),
+          ...teamMembers.map(u => u.id)
+        ]);
+        
+        if (userId) {
+          // Verify the requested userId is authorized
+          if (!authorizedUserIds.has(userId as string)) {
+            return res.status(403).json({ 
+              message: "Access denied. You can only view check-ins for yourself or your team members." 
+            });
+          }
+          checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
+        } else if (managerId) {
+          // For managerId query, verify it's the current user (only managers can query by their own ID)
+          if (managerId !== currentUser.id) {
+            return res.status(403).json({ 
+              message: "Access denied. You can only query check-ins by your own manager ID." 
+            });
+          }
+          checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
+        } else {
+          // Default: get recent check-ins but filter to authorized users only
+          const allRecentCheckins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
+          checkins = allRecentCheckins.filter(checkin => authorizedUserIds.has(checkin.userId));
+        }
       }
       
       res.json(checkins);
     } catch (error) {
+      console.error("Failed to fetch check-ins:", error);
       res.status(500).json({ message: "Failed to fetch check-ins" });
     }
   });
 
-  app.get("/api/checkins/:id", async (req, res) => {
+  app.get("/api/checkins/:id", requireAuth(), async (req, res) => {
     try {
+      const currentUser = req.currentUser!;
       const checkin = await storage.getCheckin(req.orgId, req.params.id);
+      
       if (!checkin) {
         return res.status(404).json({ message: "Check-in not found" });
       }
+      
+      // Apply authorization: verify user can view this specific check-in
+      if (currentUser.role === "admin") {
+        // Admins can view any check-in in their organization
+        res.json(checkin);
+        return;
+      }
+      
+      // For non-admins: check if they have authorization to view this check-in
+      if (checkin.userId === currentUser.id) {
+        // User can always view their own check-in
+        res.json(checkin);
+        return;
+      }
+      
+      // Check if current user is authorized to view this user's check-ins
+      const directReports = await storage.getUsersByManager(req.orgId, currentUser.id);
+      const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, currentUser.id);
+      
+      const authorizedUserIds = new Set([
+        ...directReports.map(u => u.id),
+        ...teamMembers.map(u => u.id)
+      ]);
+      
+      if (!authorizedUserIds.has(checkin.userId)) {
+        return res.status(403).json({ 
+          message: "Access denied. You can only view check-ins for yourself or your team members." 
+        });
+      }
+      
       res.json(checkin);
     } catch (error) {
+      console.error("Failed to fetch check-in:", error);
       res.status(500).json({ message: "Failed to fetch check-in" });
     }
   });
 
-  app.post("/api/checkins", async (req, res) => {
+  app.post("/api/checkins", requireAuth(), async (req, res) => {
     try {
       const checkinData = insertCheckinSchema.parse(req.body);
       const sanitizedData = sanitizeForOrganization(checkinData, req.orgId);
       const checkin = await storage.createCheckin(req.orgId, sanitizedData);
+      
+      // Send notification if check-in is submitted for review
+      if (checkin.isComplete && checkin.submittedAt) {
+        try {
+          const user = await storage.getUser(req.orgId, checkin.userId);
+          if (user) {
+            // Find team leader to notify
+            let teamLeaderName = "Team Leader";
+            
+            // First try direct manager
+            if (user.managerId) {
+              const manager = await storage.getUser(req.orgId, user.managerId);
+              if (manager) {
+                teamLeaderName = manager.name;
+              }
+            }
+            // Then try team leader if no direct manager
+            else if (user.teamId) {
+              const team = await storage.getTeam(req.orgId, user.teamId);
+              if (team?.leaderId) {
+                const teamLeader = await storage.getUser(req.orgId, team.leaderId);
+                if (teamLeader) {
+                  teamLeaderName = teamLeader.name;
+                }
+              }
+            }
+            
+            // Get first response as summary
+            const responses = checkin.responses as Record<string, string>;
+            const firstResponse = Object.values(responses)[0] || undefined;
+            
+            await notifyCheckinSubmitted(
+              user.name,
+              teamLeaderName,
+              checkin.overallMood,
+              firstResponse
+            );
+          }
+        } catch (notificationError) {
+          console.error("Failed to send check-in submission notification:", notificationError);
+          // Don't fail the request if notification fails
+        }
+      }
+      
       res.status(201).json(checkin);
     } catch (error) {
       console.error("Check-in validation error:", error);
@@ -222,14 +358,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/checkins/:id", async (req, res) => {
+  app.patch("/api/checkins/:id", requireAuth(), async (req, res) => {
     try {
+      const currentUser = req.currentUser!;
+      
+      // Get the existing check-in to compare states and verify ownership
+      const existingCheckin = await storage.getCheckin(req.orgId, req.params.id);
+      if (!existingCheckin) {
+        return res.status(404).json({ message: "Check-in not found" });
+      }
+      
+      // Authorization: Only the owner or admin can update a check-in
+      if (currentUser.role !== "admin" && currentUser.id !== existingCheckin.userId) {
+        return res.status(403).json({ 
+          message: "Access denied. You can only update your own check-ins or be an admin." 
+        });
+      }
+      
       const updates = insertCheckinSchema.partial().parse(req.body);
       const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
+      
       const checkin = await storage.updateCheckin(req.orgId, req.params.id, sanitizedUpdates);
       if (!checkin) {
         return res.status(404).json({ message: "Check-in not found" });
       }
+      
+      // Send notification if check-in is newly submitted for review
+      const wasNotSubmitted = !existingCheckin.isComplete || !existingCheckin.submittedAt;
+      const isNowSubmitted = checkin.isComplete && checkin.submittedAt;
+      
+      if (wasNotSubmitted && isNowSubmitted) {
+        try {
+          const user = await storage.getUser(req.orgId, checkin.userId);
+          if (user) {
+            // Find team leader to notify
+            let teamLeaderName = "Team Leader";
+            
+            // First try direct manager
+            if (user.managerId) {
+              const manager = await storage.getUser(req.orgId, user.managerId);
+              if (manager) {
+                teamLeaderName = manager.name;
+              }
+            }
+            // Then try team leader if no direct manager
+            else if (user.teamId) {
+              const team = await storage.getTeam(req.orgId, user.teamId);
+              if (team?.leaderId) {
+                const teamLeader = await storage.getUser(req.orgId, team.leaderId);
+                if (teamLeader) {
+                  teamLeaderName = teamLeader.name;
+                }
+              }
+            }
+            
+            // Get first response as summary
+            const responses = checkin.responses as Record<string, string>;
+            const firstResponse = Object.values(responses)[0] || undefined;
+            
+            await notifyCheckinSubmitted(
+              user.name,
+              teamLeaderName,
+              checkin.overallMood,
+              firstResponse
+            );
+          }
+        } catch (notificationError) {
+          console.error("Failed to send check-in submission notification:", notificationError);
+          // Don't fail the request if notification fails
+        }
+      }
+      
       res.json(checkin);
     } catch (error) {
       console.error("Check-in update validation error:", error);
@@ -240,11 +439,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/users/:id/current-checkin", async (req, res) => {
+  app.get("/api/users/:id/current-checkin", requireAuth(), async (req, res) => {
     try {
-      const checkin = await storage.getCurrentWeekCheckin(req.orgId, req.params.id);
+      const currentUser = req.currentUser!;
+      const requestedUserId = req.params.id;
+      
+      // Apply authorization: verify user can view this user's current check-in
+      if (currentUser.role === "admin") {
+        // Admins can view any user's current check-in
+        const checkin = await storage.getCurrentWeekCheckin(req.orgId, requestedUserId);
+        res.json(checkin || null);
+        return;
+      }
+      
+      // For non-admins: check if they have authorization
+      if (requestedUserId === currentUser.id) {
+        // User can always view their own current check-in
+        const checkin = await storage.getCurrentWeekCheckin(req.orgId, requestedUserId);
+        res.json(checkin || null);
+        return;
+      }
+      
+      // Check if current user is authorized to view this user's check-ins
+      const directReports = await storage.getUsersByManager(req.orgId, currentUser.id);
+      const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, currentUser.id);
+      
+      const authorizedUserIds = new Set([
+        ...directReports.map(u => u.id),
+        ...teamMembers.map(u => u.id)
+      ]);
+      
+      if (!authorizedUserIds.has(requestedUserId)) {
+        return res.status(403).json({ 
+          message: "Access denied. You can only view check-ins for yourself or your team members." 
+        });
+      }
+      
+      const checkin = await storage.getCurrentWeekCheckin(req.orgId, requestedUserId);
       res.json(checkin || null);
     } catch (error) {
+      console.error("Failed to fetch current check-in:", error);
       res.status(500).json({ message: "Failed to fetch current check-in" });
     }
   });
@@ -424,6 +658,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const team = checkinUser?.teamId ? await storage.getTeam(req.orgId, checkinUser.teamId) : null;
       const reviewer = await storage.getUser(req.orgId, user.id);
       
+      // Send notification to user about review completion
+      if (checkinUser && reviewer) {
+        try {
+          await notifyCheckinReviewed(
+            checkinUser.name,
+            reviewer.name,
+            reviewData.reviewStatus === ReviewStatus.APPROVED ? 'approved' : 'rejected',
+            reviewData.reviewComments
+          );
+        } catch (notificationError) {
+          console.error("Failed to send check-in review notification:", notificationError);
+          // Don't fail the request if notification fails
+        }
+      }
+      
       const enhancedCheckin = {
         ...updatedCheckin,
         user: checkinUser ? {
@@ -528,7 +777,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Questions
-  app.get("/api/questions", async (req, res) => {
+  app.get("/api/questions", requireAuth(), async (req, res) => {
     try {
       const questions = await storage.getActiveQuestions(req.orgId);
       res.json(questions);
@@ -537,7 +786,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/questions", async (req, res) => {
+  app.post("/api/questions", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       const questionData = insertQuestionSchema.parse(req.body);
       const sanitizedData = sanitizeForOrganization(questionData, req.orgId);
@@ -548,7 +797,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/questions/:id", async (req, res) => {
+  app.patch("/api/questions/:id", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       const updates = insertQuestionSchema.partial().parse(req.body);
       const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
@@ -562,7 +811,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/questions/:id", async (req, res) => {
+  app.delete("/api/questions/:id", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       const deleted = await storage.deleteQuestion(req.orgId, req.params.id);
       if (!deleted) {
@@ -592,7 +841,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/wins", async (req, res) => {
+  app.post("/api/wins", requireAuth(), async (req, res) => {
     try {
       const winData = insertWinSchema.parse(req.body);
       const sanitizedData = sanitizeForOrganization(winData, req.orgId);
@@ -623,7 +872,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/wins/:id", async (req, res) => {
+  app.patch("/api/wins/:id", requireAuth(), async (req, res) => {
     try {
       // Use the partial insert schema for consistent validation
       const updates = insertWinSchema.partial().parse(req.body);
@@ -642,7 +891,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/wins/:id", async (req, res) => {
+  app.delete("/api/wins/:id", requireAuth(), async (req, res) => {
     try {
       const deleted = await storage.deleteWin(req.orgId, req.params.id);
       if (!deleted) {
@@ -712,7 +961,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/shoutouts", async (req, res) => {
+  app.post("/api/shoutouts", requireAuth(), async (req, res) => {
     try {
       const shoutoutData = insertShoutoutSchema.parse(req.body);
       
@@ -761,7 +1010,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/shoutouts/:id", async (req, res) => {
+  app.patch("/api/shoutouts/:id", requireAuth(), async (req, res) => {
     try {
       // Use separate update schema that only allows safe fields
       const updates = updateShoutoutSchema.parse(req.body);
@@ -795,7 +1044,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/shoutouts/:id", async (req, res) => {
+  app.delete("/api/shoutouts/:id", requireAuth(), async (req, res) => {
     try {
       const deleted = await storage.deleteShoutout(req.orgId, req.params.id);
       if (!deleted) {
@@ -848,7 +1097,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/comments/:id", async (req, res) => {
+  app.patch("/api/comments/:id", requireAuth(), async (req, res) => {
     try {
       // Only allow updating the content field for security
       const updateSchema = z.object({ content: z.string().min(1, "Content is required") });
@@ -863,7 +1112,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/comments/:id", async (req, res) => {
+  app.delete("/api/comments/:id", requireAuth(), async (req, res) => {
     try {
       const deleted = await storage.deleteComment(req.orgId, req.params.id);
       if (!deleted) {

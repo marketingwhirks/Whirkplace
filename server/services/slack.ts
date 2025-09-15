@@ -5,7 +5,11 @@ if (!process.env.SLACK_BOT_TOKEN) {
 }
 
 if (!process.env.SLACK_CHANNEL_ID) {
-  console.warn("SLACK_CHANNEL_ID environment variable not set. Using default channel.");
+  console.warn("SLACK_CHANNEL_ID environment variable not set. Public Slack notifications will be disabled for security.");
+}
+
+if (!process.env.SLACK_PRIVATE_CHANNEL_ID) {
+  console.warn("SLACK_PRIVATE_CHANNEL_ID environment variable not set. Sensitive notifications will be disabled for security.");
 }
 
 const slack = process.env.SLACK_BOT_TOKEN ? new WebClient(process.env.SLACK_BOT_TOKEN) : null;
@@ -36,7 +40,12 @@ export async function sendSlackMessage(
 export async function sendCheckinReminder(userNames: string[], questions: Array<{id: string, text: string}> = []) {
   if (!slack) return;
 
-  const channel = process.env.SLACK_CHANNEL_ID || '#general';
+  const channel = process.env.SLACK_CHANNEL_ID;
+  if (!channel) {
+    console.warn("SLACK_CHANNEL_ID not configured. Check-in reminder not sent for security.");
+    return;
+  }
+  
   const userList = userNames.join(", ");
   
   // Get the app URL for the check-in link
@@ -112,7 +121,12 @@ export async function sendCheckinReminder(userNames: string[], questions: Array<
 export async function announceWin(winTitle: string, winDescription: string, userName: string, nominatedBy?: string) {
   if (!slack) return;
 
-  const channel = process.env.SLACK_CHANNEL_ID || '#general';
+  const channel = process.env.SLACK_CHANNEL_ID;
+  if (!channel) {
+    console.warn("SLACK_CHANNEL_ID not configured. Win announcement not sent for security.");
+    return;
+  }
+  
   const announcement = nominatedBy 
     ? `🎉 ${nominatedBy} wants to celebrate ${userName}!` 
     : `🎉 Let's celebrate ${userName}!`;
@@ -158,7 +172,11 @@ export async function announceShoutout(
 ) {
   if (!slack) return;
 
-  const channel = process.env.SLACK_CHANNEL_ID || '#general';
+  const channel = process.env.SLACK_CHANNEL_ID;
+  if (!channel) {
+    console.warn("SLACK_CHANNEL_ID not configured. Shoutout announcement not sent for security.");
+    return;
+  }
   
   // Create company values badges with emojis
   const valueEmojis: Record<string, string> = {
@@ -228,7 +246,12 @@ export async function announceShoutout(
 export async function sendTeamHealthUpdate(averageRating: number, completionRate: number, totalWins: number) {
   if (!slack) return;
 
-  const channel = process.env.SLACK_CHANNEL_ID || '#general';
+  const channel = process.env.SLACK_CHANNEL_ID;
+  if (!channel) {
+    console.warn("SLACK_CHANNEL_ID not configured. Team health update not sent for security.");
+    return;
+  }
+  
   const healthEmoji = averageRating >= 4 ? '🌟' : averageRating >= 3 ? '😊' : '😐';
 
   await sendSlackMessage({
@@ -260,4 +283,179 @@ export async function sendTeamHealthUpdate(averageRating: number, completionRate
       }
     ]
   });
+}
+
+/**
+ * Notify team leaders when a check-in is submitted for review
+ */
+export async function notifyCheckinSubmitted(
+  userName: string, 
+  teamLeaderName: string, 
+  overallMood: number, 
+  submissionSummary?: string
+) {
+  if (!slack) return;
+
+  // Use private channel for sensitive check-in notifications
+  const channel = process.env.SLACK_PRIVATE_CHANNEL_ID;
+  if (!channel) {
+    console.warn("SLACK_PRIVATE_CHANNEL_ID not configured. Sensitive check-in notification not sent for security.");
+    return;
+  }
+  
+  const moodEmoji = overallMood >= 4 ? '😊' : overallMood >= 3 ? '😐' : overallMood >= 2 ? '😕' : '😟';
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const reviewUrl = `${appUrl}/#/reviews`;
+
+  const blocks = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `📝 *New Check-in Submitted for Review*`
+      }
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*${userName}* has submitted their weekly check-in and needs your review, ${teamLeaderName}!`
+      }
+    },
+    {
+      type: 'section',
+      fields: [
+        {
+          type: 'mrkdwn',
+          text: `*Overall Mood:*\n${moodEmoji} ${overallMood}/5`
+        },
+        {
+          type: 'mrkdwn',
+          text: `*Status:*\nPending Review`
+        }
+      ]
+    }
+  ];
+
+  if (submissionSummary) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Quick Preview:*\n_"${submissionSummary.substring(0, 150)}${submissionSummary.length > 150 ? '...' : ''}"_`
+      }
+    });
+  }
+
+  blocks.push({
+    type: 'actions',
+    elements: [
+      {
+        type: 'button',
+        text: {
+          type: 'plain_text',
+          text: 'Review Check-in 👁️'
+        },
+        url: reviewUrl,
+        style: 'primary'
+      }
+    ]
+  });
+
+  const messageId = await sendSlackMessage({
+    channel,
+    blocks
+  });
+
+  return messageId;
+}
+
+/**
+ * Notify user when their check-in has been reviewed (approved or rejected)
+ */
+export async function notifyCheckinReviewed(
+  userName: string, 
+  reviewerName: string, 
+  reviewStatus: 'approved' | 'rejected', 
+  reviewComments?: string
+) {
+  if (!slack) return;
+
+  // Use private channel for sensitive check-in review notifications
+  const channel = process.env.SLACK_PRIVATE_CHANNEL_ID;
+  if (!channel) {
+    console.warn("SLACK_PRIVATE_CHANNEL_ID not configured. Sensitive review notification not sent for security.");
+    return;
+  }
+  
+  const statusEmoji = reviewStatus === 'approved' ? '✅' : '❌';
+  const statusColor = reviewStatus === 'approved' ? 'good' : 'danger';
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const checkinUrl = `${appUrl}/#/checkins`;
+
+  const blocks = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `${statusEmoji} *Check-in ${reviewStatus === 'approved' ? 'Approved' : 'Rejected'}*`
+      }
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `Hi ${userName}! ${reviewerName} has ${reviewStatus} your weekly check-in.`
+      }
+    }
+  ];
+
+  if (reviewComments) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Review Comments:*\n_"${reviewComments}"_`
+      }
+    });
+  }
+
+  if (reviewStatus === 'rejected') {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `Please review the feedback${reviewComments ? ' above' : ''} and update your check-in if needed.`
+      }
+    });
+    blocks.push({
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: {
+            type: 'plain_text',
+            text: 'Update Check-in 📝'
+          },
+          url: checkinUrl,
+          style: 'primary'
+        }
+      ]
+    });
+  } else {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `Thanks for sharing your weekly update! Keep up the great work! 🚀`
+      }
+    });
+  }
+
+  const messageId = await sendSlackMessage({
+    channel,
+    blocks
+  });
+
+  return messageId;
 }
