@@ -197,7 +197,7 @@ export default function ShoutoutsPage() {
   return (
     <div className="flex flex-col min-h-screen bg-background">
       <Header 
-        title="Team Kudos"
+        title="Team Shout Outs"
         description="Recognize your teammates and celebrate wins together"
       />
       <div className="flex-1 container mx-auto px-4 py-6">
@@ -205,7 +205,7 @@ export default function ShoutoutsPage() {
           {/* Header */}
           <div className="flex items-center justify-between">
             <div className="space-y-1">
-              <h1 className="text-3xl font-bold tracking-tight">Kudos</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Shout Outs</h1>
               <p className="text-muted-foreground">
                 Celebrate and recognize your teammates' great work
               </p>
@@ -214,12 +214,12 @@ export default function ShoutoutsPage() {
               <DialogTrigger asChild>
                 <Button data-testid="button-give-kudos">
                   <Gift className="mr-2 h-4 w-4" />
-                  Give Kudos
+                  Give Shout Out
                 </Button>
               </DialogTrigger>
               <DialogContent className="sm:max-w-[600px]">
                 <DialogHeader>
-                  <DialogTitle>Give Kudos</DialogTitle>
+                  <DialogTitle>Give Shout Out</DialogTitle>
                   <DialogDescription>
                     Recognize someone for their amazing work and the company values they demonstrate.
                   </DialogDescription>
@@ -418,7 +418,7 @@ export default function ShoutoutsPage() {
                       data-testid="button-give-first-shoutout"
                     >
                       <Gift className="mr-2 h-4 w-4" />
-                      Give First Shoutout
+                      Give First Shout Out
                     </Button>
                   </CardContent>
                 </Card>
