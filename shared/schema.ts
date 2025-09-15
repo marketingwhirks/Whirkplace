@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, integer, boolean, jsonb, date, index, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -60,7 +60,10 @@ export const checkins = pgTable("checkins", {
   isComplete: boolean("is_complete").notNull().default(false),
   submittedAt: timestamp("submitted_at"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
-});
+}, (table) => ({
+  orgWeekOfIdx: index("checkins_org_week_of_idx").on(table.organizationId, table.weekOf),
+  orgUserWeekOfIdx: index("checkins_org_user_week_of_idx").on(table.organizationId, table.userId, table.weekOf),
+}));
 
 export const questions = pgTable("questions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -104,7 +107,49 @@ export const shoutouts = pgTable("shoutouts", {
   isPublic: boolean("is_public").notNull().default(true),
   slackMessageId: text("slack_message_id"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
-});
+}, (table) => ({
+  orgUserCreatedAtIdx: index("shoutouts_org_user_created_at_idx").on(table.organizationId, table.fromUserId, table.createdAt),
+  orgToUserCreatedAtIdx: index("shoutouts_org_to_user_created_at_idx").on(table.organizationId, table.toUserId, table.createdAt),
+}));
+
+// Analytics Tables for Daily Aggregates
+export const pulseMetricsDaily = pgTable("pulse_metrics_daily", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  teamId: varchar("team_id"),
+  bucketDate: date("bucket_date").notNull(), // Date bucket (e.g., week start for pulse data)
+  moodSum: integer("mood_sum").notNull().default(0), // Sum of mood ratings
+  checkinCount: integer("checkin_count").notNull().default(0), // Number of check-ins
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgBucketDateIdx: index("pulse_metrics_org_bucket_date_idx").on(table.organizationId, table.bucketDate),
+  orgUserBucketDateIdx: index("pulse_metrics_org_user_bucket_date_idx").on(table.organizationId, table.userId, table.bucketDate),
+  orgTeamBucketDateIdx: index("pulse_metrics_org_team_bucket_date_idx").on(table.organizationId, table.teamId, table.bucketDate),
+  // Unique constraint to prevent duplicate daily rows
+  orgUserBucketDateUnique: unique("pulse_metrics_org_user_bucket_date_unique").on(table.organizationId, table.userId, table.bucketDate),
+}));
+
+export const shoutoutMetricsDaily = pgTable("shoutout_metrics_daily", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  teamId: varchar("team_id"),
+  bucketDate: date("bucket_date").notNull(), // Date bucket
+  receivedCount: integer("received_count").notNull().default(0), // Shoutouts received
+  givenCount: integer("given_count").notNull().default(0), // Shoutouts given
+  publicCount: integer("public_count").notNull().default(0), // Public shoutouts received
+  privateCount: integer("private_count").notNull().default(0), // Private shoutouts received
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgBucketDateIdx: index("shoutout_metrics_org_bucket_date_idx").on(table.organizationId, table.bucketDate),
+  orgUserBucketDateIdx: index("shoutout_metrics_org_user_bucket_date_idx").on(table.organizationId, table.userId, table.bucketDate),
+  orgTeamBucketDateIdx: index("shoutout_metrics_org_team_bucket_date_idx").on(table.organizationId, table.teamId, table.bucketDate),
+  // Unique constraint to prevent duplicate daily rows
+  orgUserBucketDateUnique: unique("shoutout_metrics_org_user_bucket_date_unique").on(table.organizationId, table.userId, table.bucketDate),
+}));
 
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -151,6 +196,22 @@ export const insertShoutoutSchema = createInsertSchema(shoutouts).omit({
   message: z.string().min(1, "Message is required").max(500, "Message too long"),
 });
 
+export const insertPulseMetricsDailySchema = createInsertSchema(pulseMetricsDaily).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  bucketDate: z.coerce.date(),
+});
+
+export const insertShoutoutMetricsDailySchema = createInsertSchema(shoutoutMetricsDaily).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  bucketDate: z.coerce.date(),
+});
+
 // Separate schema for updates - only allow certain fields to be modified
 export const updateShoutoutSchema = z.object({
   message: z.string().min(1, "Message is required").max(500, "Message too long").optional(),
@@ -180,3 +241,9 @@ export type Comment = typeof comments.$inferSelect;
 
 export type InsertShoutout = z.infer<typeof insertShoutoutSchema>;
 export type Shoutout = typeof shoutouts.$inferSelect;
+
+export type InsertPulseMetricsDaily = z.infer<typeof insertPulseMetricsDailySchema>;
+export type PulseMetricsDaily = typeof pulseMetricsDaily.$inferSelect;
+
+export type InsertShoutoutMetricsDaily = z.infer<typeof insertShoutoutMetricsDailySchema>;
+export type ShoutoutMetricsDaily = typeof shoutoutMetricsDaily.$inferSelect;
