@@ -8,6 +8,7 @@ import {
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric 
 } from "@shared/schema";
 import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout } from "./services/slack";
+import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
 import { authenticateUser, requireAuth } from "./middleware/auth";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
@@ -60,6 +61,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const date = new Date(val);
       return !isNaN(date.getTime());
     }, "Invalid 'to' date format").transform(val => val ? new Date(val) : undefined),
+  });
+  
+  // Admin backfill schema
+  const backfillSchema = z.object({
+    from: z.string().refine((val) => {
+      const date = new Date(val);
+      return !isNaN(date.getTime());
+    }, "Invalid 'from' date format").transform(val => new Date(val)),
+    to: z.string().refine((val) => {
+      const date = new Date(val);
+      return !isNaN(date.getTime());
+    }, "Invalid 'to' date format").transform(val => new Date(val)),
   });
   
   // Users
@@ -823,6 +836,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Team health update sent" });
     } catch (error) {
       res.status(500).json({ message: "Failed to send team health update" });
+    }
+  });
+
+  // Admin aggregation endpoints
+  app.post("/api/admin/aggregation/backfill", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is admin
+      if (!req.currentUser || req.currentUser.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const validation = backfillSchema.safeParse(req.body);
+      if (!validation.success) {
+        return res.status(400).json({ 
+          message: "Invalid backfill parameters",
+          errors: validation.error.errors
+        });
+      }
+
+      const { from, to } = validation.data;
+
+      // Validate date range
+      if (from >= to) {
+        return res.status(400).json({ message: "From date must be before to date" });
+      }
+
+      const maxRangeDays = 90; // Limit backfill to 90 days
+      const rangeDays = (to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24);
+      if (rangeDays > maxRangeDays) {
+        return res.status(400).json({ 
+          message: `Backfill range too large. Maximum ${maxRangeDays} days allowed.` 
+        });
+      }
+
+      console.log(`Admin ${req.currentUser.name} initiated backfill for org ${req.orgId} from ${from.toISOString()} to ${to.toISOString()}`);
+
+      // Start backfill (async - don't wait for completion)
+      aggregationService.backfillHistoricalData(req.orgId, from, to).catch(error => {
+        console.error(`Backfill failed for org ${req.orgId}:`, error);
+      });
+
+      res.json({ 
+        message: "Backfill initiated successfully",
+        from: from.toISOString(),
+        to: to.toISOString(),
+        organizationId: req.orgId
+      });
+    } catch (error) {
+      console.error("Admin backfill error:", error);
+      res.status(500).json({ message: "Failed to initiate backfill" });
+    }
+  });
+
+  // Admin endpoint to check aggregation status
+  app.get("/api/admin/aggregation/status", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is admin
+      if (!req.currentUser || req.currentUser.role !== 'admin') {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      res.json({
+        useAggregates: process.env.USE_AGGREGATES === 'true',
+        shadowReads: process.env.ENABLE_SHADOW_READS === 'true',
+        organizationId: req.orgId,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Admin aggregation status error:", error);
+      res.status(500).json({ message: "Failed to get aggregation status" });
     }
   });
 

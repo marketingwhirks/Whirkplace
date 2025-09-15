@@ -151,6 +151,19 @@ export const shoutoutMetricsDaily = pgTable("shoutout_metrics_daily", {
   orgUserBucketDateUnique: unique("shoutout_metrics_org_user_bucket_date_unique").on(table.organizationId, table.userId, table.bucketDate),
 }));
 
+// Aggregation Watermarks for tracking processed data
+export const aggregationWatermarks = pgTable("aggregation_watermarks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  lastProcessedAt: timestamp("last_processed_at").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgIdx: index("aggregation_watermarks_org_idx").on(table.organizationId),
+  // Unique constraint to ensure one watermark per organization
+  orgUnique: unique("aggregation_watermarks_org_unique").on(table.organizationId),
+}));
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -212,6 +225,14 @@ export const insertShoutoutMetricsDailySchema = createInsertSchema(shoutoutMetri
   bucketDate: z.coerce.date(),
 });
 
+export const insertAggregationWatermarkSchema = createInsertSchema(aggregationWatermarks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  lastProcessedAt: z.coerce.date(),
+});
+
 // Separate schema for updates - only allow certain fields to be modified
 export const updateShoutoutSchema = z.object({
   message: z.string().min(1, "Message is required").max(500, "Message too long").optional(),
@@ -247,6 +268,9 @@ export type PulseMetricsDaily = typeof pulseMetricsDaily.$inferSelect;
 
 export type InsertShoutoutMetricsDaily = z.infer<typeof insertShoutoutMetricsDailySchema>;
 export type ShoutoutMetricsDaily = typeof shoutoutMetricsDaily.$inferSelect;
+
+export type InsertAggregationWatermark = z.infer<typeof insertAggregationWatermarkSchema>;
+export type AggregationWatermark = typeof aggregationWatermarks.$inferSelect;
 
 // Analytics types
 export type AnalyticsScope = 'organization' | 'team' | 'user';

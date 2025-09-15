@@ -10,11 +10,13 @@ import {
   type ShoutoutMetricsOptions, type ShoutoutMetricsResult,
   type LeaderboardOptions, type LeaderboardEntry,
   type AnalyticsOverview, type AnalyticsPeriod,
-  users, teams, checkins, questions, wins, comments, shoutouts
+  users, teams, checkins, questions, wins, comments, shoutouts,
+  pulseMetricsDaily, shoutoutMetricsDaily, aggregationWatermarks
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
 import { eq, desc, and, gte, or, sql, sum, count, avg, lt, lte, inArray } from "drizzle-orm";
+import { AggregationService } from "./services/aggregation";
 
 export interface IStorage {
   // Users
@@ -80,9 +82,76 @@ export interface IStorage {
   getAnalyticsOverview(organizationId: string, period: AnalyticsPeriod, from: Date, to: Date): Promise<AnalyticsOverview>;
 }
 
+// Simple in-memory cache with TTL for analytics queries
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+class AnalyticsCache {
+  private cache = new Map<string, CacheEntry<any>>();
+  private readonly defaultTTL = 5 * 60 * 1000; // 5 minutes
+
+  get<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (!entry) return null;
+    
+    if (Date.now() > entry.expiresAt) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return entry.data;
+  }
+
+  set<T>(key: string, data: T, ttlMs?: number): void {
+    const ttl = ttlMs || this.defaultTTL;
+    this.cache.set(key, {
+      data,
+      expiresAt: Date.now() + ttl
+    });
+  }
+
+  clear(): void {
+    this.cache.clear();
+  }
+
+  // Invalidate cache entries by pattern matching
+  invalidateByPattern(pattern: string): void {
+    for (const key of this.cache.keys()) {
+      if (key.includes(pattern)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  // Invalidate analytics cache for a specific organization
+  invalidateForOrganization(organizationId: string): void {
+    this.invalidateByPattern(`:${organizationId}:`);
+  }
+
+  // Cleanup expired entries periodically
+  cleanup(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.cache.entries()) {
+      if (now > entry.expiresAt) {
+        this.cache.delete(key);
+      }
+    }
+  }
+}
+
 export class DatabaseStorage implements IStorage {
+  private analyticsCache = new AnalyticsCache();
+  private cleanupInterval: NodeJS.Timeout;
+
   constructor() {
     // Database will be initialized when tables are created via db:push
+    
+    // Cleanup cache every 10 minutes
+    this.cleanupInterval = setInterval(() => {
+      this.analyticsCache.cleanup();
+    }, 10 * 60 * 1000);
   }
 
   // Users
@@ -199,6 +268,20 @@ export class DatabaseStorage implements IStorage {
         isComplete: insertCheckin.isComplete ?? false,
       })
       .returning();
+    
+    // Invalidate analytics cache for this organization to prevent serving stale data
+    this.analyticsCache.invalidateForOrganization(organizationId);
+    
+    // Trigger immediate aggregate recomputation for real-time freshness (fire-and-forget)
+    const bucketDate = new Date(checkin.createdAt);
+    AggregationService.getInstance().recomputeUserDayAggregates(
+      organizationId, 
+      checkin.userId, 
+      bucketDate
+    ).catch(error => {
+      console.error(`Failed to recompute aggregates after checkin creation:`, error);
+    });
+    
     return checkin;
   }
 
@@ -440,6 +523,32 @@ export class DatabaseStorage implements IStorage {
         slackMessageId: insertShoutout.slackMessageId ?? null,
       })
       .returning();
+    
+    // Invalidate analytics cache for this organization to prevent serving stale data
+    this.analyticsCache.invalidateForOrganization(organizationId);
+    
+    // Trigger immediate aggregate recomputation for both sender and receiver (fire-and-forget)
+    const bucketDate = new Date(shoutoutRecord.createdAt);
+    const aggregationService = AggregationService.getInstance();
+    
+    // Recompute for receiver
+    aggregationService.recomputeUserDayAggregates(
+      organizationId, 
+      shoutoutRecord.toUserId, 
+      bucketDate
+    ).catch(error => {
+      console.error(`Failed to recompute aggregates after shoutout creation for receiver:`, error);
+    });
+    
+    // Recompute for sender
+    aggregationService.recomputeUserDayAggregates(
+      organizationId, 
+      shoutoutRecord.fromUserId, 
+      bucketDate
+    ).catch(error => {
+      console.error(`Failed to recompute aggregates after shoutout creation for sender:`, error);
+    });
+    
     return shoutoutRecord;
   }
 
@@ -511,6 +620,51 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
+  // Helper methods for aggregation strategy
+  private shouldUseAggregates(from?: Date, to?: Date, period?: string): boolean {
+    // Check feature flag first
+    const useAggregates = process.env.USE_AGGREGATES === 'true';
+    if (!useAggregates) return false;
+
+    // Use aggregates for weekly, monthly, quarterly, yearly periods
+    if (period && ['week', 'month', 'quarter', 'year'].includes(period)) {
+      return true;
+    }
+
+    // Use aggregates only when the ENTIRE query window [from,to] is >7 days old
+    // This prevents missing recent raw data in mixed windows
+    if (from && to) {
+      const now = Date.now();
+      const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000);
+      
+      // Both from AND to must be older than 7 days for safe aggregate use
+      return from.getTime() < sevenDaysAgo && to.getTime() < sevenDaysAgo;
+    }
+
+    return false;
+  }
+
+  private generateCacheKey(method: string, organizationId: string, options: any): string {
+    const optionsStr = JSON.stringify(options, Object.keys(options).sort());
+    return `${method}:${organizationId}:${optionsStr}`;
+  }
+
+  private async logShadowRead<T>(method: string, organizationId: string, options: any, aggregateResult: T, rawResult: T): Promise<void> {
+    try {
+      const comparison = {
+        method,
+        organizationId,
+        options,
+        aggregateLength: Array.isArray(aggregateResult) ? aggregateResult.length : 1,
+        rawLength: Array.isArray(rawResult) ? rawResult.length : 1,
+        timestamp: new Date().toISOString()
+      };
+      console.log('Shadow read comparison:', JSON.stringify(comparison));
+    } catch (error) {
+      console.error('Error logging shadow read:', error);
+    }
+  }
+
   // Analytics methods
   private getDateTruncExpression(period: string, column: any) {
     switch (period) {
@@ -536,6 +690,73 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPulseMetrics(organizationId: string, options: PulseMetricsOptions): Promise<PulseMetricsResult[]> {
+    const { scope, entityId, period, from, to } = options;
+    
+    // Check cache first
+    const cacheKey = this.generateCacheKey('getPulseMetrics', organizationId, options);
+    const cachedResult = this.analyticsCache.get<PulseMetricsResult[]>(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
+
+    let results: PulseMetricsResult[];
+
+    // Determine if we should use aggregates
+    if (this.shouldUseAggregates(from, to, period)) {
+      results = await this.getPulseMetricsFromAggregates(organizationId, options);
+      
+      // Shadow read for comparison if enabled
+      if (process.env.ENABLE_SHADOW_READS === 'true') {
+        const rawResults = await this.getPulseMetricsFromRaw(organizationId, options);
+        await this.logShadowRead('getPulseMetrics', organizationId, options, results, rawResults);
+      }
+    } else {
+      results = await this.getPulseMetricsFromRaw(organizationId, options);
+    }
+
+    // Cache results with longer TTL for older data
+    const isOldData = from && (Date.now() - from.getTime()) > (7 * 24 * 60 * 60 * 1000);
+    const ttl = isOldData ? 30 * 60 * 1000 : 5 * 60 * 1000; // 30min for old data, 5min for recent
+    this.analyticsCache.set(cacheKey, results, ttl);
+
+    return results;
+  }
+
+  private async getPulseMetricsFromAggregates(organizationId: string, options: PulseMetricsOptions): Promise<PulseMetricsResult[]> {
+    const { scope, entityId, period, from, to } = options;
+    
+    let baseQuery = db
+      .select({
+        periodStart: this.getDateTruncExpression(period, sql`${pulseMetricsDaily.bucketDate}::timestamp`),
+        avgMood: sql<number>`CASE WHEN SUM(${pulseMetricsDaily.checkinCount}) > 0 THEN SUM(${pulseMetricsDaily.moodSum})::float / SUM(${pulseMetricsDaily.checkinCount}) ELSE 0 END`,
+        checkinCount: sum(pulseMetricsDaily.checkinCount)
+      })
+      .from(pulseMetricsDaily);
+
+    let whereConditions = [eq(pulseMetricsDaily.organizationId, organizationId)];
+
+    if (scope === 'team' && entityId) {
+      whereConditions.push(eq(pulseMetricsDaily.teamId, entityId));
+    } else if (scope === 'user' && entityId) {
+      whereConditions.push(eq(pulseMetricsDaily.userId, entityId));
+    }
+
+    if (from) whereConditions.push(gte(sql`${pulseMetricsDaily.bucketDate}::timestamp`, from));
+    if (to) whereConditions.push(lte(sql`${pulseMetricsDaily.bucketDate}::timestamp`, to));
+
+    const results = await baseQuery
+      .where(and(...whereConditions))
+      .groupBy(this.getDateTruncExpression(period, sql`${pulseMetricsDaily.bucketDate}::timestamp`))
+      .orderBy(this.getDateTruncExpression(period, sql`${pulseMetricsDaily.bucketDate}::timestamp`));
+
+    return results.map(row => ({
+      periodStart: new Date(row.periodStart),
+      avgMood: Number(row.avgMood || 0),
+      checkinCount: Number(row.checkinCount || 0)
+    }));
+  }
+
+  private async getPulseMetricsFromRaw(organizationId: string, options: PulseMetricsOptions): Promise<PulseMetricsResult[]> {
     const { scope, entityId, period, from, to } = options;
     
     let baseQuery = db
@@ -572,6 +793,80 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getShoutoutMetrics(organizationId: string, options: ShoutoutMetricsOptions): Promise<ShoutoutMetricsResult[]> {
+    const { scope, entityId, direction = 'all', visibility = 'all', period, from, to } = options;
+    
+    // Check cache first
+    const cacheKey = this.generateCacheKey('getShoutoutMetrics', organizationId, options);
+    const cachedResult = this.analyticsCache.get<ShoutoutMetricsResult[]>(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
+
+    let results: ShoutoutMetricsResult[];
+
+    // Determine if we should use aggregates
+    if (this.shouldUseAggregates(from, to, period)) {
+      results = await this.getShoutoutMetricsFromAggregates(organizationId, options);
+      
+      // Shadow read for comparison if enabled
+      if (process.env.ENABLE_SHADOW_READS === 'true') {
+        const rawResults = await this.getShoutoutMetricsFromRaw(organizationId, options);
+        await this.logShadowRead('getShoutoutMetrics', organizationId, options, results, rawResults);
+      }
+    } else {
+      results = await this.getShoutoutMetricsFromRaw(organizationId, options);
+    }
+
+    // Cache results with longer TTL for older data
+    const isOldData = from && (Date.now() - from.getTime()) > (7 * 24 * 60 * 60 * 1000);
+    const ttl = isOldData ? 30 * 60 * 1000 : 5 * 60 * 1000;
+    this.analyticsCache.set(cacheKey, results, ttl);
+
+    return results;
+  }
+
+  private async getShoutoutMetricsFromAggregates(organizationId: string, options: ShoutoutMetricsOptions): Promise<ShoutoutMetricsResult[]> {
+    const { scope, entityId, direction = 'all', visibility = 'all', period, from, to } = options;
+    
+    let baseQuery = db
+      .select({
+        periodStart: this.getDateTruncExpression(period, sql`${shoutoutMetricsDaily.bucketDate}::timestamp`),
+        count: sql<number>`SUM(CASE 
+          WHEN '${direction}' = 'received' THEN ${shoutoutMetricsDaily.receivedCount}
+          WHEN '${direction}' = 'given' THEN ${shoutoutMetricsDaily.givenCount}
+          ELSE ${shoutoutMetricsDaily.receivedCount} + ${shoutoutMetricsDaily.givenCount}
+        END)`
+      })
+      .from(shoutoutMetricsDaily);
+
+    let whereConditions = [eq(shoutoutMetricsDaily.organizationId, organizationId)];
+
+    if (scope === 'team' && entityId) {
+      whereConditions.push(eq(shoutoutMetricsDaily.teamId, entityId));
+    } else if (scope === 'user' && entityId) {
+      whereConditions.push(eq(shoutoutMetricsDaily.userId, entityId));
+    }
+
+    // Note: visibility filtering is complex with aggregates - fall back to raw for now
+    if (visibility !== 'all') {
+      return await this.getShoutoutMetricsFromRaw(organizationId, options);
+    }
+
+    if (from) whereConditions.push(gte(sql`${shoutoutMetricsDaily.bucketDate}::timestamp`, from));
+    if (to) whereConditions.push(lte(sql`${shoutoutMetricsDaily.bucketDate}::timestamp`, to));
+
+    const results = await baseQuery
+      .where(and(...whereConditions))
+      .groupBy(this.getDateTruncExpression(period, sql`${shoutoutMetricsDaily.bucketDate}::timestamp`))
+      .orderBy(this.getDateTruncExpression(period, sql`${shoutoutMetricsDaily.bucketDate}::timestamp`));
+
+    return results.map(row => ({
+      periodStart: new Date(row.periodStart),
+      count: Number(row.count || 0)
+    }));
+  }
+
+  private async getShoutoutMetricsFromRaw(organizationId: string, options: ShoutoutMetricsOptions): Promise<ShoutoutMetricsResult[]> {
     const { scope, entityId, direction = 'all', visibility = 'all', period, from, to } = options;
 
     let baseQuery = db
@@ -652,8 +947,19 @@ export class DatabaseStorage implements IStorage {
 
   async getLeaderboard(organizationId: string, options: LeaderboardOptions): Promise<LeaderboardEntry[]> {
     const { metric, scope, entityId, period, from, to, limit = 10 } = options;
+    
+    // Check cache first
+    const cacheKey = this.generateCacheKey('getLeaderboard', organizationId, options);
+    const cachedResult = this.analyticsCache.get<LeaderboardEntry[]>(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
 
     let results: LeaderboardEntry[] = [];
+    
+    // For leaderboards, aggregates can be used for older data
+    // but complexity of joins means we'll use raw data for now
+    // This can be optimized in future iterations
 
     if (metric === 'shoutouts_received') {
       let baseQuery = db
@@ -797,10 +1103,21 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Cache results with longer TTL for older data
+    const isOldData = from && (Date.now() - from.getTime()) > (7 * 24 * 60 * 60 * 1000);
+    const ttl = isOldData ? 30 * 60 * 1000 : 5 * 60 * 1000;
+    this.analyticsCache.set(cacheKey, results, ttl);
+
     return results;
   }
 
   async getAnalyticsOverview(organizationId: string, period: AnalyticsPeriod, from: Date, to: Date): Promise<AnalyticsOverview> {
+    // Check cache first
+    const cacheKey = this.generateCacheKey('getAnalyticsOverview', organizationId, { period, from, to });
+    const cachedResult = this.analyticsCache.get<AnalyticsOverview>(cacheKey);
+    if (cachedResult) {
+      return cachedResult;
+    }
     const periodLength = to.getTime() - from.getTime();
     const previousFrom = new Date(from.getTime() - periodLength);
     const previousTo = from;
@@ -886,7 +1203,7 @@ export class DatabaseStorage implements IStorage {
     const currentCompletedCheckins = Number(currentPulse?.count || 0);
     const previousCompletedCheckins = Number(previousPulse?.count || 0);
 
-    return {
+    const result = {
       pulseAvg: {
         current: currentPulseAvg,
         previous: previousPulseAvg,
@@ -908,6 +1225,13 @@ export class DatabaseStorage implements IStorage {
         change: previousCompletedCheckins > 0 ? ((currentCompletedCheckins - previousCompletedCheckins) / previousCompletedCheckins) * 100 : 0
       }
     };
+
+    // Cache results with longer TTL for older data
+    const isOldData = from && (Date.now() - from.getTime()) > (7 * 24 * 60 * 60 * 1000);
+    const ttl = isOldData ? 30 * 60 * 1000 : 5 * 60 * 1000;
+    this.analyticsCache.set(cacheKey, result, ttl);
+
+    return result;
   }
 }
 
