@@ -254,7 +254,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Apply organization middleware to all API routes
   app.use("/api", requireOrganization());
   
-  // Apply authentication middleware to all API routes
+  // Authentication endpoints (before global auth middleware)
+  app.post("/api/auth/logout", (req, res) => {
+    if (req.session) {
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Session destroy error:", err);
+          return res.status(500).json({ message: "Failed to logout" });
+        }
+        res.clearCookie('connect.sid'); // Clear session cookie
+        // Also clear auth cookies used by cookie-based authentication
+        res.clearCookie('auth_user_id');
+        res.clearCookie('auth_org_id');
+        res.clearCookie('auth_session_token');
+        res.json({ message: "Logged out successfully" });
+      });
+    } else {
+      // If no session exists, just clear cookies and respond
+      res.clearCookie('connect.sid');
+      res.clearCookie('auth_user_id');
+      res.clearCookie('auth_org_id');
+      res.clearCookie('auth_session_token');
+      res.json({ message: "Logged out successfully" });
+    }
+  });
+  
+  // Apply authentication middleware to all other API routes
   app.use("/api", authenticateUser());
   
   // Apply authentication requirement to all protected routes
@@ -1940,17 +1965,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Authentication endpoints
-  app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy((err) => {
-      if (err) {
-        console.error("Session destroy error:", err);
-        return res.status(500).json({ message: "Failed to logout" });
-      }
-      res.clearCookie('connect.sid'); // Clear session cookie
-      res.json({ message: "Logged out successfully" });
-    });
-  });
+  // Authentication endpoints section moved earlier
 
   // User Sync Endpoints
   app.post("/api/admin/sync-users", requireAuth(), async (req, res) => {

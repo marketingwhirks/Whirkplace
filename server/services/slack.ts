@@ -688,9 +688,23 @@ export async function getChannelMembers(): Promise<{ id: string; name: string; e
     }
 
     // Fetch channel members
-    const membersResult = await slack.conversations.members({
-      channel: channel.id
-    });
+    let membersResult;
+    try {
+      membersResult = await slack.conversations.members({
+        channel: channel.id
+      });
+    } catch (error: any) {
+      // Handle missing scope error gracefully
+      if (error?.data?.error === 'missing_scope') {
+        const requiredScope = channel.is_private ? 'groups:read' : 'channels:read';
+        console.error(`Missing Slack scope: ${requiredScope}. Cannot access ${channel.is_private ? 'private' : 'public'} channel "${WHIRKPLACE_CHANNEL}".`);
+        console.error(`Please update your Slack app permissions to include: ${requiredScope}`);
+        console.error(`Current scopes: ${error?.data?.needed || 'unknown'}`);
+        console.error(`Visit your Slack app settings at https://api.slack.com/apps to update OAuth scopes.`);
+        return [];
+      }
+      throw error; // Re-throw other errors
+    }
 
     if (!membersResult.members) {
       console.warn(`No members found in channel "${WHIRKPLACE_CHANNEL}"`);
@@ -718,8 +732,19 @@ export async function getChannelMembers(): Promise<{ id: string; name: string; e
 
     const users = await Promise.all(userPromises);
     return users.filter((user): user is NonNullable<typeof user> => user !== null);
-  } catch (error) {
-    console.error("Failed to fetch channel members:", error);
+  } catch (error: any) {
+    // Provide helpful error messages for common scope issues
+    if (error?.data?.error === 'missing_scope') {
+      console.error("Slack API missing_scope error. Please ensure your Slack app has the following scopes:");
+      console.error("Bot Token Scopes:");
+      console.error("- channels:read (for accessing public channels)");
+      console.error("- groups:read (for accessing private channels)");  
+      console.error("- users:read (for fetching user information)");
+      console.error("- chat:write (for sending messages)");
+      console.error("Visit https://api.slack.com/apps/{your-app-id}/oauth to update scopes.");
+    } else {
+      console.error("Failed to fetch channel members:", error);
+    }
     return [];
   }
 }

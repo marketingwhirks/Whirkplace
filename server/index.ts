@@ -1,4 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
+import session from "express-session";
+import memorystore from 'memorystore';
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { resolveOrganization } from "./middleware/organization";
@@ -6,6 +8,26 @@ import { resolveOrganization } from "./middleware/organization";
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Session middleware configuration - Use MemoryStore for simplicity and reliability
+const MemoryStore = memorystore(session);
+const sessionStore = new MemoryStore({
+  checkPeriod: 86400000, // prune expired entries every 24h
+});
+
+app.use(session({
+  store: sessionStore,
+  secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
+  resave: false,
+  saveUninitialized: false,
+  name: 'connect.sid',
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+    sameSite: 'strict'
+  }
+}));
 
 // Organization resolution middleware - must be before API routes
 app.use(resolveOrganization());
