@@ -5,11 +5,12 @@ import {
   type Question, type InsertQuestion,
   type Win, type InsertWin,
   type Comment, type InsertComment,
-  users, teams, checkins, questions, wins, comments
+  type Kudos, type InsertKudos,
+  users, teams, checkins, questions, wins, comments, kudos
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { eq, desc, and, gte } from "drizzle-orm";
+import { eq, desc, and, gte, or } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -58,6 +59,15 @@ export interface IStorage {
   updateComment(organizationId: string, id: string, comment: Partial<InsertComment>): Promise<Comment | undefined>;
   deleteComment(organizationId: string, id: string): Promise<boolean>;
   getCommentsByCheckin(organizationId: string, checkinId: string): Promise<Comment[]>;
+
+  // Kudos
+  getKudos(organizationId: string, id: string): Promise<Kudos | undefined>;
+  createKudos(organizationId: string, kudos: InsertKudos & { fromUserId: string }): Promise<Kudos>;
+  updateKudos(organizationId: string, id: string, kudos: Partial<InsertKudos>): Promise<Kudos | undefined>;
+  deleteKudos(organizationId: string, id: string): Promise<boolean>;
+  getKudosByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Kudos[]>;
+  getRecentKudos(organizationId: string, limit?: number): Promise<Kudos[]>;
+  getPublicKudos(organizationId: string, limit?: number): Promise<Kudos[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -401,6 +411,95 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(comments.createdAt));
   }
+
+  // Kudos
+  async getKudos(organizationId: string, id: string): Promise<Kudos | undefined> {
+    const [kudosRecord] = await db.select().from(kudos).where(
+      and(eq(kudos.id, id), eq(kudos.organizationId, organizationId))
+    );
+    return kudosRecord || undefined;
+  }
+
+  async createKudos(organizationId: string, insertKudos: InsertKudos & { fromUserId: string }): Promise<Kudos> {
+    const [kudosRecord] = await db
+      .insert(kudos)
+      .values({
+        ...insertKudos,
+        organizationId,
+        isPublic: insertKudos.isPublic ?? true,
+        slackMessageId: insertKudos.slackMessageId ?? null,
+      })
+      .returning();
+    return kudosRecord;
+  }
+
+  async updateKudos(organizationId: string, id: string, kudosUpdate: Partial<InsertKudos>): Promise<Kudos | undefined> {
+    const [kudosRecord] = await db
+      .update(kudos)
+      .set(kudosUpdate)
+      .where(and(eq(kudos.id, id), eq(kudos.organizationId, organizationId)))
+      .returning();
+    return kudosRecord || undefined;
+  }
+
+  async deleteKudos(organizationId: string, id: string): Promise<boolean> {
+    const result = await db.delete(kudos).where(
+      and(eq(kudos.id, id), eq(kudos.organizationId, organizationId))
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getKudosByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Kudos[]> {
+    let whereCondition;
+    
+    if (type === 'received') {
+      whereCondition = and(
+        eq(kudos.toUserId, userId),
+        eq(kudos.organizationId, organizationId)
+      );
+    } else if (type === 'given') {
+      whereCondition = and(
+        eq(kudos.fromUserId, userId),
+        eq(kudos.organizationId, organizationId)
+      );
+    } else {
+      // Return both received and given - user must be either giver OR receiver
+      whereCondition = and(
+        or(
+          eq(kudos.fromUserId, userId),
+          eq(kudos.toUserId, userId)
+        ),
+        eq(kudos.organizationId, organizationId)
+      );
+    }
+
+    return await db
+      .select()
+      .from(kudos)
+      .where(whereCondition)
+      .orderBy(desc(kudos.createdAt));
+  }
+
+  async getRecentKudos(organizationId: string, limit = 20): Promise<Kudos[]> {
+    return await db
+      .select()
+      .from(kudos)
+      .where(eq(kudos.organizationId, organizationId))
+      .orderBy(desc(kudos.createdAt))
+      .limit(limit);
+  }
+
+  async getPublicKudos(organizationId: string, limit = 20): Promise<Kudos[]> {
+    return await db
+      .select()
+      .from(kudos)
+      .where(and(
+        eq(kudos.isPublic, true),
+        eq(kudos.organizationId, organizationId)
+      ))
+      .orderBy(desc(kudos.createdAt))
+      .limit(limit);
+  }
 }
 
 export class MemStorage implements IStorage {
@@ -410,6 +509,7 @@ export class MemStorage implements IStorage {
   private questions: Map<string, Question> = new Map();
   private wins: Map<string, Win> = new Map();
   private comments: Map<string, Comment> = new Map();
+  private kudosMap: Map<string, Kudos> = new Map();
 
   constructor() {
     this.seedData();
@@ -767,6 +867,71 @@ export class MemStorage implements IStorage {
     return Array.from(this.comments.values())
       .filter(comment => comment.checkinId === checkinId && comment.organizationId === organizationId)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  // Kudos
+  async getKudos(organizationId: string, id: string): Promise<Kudos | undefined> {
+    const kudosRecord = this.kudosMap.get(id);
+    return kudosRecord && kudosRecord.organizationId === organizationId ? kudosRecord : undefined;
+  }
+
+  async createKudos(organizationId: string, insertKudos: InsertKudos & { fromUserId: string }): Promise<Kudos> {
+    const kudosRecord: Kudos = {
+      ...insertKudos,
+      id: randomUUID(),
+      organizationId,
+      createdAt: new Date(),
+      isPublic: insertKudos.isPublic ?? true,
+      slackMessageId: insertKudos.slackMessageId ?? null,
+    };
+    this.kudosMap.set(kudosRecord.id, kudosRecord);
+    return kudosRecord;
+  }
+
+  async updateKudos(organizationId: string, id: string, kudosUpdate: Partial<InsertKudos>): Promise<Kudos | undefined> {
+    const kudosRecord = this.kudosMap.get(id);
+    if (!kudosRecord || kudosRecord.organizationId !== organizationId) return undefined;
+    
+    const updatedKudos = { ...kudosRecord, ...kudosUpdate };
+    this.kudosMap.set(id, updatedKudos);
+    return updatedKudos;
+  }
+
+  async deleteKudos(organizationId: string, id: string): Promise<boolean> {
+    const kudosRecord = this.kudosMap.get(id);
+    if (!kudosRecord || kudosRecord.organizationId !== organizationId) return false;
+    return this.kudosMap.delete(id);
+  }
+
+  async getKudosByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Kudos[]> {
+    return Array.from(this.kudosMap.values())
+      .filter(kudosRecord => {
+        if (kudosRecord.organizationId !== organizationId) return false;
+        
+        if (type === 'received') {
+          return kudosRecord.toUserId === userId;
+        } else if (type === 'given') {
+          return kudosRecord.fromUserId === userId;
+        } else {
+          // Return both received and given
+          return kudosRecord.toUserId === userId || kudosRecord.fromUserId === userId;
+        }
+      })
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getRecentKudos(organizationId: string, limit = 20): Promise<Kudos[]> {
+    return Array.from(this.kudosMap.values())
+      .filter(kudosRecord => kudosRecord.organizationId === organizationId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
+
+  async getPublicKudos(organizationId: string, limit = 20): Promise<Kudos[]> {
+    return Array.from(this.kudosMap.values())
+      .filter(kudosRecord => kudosRecord.isPublic && kudosRecord.organizationId === organizationId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
   }
 }
 

@@ -148,6 +148,81 @@ export async function announceWin(winTitle: string, winDescription: string, user
 }
 
 /**
+ * Announce kudos to Slack with rich formatting and company values
+ */
+export async function announceKudos(
+  message: string, 
+  fromUserName: string, 
+  toUserName: string, 
+  companyValues: string[] = []
+) {
+  if (!slack) return;
+
+  const channel = process.env.SLACK_CHANNEL_ID || '#general';
+  
+  // Create company values badges with emojis
+  const valueEmojis: Record<string, string> = {
+    'own it': '🎯',
+    'challenge it': '🚀', 
+    'team first': '🤝',
+    'empathy for others': '❤️',
+    'passion for our purpose': '🔥',
+  };
+
+  const valuesBadges = companyValues.map(value => {
+    const emoji = valueEmojis[value.toLowerCase()] || '⭐';
+    const formattedValue = value.split(' ').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ');
+    return `${emoji} *${formattedValue}*`;
+  }).join('  ');
+
+  const blocks = [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `🙌 *${fromUserName}* gave kudos to *${toUserName}*!`
+      }
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `_"${message}"_`
+      }
+    }
+  ];
+
+  // Add company values section if values are specified
+  if (companyValues.length > 0) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*Company Values Demonstrated:*\n${valuesBadges}`
+      }
+    });
+  }
+
+  // Add celebration footer
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: 'Keep up the amazing work! 🎉✨'
+    }
+  });
+
+  const messageId = await sendSlackMessage({
+    channel,
+    blocks
+  });
+
+  return messageId;
+}
+
+/**
  * Send team health update to Slack
  */
 export async function sendTeamHealthUpdate(averageRating: number, completionRate: number, totalWins: number) {

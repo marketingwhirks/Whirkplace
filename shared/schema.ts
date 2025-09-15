@@ -94,6 +94,18 @@ export const comments = pgTable("comments", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+export const kudos = pgTable("kudos", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromUserId: varchar("from_user_id").notNull(), // who gave the kudos
+  toUserId: varchar("to_user_id").notNull(), // who received the kudos
+  message: text("message").notNull(),
+  organizationId: varchar("organization_id").notNull(),
+  values: text("values").array().notNull().default([]), // company values associated
+  isPublic: boolean("is_public").notNull().default(true),
+  slackMessageId: text("slack_message_id"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -130,6 +142,23 @@ export const insertCommentSchema = createInsertSchema(comments).omit({
   createdAt: true,
 });
 
+export const insertKudosSchema = createInsertSchema(kudos).omit({
+  id: true,
+  createdAt: true,
+  fromUserId: true, // Never accept fromUserId from client - set server-side
+}).extend({
+  values: z.array(z.string()).min(1, "At least one company value must be selected"),
+  message: z.string().min(1, "Message is required").max(500, "Message too long"),
+});
+
+// Separate schema for updates - only allow certain fields to be modified
+export const updateKudosSchema = z.object({
+  message: z.string().min(1, "Message is required").max(500, "Message too long").optional(),
+  isPublic: z.boolean().optional(),
+  values: z.array(z.string()).min(1, "At least one company value must be selected").optional(),
+  // fromUserId and toUserId are NEVER updatable for security
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -148,3 +177,6 @@ export type Win = typeof wins.$inferSelect;
 
 export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Comment = typeof comments.$inferSelect;
+
+export type InsertKudos = z.infer<typeof insertKudosSchema>;
+export type Kudos = typeof kudos.$inferSelect;

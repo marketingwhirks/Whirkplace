@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu } from "lucide-react";
+import { Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu, Gift } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ const navigation = [
   { name: "Check-ins", href: "/checkins", icon: ClipboardList, badge: 2 },
   { name: "Team", href: "/team", icon: Users },
   { name: "Wins", href: "/wins", icon: Trophy, badge: 4 },
+  { name: "Kudos", href: "/kudos", icon: Gift },
   { name: "Questions", href: "/questions", icon: HelpCircle },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Settings", href: "/settings", icon: Settings },
