@@ -176,7 +176,18 @@ export default function CheckinDetail({ checkin, questions, open, onOpenChange }
                 </div>
               )}
               <div>
-                <p className="font-semibold">{checkin.user?.name || "Unknown User"}'s Check-in</p>
+                <div className="flex items-center space-x-2">
+                  <p className="font-semibold">{checkin.user?.name || "Unknown User"}'s Check-in</p>
+                  <Badge 
+                    variant={checkin.reviewStatus === "pending" ? "secondary" : checkin.reviewStatus === "approved" ? "default" : "destructive"}
+                    className="text-xs"
+                    data-testid="badge-review-status-detail"
+                  >
+                    {checkin.reviewStatus === "pending" ? "Pending Review" : 
+                     checkin.reviewStatus === "approved" ? "Approved" : 
+                     checkin.reviewStatus === "rejected" ? "Rejected" : "Unknown"}
+                  </Badge>
+                </div>
                 <p className="text-sm text-muted-foreground">
                   {formatDistanceToNow(new Date(checkin.createdAt), { addSuffix: true })}
                 </p>

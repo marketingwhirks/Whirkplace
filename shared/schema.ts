@@ -194,6 +194,7 @@ export const insertCheckinSchema = createInsertSchema(checkins).omit({
   id: true,
   createdAt: true,
   submittedAt: true,
+  organizationId: true, // Set by middleware, not user-settable
   reviewStatus: true, // Always starts as "pending", not user-settable
   reviewedBy: true, // Only set by reviewers
   reviewedAt: true, // Only set by reviewers

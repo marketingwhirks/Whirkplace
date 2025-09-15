@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import RatingStars from "@/components/checkin/rating-stars";
 import WinCard from "@/components/wins/win-card";
 import TeamMemberCard from "@/components/team/team-member-card";
@@ -127,7 +128,7 @@ export default function Dashboard() {
 
       toast({
         title: "Check-in submitted!",
-        description: "Your weekly check-in has been recorded.",
+        description: "Your weekly check-in has been submitted for review by your team leader.",
       });
     } catch (error) {
       toast({
@@ -317,9 +318,20 @@ export default function Dashboard() {
                       )}
                       <div className="flex-1">
                         <div className="flex items-center justify-between">
-                          <p className="font-medium text-foreground" data-testid={`text-checkin-user-${checkin.id}`}>
-                            {checkin.user?.name || "Unknown User"}
-                          </p>
+                          <div className="flex items-center space-x-2">
+                            <p className="font-medium text-foreground" data-testid={`text-checkin-user-${checkin.id}`}>
+                              {checkin.user?.name || "Unknown User"}
+                            </p>
+                            <Badge 
+                              variant={checkin.reviewStatus === "pending" ? "secondary" : checkin.reviewStatus === "approved" ? "default" : "destructive"}
+                              className="text-xs"
+                              data-testid={`badge-review-status-${checkin.id}`}
+                            >
+                              {checkin.reviewStatus === "pending" ? "Pending Review" : 
+                               checkin.reviewStatus === "approved" ? "Approved" : 
+                               checkin.reviewStatus === "rejected" ? "Rejected" : "Unknown"}
+                            </Badge>
+                          </div>
                           <div className="flex items-center space-x-1">
                             <span className="text-sm text-muted-foreground">Overall:</span>
                             <RatingStars rating={checkin.overallMood} readonly size="sm" />
