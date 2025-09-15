@@ -10,6 +10,8 @@ import Team from "@/pages/team";
 import Wins from "@/pages/wins";
 import ShoutoutsPage from "@/pages/shoutouts";
 import Questions from "@/pages/questions";
+import Reviews from "@/pages/reviews";
+import LeadershipDashboard from "@/pages/leadership-dashboard";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import Sidebar from "@/components/layout/sidebar";
@@ -26,6 +28,8 @@ function Router() {
           <Route path="/wins" component={Wins} />
           <Route path="/shoutouts" component={ShoutoutsPage} />
           <Route path="/questions" component={Questions} />
+          <Route path="/reviews" component={Reviews} />
+          <Route path="/leadership-dashboard" component={LeadershipDashboard} />
           <Route path="/analytics" component={Analytics} />
           <Route path="/settings" component={Settings} />
           <Route component={NotFound} />

@@ -1,0 +1,613 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { formatDistanceToNow } from "date-fns";
+import { CheckCircle, XCircle, Clock, Eye, MessageSquare, Filter, Calendar, User } from "lucide-react";
+import Header from "@/components/layout/header";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import RatingStars from "@/components/checkin/rating-stars";
+import type { Checkin, User as UserType, Question, ReviewCheckin } from "@shared/schema";
+
+interface EnhancedCheckin extends Checkin {
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    teamId: string | null;
+    teamName: string | null;
+  };
+  reviewer?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
+interface ReviewModalData {
+  checkin: EnhancedCheckin;
+  action: "approve" | "reject";
+}
+
+export default function Reviews() {
+  const { toast } = useToast();
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const [selectedFilter, setSelectedFilter] = useState<string>("all");
+  const [selectedUser, setSelectedUser] = useState<string>("all");
+  const [reviewModal, setReviewModal] = useState<ReviewModalData | null>(null);
+  const [reviewComment, setReviewComment] = useState("");
+
+  // Fetch pending check-ins
+  const { data: pendingCheckins = [], isLoading: pendingLoading } = useQuery<EnhancedCheckin[]>({
+    queryKey: ["/api/checkins/pending"],
+    enabled: !userLoading && !!currentUser && (currentUser.role === "manager" || currentUser.role === "admin"),
+  });
+
+  // Fetch recently reviewed check-ins
+  const { data: reviewedCheckins = [], isLoading: reviewedLoading } = useQuery<EnhancedCheckin[]>({
+    queryKey: ["/api/checkins/review-status", "approved"],
+    queryFn: () => fetch("/api/checkins/review-status/approved").then(res => res.json()),
+    enabled: !userLoading && !!currentUser && (currentUser.role === "manager" || currentUser.role === "admin"),
+  });
+
+  // Fetch rejected check-ins
+  const { data: rejectedCheckins = [], isLoading: rejectedLoading } = useQuery<EnhancedCheckin[]>({
+    queryKey: ["/api/checkins/review-status", "rejected"],
+    queryFn: () => fetch("/api/checkins/review-status/rejected").then(res => res.json()),
+    enabled: !userLoading && !!currentUser && (currentUser.role === "manager" || currentUser.role === "admin"),
+  });
+
+  // Fetch questions for display context
+  const { data: questions = [] } = useQuery<Question[]>({
+    queryKey: ["/api/questions"],
+  });
+
+  // Fetch team members for filtering
+  const { data: teamMembers = [] } = useQuery<UserType[]>({
+    queryKey: ["/api/users", currentUser?.id, "reports"],
+    queryFn: () => currentUser ? fetch(`/api/users/${currentUser.id}/reports`).then(res => res.json()) : [],
+    enabled: !!currentUser,
+  });
+
+  // Review mutation
+  const reviewMutation = useMutation({
+    mutationFn: async ({ checkinId, reviewData }: { checkinId: string; reviewData: ReviewCheckin }) => {
+      return apiRequest("PATCH", `/api/checkins/${checkinId}/review`, reviewData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/checkins/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/checkins/review-status"] });
+      toast({
+        title: "Review submitted",
+        description: `Check-in has been ${reviewModal?.action === "approve" ? "approved" : "rejected"}.`,
+      });
+      setReviewModal(null);
+      setReviewComment("");
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Review failed",
+        description: error.message || "Failed to submit review",
+      });
+    },
+  });
+
+  // Handle review submission
+  const handleReview = async () => {
+    if (!reviewModal) return;
+
+    const reviewData: ReviewCheckin = {
+      reviewStatus: reviewModal.action === "approve" ? "approved" : "rejected",
+      reviewComments: reviewComment.trim() || undefined,
+    };
+
+    reviewMutation.mutate({
+      checkinId: reviewModal.checkin.id,
+      reviewData,
+    });
+  };
+
+  // Filter checkins based on selected filters
+  const filterCheckins = (checkins: EnhancedCheckin[]) => {
+    return checkins.filter(checkin => {
+      if (selectedUser !== "all" && checkin.user?.id !== selectedUser) {
+        return false;
+      }
+      return true;
+    });
+  };
+
+  const filteredPending = filterCheckins(pendingCheckins);
+  const filteredApproved = filterCheckins(reviewedCheckins);
+  const filteredRejected = filterCheckins(rejectedCheckins);
+
+  // Show access denied for non-managers/admins
+  if (!userLoading && currentUser && currentUser.role === "member") {
+    return (
+      <>
+        <Header
+          title="Reviews"
+          description="Access Denied"
+        />
+        <main className="flex-1 overflow-auto p-6">
+          <Card>
+            <CardContent className="p-6 text-center">
+              <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Access Denied</h3>
+              <p className="text-muted-foreground">
+                You need manager or admin privileges to access the review interface.
+              </p>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
+
+  if (userLoading) {
+    return (
+      <>
+        <Header title="Reviews" description="Loading..." />
+        <main className="flex-1 overflow-auto p-6">
+          <div className="space-y-6">
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Header
+        title="Check-in Reviews"
+        description="Review and approve team member check-ins"
+      />
+
+      <main className="flex-1 overflow-auto p-6 space-y-6">
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-muted-foreground">Pending Reviews</p>
+                  <p className="text-2xl font-bold text-orange-600" data-testid="text-pending-count">
+                    {pendingCheckins.length}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Awaiting your review
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <Clock className="w-6 h-6 text-orange-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-muted-foreground">Approved This Week</p>
+                  <p className="text-2xl font-bold text-green-600" data-testid="text-approved-count">
+                    {reviewedCheckins.filter(c => 
+                      new Date(c.reviewedAt!).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000
+                    ).length}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Last 7 days
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="w-6 h-6 text-green-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-muted-foreground">Team Members</p>
+                  <p className="text-2xl font-bold text-blue-600" data-testid="text-team-members-count">
+                    {teamMembers.length}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Under your review
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <User className="w-6 h-6 text-blue-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Filters */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Filter className="w-5 h-5" />
+              Filters
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-4">
+              <div className="flex-1 min-w-48">
+                <Select value={selectedUser} onValueChange={setSelectedUser}>
+                  <SelectTrigger data-testid="select-user-filter">
+                    <SelectValue placeholder="Filter by team member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Team Members</SelectItem>
+                    {teamMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {member.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Tabs for different review states */}
+        <Tabs defaultValue="pending" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="pending" data-testid="tab-pending">
+              Pending ({filteredPending.length})
+            </TabsTrigger>
+            <TabsTrigger value="approved" data-testid="tab-approved">
+              Approved ({filteredApproved.length})
+            </TabsTrigger>
+            <TabsTrigger value="rejected" data-testid="tab-rejected">
+              Rejected ({filteredRejected.length})
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="pending">
+            <Card>
+              <CardHeader>
+                <CardTitle>Pending Reviews</CardTitle>
+                <CardDescription>
+                  Check-ins waiting for your review and approval
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {pendingLoading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-32 w-full" />
+                    ))}
+                  </div>
+                ) : filteredPending.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Clock className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Pending Reviews</h3>
+                    <p className="text-muted-foreground">
+                      All check-ins have been reviewed. Great job!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {filteredPending.map((checkin) => (
+                      <CheckinReviewCard
+                        key={checkin.id}
+                        checkin={checkin}
+                        questions={questions}
+                        onReview={(action) => setReviewModal({ checkin, action })}
+                        isPending
+                      />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="approved">
+            <Card>
+              <CardHeader>
+                <CardTitle>Approved Check-ins</CardTitle>
+                <CardDescription>
+                  Previously approved check-ins from your team
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {reviewedLoading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-32 w-full" />
+                    ))}
+                  </div>
+                ) : filteredApproved.length === 0 ? (
+                  <div className="text-center py-8">
+                    <CheckCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Approved Check-ins</h3>
+                    <p className="text-muted-foreground">
+                      No check-ins have been approved yet.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {filteredApproved.slice(0, 10).map((checkin) => (
+                      <CheckinReviewCard
+                        key={checkin.id}
+                        checkin={checkin}
+                        questions={questions}
+                        onReview={() => {}}
+                        isPending={false}
+                      />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="rejected">
+            <Card>
+              <CardHeader>
+                <CardTitle>Rejected Check-ins</CardTitle>
+                <CardDescription>
+                  Check-ins that were rejected and need follow-up
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {rejectedLoading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-32 w-full" />
+                    ))}
+                  </div>
+                ) : filteredRejected.length === 0 ? (
+                  <div className="text-center py-8">
+                    <XCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">No Rejected Check-ins</h3>
+                    <p className="text-muted-foreground">
+                      No check-ins have been rejected.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {filteredRejected.slice(0, 10).map((checkin) => (
+                      <CheckinReviewCard
+                        key={checkin.id}
+                        checkin={checkin}
+                        questions={questions}
+                        onReview={() => {}}
+                        isPending={false}
+                      />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </main>
+
+      {/* Review Modal */}
+      {reviewModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {reviewModal.action === "approve" ? (
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                ) : (
+                  <XCircle className="w-5 h-5 text-red-600" />
+                )}
+                {reviewModal.action === "approve" ? "Approve" : "Reject"} Check-in
+              </CardTitle>
+              <CardDescription>
+                Review check-in from {reviewModal.checkin.user?.name}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Check-in Details */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Overall Mood:</span>
+                  <RatingStars rating={reviewModal.checkin.overallMood} readonly size="sm" />
+                </div>
+                
+                <div className="space-y-3">
+                  <span className="text-sm font-medium">Responses:</span>
+                  {Object.entries(reviewModal.checkin.responses as Record<string, string>).map(([questionId, response]) => {
+                    const question = questions.find(q => q.id === questionId);
+                    return (
+                      <div key={questionId} className="bg-muted p-3 rounded-lg">
+                        <p className="text-sm font-medium mb-1">
+                          {question?.text || "Question"}
+                        </p>
+                        <p className="text-sm text-muted-foreground">{response}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                <div className="text-sm text-muted-foreground">
+                  Submitted {formatDistanceToNow(new Date(reviewModal.checkin.createdAt))} ago
+                </div>
+              </div>
+
+              {/* Review Comment */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">
+                  Review Comments {reviewModal.action === "reject" && <span className="text-red-500">(Required)</span>}
+                </label>
+                <textarea
+                  className="w-full p-3 border rounded-lg resize-none"
+                  rows={4}
+                  placeholder={`Add your ${reviewModal.action === "approve" ? "approval" : "rejection"} comments...`}
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  data-testid="textarea-review-comment"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setReviewModal(null);
+                    setReviewComment("");
+                  }}
+                  data-testid="button-cancel-review"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleReview}
+                  disabled={reviewMutation.isPending || (reviewModal.action === "reject" && !reviewComment.trim())}
+                  className={reviewModal.action === "approve" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}
+                  data-testid="button-confirm-review"
+                >
+                  {reviewMutation.isPending ? "Submitting..." : reviewModal.action === "approve" ? "Approve" : "Reject"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Checkin Review Card Component
+interface CheckinReviewCardProps {
+  checkin: EnhancedCheckin;
+  questions: Question[];
+  onReview: (action: "approve" | "reject") => void;
+  isPending: boolean;
+}
+
+function CheckinReviewCard({ checkin, questions, onReview, isPending }: CheckinReviewCardProps) {
+  const [showDetails, setShowDetails] = useState(false);
+
+  return (
+    <div className="border border-border rounded-lg p-4 space-y-4" data-testid={`checkin-card-${checkin.id}`}>
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
+            <span className="text-primary-foreground font-medium">
+              {checkin.user?.name?.[0] || "?"}
+            </span>
+          </div>
+          <div>
+            <p className="font-medium" data-testid={`text-user-name-${checkin.id}`}>
+              {checkin.user?.name || "Unknown User"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {checkin.user?.teamName || "No Team"} • {formatDistanceToNow(new Date(checkin.createdAt))} ago
+            </p>
+          </div>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          <Badge 
+            variant={checkin.reviewStatus === "pending" ? "secondary" : 
+                   checkin.reviewStatus === "approved" ? "default" : "destructive"}
+            data-testid={`badge-status-${checkin.id}`}
+          >
+            {checkin.reviewStatus}
+          </Badge>
+          <RatingStars rating={checkin.overallMood} readonly size="sm" />
+        </div>
+      </div>
+
+      {/* Quick Preview */}
+      <div className="bg-muted p-3 rounded-lg">
+        <p className="text-sm">
+          {Object.values(checkin.responses as Record<string, string>)[0] || "No responses provided"}
+        </p>
+      </div>
+
+      {/* Review Info for reviewed items */}
+      {!isPending && checkin.reviewer && (
+        <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+          Reviewed by {checkin.reviewer.name} {checkin.reviewedAt && formatDistanceToNow(new Date(checkin.reviewedAt))} ago
+          {checkin.reviewComments && (
+            <div className="mt-1">
+              <MessageSquare className="w-3 h-3 inline mr-1" />
+              {checkin.reviewComments}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex items-center justify-between">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShowDetails(!showDetails)}
+          data-testid={`button-toggle-details-${checkin.id}`}
+        >
+          <Eye className="w-4 h-4 mr-2" />
+          {showDetails ? "Hide" : "Show"} Details
+        </Button>
+        
+        {isPending && (
+          <div className="flex space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onReview("reject")}
+              className="text-red-600 border-red-200 hover:bg-red-50"
+              data-testid={`button-reject-${checkin.id}`}
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              Reject
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => onReview("approve")}
+              className="bg-green-600 hover:bg-green-700"
+              data-testid={`button-approve-${checkin.id}`}
+            >
+              <CheckCircle className="w-4 h-4 mr-2" />
+              Approve
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* Expanded Details */}
+      {showDetails && (
+        <div className="border-t pt-4 space-y-3">
+          {Object.entries(checkin.responses as Record<string, string>).map(([questionId, response]) => {
+            const question = questions.find(q => q.id === questionId);
+            return (
+              <div key={questionId} className="space-y-1">
+                <p className="text-sm font-medium">
+                  {question?.text || "Question"}
+                </p>
+                <p className="text-sm text-muted-foreground bg-muted p-2 rounded">
+                  {response}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
