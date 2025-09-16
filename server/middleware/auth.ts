@@ -77,6 +77,7 @@ export function authenticateUser() {
       const authOrgId = req.cookies?.['auth_org_id'];
       const authToken = req.cookies?.['auth_session_token'];
       
+      
       if (authUserId && authOrgId && authToken && authOrgId === req.orgId) {
         const user = await storage.getUser(req.orgId, authUserId);
         if (user && user.isActive) {
