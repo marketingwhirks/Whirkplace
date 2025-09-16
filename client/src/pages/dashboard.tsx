@@ -14,7 +14,7 @@ import CheckinDetail from "@/components/checkin/checkin-detail";
 import { Heart, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Progress } from "@/components/ui/progress";
 import type { Checkin, Win, User, Question, ComplianceMetricsResult } from "@shared/schema";
@@ -27,7 +27,7 @@ interface DashboardStats {
 
 export default function Dashboard() {
   const { toast } = useToast();
-  const { data: currentUser, isLoading: userLoading, error: userError } = useCurrentUser();
+  const { data: currentUser, isLoading: userLoading, error: userError } = useViewAsRole();
   const [checkinData, setCheckinData] = useState({
     overallMood: 0,
     responses: {} as Record<string, string>,

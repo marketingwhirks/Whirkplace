@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -82,7 +82,7 @@ const baseNavigation = [
 // Sidebar content component
 function SidebarContent() {
   const [location] = useLocation();
-  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const { data: currentUser, isLoading: userLoading } = useViewAsRole();
 
   // Fetch pending check-ins count for badge
   const { data: pendingCheckins = [], isLoading: pendingLoading } = useQuery<Checkin[]>({

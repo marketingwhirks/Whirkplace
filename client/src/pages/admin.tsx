@@ -34,7 +34,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { User as UserType, Team as TeamType } from "@shared/schema";
-import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useViewAsRole } from "@/hooks/useViewAsRole";
+import RoleSwitcher from "@/components/admin/role-switcher";
 
 interface ChannelMember {
   id: string;
@@ -92,7 +93,7 @@ export default function Admin() {
   const [selectedTeam, setSelectedTeam] = useState<TeamType | null>(null);
   const [teamToDelete, setTeamToDelete] = useState<TeamType | null>(null);
 
-  const { data: currentUser } = useCurrentUser();
+  const { data: currentUser } = useViewAsRole();
 
   // Fetch all users
   const { data: users = [], isLoading: usersLoading, refetch: refetchUsers } = useQuery<UserType[]>({
@@ -342,6 +343,9 @@ export default function Admin() {
       <Header title="Admin Panel" />
       
       <div className="flex-1 overflow-auto p-6 space-y-6">
+        {/* Role Switcher - Only visible to Matthew Patrick */}
+        <RoleSwitcher />
+        
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card data-testid="card-total-users">

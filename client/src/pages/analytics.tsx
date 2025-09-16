@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { useCurrentUser, useUserPermissions } from "@/hooks/useCurrentUser";
+import { useViewAsRole, useViewAsPermissions } from "@/hooks/useViewAsRole";
 import {
   BarChart,
   Bar,
