@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import type { User } from "@shared/schema";
+import { getTestUser, getAvailableTestUsers } from "../seeding";
 
 /**
  * Helper function to ensure backdoor admin user exists for development
@@ -112,6 +113,7 @@ export function authenticateUser() {
       // Check for backdoor authentication (development environment only)
       const backdoorUser = req.headers['x-backdoor-user'] as string;
       const backdoorKey = req.headers['x-backdoor-key'] as string;
+      const backdoorImpersonate = req.headers['x-backdoor-impersonate'] as string;
       
       // SECURITY: Backdoor only works in development environment with explicit env vars
       if (backdoorUser && backdoorKey && process.env.NODE_ENV === 'development') {
@@ -121,7 +123,26 @@ export function authenticateUser() {
         
         if (validBackdoorUser && validBackdoorKey && 
             backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
-          // Ensure Matthew Patrick's backdoor user exists
+          
+          // Check if impersonation is requested
+          if (backdoorImpersonate) {
+            // Try to get test user for impersonation
+            const testUser = await getTestUser(req.orgId, backdoorImpersonate);
+            if (testUser && testUser.isActive) {
+              req.currentUser = testUser;
+              console.log(`Backdoor impersonating test user: ${testUser.username} (${testUser.role})`);
+              return next();
+            } else {
+              // Log available test users for debugging
+              const availableUsers = getAvailableTestUsers();
+              console.log(`Test user '${backdoorImpersonate}' not found. Available test users:`, availableUsers.map(u => u.username));
+              return res.status(400).json({ 
+                message: `Test user '${backdoorImpersonate}' not found. Available: ${availableUsers.map(u => u.username).join(', ')}` 
+              });
+            }
+          }
+          
+          // Default: use Matthew Patrick's admin account
           const matthewUser = await ensureBackdoorUser(req.orgId);
           req.currentUser = matthewUser;
           return next();

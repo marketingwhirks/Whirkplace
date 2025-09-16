@@ -5,6 +5,7 @@ import memorystore from 'memorystore';
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { resolveOrganization } from "./middleware/organization";
+import { runDevelopmentSeeding } from "./seeding";
 
 const app = express();
 app.use(express.json());
@@ -65,6 +66,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Run development seeding before setting up routes
+  await runDevelopmentSeeding();
+  
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

@@ -7,6 +7,7 @@ import {
   type Comment, type InsertComment,
   type Shoutout, type InsertShoutout,
   type Vacation, type InsertVacation,
+  type Organization, type InsertOrganization,
   type ReviewCheckin, type ReviewStatusType,
   type PulseMetricsOptions, type PulseMetricsResult,
   type ShoutoutMetricsOptions, type ShoutoutMetricsResult,
@@ -84,7 +85,10 @@ class AnalyticsCache {
 
 export interface IStorage {
   // Organizations
-  getAllOrganizations(): Promise<any[]>;
+  getAllOrganizations(): Promise<Organization[]>;
+  getOrganization(id: string): Promise<Organization | undefined>;
+  getOrganizationBySlug(slug: string): Promise<Organization | undefined>;
+  createOrganization(organization: InsertOrganization): Promise<Organization>;
   
   // Users
   getUser(organizationId: string, id: string): Promise<User | undefined>;
@@ -182,13 +186,41 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Organizations
-  async getAllOrganizations() {
+  async getAllOrganizations(): Promise<Organization[]> {
     try {
       return await db.select().from(organizations);
     } catch (error) {
       console.error("Failed to fetch organizations:", error);
       throw error;
     }
+  }
+
+  async getOrganization(id: string): Promise<Organization | undefined> {
+    const [organization] = await db.select().from(organizations).where(eq(organizations.id, id));
+    return organization || undefined;
+  }
+
+  async getOrganizationBySlug(slug: string): Promise<Organization | undefined> {
+    const [organization] = await db.select().from(organizations).where(eq(organizations.slug, slug));
+    return organization || undefined;
+  }
+
+  async createOrganization(insertOrganization: InsertOrganization): Promise<Organization> {
+    const orgValues = {
+      id: insertOrganization.id || undefined, // Let DB generate if not provided
+      name: insertOrganization.name,
+      slug: insertOrganization.slug,
+      customValues: insertOrganization.customValues ?? undefined,
+      plan: insertOrganization.plan ?? "starter",
+      slackWorkspaceId: insertOrganization.slackWorkspaceId ?? null,
+      isActive: insertOrganization.isActive ?? true,
+    };
+
+    const [organization] = await db
+      .insert(organizations)
+      .values(orgValues)
+      .returning();
+    return organization;
   }
 
   // Users
@@ -2041,12 +2073,36 @@ export class MemStorage implements IStorage {
   private comments: Map<string, Comment> = new Map();
   private shoutoutsMap: Map<string, Shoutout> = new Map();
   private vacations: Map<string, Vacation> = new Map();
+  private organizations: Map<string, Organization> = new Map();
   private analyticsCache = new AnalyticsCache();
 
   // Organizations
-  async getAllOrganizations() {
-    // In-memory storage doesn't support organizations, return empty array
-    return [];
+  async getAllOrganizations(): Promise<Organization[]> {
+    return Array.from(this.organizations.values());
+  }
+
+  async getOrganization(id: string): Promise<Organization | undefined> {
+    return this.organizations.get(id);
+  }
+
+  async getOrganizationBySlug(slug: string): Promise<Organization | undefined> {
+    return Array.from(this.organizations.values()).find(org => org.slug === slug);
+  }
+
+  async createOrganization(insertOrganization: InsertOrganization): Promise<Organization> {
+    const organization: Organization = {
+      id: insertOrganization.id || randomUUID(),
+      name: insertOrganization.name,
+      slug: insertOrganization.slug,
+      customValues: insertOrganization.customValues || [],
+      plan: insertOrganization.plan || "starter",
+      slackWorkspaceId: insertOrganization.slackWorkspaceId || null,
+      isActive: insertOrganization.isActive ?? true,
+      createdAt: new Date(),
+    };
+    
+    this.organizations.set(organization.id, organization);
+    return organization;
   }
 
   constructor() {

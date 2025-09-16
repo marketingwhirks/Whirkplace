@@ -508,3 +508,8 @@ export interface ComplianceMetricsResult {
   periodStart?: Date; // Optional for aggregated results
   metrics: ComplianceMetrics;
 }
+
+// Organization types
+export const insertOrganizationSchema = createInsertSchema(organizations);
+export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+export type Organization = typeof organizations.$inferSelect;

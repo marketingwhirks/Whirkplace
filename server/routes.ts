@@ -7,7 +7,7 @@ import {
   insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema,
   insertVacationSchema, reviewCheckinSchema, ReviewStatus,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
-  type ReviewStatusType
+  type ReviewStatusType, type Checkin
 } from "@shared/schema";
 import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken } from "./services/slack";
 import { randomBytes } from "crypto";
