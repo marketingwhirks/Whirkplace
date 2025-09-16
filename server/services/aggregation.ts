@@ -412,7 +412,7 @@ export class AggregationService {
         await this.recomputeUserDayAggregates(
           organizationId, 
           activity.userId, 
-          activity.activityDate
+          new Date(activity.activityDate)
         );
       }
 
@@ -474,7 +474,7 @@ export class AggregationService {
           await this.recomputeUserDayAggregates(
             organizationId,
             userDay.userId,
-            userDay.activityDate
+            new Date(userDay.activityDate)
           );
         }
 
@@ -514,8 +514,9 @@ export class AggregationService {
           gte(shoutouts.createdAt, fromDate)
         ));
 
-      const maxCheckin = maxCheckinResult[0]?.maxTimestamp;
-      const maxShoutout = maxShoutoutResult[0]?.maxTimestamp;
+      // Ensure timestamps are properly converted to Date objects
+      const maxCheckin = maxCheckinResult[0]?.maxTimestamp ? new Date(maxCheckinResult[0].maxTimestamp) : null;
+      const maxShoutout = maxShoutoutResult[0]?.maxTimestamp ? new Date(maxShoutoutResult[0].maxTimestamp) : null;
 
       // Return the latest timestamp among both event types
       if (maxCheckin && maxShoutout) {
