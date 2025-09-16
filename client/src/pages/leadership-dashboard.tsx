@@ -716,24 +716,24 @@ export default function LeadershipDashboard() {
                       <h4 className="font-medium text-lg">{teamName}</h4>
                       <div className="flex space-x-2">
                         <Badge 
-                          variant={compliance.checkin.metrics.onTimePercentage >= 80 ? "default" : "secondary"}
+                          variant={(compliance.checkin?.metrics?.onTimePercentage || 0) >= 80 ? "default" : "secondary"}
                           className={
-                            compliance.checkin.metrics.onTimePercentage >= 80 ? "bg-green-100 text-green-800" :
-                            compliance.checkin.metrics.onTimePercentage >= 60 ? "bg-yellow-100 text-yellow-800" :
+                            (compliance.checkin?.metrics?.onTimePercentage || 0) >= 80 ? "bg-green-100 text-green-800" :
+                            (compliance.checkin?.metrics?.onTimePercentage || 0) >= 60 ? "bg-yellow-100 text-yellow-800" :
                             "bg-red-100 text-red-800"
                           }
                         >
-                          Check-ins: {compliance.checkin.metrics.onTimePercentage.toFixed(1)}%
+                          Check-ins: {(compliance.checkin?.metrics?.onTimePercentage || 0).toFixed(1)}%
                         </Badge>
                         <Badge 
-                          variant={compliance.review.metrics.onTimePercentage >= 80 ? "default" : "secondary"}
+                          variant={(compliance.review?.metrics?.onTimePercentage || 0) >= 80 ? "default" : "secondary"}
                           className={
-                            compliance.review.metrics.onTimePercentage >= 80 ? "bg-green-100 text-green-800" :
-                            compliance.review.metrics.onTimePercentage >= 60 ? "bg-yellow-100 text-yellow-800" :
+                            (compliance.review?.metrics?.onTimePercentage || 0) >= 80 ? "bg-green-100 text-green-800" :
+                            (compliance.review?.metrics?.onTimePercentage || 0) >= 60 ? "bg-yellow-100 text-yellow-800" :
                             "bg-red-100 text-red-800"
                           }
                         >
-                          Reviews: {compliance.review.metrics.onTimePercentage.toFixed(1)}%
+                          Reviews: {(compliance.review?.metrics?.onTimePercentage || 0).toFixed(1)}%
                         </Badge>
                       </div>
                     </div>
@@ -743,18 +743,18 @@ export default function LeadershipDashboard() {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-muted-foreground">Check-in Submissions</span>
-                          <span className="font-medium">{compliance.checkin.metrics.onTimeCount}/{compliance.checkin.metrics.totalCount} on time</span>
+                          <span className="font-medium">{compliance.checkin?.metrics?.onTimeCount || 0}/{compliance.checkin?.metrics?.totalCount || 0} on time</span>
                         </div>
                         <Progress 
-                          value={compliance.checkin.metrics.onTimePercentage || 0} 
+                          value={compliance.checkin?.metrics?.onTimePercentage || 0} 
                           className={`h-2 ${
-                            compliance.checkin.metrics.onTimePercentage >= 80 ? 'text-green-600' : 
-                            compliance.checkin.metrics.onTimePercentage >= 60 ? 'text-yellow-600' : 
+                            (compliance.checkin?.metrics?.onTimePercentage || 0) >= 80 ? 'text-green-600' : 
+                            (compliance.checkin?.metrics?.onTimePercentage || 0) >= 60 ? 'text-yellow-600' : 
                             'text-red-600'
                           }`}
                           data-testid={`progress-team-checkin-${teamName.toLowerCase().replace(/\s+/g, '-')}`}
                         />
-                        {compliance.checkin.metrics.averageDaysLate && compliance.checkin.metrics.averageDaysLate > 0 && (
+                        {compliance.checkin?.metrics?.averageDaysLate && compliance.checkin.metrics.averageDaysLate > 0 && (
                           <div className="flex items-center gap-1 text-xs text-red-600">
                             <Clock className="w-3 h-3" />
                             <span>Avg {compliance.checkin.metrics.averageDaysLate.toFixed(1)} days late</span>
@@ -766,18 +766,18 @@ export default function LeadershipDashboard() {
                       <div className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
                           <span className="text-muted-foreground">Review Completions</span>
-                          <span className="font-medium">{compliance.review.metrics.onTimeCount}/{compliance.review.metrics.totalCount} on time</span>
+                          <span className="font-medium">{compliance.review?.metrics?.onTimeCount || 0}/{compliance.review?.metrics?.totalCount || 0} on time</span>
                         </div>
                         <Progress 
-                          value={compliance.review.metrics.onTimePercentage || 0} 
+                          value={compliance.review?.metrics?.onTimePercentage || 0} 
                           className={`h-2 ${
-                            compliance.review.metrics.onTimePercentage >= 80 ? 'text-green-600' : 
-                            compliance.review.metrics.onTimePercentage >= 60 ? 'text-yellow-600' : 
+                            (compliance.review?.metrics?.onTimePercentage || 0) >= 80 ? 'text-green-600' : 
+                            (compliance.review?.metrics?.onTimePercentage || 0) >= 60 ? 'text-yellow-600' : 
                             'text-red-600'
                           }`}
                           data-testid={`progress-team-review-${teamName.toLowerCase().replace(/\s+/g, '-')}`}
                         />
-                        {compliance.review.metrics.averageDaysLate && compliance.review.metrics.averageDaysLate > 0 && (
+                        {compliance.review?.metrics?.averageDaysLate && compliance.review.metrics.averageDaysLate > 0 && (
                           <div className="flex items-center gap-1 text-xs text-red-600">
                             <Timer className="w-3 h-3" />
                             <span>Avg {compliance.review.metrics.averageDaysLate.toFixed(1)} days late</span>
