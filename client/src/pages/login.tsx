@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Heart, Users } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 
 export default function LoginPage() {
   const [backdoorUser, setBackdoorUser] = useState('');
@@ -29,8 +30,12 @@ export default function LoginPage() {
       if (response.ok) {
         const data = await response.json();
         toast({ title: "Success", description: data.message });
-        // Clear cache to ensure fresh authentication state
-        window.location.reload();
+        // Invalidate user query to trigger re-authentication check
+        await queryClient.invalidateQueries({ queryKey: ["/api/users/current", { org: "default" }] });
+        // Small delay to let the authentication state update
+        setTimeout(() => {
+          window.location.href = "/#/dashboard?org=default";
+        }, 100);
       } else {
         const error = await response.json();
         toast({ 
