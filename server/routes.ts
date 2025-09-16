@@ -476,10 +476,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Additional security: Non-admins cannot change role, organizationId, or other sensitive fields
       if (currentUser.role !== "admin") {
         // Remove sensitive fields that only admins should be able to modify
-        delete sanitizedUpdates.role;
-        delete sanitizedUpdates.organizationId;
-        delete sanitizedUpdates.teamId;
-        delete sanitizedUpdates.managerId;
+        const { role, organizationId, teamId, managerId, ...allowedUpdates } = sanitizedUpdates;
+        Object.assign(sanitizedUpdates, allowedUpdates);
+        sanitizedUpdates.role = undefined;
+        sanitizedUpdates.organizationId = undefined;
+        sanitizedUpdates.teamId = undefined;
+        sanitizedUpdates.managerId = undefined;
       }
       
       const user = await storage.updateUser(req.orgId, req.params.id, sanitizedUpdates);
@@ -1814,8 +1816,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const overview = await storage.getAnalyticsOverview(
         req.orgId,
         query.period as AnalyticsPeriod,
-        query.from,
-        query.to
+        query.from || undefined,
+        query.to || undefined
       );
       
       res.json(overview);

@@ -23,6 +23,33 @@ Built comprehensive recognition system for team engagement and culture building:
 - **Security & Privacy**: Enterprise-grade access controls prevent data leakage and impersonation
 - **Complete UI**: Intuitive interface with kudos feed, filtering, and responsive design
 
+### Authentication & Security (September 2025)
+Enhanced authentication system for development and production use:
+- **Backdoor Authentication**: Developer-friendly backdoor login system for when Slack OAuth is unavailable
+- **Multi-Factor Auth Options**: Header-based, session-based, and UI-based authentication methods
+- **Environment Variable Security**: Customizable backdoor credentials via BACKDOOR_USER and BACKDOOR_KEY
+- **Session Management**: Secure session handling with proper user context and organization isolation
+
+## Roadmap
+
+### Immediate Priorities
+- **Login Issues Resolution**: Fix authentication flow and session management
+- **Feature Completeness Audit**: Identify and build out placeholder/non-functional areas
+- **Backend Integration**: Complete missing API endpoints and data persistence
+- **UI/UX Polish**: Address visual inconsistencies and improve user experience
+
+### Short-term Enhancements (1-3 months)
+- **Enhanced Analytics**: Advanced reporting and data visualization
+- **Notification System**: Email and in-app notification preferences
+- **Advanced Team Management**: Hierarchical team structures and delegation
+- **Performance Optimization**: Caching, data loading, and response times
+
+### Long-term Vision (3-6 months)
+- **iPhone App Development**: Convert to iOS app using Capacitor (estimated 1-2 weeks implementation)
+- **Advanced Slack Integration**: Deeper workflow automation and smart notifications
+- **Enterprise Features**: SSO integration, advanced security, audit logs
+- **API Platform**: Public API for third-party integrations and custom workflows
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
