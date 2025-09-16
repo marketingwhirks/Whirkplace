@@ -29,6 +29,7 @@ import type { Checkin, Question, User, InsertCheckin } from "@shared/schema";
 const checkinFormSchema = z.object({
   overallMood: z.number().min(1, "Please provide a mood rating").max(5, "Rating must be between 1 and 5"),
   responses: z.record(z.string().min(1, "Please provide a response")),
+  winningNextWeek: z.string().min(1, "Please describe what winning looks like for next week"),
 });
 
 type CheckinForm = z.infer<typeof checkinFormSchema>;
@@ -71,6 +72,7 @@ export default function Checkins() {
     defaultValues: {
       overallMood: 0,
       responses: {},
+      winningNextWeek: "",
     },
   });
 
@@ -105,6 +107,7 @@ export default function Checkins() {
         weekOf: currentWeekStart.toISOString(), // Convert to ISO string for server
         overallMood: data.overallMood,
         responses: data.responses,
+        winningNextWeek: data.winningNextWeek,
         isComplete: true,
       };
 
@@ -377,6 +380,26 @@ export default function Checkins() {
                             />
                           ))}
                         </div>
+
+                        {/* Winning Next Week */}
+                        <FormField
+                          control={form.control}
+                          name="winningNextWeek"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>What would winning look like for you next week?</FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  placeholder="Describe what success looks like for you next week..."
+                                  rows={3}
+                                  data-testid="textarea-winning-next-week"
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
                         <div className="flex justify-end space-x-3">
                           <Button

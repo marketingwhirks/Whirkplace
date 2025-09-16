@@ -90,8 +90,9 @@ export const checkins = pgTable("checkins", {
   userId: varchar("user_id").notNull(),
   organizationId: varchar("organization_id").notNull(),
   weekOf: timestamp("week_of").notNull(),
-  overallMood: integer("overall_mood").notNull(), // 1-5 rating
+  overallMood: integer("overall_mood").notNull(), // 1-5 rating (weekly pulse check)
   responses: jsonb("responses").notNull().default({}), // question_id -> response
+  winningNextWeek: text("winning_next_week"), // What winning looks like for next week
   isComplete: boolean("is_complete").notNull().default(false),
   submittedAt: timestamp("submitted_at"),
   dueDate: timestamp("due_date").notNull(), // When check-in is due (Monday 9am Central for that week)
