@@ -356,27 +356,27 @@ export default function Dashboard() {
                       <Skeleton className="h-8 w-16 my-1" />
                     ) : (
                       <p className="text-2xl font-bold text-foreground" data-testid="text-team-checkin-compliance">
-                        {teamCheckinCompliance?.metrics.onTimePercentage.toFixed(1) || 0}%
+                        {(teamCheckinCompliance?.metrics?.onTimePercentage ?? 0).toFixed(1)}%
                       </p>
                     )}
-                    {teamCheckinCompliance && (
+                    {teamCheckinCompliance?.metrics && (
                       <p className={`text-xs ${
-                        teamCheckinCompliance.metrics.onTimePercentage >= 80 ? 'text-green-600' :
-                        teamCheckinCompliance.metrics.onTimePercentage >= 60 ? 'text-yellow-600' :
+                        (teamCheckinCompliance.metrics.onTimePercentage ?? 0) >= 80 ? 'text-green-600' :
+                        (teamCheckinCompliance.metrics.onTimePercentage ?? 0) >= 60 ? 'text-yellow-600' :
                         'text-red-600'
                       }`}>
-                        {teamCheckinCompliance.metrics.onTimeCount} of {teamCheckinCompliance.metrics.totalCount} on time
+                        {teamCheckinCompliance.metrics.onTimeCount ?? 0} of {teamCheckinCompliance.metrics.totalCount ?? 0} on time
                       </p>
                     )}
                   </div>
                   <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                    (teamCheckinCompliance?.metrics.onTimePercentage || 0) >= 80 ? 'bg-green-100' :
-                    (teamCheckinCompliance?.metrics.onTimePercentage || 0) >= 60 ? 'bg-yellow-100' :
+                    (teamCheckinCompliance?.metrics?.onTimePercentage ?? 0) >= 80 ? 'bg-green-100' :
+                    (teamCheckinCompliance?.metrics?.onTimePercentage ?? 0) >= 60 ? 'bg-yellow-100' :
                     'bg-red-100'
                   }`}>
                     <Target className={`w-6 h-6 ${
-                      (teamCheckinCompliance?.metrics.onTimePercentage || 0) >= 80 ? 'text-green-600' :
-                      (teamCheckinCompliance?.metrics.onTimePercentage || 0) >= 60 ? 'text-yellow-600' :
+                      (teamCheckinCompliance?.metrics?.onTimePercentage ?? 0) >= 80 ? 'text-green-600' :
+                      (teamCheckinCompliance?.metrics?.onTimePercentage ?? 0) >= 60 ? 'text-yellow-600' :
                       'text-red-600'
                     }`} />
                   </div>
@@ -395,27 +395,27 @@ export default function Dashboard() {
                       <Skeleton className="h-8 w-16 my-1" />
                     ) : (
                       <p className="text-2xl font-bold text-foreground" data-testid="text-team-review-compliance">
-                        {teamReviewCompliance?.metrics.onTimePercentage.toFixed(1) || 0}%
+                        {(teamReviewCompliance?.metrics?.onTimePercentage ?? 0).toFixed(1)}%
                       </p>
                     )}
-                    {teamReviewCompliance && (
+                    {teamReviewCompliance?.metrics && (
                       <p className={`text-xs ${
-                        teamReviewCompliance.metrics.onTimePercentage >= 80 ? 'text-green-600' :
-                        teamReviewCompliance.metrics.onTimePercentage >= 60 ? 'text-yellow-600' :
+                        (teamReviewCompliance.metrics.onTimePercentage ?? 0) >= 80 ? 'text-green-600' :
+                        (teamReviewCompliance.metrics.onTimePercentage ?? 0) >= 60 ? 'text-yellow-600' :
                         'text-red-600'
                       }`}>
-                        {teamReviewCompliance.metrics.onTimeCount} of {teamReviewCompliance.metrics.totalCount} on time
+                        {teamReviewCompliance.metrics.onTimeCount ?? 0} of {teamReviewCompliance.metrics.totalCount ?? 0} on time
                       </p>
                     )}
                   </div>
                   <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                    (teamReviewCompliance?.metrics.onTimePercentage || 0) >= 80 ? 'bg-green-100' :
-                    (teamReviewCompliance?.metrics.onTimePercentage || 0) >= 60 ? 'bg-yellow-100' :
+                    (teamReviewCompliance?.metrics?.onTimePercentage ?? 0) >= 80 ? 'bg-green-100' :
+                    (teamReviewCompliance?.metrics?.onTimePercentage ?? 0) >= 60 ? 'bg-yellow-100' :
                     'bg-red-100'
                   }`}>
                     <Timer className={`w-6 h-6 ${
-                      (teamReviewCompliance?.metrics.onTimePercentage || 0) >= 80 ? 'text-green-600' :
-                      (teamReviewCompliance?.metrics.onTimePercentage || 0) >= 60 ? 'text-yellow-600' :
+                      (teamReviewCompliance?.metrics?.onTimePercentage ?? 0) >= 80 ? 'text-green-600' :
+                      (teamReviewCompliance?.metrics?.onTimePercentage ?? 0) >= 60 ? 'text-yellow-600' :
                       'text-red-600'
                     }`} />
                   </div>
