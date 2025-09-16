@@ -170,7 +170,7 @@ export default function Dashboard() {
   }, [currentUserProfile?.teamId]);
 
   // Fetch team check-in compliance metrics (for managers)
-  const { data: teamCheckinCompliance, isLoading: teamCheckinComplianceLoading } = useQuery<ComplianceMetricsResult>({
+  const { data: teamCheckinComplianceArray, isLoading: teamCheckinComplianceLoading } = useQuery<ComplianceMetricsResult[]>({
     queryKey: ["/api/analytics/checkin-compliance", complianceQueryParams],
     queryFn: () => fetch(`/api/analytics/checkin-compliance?${complianceQueryParams}`).then(res => {
       if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
@@ -181,7 +181,7 @@ export default function Dashboard() {
   });
 
   // Fetch team review compliance metrics (for managers)
-  const { data: teamReviewCompliance, isLoading: teamReviewComplianceLoading } = useQuery<ComplianceMetricsResult>({
+  const { data: teamReviewComplianceArray, isLoading: teamReviewComplianceLoading } = useQuery<ComplianceMetricsResult[]>({
     queryKey: ["/api/analytics/review-compliance", complianceQueryParams],
     queryFn: () => fetch(`/api/analytics/review-compliance?${complianceQueryParams}`).then(res => {
       if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
@@ -190,6 +190,21 @@ export default function Dashboard() {
     enabled: currentUser.role === "manager" && !!complianceQueryParams,
     staleTime: 2 * 60 * 1000, // Cache for 2 minutes
   });
+
+  // Extract the first result from the arrays, or provide default values
+  const teamCheckinCompliance = useMemo(() => {
+    if (!teamCheckinComplianceArray || teamCheckinComplianceArray.length === 0) {
+      return null;
+    }
+    return teamCheckinComplianceArray[0];
+  }, [teamCheckinComplianceArray]);
+
+  const teamReviewCompliance = useMemo(() => {
+    if (!teamReviewComplianceArray || teamReviewComplianceArray.length === 0) {
+      return null;
+    }
+    return teamReviewComplianceArray[0];
+  }, [teamReviewComplianceArray]);
 
   // Enhanced data with user lookups - with proper array guards
   const enrichedCheckins = Array.isArray(recentCheckins) ? recentCheckins.map(checkin => ({
