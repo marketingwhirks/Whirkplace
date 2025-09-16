@@ -33,16 +33,18 @@ declare module "express-session" {
 export function authenticateUser() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Check for backdoor authentication first (works in any environment)
+      // Check for backdoor authentication (development environment only)
       const backdoorUser = req.headers['x-backdoor-user'] as string;
       const backdoorKey = req.headers['x-backdoor-key'] as string;
       
-      if (backdoorUser && backdoorKey) {
-        // Verify backdoor credentials from environment
-        const validBackdoorUser = process.env.BACKDOOR_USER || 'Admin';
-        const validBackdoorKey = process.env.BACKDOOR_KEY || 'Whirk2025!';
+      // SECURITY: Backdoor only works in development environment with explicit env vars
+      if (backdoorUser && backdoorKey && process.env.NODE_ENV === 'development') {
+        // Verify backdoor credentials from environment (no defaults for security)
+        const validBackdoorUser = process.env.BACKDOOR_USER;
+        const validBackdoorKey = process.env.BACKDOOR_KEY;
         
-        if (backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
+        if (validBackdoorUser && validBackdoorKey && 
+            backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
           // Find or create backdoor admin user
           let adminUser = await storage.getUserByUsername(req.orgId, 'backdoor-admin');
           
@@ -107,6 +109,40 @@ export function authenticateUser() {
           }
           return next();
         }
+      }
+      
+      // Development bypass: Allow unauthenticated access with bypass user (strict development only)
+      if (process.env.NODE_ENV === 'development') {
+        // Create a temporary bypass user object that matches frontend expectations
+        const bypassUser = {
+          id: 'bypass-user-123',
+          username: 'admin',
+          password: 'secure-random-password',
+          name: 'Admin User',
+          email: 'admin@whirkplace.com',
+          role: 'admin' as const,
+          organizationId: req.orgId,
+          teamId: null,
+          managerId: null,
+          avatar: null,
+          slackUserId: null,
+          slackUsername: null,
+          slackDisplayName: null,
+          slackEmail: null,
+          slackAvatar: null,
+          slackWorkspaceId: null,
+          authProvider: 'local' as const,
+          isActive: true,
+          createdAt: new Date(),
+        };
+        
+        req.currentUser = bypassUser;
+        // Set session for consistency
+        if (req.session) {
+          req.session.userId = bypassUser.id;
+        }
+        console.log("Development bypass: Using temporary bypass user for authentication");
+        return next();
       }
       
       // No valid authentication found
