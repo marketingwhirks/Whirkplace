@@ -598,6 +598,8 @@ export class DatabaseStorage implements IStorage {
         reviewedAt,
         reviewedOnTime,
         reviewComments: reviewData.reviewComments || null,
+        addToOneOnOne: reviewData.addToOneOnOne || false,
+        flagForFollowUp: reviewData.flagForFollowUp || false,
       })
       .where(and(
         eq(checkins.id, checkinId),
@@ -2488,6 +2490,8 @@ export class MemStorage implements IStorage {
       reviewedAt,
       reviewedOnTime,
       reviewComments: reviewData.reviewComments || null,
+      addToOneOnOne: reviewData.addToOneOnOne || false,
+      flagForFollowUp: reviewData.flagForFollowUp || false,
     };
     
     this.checkins.set(checkinId, updatedCheckin);

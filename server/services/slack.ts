@@ -38,7 +38,7 @@ const oauthStates = new Map<string, { organizationSlug: string; expiresAt: numbe
 // Cleanup expired states every 10 minutes
 setInterval(() => {
   const now = Date.now();
-  for (const [state, data] of oauthStates.entries()) {
+  for (const [state, data] of Array.from(oauthStates.entries())) {
     if (now > data.expiresAt) {
       oauthStates.delete(state);
     }
@@ -239,7 +239,287 @@ export async function sendSlackMessage(
 }
 
 /**
- * Send a check-in reminder to Slack with link to check-in and weekly questions
+ * Send interactive check-in modal directly in Slack
+ */
+export async function sendInteractiveCheckinModal(userId: string, triggerId: string, userName: string) {
+  if (!slack) return;
+
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const checkinUrl = `${appUrl}/#/checkins`;
+
+  const modal = {
+    type: 'modal' as const,
+    callback_id: 'checkin_modal',
+    title: {
+      type: 'plain_text' as const,
+      text: 'Weekly Check-in'
+    },
+    blocks: [
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `Hi ${userName}! 👋 Time for your weekly check-in. How are you doing this week?`
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'mood_rating',
+        element: {
+          type: 'radio_buttons' as const,
+          action_id: 'mood_value',
+          options: [
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '😍 Excellent (5/5)'
+              },
+              value: '5'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '😊 Great (4/5)'
+              },
+              value: '4'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '🙂 Good (3/5)'
+              },
+              value: '3'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '😕 Okay (2/5)'
+              },
+              value: '2'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '😟 Not Great (1/5)'
+              },
+              value: '1'
+            }
+          ]
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'How would you rate your overall mood this week?'
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'accomplishments',
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'accomplishments_value',
+          multiline: true,
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'What went well this week? Any wins or accomplishments?'
+          }
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Wins & Accomplishments'
+        },
+        optional: true
+      },
+      {
+        type: 'input' as const,
+        block_id: 'challenges',
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'challenges_value',
+          multiline: true,
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'Any challenges or blockers you faced?'
+          }
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Challenges & Blockers'
+        },
+        optional: true
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `💡 *Quick tip*: Your responses help your team leader understand how to support you better!`
+        }
+      },
+      {
+        type: 'actions' as const,
+        elements: [
+          {
+            type: 'button' as const,
+            text: {
+              type: 'plain_text' as const,
+              text: '📝 Complete in App'
+            },
+            url: checkinUrl,
+            style: 'secondary' as const
+          }
+        ]
+      }
+    ],
+    submit: {
+      type: 'plain_text' as const,
+      text: '✅ Submit Check-in'
+    },
+    close: {
+      type: 'plain_text' as const,
+      text: '❌ Cancel'
+    }
+  };
+
+  try {
+    await slack.views.open({
+      trigger_id: triggerId,
+      view: modal
+    });
+
+    console.log(`Interactive check-in modal opened for ${userName}`);
+  } catch (error) {
+    console.error(`Error opening check-in modal for ${userName}:`, error);
+  }
+}
+
+/**
+ * Send personalized check-in reminder with interactive buttons
+ */
+export async function sendPersonalizedCheckinReminder(
+  userId: string, 
+  userName: string, 
+  questions: Array<{id: string, text: string}> = [],
+  isWeeklyScheduled: boolean = false
+) {
+  if (!slack) return;
+
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const checkinUrl = `${appUrl}/#/checkins`;
+
+  const reminderBlocks: any[] = [
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: isWeeklyScheduled 
+          ? `🔔 *Weekly Check-in Reminder - ${new Date().toLocaleDateString()}*`
+          : `📝 *Check-in Reminder*`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `Hi ${userName}! 👋 Hope you're having a great ${isWeeklyScheduled ? 'Monday' : 'day'}! Time for your weekly team check-in.`
+      }
+    }
+  ];
+
+  // Add question preview if available
+  if (questions.length > 0) {
+    reminderBlocks.push({
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `*This week's questions preview:*`
+      }
+    });
+
+    questions.slice(0, 2).forEach((question, index) => {
+      reminderBlocks.push({
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `${index + 1}. ${question.text}`
+        }
+      });
+    });
+
+    if (questions.length > 2) {
+      reminderBlocks.push({
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `_...and ${questions.length - 2} more questions_`
+        }
+      });
+    }
+  }
+
+  // Add call-to-action buttons
+  reminderBlocks.push({
+    type: 'actions' as const,
+    elements: [
+      {
+        type: 'button' as const,
+        text: {
+          type: 'plain_text' as const,
+          text: '🚀 Quick Check-in'
+        },
+        action_id: 'open_checkin_modal',
+        value: 'quick_checkin',
+        style: 'primary' as const
+      },
+      {
+        type: 'button' as const,
+        text: {
+          type: 'plain_text' as const,
+          text: '📊 Full Check-in'
+        },
+        url: checkinUrl
+      },
+      {
+        type: 'button' as const,
+        text: {
+          type: 'plain_text' as const,
+          text: '⏰ Remind Later'
+        },
+        action_id: 'remind_later',
+        value: 'remind_4hours'
+      }
+    ]
+  });
+
+  reminderBlocks.push({
+    type: 'context' as const,
+    elements: [
+      {
+        type: 'mrkdwn' as const,
+        text: `🕰️ Takes 2-3 minutes | Your team appreciates your input! ❤️`
+      }
+    ]
+  });
+
+  try {
+    const dmResult = await slack.conversations.open({
+      users: userId
+    });
+
+    if (dmResult.ok && dmResult.channel?.id) {
+      await sendSlackMessage({
+        channel: dmResult.channel.id,
+        blocks: reminderBlocks,
+        text: `Check-in reminder for ${userName}`
+      });
+
+      console.log(`Personalized check-in reminder sent to ${userName} (${userId})`);
+    }
+  } catch (error) {
+    console.error(`Error sending personalized reminder to ${userName}:`, error);
+  }
+}
+
+/**
+ * Send a check-in reminder to Slack with link to check-in and weekly questions (Legacy function - kept for backward compatibility)
  */
 export async function sendCheckinReminder(userNames: string[], questions: Array<{id: string, text: string}> = []) {
   if (!slack) return;
@@ -447,6 +727,169 @@ export async function announceShoutout(
 /**
  * Send team health update to Slack
  */
+/**
+ * Send personalized welcome message to new users joining the Slack channel
+ */
+export async function sendWelcomeMessage(userId: string, userName: string, channelId: string, organizationName?: string) {
+  if (!slack) return;
+
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const loginUrl = `${appUrl}/#/login`;
+  const checkinUrl = `${appUrl}/#/checkins`;
+  const dashboardUrl = `${appUrl}/#/dashboard`;
+
+  const welcomeBlocks = [
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `🎉 *Welcome to ${organizationName || 'the team'}, ${userName}!*`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `Hi there! I'm your team wellness assistant. I'm here to help you stay connected with your team through regular check-ins, celebrating wins, and sharing feedback.`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `*Here's how to get started:*\n\n1️⃣ *Access the App*: Click the button below to login\n2️⃣ *Complete Your Profile*: Set up your profile and preferences\n3️⃣ *Weekly Check-ins*: Share how you're doing each week\n4️⃣ *Celebrate Wins*: Recognize your team's achievements`
+      }
+    },
+    {
+      type: 'actions' as const,
+      elements: [
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '🚀 Get Started'
+          },
+          url: loginUrl,
+          style: 'primary' as const
+        },
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '📊 View Dashboard'
+          },
+          url: dashboardUrl
+        }
+      ]
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `💡 *Pro Tip*: You can also interact with me directly in Slack! Try clicking the buttons in messages or look out for weekly reminders.`
+      }
+    },
+    {
+      type: 'context' as const,
+      elements: [
+        {
+          type: 'mrkdwn' as const,
+          text: `Questions? Just mention me in the channel and I'll help you out! 🤖`
+        }
+      ]
+    }
+  ];
+
+  try {
+    // Send welcome message as DM to the user
+    const dmResult = await slack.conversations.open({
+      users: userId
+    });
+
+    if (dmResult.ok && dmResult.channel?.id) {
+      await sendSlackMessage({
+        channel: dmResult.channel.id,
+        blocks: welcomeBlocks,
+        text: `Welcome to ${organizationName || 'the team'}! 🎉`
+      });
+
+      console.log(`Welcome message sent to ${userName} (${userId})`);
+    } else {
+      console.warn(`Failed to open DM with user ${userName}: ${dmResult.error}`);
+    }
+  } catch (error) {
+    console.error(`Error sending welcome message to ${userName}:`, error);
+  }
+}
+
+/**
+ * Send a quick start guide with interactive buttons for check-ins
+ */
+export async function sendQuickStartGuide(userId: string, userName: string) {
+  if (!slack) return;
+
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const checkinUrl = `${appUrl}/#/checkins`;
+
+  const quickStartBlocks = [
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `📝 *Ready for your first check-in, ${userName}?*`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `Check-ins help your team stay connected and support each other. It only takes 2-3 minutes!`
+      }
+    },
+    {
+      type: 'actions' as const,
+      elements: [
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '📝 Start Check-in'
+          },
+          url: checkinUrl,
+          style: 'primary' as const
+        },
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '⏰ Remind Me Later'
+          },
+          action_id: 'remind_later',
+          value: 'remind_checkin_later'
+        }
+      ]
+    }
+  ];
+
+  try {
+    const dmResult = await slack.conversations.open({
+      users: userId
+    });
+
+    if (dmResult.ok && dmResult.channel?.id) {
+      await sendSlackMessage({
+        channel: dmResult.channel.id,
+        blocks: quickStartBlocks,
+        text: `Ready for your first check-in? 📝`
+      });
+
+      console.log(`Quick start guide sent to ${userName} (${userId})`);
+    }
+  } catch (error) {
+    console.error(`Error sending quick start guide to ${userName}:`, error);
+  }
+}
+
 export async function sendTeamHealthUpdate(averageRating: number, completionRate: number, totalWins: number) {
   if (!slack) return;
 
@@ -511,7 +954,7 @@ export async function notifyCheckinSubmitted(
   const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
   const reviewUrl = `${appUrl}/#/reviews`;
 
-  const blocks = [
+  const blocks: any[] = [
     {
       type: 'section',
       text: {
@@ -552,16 +995,16 @@ export async function notifyCheckinSubmitted(
   }
 
   blocks.push({
-    type: 'actions',
+    type: 'actions' as const,
     elements: [
       {
-        type: 'button',
+        type: 'button' as const,
         text: {
-          type: 'plain_text',
+          type: 'plain_text' as const,
           text: 'Review Check-in 👁️'
         },
         url: reviewUrl,
-        style: 'primary'
+        style: 'primary' as const
       }
     ]
   });
@@ -580,7 +1023,7 @@ export async function notifyCheckinSubmitted(
 export async function notifyCheckinReviewed(
   userName: string, 
   reviewerName: string, 
-  reviewStatus: 'approved' | 'rejected', 
+  reviewStatus: 'reviewed', 
   reviewComments?: string
 ) {
   if (!slack) return;
@@ -592,24 +1035,24 @@ export async function notifyCheckinReviewed(
     return;
   }
   
-  const statusEmoji = reviewStatus === 'approved' ? '✅' : '❌';
-  const statusColor = reviewStatus === 'approved' ? 'good' : 'danger';
+  const statusEmoji = '👁️';
+  const statusColor = 'good';
   const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
   const checkinUrl = `${appUrl}/#/checkins`;
 
-  const blocks = [
+  const blocks: any[] = [
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `${statusEmoji} *Check-in ${reviewStatus === 'approved' ? 'Approved' : 'Rejected'}*`
+        text: `${statusEmoji} *Check-in Reviewed*`
       }
     },
     {
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `Hi ${userName}! ${reviewerName} has ${reviewStatus} your weekly check-in.`
+        text: `Hi ${userName}! ${reviewerName} has reviewed your weekly check-in.`
       }
     }
   ];
@@ -624,7 +1067,7 @@ export async function notifyCheckinReviewed(
     });
   }
 
-  if (reviewStatus === 'rejected') {
+  if (reviewStatus === 'reviewed') { // Note: Status is always 'reviewed', but we can add logic for different review outcomes
     blocks.push({
       type: 'section',
       text: {
@@ -633,16 +1076,16 @@ export async function notifyCheckinReviewed(
       }
     });
     blocks.push({
-      type: 'actions',
+      type: 'actions' as const,
       elements: [
         {
-          type: 'button',
+          type: 'button' as const,
           text: {
-            type: 'plain_text',
+            type: 'plain_text' as const,
             text: 'Update Check-in 📝'
           },
           url: checkinUrl,
-          style: 'primary'
+          style: 'primary' as const
         }
       ]
     });
@@ -741,7 +1184,7 @@ export async function getChannelMembers(): Promise<{ id: string; name: string; e
     // Use environment override if set, otherwise search by name
     let channelId = process.env.SLACK_USER_SYNC_CHANNEL_ID;
     if (!channelId) {
-      channelId = await findChannelIdByName(WHIRKPLACE_CHANNEL);
+      channelId = await findChannelIdByName(WHIRKPLACE_CHANNEL) ?? undefined;
     }
     
     if (!channelId) {
@@ -917,21 +1360,423 @@ export async function syncUsersFromSlack(organizationId: string, storage: any): 
 }
 
 /**
- * Handle Slack events for real-time user sync
+ * Enhanced handler for Slack channel membership events with onboarding
  */
 export async function handleChannelMembershipEvent(
   event: { type: string; user: string; channel: string },
   organizationId: string,
   storage: any
 ): Promise<void> {
-  // Only process events for the whirkplace-pulse channel
-  // Note: In practice, you'd need to resolve channel ID to name first
-  
   if (event.type === 'member_joined_channel') {
-    console.log(`User ${event.user} joined channel. Triggering user sync...`);
-    await syncUsersFromSlack(organizationId, storage);
+    console.log(`User ${event.user} joined channel. Triggering user sync and onboarding...`);
+    
+    try {
+      // Get organization details
+      const organization = await storage.getOrganizationById(organizationId);
+      
+      // Get user info from Slack
+      if (slack && event.user) {
+        const userInfo = await slack.users.info({ user: event.user });
+        
+        if (userInfo.ok && userInfo.user) {
+          const user = userInfo.user;
+          const userName = user.real_name || user.name || 'New Team Member';
+          
+          // Send welcome message to the new user
+          await sendWelcomeMessage(
+            event.user, 
+            userName, 
+            event.channel,
+            organization?.name
+          );
+          
+          // Send quick start guide after a 30-second delay
+          setTimeout(async () => {
+            await sendQuickStartGuide(event.user, userName);
+          }, 30000);
+          
+          console.log(`Onboarding sequence initiated for ${userName} (${event.user})`);
+        }
+      }
+      
+      // Sync users when someone joins the channel
+      await syncUsersFromSlack(organizationId, storage);
+      
+    } catch (error) {
+      console.error('Error handling member joined event:', error);
+      // Still sync users even if onboarding fails
+      await syncUsersFromSlack(organizationId, storage);
+    }
   } else if (event.type === 'member_left_channel') {
     console.log(`User ${event.user} left channel. Triggering user sync...`);
     await syncUsersFromSlack(organizationId, storage);
+  }
+}
+
+/**
+ * Weekly reminder scheduler - Call this function via cron job or scheduler at 9:05 AM
+ */
+export async function scheduleWeeklyReminders(organizationId: string, storage: any) {
+  if (!slack) {
+    console.log('Slack not configured - skipping weekly reminders');
+    return { remindersSent: 0, errors: 0, totalUsers: 0 };
+  }
+
+  try {
+    console.log(`Running weekly check-in reminders for organization ${organizationId}`);
+    
+    // Get all active users
+    const users = await storage.getAllUsers(organizationId);
+    const activeUsers = users.filter((user: any) => user.isActive && user.slackUserId);
+    
+    // Get current week check-ins to see who hasn't completed theirs
+    const currentWeekStart = new Date();
+    currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay()); // Start of week (Sunday)
+    currentWeekStart.setHours(0, 0, 0, 0);
+    
+    // Get active questions for preview
+    const questions = await storage.getActiveQuestions(organizationId);
+    
+    let remindersSent = 0;
+    let errors = 0;
+    
+    for (const user of activeUsers) {
+      try {
+        // Check if user has completed this week's check-in
+        const currentCheckin = await storage.getCurrentWeekCheckin(organizationId, user.id);
+        
+        if (!currentCheckin || !currentCheckin.isComplete) {
+          // Send personalized reminder
+          await sendPersonalizedCheckinReminder(
+            user.slackUserId,
+            user.name || user.slackDisplayName || 'Team Member',
+            questions,
+            true // isWeeklyScheduled
+          );
+          
+          remindersSent++;
+          
+          // Add small delay to avoid rate limits
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } catch (userError) {
+        console.error(`Error sending reminder to user ${user.name}:`, userError);
+        errors++;
+      }
+    }
+    
+    console.log(`Weekly reminders completed: ${remindersSent} sent, ${errors} errors`);
+    return { remindersSent, errors, totalUsers: activeUsers.length };
+    
+  } catch (error) {
+    console.error('Error in weekly reminder scheduler:', error);
+    throw error;
+  }
+}
+
+/**
+ * Handle Slack interactive components (buttons, modals, etc.)
+ */
+export async function handleSlackInteraction(payload: any, organizationId: string, storage: any) {
+  try {
+    const { type, user, actions, trigger_id, view, response_url } = payload;
+    
+    if (type === 'block_actions' && actions) {
+      const action = actions[0];
+      
+      switch (action.action_id) {
+        case 'open_checkin_modal':
+          // Open interactive check-in modal
+          if (trigger_id) {
+            await sendInteractiveCheckinModal(
+              user.id,
+              trigger_id,
+              user.name || 'Team Member'
+            );
+          }
+          break;
+          
+        case 'remind_later':
+          // Handle remind later button
+          const hours = action.value === 'remind_4hours' ? 4 : 24;
+          await scheduleReminderLater(user.id, user.name, hours, organizationId, storage);
+          
+          // Update the message to show reminder scheduled
+          if (response_url) {
+            await fetch(response_url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                text: `✅ Got it! I'll remind you again in ${hours} hours.`,
+                response_type: 'ephemeral'
+              })
+            });
+          }
+          break;
+          
+        default:
+          console.log(`Unhandled action: ${action.action_id}`);
+      }
+    } else if (type === 'view_submission' && view) {
+      // Handle modal submission
+      if (view.callback_id === 'checkin_modal') {
+        await handleCheckinModalSubmission(view, user, organizationId, storage);
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error handling Slack interaction:', error);
+  }
+}
+
+/**
+ * Handle check-in modal submission
+ */
+async function handleCheckinModalSubmission(view: any, user: any, organizationId: string, storage: any) {
+  try {
+    const values = view.state.values;
+    
+    // Extract form values
+    const moodRating = values.mood_rating?.mood_value?.selected_option?.value;
+    const accomplishments = values.accomplishments?.accomplishments_value?.value || '';
+    const challenges = values.challenges?.challenges_value?.value || '';
+    
+    if (!moodRating) {
+      console.error('Mood rating not provided in check-in submission');
+      return;
+    }
+    
+    // Find or create user in the system
+    let systemUser;
+    try {
+      systemUser = await storage.getUserBySlackId(organizationId, user.id);
+    } catch (error) {
+      console.log(`User not found in system, checking by email...`);
+    }
+    
+    if (!systemUser) {
+      console.log(`Creating new user from Slack submission: ${user.name}`);
+      // Create basic user record
+      const userData = {
+        username: user.username || user.id,
+        password: randomBytes(32).toString('hex'), // Random password for Slack users
+        name: user.real_name || user.name || 'Slack User',
+        email: user.profile?.email || `${user.id}@slack.local`,
+        role: 'member',
+        organizationId: organizationId,
+        slackUserId: user.id,
+        slackUsername: user.username || user.id,
+        slackDisplayName: user.real_name || user.name,
+        slackEmail: user.profile?.email,
+        authProvider: 'slack' as const
+      };
+      
+      systemUser = await storage.createUser(organizationId, userData);
+    }
+    
+    // Create check-in entry
+    const currentWeekStart = new Date();
+    currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
+    currentWeekStart.setHours(0, 0, 0, 0);
+    
+    const checkinData = {
+      userId: systemUser.id,
+      organizationId: organizationId,
+      weekOf: currentWeekStart,
+      overallMood: parseInt(moodRating),
+      responses: {
+        accomplishments: accomplishments,
+        challenges: challenges,
+        submitted_via: 'slack'
+      },
+      isComplete: true
+    };
+    
+    await storage.createCheckin(organizationId, checkinData);
+    
+    // Send confirmation message
+    const dmResult = await slack!.conversations.open({ users: user.id });
+    if (dmResult.ok && dmResult.channel?.id) {
+      await sendSlackMessage({
+        channel: dmResult.channel.id,
+        text: `✅ Check-in submitted successfully! Thanks for sharing your update, ${user.real_name || user.name}! 🙏`,
+        blocks: [
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `✅ *Check-in Submitted Successfully!*`
+            }
+          },
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `Thanks for sharing your weekly update, ${user.real_name || user.name}! Your team leader will review your check-in soon.`
+            }
+          },
+          {
+            type: 'context' as const,
+            elements: [
+              {
+                type: 'mrkdwn' as const,
+                text: `Mood: ${moodRating}/5 | Submitted via Slack | ${new Date().toLocaleDateString()}`
+              }
+            ]
+          }
+        ]
+      });
+    }
+    
+    console.log(`Check-in submitted via Slack by ${user.name} (mood: ${moodRating}/5)`);
+    
+  } catch (error) {
+    console.error('Error processing check-in modal submission:', error);
+  }
+}
+
+/**
+ * Schedule a reminder for later
+ */
+async function scheduleReminderLater(userId: string, userName: string, hours: number, organizationId: string, storage: any) {
+  // In a production environment, you'd use a proper job scheduler like Bull, Agenda, or AWS SQS
+  // For now, we'll use setTimeout (note: this won't persist across server restarts)
+  setTimeout(async () => {
+    try {
+      const questions = await storage.getActiveQuestions(organizationId);
+      await sendPersonalizedCheckinReminder(
+        userId,
+        userName,
+        questions,
+        false // Not weekly scheduled
+      );
+      console.log(`Delayed reminder sent to ${userName} after ${hours} hours`);
+    } catch (error) {
+      console.error(`Error sending delayed reminder to ${userName}:`, error);
+    }
+  }, hours * 60 * 60 * 1000); // Convert hours to milliseconds
+  
+  console.log(`Scheduled reminder for ${userName} in ${hours} hours`);
+}
+
+/**
+ * Initialize weekly reminder scheduler - Call this on server startup
+ * Schedules automatic reminders every Monday at 9:05 AM
+ */
+export function initializeWeeklyReminderScheduler(storage: any) {
+  console.log('Initializing weekly reminder scheduler for all organizations...');
+  
+  // Function to schedule next Monday 9:05 AM reminder
+  const scheduleNextWeeklyReminder = () => {
+    const now = new Date();
+    const nextMonday = new Date();
+    
+    // Calculate next Monday
+    const daysUntilMonday = (1 + 7 - now.getDay()) % 7;
+    nextMonday.setDate(now.getDate() + daysUntilMonday);
+    nextMonday.setHours(9, 5, 0, 0); // 9:05 AM
+    
+    // If it's already past 9:05 AM on Monday, schedule for next Monday
+    if (nextMonday <= now) {
+      nextMonday.setDate(nextMonday.getDate() + 7);
+    }
+    
+    const timeUntilReminder = nextMonday.getTime() - now.getTime();
+    
+    console.log(`Next weekly reminders scheduled for: ${nextMonday.toLocaleString()}`);
+    
+    setTimeout(async () => {
+      try {
+        console.log('Running scheduled weekly reminders for all organizations...');
+        
+        // Get all organizations and send reminders for each
+        const organizations = await storage.getAllOrganizations();
+        
+        for (const org of organizations) {
+          try {
+            const result = await scheduleWeeklyReminders(org.id, storage);
+            console.log(`Weekly reminders for ${org.name}: ${result.remindersSent} sent, ${result.errors} errors`);
+          } catch (orgError) {
+            console.error(`Failed to send weekly reminders for organization ${org.name}:`, orgError);
+          }
+        }
+        
+        // Schedule the next week's reminders
+        scheduleNextWeeklyReminder();
+        
+      } catch (error) {
+        console.error('Error in scheduled weekly reminders:', error);
+        // Try to reschedule even if there was an error
+        scheduleNextWeeklyReminder();
+      }
+    }, timeUntilReminder);
+  };
+  
+  // Start the scheduling
+  scheduleNextWeeklyReminder();
+}
+
+/**
+ * Manual trigger for testing weekly reminders (for development/testing)
+ */
+export async function triggerTestWeeklyReminders(organizationId: string, storage: any) {
+  console.log(`Manual test trigger for weekly reminders - Organization: ${organizationId}`);
+  
+  try {
+    const result = await scheduleWeeklyReminders(organizationId, storage);
+    console.log('Test weekly reminders completed:', result);
+    return result;
+  } catch (error) {
+    console.error('Error in test weekly reminders:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get reminder status and stats for monitoring
+ */
+export async function getWeeklyReminderStats(organizationId: string, storage: any) {
+  try {
+    const users = await storage.getAllUsers(organizationId);
+    const activeUsers = users.filter((user: any) => user.isActive);
+    const slackUsers = activeUsers.filter((user: any) => user.slackUserId);
+    
+    // Check current week completion
+    const currentWeekStart = new Date();
+    currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
+    currentWeekStart.setHours(0, 0, 0, 0);
+    
+    let completedCount = 0;
+    const pendingUsers: any[] = [];
+    
+    for (const user of slackUsers) {
+      try {
+        const currentCheckin = await storage.getCurrentWeekCheckin(organizationId, user.id);
+        if (currentCheckin && currentCheckin.isComplete) {
+          completedCount++;
+        } else {
+          pendingUsers.push({
+            id: user.id,
+            name: user.name,
+            slackUserId: user.slackUserId
+          });
+        }
+      } catch (error) {
+        console.error(`Error checking checkin for user ${user.name}:`, error);
+      }
+    }
+    
+    return {
+      totalActiveUsers: activeUsers.length,
+      slackIntegratedUsers: slackUsers.length,
+      completedCheckinsThisWeek: completedCount,
+      pendingCheckinsThisWeek: pendingUsers.length,
+      completionRate: slackUsers.length > 0 ? Math.round((completedCount / slackUsers.length) * 100) : 0,
+      pendingUsers: pendingUsers,
+      weekStart: currentWeekStart.toISOString()
+    };
+  } catch (error) {
+    console.error('Error getting weekly reminder stats:', error);
+    throw error;
   }
 }

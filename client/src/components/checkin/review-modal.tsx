@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { CheckCircle, XCircle, MessageSquare, X } from "lucide-react";
+import { CheckCircle, XCircle, MessageSquare, X, Eye } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,16 +45,17 @@ export default function ReviewModal({
   disabled = false,
 }: ReviewModalProps) {
   const { toast } = useToast();
-  const [reviewAction, setReviewAction] = useState<"approve" | "reject" | null>(null);
+  const [addToOneOnOne, setAddToOneOnOne] = useState(false);
+  const [flagForFollowUp, setFlagForFollowUp] = useState(false);
   const [reviewComment, setReviewComment] = useState("");
   const [showConfirmation, setShowConfirmation] = useState(false);
 
   // Review mutation
   const reviewMutation = useMutation({
-    mutationFn: async ({ checkinId, reviewData }: { checkinId: string; reviewData: ReviewCheckin }): Promise<EnhancedCheckin> => {
+    mutationFn: async ({ checkinId, reviewData }: { checkinId: string; reviewData: ReviewCheckin }): Promise<Response> => {
       return apiRequest("PATCH", `/api/checkins/${checkinId}/review`, reviewData);
     },
-    onSuccess: (data: EnhancedCheckin) => {
+    onSuccess: (data: any) => {
       // Invalidate relevant queries
       queryClient.invalidateQueries({ queryKey: ["/api/checkins/pending"] });
       queryClient.invalidateQueries({ queryKey: ["/api/checkins/review-status"] });
@@ -62,7 +63,7 @@ export default function ReviewModal({
       
       toast({
         title: "Review submitted",
-        description: `Check-in has been ${reviewAction === "approve" ? "approved" : "rejected"}.`,
+        description: "Check-in has been reviewed.",
       });
 
       // Call completion callback
@@ -82,19 +83,20 @@ export default function ReviewModal({
     },
   });
 
-  // Handle review action selection
-  const handleReviewAction = (action: "approve" | "reject") => {
-    setReviewAction(action);
+  // Handle review submission
+  const handleReview = () => {
     setShowConfirmation(true);
   };
 
   // Handle review submission
   const handleSubmitReview = async () => {
-    if (!checkin || !reviewAction) return;
+    if (!checkin) return;
 
     const reviewData: ReviewCheckin = {
-      reviewStatus: reviewAction === "approve" ? "approved" : "rejected",
+      reviewStatus: "reviewed" as const,
       reviewComments: reviewComment.trim() || undefined,
+      addToOneOnOne,
+      flagForFollowUp,
     };
 
     reviewMutation.mutate({
@@ -105,7 +107,8 @@ export default function ReviewModal({
 
   // Handle modal close
   const handleClose = () => {
-    setReviewAction(null);
+    setAddToOneOnOne(false);
+    setFlagForFollowUp(false);
     setReviewComment("");
     setShowConfirmation(false);
     onClose();
@@ -125,12 +128,8 @@ export default function ReviewModal({
               <CardTitle className="flex items-center gap-2">
                 {showConfirmation ? (
                   <>
-                    {reviewAction === "approve" ? (
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                    ) : (
-                      <XCircle className="w-5 h-5 text-red-600" />
-                    )}
-                    {reviewAction === "approve" ? "Approve" : "Reject"} Check-in
+                    <Eye className="w-5 h-5 text-blue-600" />
+                    Review Check-in
                   </>
                 ) : (
                   "Review Check-in"
@@ -138,7 +137,7 @@ export default function ReviewModal({
               </CardTitle>
               <CardDescription>
                 {showConfirmation 
-                  ? `Confirm ${reviewAction} for ${checkin.user?.name}'s check-in`
+                  ? `Confirm review for ${checkin.user?.name}'s check-in`
                   : `Review check-in from ${checkin.user?.name}`
                 }
               </CardDescription>
@@ -178,8 +177,7 @@ export default function ReviewModal({
                   </div>
                 </div>
                 <Badge 
-                  variant={checkin.reviewStatus === "pending" ? "secondary" : 
-                         checkin.reviewStatus === "approved" ? "default" : "destructive"}
+                  variant={checkin.reviewStatus === "pending" ? "secondary" : "default"}
                   data-testid="badge-review-status"
                 >
                   {checkin.reviewStatus}

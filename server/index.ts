@@ -70,6 +70,16 @@ app.use((req, res, next) => {
   await runDevelopmentSeeding();
   
   const server = await registerRoutes(app);
+  
+  // Initialize Slack weekly reminder scheduler (runs every Monday at 9:05 AM)
+  try {
+    const { initializeWeeklyReminderScheduler } = await import("./services/slack");
+    const { storage } = await import("./storage");
+    initializeWeeklyReminderScheduler(storage);
+    console.log('✅ Weekly reminder scheduler initialized successfully');
+  } catch (error) {
+    console.error('❌ Failed to initialize weekly reminder scheduler:', error);
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

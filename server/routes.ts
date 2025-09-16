@@ -1151,11 +1151,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      // Validate workflow state before allowing review
-      if (existingCheckin.reviewStatus !== ReviewStatus.PENDING) {
-        return res.status(409).json({ 
-          message: "Check-in has already been reviewed and cannot be reviewed again",
-          currentStatus: existingCheckin.reviewStatus 
+      // Allow review updates with the new collaborative workflow
+      // Check-ins can be reviewed multiple times for collaborative discussion
+      if (existingCheckin.reviewStatus === ReviewStatus.REVIEWED && reviewData.reviewStatus === ReviewStatus.PENDING) {
+        return res.status(400).json({ 
+          message: "Cannot change a reviewed check-in back to pending status"
         });
       }
 
@@ -1183,7 +1183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await notifyCheckinReviewed(
             checkinUser.name,
             reviewer.name,
-            reviewData.reviewStatus === ReviewStatus.APPROVED ? 'approved' : 'rejected',
+            'reviewed',
             reviewData.reviewComments
           );
         } catch (notificationError) {
@@ -2075,6 +2075,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to send team health update" });
     }
   });
+  
+  // Manual Weekly Reminder Trigger (for testing or scheduled execution)
+  app.post("/api/slack/send-weekly-reminders", requireOrganization(), requireAuth(), requireRole('admin'), async (req, res) => {
+    try {
+      const { scheduleWeeklyReminders } = await import("./services/slack");
+      const result = await scheduleWeeklyReminders(req.orgId, storage);
+      
+      res.json({
+        message: "Weekly reminders processing completed",
+        ...result
+      });
+    } catch (error) {
+      console.error("Failed to send weekly reminders:", error);
+      res.status(500).json({ message: "Failed to send weekly reminders" });
+    }
+  });
+  
+  // Personalized Check-in Reminder (for individual users)
+  app.post("/api/slack/send-personal-reminder", requireOrganization(), requireAuth(), requireRole('admin'), async (req, res) => {
+    try {
+      const { userId, isWeeklyScheduled = false } = req.body;
+      
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+      
+      const user = await storage.getUserById(req.orgId, userId);
+      if (!user || !user.slackUserId) {
+        return res.status(404).json({ message: "User not found or doesn't have Slack integration" });
+      }
+      
+      const questions = await storage.getActiveQuestions(req.orgId);
+      const { sendPersonalizedCheckinReminder } = await import("./services/slack");
+      
+      await sendPersonalizedCheckinReminder(
+        user.slackUserId,
+        user.name,
+        questions,
+        isWeeklyScheduled
+      );
+      
+      res.json({
+        message: "Personal reminder sent successfully",
+        user: { id: user.id, name: user.name }
+      });
+    } catch (error) {
+      console.error("Failed to send personal reminder:", error);
+      res.status(500).json({ message: "Failed to send personal reminder" });
+    }
+  });
+  
+  // Get Weekly Reminder Statistics
+  app.get("/api/slack/reminder-stats", requireOrganization(), requireAuth(), async (req, res) => {
+    try {
+      const { getWeeklyReminderStats } = await import("./services/slack");
+      const stats = await getWeeklyReminderStats(req.orgId, storage);
+      
+      res.json(stats);
+    } catch (error) {
+      console.error("Failed to get reminder stats:", error);
+      res.status(500).json({ message: "Failed to get reminder stats" });
+    }
+  });
+  
+  // Test Weekly Reminders (for development/testing)
+  app.post("/api/slack/test-weekly-reminders", requireOrganization(), requireAuth(), requireRole('admin'), async (req, res) => {
+    try {
+      const { triggerTestWeeklyReminders } = await import("./services/slack");
+      const result = await triggerTestWeeklyReminders(req.orgId, storage);
+      
+      res.json({
+        message: "Test weekly reminders completed",
+        ...result
+      });
+    } catch (error) {
+      console.error("Failed to run test weekly reminders:", error);
+      res.status(500).json({ message: "Failed to run test weekly reminders" });
+    }
+  });
 
   // Slack Events Endpoint - Handle event subscriptions and verification
   app.post("/slack/events", async (req, res) => {
@@ -2104,7 +2183,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               await handleChannelMembershipEvent(event, org.id, storage);
             }
           } catch (syncError) {
-            console.error("Failed to sync users from channel event:", syncError);
+            console.error("Failed to handle channel membership event:", syncError);
             // Don't fail the request - Slack expects a 200 response
           }
         }
@@ -2116,6 +2195,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       console.error("Slack events error:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  
+  // Slack Interactive Components Endpoint - Handle button clicks, modal submissions, etc.
+  app.post("/slack/interactive", express.raw({type: 'application/x-www-form-urlencoded'}), async (req, res) => {
+    try {
+      // Parse the URL-encoded payload
+      const payloadString = req.body.toString().split('payload=')[1];
+      if (!payloadString) {
+        return res.status(400).json({ error: "Missing payload" });
+      }
+      
+      const payload = JSON.parse(decodeURIComponent(payloadString));
+      console.log("Slack interactive component received:", payload.type, payload.actions?.[0]?.action_id);
+      
+      // Determine organization from team ID or default to first org for simplicity
+      let organizationId;
+      try {
+        const organizations = await storage.getAllOrganizations();
+        // In a real app, you'd match payload.team.id to organization.slackWorkspaceId
+        organizationId = organizations[0]?.id;
+        
+        if (!organizationId) {
+          return res.status(500).json({ error: "No organization found" });
+        }
+        
+        // Handle the interaction
+        const { handleSlackInteraction } = await import("./services/slack");
+        await handleSlackInteraction(payload, organizationId, storage);
+        
+        // Acknowledge the interaction
+        res.status(200).json({ ok: true });
+      } catch (error) {
+        console.error("Error determining organization for Slack interaction:", error);
+        res.status(500).json({ error: "Failed to process interaction" });
+      }
+    } catch (error) {
+      console.error("Slack interactive component error:", error);
       res.status(500).json({ error: "Internal server error" });
     }
   });

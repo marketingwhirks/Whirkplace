@@ -18,8 +18,7 @@ export const defaultCompanyValuesArray = Object.values(DefaultCompanyValues);
 // Review Status Constants
 export const ReviewStatus = {
   PENDING: "pending",
-  APPROVED: "approved", 
-  REJECTED: "rejected",
+  REVIEWED: "reviewed",
 } as const;
 
 export type ReviewStatusType = typeof ReviewStatus[keyof typeof ReviewStatus];
@@ -97,12 +96,14 @@ export const checkins = pgTable("checkins", {
   submittedAt: timestamp("submitted_at"),
   dueDate: timestamp("due_date").notNull(), // When check-in is due (Monday 9am Central for that week)
   submittedOnTime: boolean("submitted_on_time").notNull().default(false), // If submitted by due date
-  reviewStatus: text("review_status").notNull().default("pending"), // pending, approved, rejected
+  reviewStatus: text("review_status").notNull().default("pending"), // pending, reviewed
   reviewedBy: varchar("reviewed_by"), // ID of reviewing team leader (nullable)
   reviewedAt: timestamp("reviewed_at"), // When review was completed (nullable)
   reviewDueDate: timestamp("review_due_date").notNull(), // When review is due (Monday 9am Central)
   reviewedOnTime: boolean("reviewed_on_time").notNull().default(false), // If review completed on time
   reviewComments: text("review_comments"), // Optional feedback (nullable)
+  addToOneOnOne: boolean("add_to_one_on_one").notNull().default(false), // Flag for 1-on-1 agenda
+  flagForFollowUp: boolean("flag_for_follow_up").notNull().default(false), // Flag for future attention
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 }, (table) => ({
   orgWeekOfIdx: index("checkins_org_week_of_idx").on(table.organizationId, table.weekOf),
@@ -369,8 +370,10 @@ export const updateShoutoutSchema = z.object({
 
 // Schema for reviewing check-ins - only managers/leaders can use this
 export const reviewCheckinSchema = z.object({
-  reviewStatus: z.enum([ReviewStatus.PENDING, ReviewStatus.APPROVED, ReviewStatus.REJECTED]),
+  reviewStatus: z.enum([ReviewStatus.PENDING, ReviewStatus.REVIEWED]),
   reviewComments: z.string().max(1000, "Review comments too long").optional(),
+  addToOneOnOne: z.boolean().optional(),
+  flagForFollowUp: z.boolean().optional(),
   // reviewedBy and reviewedAt are set automatically server-side
 });
 
