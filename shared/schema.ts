@@ -286,8 +286,9 @@ export const insertCheckinSchema = createInsertSchema(checkins).omit({
   reviewComments: true, // Only set by reviewers
 }).extend({
   weekOf: z.coerce.date(),
-  dueDate: z.coerce.date(),
-  reviewDueDate: z.coerce.date(),
+  // Due dates are computed server-side if not provided - make them optional
+  dueDate: z.coerce.date().optional(),
+  reviewDueDate: z.coerce.date().optional(),
 });
 
 export const insertQuestionSchema = createInsertSchema(questions).omit({

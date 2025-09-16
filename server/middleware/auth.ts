@@ -73,9 +73,9 @@ export function authenticateUser() {
       }
       
       // Check for cookie-based authentication (Slack OAuth fallback)
-      const authUserId = req.cookies['auth_user_id'];
-      const authOrgId = req.cookies['auth_org_id'];
-      const authToken = req.cookies['auth_session_token'];
+      const authUserId = req.cookies?.['auth_user_id'];
+      const authOrgId = req.cookies?.['auth_org_id'];
+      const authToken = req.cookies?.['auth_session_token'];
       
       if (authUserId && authOrgId && authToken && authOrgId === req.orgId) {
         const user = await storage.getUser(req.orgId, authUserId);
