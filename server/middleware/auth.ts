@@ -2,6 +2,82 @@ import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import type { User } from "@shared/schema";
 
+/**
+ * Helper function to ensure backdoor admin user exists for development
+ * 
+ * SECURITY: This function is only available in development environments
+ * Creates/updates Matthew Patrick's user account and deactivates legacy backdoor-admin user
+ * 
+ * @param organizationId - The organization ID to create the user in
+ * @returns Promise<User> - Matthew Patrick's user account
+ */
+export async function ensureBackdoorUser(organizationId: string): Promise<User> {
+  // SECURITY: Only allow in development environment
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error("Backdoor user creation not allowed in production");
+  }
+
+  // Get backdoor profile from environment variables
+  const profileName = process.env.BACKDOOR_PROFILE_NAME || "Matthew Patrick";
+  const profileEmail = process.env.BACKDOOR_PROFILE_EMAIL || "mpatrick@patrickaccounting.com";
+  const profileUsername = process.env.BACKDOOR_PROFILE_USERNAME || "mpatrick";
+  const profileRole = process.env.BACKDOOR_PROFILE_ROLE || "admin";
+
+  // First, deactivate the legacy backdoor-admin user if it exists
+  try {
+    const legacyUser = await storage.getUserByUsername(organizationId, 'backdoor-admin');
+    if (legacyUser && legacyUser.isActive) {
+      await storage.updateUser(organizationId, legacyUser.id, { 
+        isActive: false 
+      });
+      console.log("Deactivated legacy backdoor-admin user");
+    }
+  } catch (error) {
+    // Ignore errors when deactivating legacy user
+    console.log("No legacy backdoor-admin user found or error deactivating:", error);
+  }
+
+  // Check if Matthew's user already exists by username or email
+  let matthewUser = await storage.getUserByUsername(organizationId, profileUsername);
+  if (!matthewUser) {
+    matthewUser = await storage.getUserByEmail(organizationId, profileEmail);
+  }
+
+  if (matthewUser) {
+    // Update existing user with latest profile info
+    const updatedUser = await storage.updateUser(organizationId, matthewUser.id, {
+      name: profileName,
+      email: profileEmail,
+      username: profileUsername,
+      role: profileRole,
+      isActive: true,
+      authProvider: 'local' as const,
+    });
+    
+    if (!updatedUser) {
+      throw new Error("Failed to update Matthew Patrick's user account");
+    }
+    
+    console.log(`Updated Matthew Patrick's backdoor user account: ${updatedUser.username}`);
+    return updatedUser;
+  } else {
+    // Create new user for Matthew Patrick
+    const newUser = await storage.createUser(organizationId, {
+      username: profileUsername,
+      password: 'secure-random-password', // Not used for authentication, just required by schema
+      name: profileName,
+      email: profileEmail,
+      role: profileRole,
+      organizationId: organizationId,
+      authProvider: 'local' as const,
+      isActive: true,
+    });
+    
+    console.log(`Created Matthew Patrick's backdoor user account: ${newUser.username}`);
+    return newUser;
+  }
+}
+
 // Extend Express Request to include current user
 declare global {
   namespace Express {
@@ -45,22 +121,9 @@ export function authenticateUser() {
         
         if (validBackdoorUser && validBackdoorKey && 
             backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
-          // Find or create backdoor admin user
-          let adminUser = await storage.getUserByUsername(req.orgId, 'backdoor-admin');
-          
-          if (!adminUser) {
-            adminUser = await storage.createUser(req.orgId, {
-              username: 'backdoor-admin',
-              password: 'secure-random-password',
-              name: 'Backdoor Admin',
-              email: 'admin@whirkplace.com',
-              role: 'admin',
-              organizationId: req.orgId,
-              authProvider: 'local' as const,
-            });
-          }
-          
-          req.currentUser = adminUser;
+          // Ensure Matthew Patrick's backdoor user exists
+          const matthewUser = await ensureBackdoorUser(req.orgId);
+          req.currentUser = matthewUser;
           return next();
         }
       }

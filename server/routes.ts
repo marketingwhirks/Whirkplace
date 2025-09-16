@@ -13,7 +13,7 @@ import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutou
 import { randomBytes } from "crypto";
 import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
-import { authenticateUser, requireAuth, requireRole, requireTeamLead } from "./middleware/auth";
+import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser } from "./middleware/auth";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -46,28 +46,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Find or create backdoor admin user
-      let adminUser = await storage.getUserByUsername(req.orgId, 'backdoor-admin');
-      
-      if (!adminUser) {
-        adminUser = await storage.createUser(req.orgId, {
-          username: 'backdoor-admin',
-          password: 'secure-random-password',
-          name: 'Backdoor Admin',
-          email: 'admin@whirkplace.com',
-          role: 'admin',
-          organizationId: req.orgId,
-          authProvider: 'local' as const,
-        });
-      }
+      // Ensure Matthew Patrick's backdoor user exists
+      const matthewUser = await ensureBackdoorUser(req.orgId);
       
       // Set session
-      req.session.userId = adminUser.id;
+      req.session.userId = matthewUser.id;
       
       // Also set authentication cookies for fallback (like Slack OAuth)
       const sessionToken = randomBytes(32).toString('hex');
       
-      res.cookie('auth_user_id', adminUser.id, {
+      res.cookie('auth_user_id', matthewUser.id, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
@@ -94,10 +82,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ 
         message: "Backdoor login successful", 
         user: { 
-          id: adminUser.id, 
-          name: adminUser.name, 
-          email: adminUser.email, 
-          role: adminUser.role 
+          id: matthewUser.id, 
+          name: matthewUser.name, 
+          email: matthewUser.email, 
+          role: matthewUser.role 
         } 
       });
     } catch (error) {
