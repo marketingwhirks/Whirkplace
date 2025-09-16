@@ -29,7 +29,8 @@ export default function LoginPage() {
       if (response.ok) {
         const data = await response.json();
         toast({ title: "Success", description: data.message });
-        window.location.href = "/#/dashboard?org=default";
+        // Clear cache to ensure fresh authentication state
+        window.location.reload();
       } else {
         const error = await response.json();
         toast({ 

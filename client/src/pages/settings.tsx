@@ -141,7 +141,7 @@ export default function Settings() {
       return apiRequest("PATCH", `/api/users/${currentUser.id}`, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users/current", { org: "default" }] });
       toast({
         title: "Profile updated",
         description: "Your profile has been updated successfully.",

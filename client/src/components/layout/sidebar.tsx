@@ -34,7 +34,7 @@ function LogoutButton() {
       // Clear all cached data
       queryClient.clear();
       // Specifically invalidate the current user query to trigger authentication check
-      queryClient.invalidateQueries({ queryKey: ['/api/users/current'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/users/current', { org: "default" }] });
       // Let the AuthenticatedApp component handle the redirect to login
     },
     onError: (error) => {
