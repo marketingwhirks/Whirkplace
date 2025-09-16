@@ -30,12 +30,10 @@ export default function LoginPage() {
       if (response.ok) {
         const data = await response.json();
         toast({ title: "Success", description: data.message });
-        // Invalidate user query to trigger re-authentication check
-        await queryClient.invalidateQueries({ queryKey: ["/api/users/current", { org: "default" }] });
-        // Small delay to let the authentication state update
-        setTimeout(() => {
-          window.location.href = "/#/dashboard?org=default";
-        }, 100);
+        // Clear all cached data and force fresh authentication
+        queryClient.clear();
+        // Force page reload to ensure clean authentication state
+        window.location.reload();
       } else {
         const error = await response.json();
         toast({ 
