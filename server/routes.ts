@@ -481,6 +481,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.put("/api/teams/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Update team schema that excludes organizationId from client validation
+      const updateTeamSchema = insertTeamSchema.partial().omit({ organizationId: true });
+      
+      const teamData = updateTeamSchema.parse(req.body);
+      const sanitizedData = sanitizeForOrganization(teamData, req.orgId);
+      
+      // Validate that the team exists
+      const existingTeam = await storage.getTeam(req.orgId, req.params.id);
+      if (!existingTeam) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      // If leaderId is provided, validate that the user exists and is a manager/admin
+      if (sanitizedData.leaderId) {
+        const leader = await storage.getUser(req.orgId, sanitizedData.leaderId);
+        if (!leader) {
+          return res.status(400).json({ message: "Team leader not found" });
+        }
+        if (leader.role !== "manager" && leader.role !== "admin") {
+          return res.status(400).json({ message: "Team leader must be a manager or admin" });
+        }
+      }
+      
+      const team = await storage.updateTeam(req.orgId, req.params.id, sanitizedData);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      res.json({ message: "Team updated successfully", team });
+    } catch (error) {
+      console.error("PUT /api/teams/:id - Validation error:", error);
+      if (error instanceof Error && error.message.includes("not found")) {
+        res.status(404).json({ message: error.message });
+      } else {
+        res.status(400).json({ message: "Invalid team data" });
+      }
+    }
+  });
+
+  app.delete("/api/teams/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Validate that the team exists
+      const existingTeam = await storage.getTeam(req.orgId, req.params.id);
+      if (!existingTeam) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      const deleted = await storage.deleteTeam(req.orgId, req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      res.json({ message: "Team deleted successfully" });
+    } catch (error) {
+      console.error("DELETE /api/teams/:id - Error:", error);
+      if (error instanceof Error && error.message.includes("assigned users")) {
+        res.status(400).json({ message: error.message });
+      } else {
+        res.status(500).json({ message: "Failed to delete team" });
+      }
+    }
+  });
+
   app.get("/api/teams/:id/members", requireAuth(), async (req, res) => {
     try {
       const currentUser = req.currentUser!;

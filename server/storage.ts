@@ -102,6 +102,7 @@ export interface IStorage {
   getTeam(organizationId: string, id: string): Promise<Team | undefined>;
   createTeam(organizationId: string, team: InsertTeam): Promise<Team>;
   updateTeam(organizationId: string, id: string, team: Partial<InsertTeam>): Promise<Team | undefined>;
+  deleteTeam(organizationId: string, id: string): Promise<boolean>;
   getAllTeams(organizationId: string): Promise<Team[]>;
 
   // Check-ins
@@ -335,6 +336,24 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(teams.id, id), eq(teams.organizationId, organizationId)))
       .returning();
     return team || undefined;
+  }
+
+  async deleteTeam(organizationId: string, id: string): Promise<boolean> {
+    // First check if there are any users assigned to this team
+    const usersInTeam = await db
+      .select({ count: count() })
+      .from(users)
+      .where(and(eq(users.teamId, id), eq(users.organizationId, organizationId)));
+    
+    if (usersInTeam[0]?.count > 0) {
+      throw new Error("Cannot delete team with assigned users. Please reassign users before deleting the team.");
+    }
+    
+    const result = await db
+      .delete(teams)
+      .where(and(eq(teams.id, id), eq(teams.organizationId, organizationId)));
+    
+    return result.rowCount > 0;
   }
 
   async getAllTeams(organizationId: string): Promise<Team[]> {
@@ -2196,6 +2215,24 @@ export class MemStorage implements IStorage {
     const updatedTeam = { ...team, ...teamUpdate };
     this.teams.set(id, updatedTeam);
     return updatedTeam;
+  }
+
+  async deleteTeam(organizationId: string, id: string): Promise<boolean> {
+    const team = this.teams.get(id);
+    if (!team || team.organizationId !== organizationId) {
+      return false;
+    }
+    
+    // Check if there are any users assigned to this team
+    const usersInTeam = Array.from(this.users.values()).filter(user => 
+      user.teamId === id && user.organizationId === organizationId
+    );
+    
+    if (usersInTeam.length > 0) {
+      throw new Error("Cannot delete team with assigned users. Please reassign users before deleting the team.");
+    }
+    
+    return this.teams.delete(id);
   }
 
   async getAllTeams(organizationId: string): Promise<Team[]> {
