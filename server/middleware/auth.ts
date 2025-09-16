@@ -63,7 +63,7 @@ export function authenticateUser() {
         }
       }
       
-      // Check for session-based authentication (Slack OAuth)
+      // Check for session-based authentication first
       if (req.session && req.session.userId) {
         const user = await storage.getUser(req.orgId, req.session.userId);
         if (user && user.isActive) {
@@ -72,11 +72,30 @@ export function authenticateUser() {
         }
       }
       
-      // Check for cookie-based authentication (Slack OAuth fallback)
-      const authUserId = req.cookies?.['auth_user_id'];
-      const authOrgId = req.cookies?.['auth_org_id'];
-      const authToken = req.cookies?.['auth_session_token'];
+      // Check for cookie-based authentication (manually parse if req.cookies not available)
+      let authUserId, authOrgId, authToken;
       
+      if (req.cookies) {
+        // cookie-parser is working
+        authUserId = req.cookies['auth_user_id'];
+        authOrgId = req.cookies['auth_org_id'];
+        authToken = req.cookies['auth_session_token'];
+      } else {
+        // Fallback: manually parse cookies from header
+        const cookieHeader = req.headers.cookie;
+        if (cookieHeader) {
+          const cookies: Record<string, string> = {};
+          cookieHeader.split(';').forEach(cookie => {
+            const [name, value] = cookie.trim().split('=');
+            if (name && value) {
+              cookies[name] = decodeURIComponent(value);
+            }
+          });
+          authUserId = cookies['auth_user_id'];
+          authOrgId = cookies['auth_org_id'];
+          authToken = cookies['auth_session_token'];
+        }
+      }
       
       if (authUserId && authOrgId && authToken && authOrgId === req.orgId) {
         const user = await storage.getUser(req.orgId, authUserId);
