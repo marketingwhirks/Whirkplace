@@ -159,8 +159,8 @@ export default function Admin() {
 
   const handleTeamUpdate = () => {
     if (selectedUserForTeam) {
-      // Convert empty string to null for "Unassigned"
-      const teamId = newTeamId === "" ? null : newTeamId;
+      // Convert "unassigned" string to null for "Unassigned"
+      const teamId = newTeamId === "unassigned" || newTeamId === "" ? null : newTeamId;
       updateTeamMutation.mutate({ userId: selectedUserForTeam.id, teamId });
     }
   };
@@ -333,7 +333,7 @@ export default function Admin() {
                 {users.map((user) => (
                   <div 
                     key={user.id} 
-                    className="flex items-center justify-between p-4 border rounded-lg"
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 border rounded-lg gap-4"
                     data-testid={`row-user-${user.id}`}
                   >
                     <div className="flex items-center space-x-4">
@@ -357,8 +357,8 @@ export default function Admin() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                      <div className="hidden sm:flex items-center gap-2">
                         {getSlackStatusIcon(user)}
                         <span className="text-xs text-muted-foreground">
                           {user.slackUserId ? "Connected" : "Not Connected"}
@@ -382,7 +382,7 @@ export default function Admin() {
                         size="sm"
                         onClick={() => {
                           setSelectedUserForTeam(user);
-                          setNewTeamId(user.teamId || "");
+                          setNewTeamId(user.teamId || "unassigned");
                         }}
                         data-testid={`button-assign-team-${user.id}`}
                       >
@@ -495,7 +495,7 @@ export default function Admin() {
                     <SelectValue placeholder="Select a team" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="" data-testid="option-team-unassigned">Unassigned</SelectItem>
+                    <SelectItem value="unassigned" data-testid="option-team-unassigned">Unassigned</SelectItem>
                     {teams.map((team) => (
                       <SelectItem 
                         key={team.id} 
@@ -519,7 +519,7 @@ export default function Admin() {
               </Button>
               <Button 
                 onClick={handleTeamUpdate}
-                disabled={newTeamId === (selectedUserForTeam?.teamId || "") || updateTeamMutation.isPending}
+                disabled={newTeamId === (selectedUserForTeam?.teamId || "unassigned") || updateTeamMutation.isPending}
                 data-testid="button-confirm-team-assignment"
               >
                 {updateTeamMutation.isPending && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
