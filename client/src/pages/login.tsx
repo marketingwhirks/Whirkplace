@@ -112,7 +112,7 @@ export default function LoginPage() {
                       id="backdoor-user"
                       value={backdoorUser}
                       onChange={(e) => setBackdoorUser(e.target.value)}
-                      placeholder="admin"
+                      placeholder="Enter username"
                       data-testid="input-backdoor-user"
                     />
                   </div>
@@ -123,7 +123,7 @@ export default function LoginPage() {
                       type="password"
                       value={backdoorKey}
                       onChange={(e) => setBackdoorKey(e.target.value)}
-                      placeholder="whirks-backdoor-2024"
+                      placeholder="Enter key"
                       data-testid="input-backdoor-key"
                     />
                   </div>
