@@ -56,21 +56,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.cookie('auth_user_id', adminUser.id, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax',
+        path: '/',
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
       });
       
       res.cookie('auth_org_id', req.orgId, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax',
+        path: '/',
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
       });
       
       res.cookie('auth_session_token', sessionToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax',
+        path: '/',
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
       });
       
@@ -286,21 +289,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.cookie('auth_user_id', authenticatedUser.id, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
+          path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
         res.cookie('auth_org_id', organization.id, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
+          path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
         res.cookie('auth_session_token', sessionToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: 'lax',
+          path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
