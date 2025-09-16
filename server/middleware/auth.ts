@@ -111,40 +111,6 @@ export function authenticateUser() {
         }
       }
       
-      // Development bypass: Allow unauthenticated access with bypass user (strict development only)
-      if (process.env.NODE_ENV === 'development') {
-        // Create a temporary bypass user object that matches frontend expectations
-        const bypassUser = {
-          id: 'bypass-user-123',
-          username: 'admin',
-          password: 'secure-random-password',
-          name: 'Admin User',
-          email: 'admin@whirkplace.com',
-          role: 'admin' as const,
-          organizationId: req.orgId,
-          teamId: null,
-          managerId: null,
-          avatar: null,
-          slackUserId: null,
-          slackUsername: null,
-          slackDisplayName: null,
-          slackEmail: null,
-          slackAvatar: null,
-          slackWorkspaceId: null,
-          authProvider: 'local' as const,
-          isActive: true,
-          createdAt: new Date(),
-        };
-        
-        req.currentUser = bypassUser;
-        // Set session for consistency
-        if (req.session) {
-          req.session.userId = bypassUser.id;
-        }
-        console.log("Development bypass: Using temporary bypass user for authentication");
-        return next();
-      }
-      
       // No valid authentication found
       return res.status(401).json({ 
         message: "Authentication required. Please sign in with Slack or use backdoor headers." 

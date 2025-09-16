@@ -16,49 +16,15 @@ export function useCurrentUser() {
         });
         console.log("Current user response:", response.status, response.statusText);
         if (!response.ok) {
-          // TEMPORARY BYPASS: Return a default admin user to bypass login
-          console.log("Authentication failed, using bypass user");
-          return {
-            id: "bypass-user-123",
-            username: "admin",
-            name: "Admin User",
-            email: "admin@whirkplace.com",
-            role: "admin",
-            teamId: null,
-            organizationId: "default-org",
-            authProvider: "LOCAL",
-            slackUserId: null,
-            slackUsername: null,
-            slackDisplayName: null,
-            slackEmail: null,
-            slackAvatar: null,
-            slackWorkspaceId: null,
-            createdAt: new Date(),
-          };
+          console.log("Authentication failed");
+          throw new Error(`Authentication failed: ${response.status} ${response.statusText}`);
         }
         const user = await response.json();
         console.log("Current user loaded:", user.name, user.role);
         return user;
       } catch (error) {
-        console.log("Error fetching user, using bypass user:", error);
-        // TEMPORARY BYPASS: Return a default admin user
-        return {
-          id: "bypass-user-123",
-          username: "admin",
-          name: "Admin User",
-          email: "admin@whirkplace.com",
-          role: "admin",
-          teamId: null,
-          organizationId: "default-org",
-          authProvider: "LOCAL",
-          slackUserId: null,
-          slackUsername: null,
-          slackDisplayName: null,
-          slackEmail: null,
-          slackAvatar: null,
-          slackWorkspaceId: null,
-          createdAt: new Date(),
-        };
+        console.log("Error fetching user:", error);
+        throw error;
       }
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
