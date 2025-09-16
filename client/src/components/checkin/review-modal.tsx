@@ -49,6 +49,7 @@ export default function ReviewModal({
   const [flagForFollowUp, setFlagForFollowUp] = useState(false);
   const [reviewComment, setReviewComment] = useState("");
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [reviewAction, setReviewAction] = useState<"approve" | "reject" | null>(null);
 
   // Review mutation
   const reviewMutation = useMutation({
@@ -83,6 +84,12 @@ export default function ReviewModal({
     },
   });
 
+  // Handle review action selection
+  const handleReviewAction = (action: "approve" | "reject") => {
+    setReviewAction(action);
+    setShowConfirmation(true);
+  };
+
   // Handle review submission
   const handleReview = () => {
     setShowConfirmation(true);
@@ -90,11 +97,19 @@ export default function ReviewModal({
 
   // Handle review submission
   const handleSubmitReview = async () => {
-    if (!checkin) return;
+    if (!checkin || !reviewAction) return;
+
+    // Add approve/reject indication to comments if not already specified
+    let finalComments = reviewComment.trim();
+    if (!finalComments && reviewAction) {
+      finalComments = reviewAction === "approve" ? "Approved" : "Needs improvement";
+    } else if (finalComments && reviewAction) {
+      finalComments = `${reviewAction === "approve" ? "[APPROVED]" : "[NEEDS IMPROVEMENT]"} ${finalComments}`;
+    }
 
     const reviewData: ReviewCheckin = {
-      reviewStatus: "reviewed" as const,
-      reviewComments: reviewComment.trim() || undefined,
+      reviewStatus: "reviewed",
+      reviewComments: finalComments || undefined,
       addToOneOnOne,
       flagForFollowUp,
     };
@@ -111,6 +126,7 @@ export default function ReviewModal({
     setFlagForFollowUp(false);
     setReviewComment("");
     setShowConfirmation(false);
+    setReviewAction(null);
     onClose();
   };
 

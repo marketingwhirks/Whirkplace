@@ -1,6 +1,7 @@
 import { WebClient, type ChatPostMessageArguments } from "@slack/web-api";
 import { randomBytes } from "crypto";
 import jwt from "jsonwebtoken";
+import * as cron from "node-cron";
 
 if (!process.env.SLACK_BOT_TOKEN) {
   console.warn("SLACK_BOT_TOKEN environment variable not set. Slack integration will be disabled.");
@@ -1477,6 +1478,101 @@ export async function scheduleWeeklyReminders(organizationId: string, storage: a
 /**
  * Handle Slack interactive components (buttons, modals, etc.)
  */
+/**
+ * Handle Slack slash commands like /checkin
+ */
+export async function handleSlackSlashCommand(
+  command: string,
+  text: string,
+  userId: string,
+  userName: string,
+  triggerId: string,
+  organizationId: string,
+  storage: any
+): Promise<any> {
+  try {
+    switch (command) {
+      case '/checkin':
+        // Open the interactive check-in modal
+        if (triggerId) {
+          await sendInteractiveCheckinModal(userId, triggerId, userName);
+          return {
+            text: "Opening your check-in form...",
+            response_type: "ephemeral"
+          };
+        } else {
+          return {
+            text: "Sorry, I can't open the check-in form right now. Please try again.",
+            response_type: "ephemeral"
+          };
+        }
+      
+      case '/checkin-status':
+        // Show the user's current check-in status
+        try {
+          const user = await storage.getUserBySlackId(organizationId, userId);
+          if (!user) {
+            return {
+              text: "You're not registered in the system yet. Please complete a check-in first to get started.",
+              response_type: "ephemeral"
+            };
+          }
+          
+          // Get current week's check-in
+          const currentWeekStart = new Date();
+          currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
+          currentWeekStart.setHours(0, 0, 0, 0);
+          
+          const checkins = await storage.getCheckins(organizationId, user.id, currentWeekStart, currentWeekStart);
+          const hasCheckedIn = checkins.length > 0;
+          
+          if (hasCheckedIn) {
+            const checkin = checkins[0];
+            return {
+              text: `✅ You've completed your check-in for this week! (Mood: ${checkin.overallMood}/5, Status: ${checkin.reviewStatus})`,
+              response_type: "ephemeral"
+            };
+          } else {
+            return {
+              text: "❌ You haven't completed your check-in for this week yet. Use `/checkin` to get started!",
+              response_type: "ephemeral"
+            };
+          }
+        } catch (error) {
+          console.error('Error checking checkin status:', error);
+          return {
+            text: "Sorry, I couldn't check your status right now. Please try again later.",
+            response_type: "ephemeral"
+          };
+        }
+      
+      case '/help':
+      case '/checkin-help':
+        return {
+          text: `*Whirkplace Check-in Commands:*
+• \`/checkin\` - Start your weekly check-in
+• \`/checkin-status\` - Check if you've completed this week's check-in
+• \`/checkin-help\` or \`/help\` - Show this help message
+
+Your check-ins help keep the team connected and ensure everyone is thriving! 🌟`,
+          response_type: "ephemeral"
+        };
+      
+      default:
+        return {
+          text: `Unknown command: ${command}. Try \`/checkin-help\` for available commands.`,
+          response_type: "ephemeral"
+        };
+    }
+  } catch (error) {
+    console.error('Error handling Slack slash command:', error);
+    return {
+      text: "Sorry, there was an error processing your command. Please try again.",
+      response_type: "ephemeral"
+    };
+  }
+}
+
 export async function handleSlackInteraction(payload: any, organizationId: string, storage: any) {
   try {
     const { type, user, actions, trigger_id, view, response_url } = payload;
@@ -1661,59 +1757,58 @@ async function scheduleReminderLater(userId: string, userName: string, hours: nu
 
 /**
  * Initialize weekly reminder scheduler - Call this on server startup
- * Schedules automatic reminders every Monday at 9:05 AM
+ * Schedules automatic reminders every Monday at 9:05 AM using node-cron
  */
 export function initializeWeeklyReminderScheduler(storage: any) {
   console.log('Initializing weekly reminder scheduler for all organizations...');
   
-  // Function to schedule next Monday 9:05 AM reminder
-  const scheduleNextWeeklyReminder = () => {
-    const now = new Date();
-    const nextMonday = new Date();
-    
-    // Calculate next Monday
-    const daysUntilMonday = (1 + 7 - now.getDay()) % 7;
-    nextMonday.setDate(now.getDate() + daysUntilMonday);
-    nextMonday.setHours(9, 5, 0, 0); // 9:05 AM
-    
-    // If it's already past 9:05 AM on Monday, schedule for next Monday
-    if (nextMonday <= now) {
-      nextMonday.setDate(nextMonday.getDate() + 7);
+  // Schedule weekly reminders using cron: '5 9 * * 1' = Every Monday at 9:05 AM
+  // Format: minute hour day month day-of-week
+  const cronTask = cron.schedule('5 9 * * 1', async () => {
+    try {
+      console.log('Running scheduled weekly reminders for all organizations...');
+      
+      // Get all organizations and send reminders for each
+      const organizations = await storage.getAllOrganizations();
+      
+      for (const org of organizations) {
+        try {
+          const result = await scheduleWeeklyReminders(org.id, storage);
+          console.log(`Weekly reminders for ${org.name}: ${result.remindersSent} sent, ${result.errors} errors`);
+        } catch (orgError) {
+          console.error(`Failed to send weekly reminders for organization ${org.name}:`, orgError);
+        }
+      }
+      
+      console.log('Weekly reminders completed for all organizations');
+    } catch (error) {
+      console.error('Error in weekly reminder scheduler:', error);
     }
-    
-    const timeUntilReminder = nextMonday.getTime() - now.getTime();
-    
-    console.log(`Next weekly reminders scheduled for: ${nextMonday.toLocaleString()}`);
-    
+  }, {
+    timezone: "America/Chicago" // Central Time for 9:05 AM CT
+  });
+  
+  console.log('✅ Weekly reminder cron job scheduled for every Monday at 9:05 AM CT');
+  
+  // Optional: Also run a test reminder shortly after startup for development
+  if (process.env.NODE_ENV === 'development') {
+    // Schedule a test reminder 30 seconds after startup
     setTimeout(async () => {
       try {
-        console.log('Running scheduled weekly reminders for all organizations...');
-        
-        // Get all organizations and send reminders for each
+        console.log('Running development test reminder...');
         const organizations = await storage.getAllOrganizations();
         
-        for (const org of organizations) {
-          try {
-            const result = await scheduleWeeklyReminders(org.id, storage);
-            console.log(`Weekly reminders for ${org.name}: ${result.remindersSent} sent, ${result.errors} errors`);
-          } catch (orgError) {
-            console.error(`Failed to send weekly reminders for organization ${org.name}:`, orgError);
-          }
+        if (organizations.length > 0) {
+          const result = await scheduleWeeklyReminders(organizations[0].id, storage);
+          console.log(`Development test reminder: ${result.remindersSent} sent, ${result.errors} errors`);
         }
-        
-        // Schedule the next week's reminders
-        scheduleNextWeeklyReminder();
-        
       } catch (error) {
-        console.error('Error in scheduled weekly reminders:', error);
-        // Try to reschedule even if there was an error
-        scheduleNextWeeklyReminder();
+        console.error('Development test reminder failed:', error);
       }
-    }, timeUntilReminder);
-  };
+    }, 30000); // 30 seconds
+  }
   
-  // Start the scheduling
-  scheduleNextWeeklyReminder();
+  return cronTask;
 }
 
 /**
