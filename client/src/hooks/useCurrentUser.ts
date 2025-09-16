@@ -7,7 +7,7 @@ import type { User } from "@shared/schema";
  */
 export function useCurrentUser() {
   return useQuery<User>({
-    queryKey: ["/api/users/current"],
+    queryKey: ["/api/users/current", { org: "default" }],
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     retry: false, // Don't retry on auth failures
   });
