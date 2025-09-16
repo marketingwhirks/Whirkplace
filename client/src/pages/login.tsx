@@ -32,8 +32,8 @@ export default function LoginPage() {
         toast({ title: "Success", description: data.message });
         // Clear all cached data and force fresh authentication
         queryClient.clear();
-        // Force page reload to ensure clean authentication state
-        window.location.reload();
+        // Navigate to root path where dashboard is located
+        window.location.href = "/#/?org=default";
       } else {
         const error = await response.json();
         toast({ 
