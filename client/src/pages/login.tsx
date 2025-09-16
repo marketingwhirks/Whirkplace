@@ -99,7 +99,7 @@ export default function LoginPage() {
                     className="underline hover:no-underline"
                     data-testid="backdoor-toggle"
                   >
-                    Developer Backdoor
+                    Developer Login
                   </button>
                 </div>
               </>
@@ -135,7 +135,7 @@ export default function LoginPage() {
                   size="lg"
                   data-testid="button-backdoor-login"
                 >
-                  Login with Backdoor
+                  Developer Login
                 </Button>
                 
                 <div className="text-center text-sm text-muted-foreground">
