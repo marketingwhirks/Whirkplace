@@ -59,7 +59,7 @@ class AnalyticsCache {
 
   // Invalidate cache entries by pattern matching
   invalidateByPattern(pattern: string): void {
-    for (const key of this.cache.keys()) {
+    for (const key of Array.from(this.cache.keys())) {
       if (key.includes(pattern)) {
         this.cache.delete(key);
       }
@@ -74,7 +74,7 @@ class AnalyticsCache {
   // Cleanup expired entries periodically
   cleanup(): void {
     const now = Date.now();
-    for (const [key, entry] of this.cache.entries()) {
+    for (const [key, entry] of Array.from(this.cache.entries())) {
       if (now > entry.expiresAt) {
         this.cache.delete(key);
       }
@@ -221,17 +221,29 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(organizationId: string, insertUser: InsertUser): Promise<User> {
+    const userValues = {
+      username: insertUser.username,
+      password: insertUser.password ?? '',
+      name: insertUser.name,
+      email: insertUser.email,
+      organizationId,
+      role: insertUser.role ?? "member",
+      teamId: insertUser.teamId ?? null,
+      managerId: insertUser.managerId ?? null,
+      avatar: insertUser.avatar ?? null,
+      slackUserId: insertUser.slackUserId ?? null,
+      slackUsername: insertUser.slackUsername ?? null,
+      slackDisplayName: insertUser.slackDisplayName ?? null,
+      slackEmail: insertUser.slackEmail ?? null,
+      slackAvatar: insertUser.slackAvatar ?? null,
+      slackWorkspaceId: insertUser.slackWorkspaceId ?? null,
+      authProvider: insertUser.authProvider ?? "local",
+      isActive: insertUser.isActive ?? true,
+    };
+
     const [user] = await db
       .insert(users)
-      .values({
-        ...insertUser,
-        organizationId,
-        isActive: insertUser.isActive ?? true,
-        role: insertUser.role ?? "member",
-        teamId: insertUser.teamId ?? null,
-        managerId: insertUser.managerId ?? null,
-        avatar: insertUser.avatar ?? null,
-      })
+      .values(userValues)
       .returning();
     return user;
   }
@@ -353,7 +365,7 @@ export class DatabaseStorage implements IStorage {
       .delete(teams)
       .where(and(eq(teams.id, id), eq(teams.organizationId, organizationId)));
     
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getAllTeams(organizationId: string): Promise<Team[]> {
@@ -984,7 +996,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(this.getDateTruncExpression(period, sql`${pulseMetricsDaily.bucketDate}::timestamp`));
 
     return results.map(row => ({
-      periodStart: new Date(row.periodStart),
+      periodStart: new Date(row.periodStart as string | number | Date),
       avgMood: Number(row.avgMood || 0),
       checkinCount: Number(row.checkinCount || 0)
     }));
@@ -1020,7 +1032,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(this.getDateTruncExpression(period, checkins.weekOf));
 
     return results.map(row => ({
-      periodStart: new Date(row.periodStart),
+      periodStart: new Date(row.periodStart as string | number | Date),
       avgMood: Number(row.avgMood || 0),
       checkinCount: Number(row.checkinCount || 0)
     }));
@@ -1095,7 +1107,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(this.getDateTruncExpression(period, sql`${shoutoutMetricsDaily.bucketDate}::timestamp`));
 
     return results.map(row => ({
-      periodStart: new Date(row.periodStart),
+      periodStart: new Date(row.periodStart as string | number | Date),
       count: Number(row.count || 0)
     }));
   }
@@ -1174,7 +1186,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(this.getDateTruncExpression(period, shoutouts.createdAt));
 
     return results.map(row => ({
-      periodStart: new Date(row.periodStart),
+      periodStart: new Date(row.periodStart as string | number | Date),
       count: Number(row.count || 0)
     }));
   }
@@ -1799,7 +1811,7 @@ export class DatabaseStorage implements IStorage {
     // Calculate average days early/late for all submissions
     let totalDaysDiff = 0;
     let earlyCount = 0;
-    let lateSubmissions = [];
+    let lateSubmissions: number[] = [];
 
     checkins.forEach(checkin => {
       if (checkin.submittedAt && checkin.dueDate) {
@@ -1985,6 +1997,38 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
 
     return !!vacation;
+  }
+
+  // Helper method for date truncation based on period
+  private truncateDate(date: Date, period: AnalyticsPeriod): Date {
+    const d = new Date(date);
+    
+    switch (period) {
+      case 'week':
+        // Truncate to Monday of the week
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is Sunday
+        d.setDate(diff);
+        d.setHours(0, 0, 0, 0);
+        return d;
+      case 'month':
+        d.setDate(1);
+        d.setHours(0, 0, 0, 0);
+        return d;
+      case 'quarter':
+        const quarterMonth = Math.floor(d.getMonth() / 3) * 3;
+        d.setMonth(quarterMonth, 1);
+        d.setHours(0, 0, 0, 0);
+        return d;
+      case 'year':
+        d.setMonth(0, 1);
+        d.setHours(0, 0, 0, 0);
+        return d;
+      default:
+        // Default to day truncation
+        d.setHours(0, 0, 0, 0);
+        return d;
+    }
   }
 }
 

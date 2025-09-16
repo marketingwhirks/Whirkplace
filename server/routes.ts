@@ -477,11 +477,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (currentUser.role !== "admin") {
         // Remove sensitive fields that only admins should be able to modify
         const { role, organizationId, teamId, managerId, ...allowedUpdates } = sanitizedUpdates;
+        // Replace sanitizedUpdates with only the allowed fields
+        Object.keys(sanitizedUpdates).forEach(key => delete (sanitizedUpdates as any)[key]);
         Object.assign(sanitizedUpdates, allowedUpdates);
-        sanitizedUpdates.role = undefined;
-        sanitizedUpdates.organizationId = undefined;
-        sanitizedUpdates.teamId = undefined;
-        sanitizedUpdates.managerId = undefined;
       }
       
       const user = await storage.updateUser(req.orgId, req.params.id, sanitizedUpdates);
@@ -1813,11 +1811,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "From date must be before to date" });
       }
       
+      // Provide default date range if not specified (last 30 days for monthly period, adjust accordingly)
+      const defaultTo = new Date();
+      const defaultFrom = new Date(defaultTo.getTime() - (30 * 24 * 60 * 60 * 1000)); // 30 days ago
+      
       const overview = await storage.getAnalyticsOverview(
         req.orgId,
         query.period as AnalyticsPeriod,
-        query.from || undefined,
-        query.to || undefined
+        query.from || defaultFrom,
+        query.to || defaultTo
       );
       
       res.json(overview);
