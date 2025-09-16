@@ -11,6 +11,13 @@ declare global {
   }
 }
 
+// Extend Express Session to include userId
+declare module "express-session" {
+  interface SessionData {
+    userId?: string;
+  }
+}
+
 /**
  * Authentication Middleware
  * 
@@ -26,75 +33,49 @@ declare global {
 export function authenticateUser() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // SECURITY: Only allow demo authentication in development mode
-      if (process.env.NODE_ENV === 'development') {
-        // DEVELOPMENT ONLY: Use hardcoded user for local testing
-        const hardcodedUserId = "current-user-id";
+      // Check for backdoor authentication first (works in any environment)
+      const backdoorUser = req.headers['x-backdoor-user'] as string;
+      const backdoorKey = req.headers['x-backdoor-key'] as string;
+      
+      if (backdoorUser && backdoorKey) {
+        // Verify backdoor credentials from environment
+        const validBackdoorUser = process.env.BACKDOOR_USER || 'admin';
+        const validBackdoorKey = process.env.BACKDOOR_KEY || 'whirks-backdoor-2024';
         
-        // Try to find an existing user in the organization, or create a default one
-        const user = await storage.getUser(req.orgId, hardcodedUserId);
-        
-        if (!user) {
-          // Try to find existing demo user by email/username
-          let existingUser = await storage.getUserByUsername(req.orgId, "demo-user");
-          if (!existingUser) {
-            existingUser = await storage.getUserByEmail(req.orgId, "demo@example.com");
+        if (backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
+          // Find or create backdoor admin user
+          let adminUser = await storage.getUserByUsername(req.orgId, 'backdoor-admin');
+          
+          if (!adminUser) {
+            adminUser = await storage.createUser(req.orgId, {
+              username: 'backdoor-admin',
+              password: 'secure-random-password',
+              name: 'Backdoor Admin',
+              email: 'admin@whirkplace.com',
+              role: 'admin',
+              organizationId: req.orgId,
+              authProvider: 'local' as const,
+            });
           }
           
-          if (!existingUser) {
-            // Create a default user for testing - DEVELOPMENT ONLY
-            try {
-              const defaultUser = await storage.createUser(req.orgId, {
-                username: "demo-user",
-                password: "password", // This is only for development
-                name: "Demo User",
-                email: "demo@example.com",
-                role: "member",
-                organizationId: req.orgId,
-                authProvider: "local" as const,
-              });
-              req.currentUser = defaultUser;
-            } catch (error) {
-              // If creation fails (e.g., due to race condition), try to get user again
-              existingUser = await storage.getUserByUsername(req.orgId, "demo-user") || 
-                             await storage.getUserByEmail(req.orgId, "demo@example.com");
-              if (existingUser) {
-                req.currentUser = existingUser;
-              } else {
-                throw error; // Re-throw if still can't find user
-              }
-            }
-          } else {
-            req.currentUser = existingUser;
-          }
-        } else {
-          req.currentUser = user;
+          req.currentUser = adminUser;
+          return next();
         }
-        
-        next();
-      } else {
-        // PRODUCTION: Require proper authentication
-        // In production, extract user from JWT token, session, or auth headers
-        const authHeader = req.headers.authorization;
-        
-        if (!authHeader) {
-          return res.status(401).json({ 
-            message: "Authentication required. Please provide a valid authorization header." 
-          });
-        }
-        
-        // TODO: Implement proper JWT/session validation here
-        // Example implementation:
-        // const token = authHeader.replace('Bearer ', '');
-        // const decoded = jwt.verify(token, JWT_SECRET);
-        // const user = await storage.getUser(req.orgId, decoded.userId);
-        // req.currentUser = user;
-        
-        // For now, return 401 in production until proper auth is implemented
-        return res.status(401).json({ 
-          message: "Authentication system not yet implemented for production. Please implement JWT or session-based authentication." 
-        });
       }
+      
+      // Check for session-based authentication (Slack OAuth)
+      if (req.session && req.session.userId) {
+        const user = await storage.getUser(req.orgId, req.session.userId);
+        if (user && user.isActive) {
+          req.currentUser = user;
+          return next();
+        }
+      }
+      
+      // No valid authentication found
+      return res.status(401).json({ 
+        message: "Authentication required. Please sign in with Slack or use backdoor headers." 
+      });
     } catch (error) {
       console.error("Authentication error:", error);
       res.status(401).json({ message: "Authentication failed" });

@@ -17,6 +17,54 @@ import { authenticateUser, requireAuth, requireRole, requireTeamLead } from "./m
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Backdoor login endpoint (for testing when Slack is unavailable)
+  app.post("/auth/backdoor", requireOrganization, async (req, res) => {
+    try {
+      const { username, key } = req.body;
+      
+      // Verify backdoor credentials
+      const validUsername = process.env.BACKDOOR_USER || 'admin';
+      const validKey = process.env.BACKDOOR_KEY || 'whirks-backdoor-2024';
+      
+      if (username !== validUsername || key !== validKey) {
+        return res.status(401).json({ 
+          message: "Invalid backdoor credentials" 
+        });
+      }
+      
+      // Find or create backdoor admin user
+      let adminUser = await storage.getUserByUsername(req.orgId, 'backdoor-admin');
+      
+      if (!adminUser) {
+        adminUser = await storage.createUser(req.orgId, {
+          username: 'backdoor-admin',
+          password: 'secure-random-password',
+          name: 'Backdoor Admin',
+          email: 'admin@whirkplace.com',
+          role: 'admin',
+          organizationId: req.orgId,
+          authProvider: 'local' as const,
+        });
+      }
+      
+      // Set session
+      req.session.userId = adminUser.id;
+      
+      res.json({ 
+        message: "Backdoor login successful", 
+        user: { 
+          id: adminUser.id, 
+          name: adminUser.name, 
+          email: adminUser.email, 
+          role: adminUser.role 
+        } 
+      });
+    } catch (error) {
+      console.error("Backdoor login error:", error);
+      res.status(500).json({ message: "Backdoor login failed" });
+    }
+  });
+
   // OAuth endpoints (before organization middleware as they need to work without org context)
   
   // GET /auth/slack/login - Initiate Slack OAuth flow

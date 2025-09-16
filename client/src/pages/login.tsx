@@ -1,11 +1,49 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Heart, Users } from "lucide-react";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
+  const [backdoorUser, setBackdoorUser] = useState('');
+  const [backdoorKey, setBackdoorKey] = useState('');
+  const [isBackdoorLogin, setIsBackdoorLogin] = useState(false);
+  const { toast } = useToast();
+  
   const handleSlackLogin = () => {
     // Redirect to the Slack OAuth endpoint
     window.location.href = "/auth/slack/login?org=default"; // Replace 'default' with actual org slug if needed
+  };
+  
+  const handleBackdoorLogin = async () => {
+    try {
+      const response = await fetch('/auth/backdoor?org=default', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: backdoorUser, key: backdoorKey })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        toast({ title: "Success", description: data.message });
+        window.location.href = "/#/dashboard";
+      } else {
+        const error = await response.json();
+        toast({ 
+          title: "Login failed", 
+          description: error.message,
+          variant: "destructive" 
+        });
+      }
+    } catch (error) {
+      toast({ 
+        title: "Error", 
+        description: "Failed to connect to server",
+        variant: "destructive" 
+      });
+    }
   };
 
   return (
@@ -33,24 +71,85 @@ export default function LoginPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button 
-              onClick={handleSlackLogin}
-              className="w-full flex items-center justify-center space-x-2"
-              size="lg"
-              data-testid="slack-login-button"
-            >
-              <svg 
-                viewBox="0 0 24 24" 
-                className="w-5 h-5" 
-                fill="currentColor"
-              >
-                <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52-2.523c0-1.398 1.13-2.528 2.52-2.528h2.52v2.528c0 1.393-1.122 2.523-2.52 2.523Zm0 0a2.528 2.528 0 0 1-2.52 2.523c0-1.398 1.13-2.528 2.52-2.528v2.528h2.52c1.398 0 2.528-1.13 2.528-2.523a2.528 2.528 0 0 1-2.528-2.52H5.042v2.52Z"/>
-                <path d="M8.958 8.835a2.528 2.528 0 0 1 2.523-2.52c1.398 0 2.528 1.13 2.528 2.52v2.52h-2.528a2.528 2.528 0 0 1-2.523-2.52Zm0 0a2.528 2.528 0 0 1-2.523-2.52c1.398 0 2.528 1.13 2.528 2.52H8.958v2.52c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523-2.528v-2.52Z"/>
-                <path d="M15.165 18.958a2.528 2.528 0 0 1 2.523 2.52c0-1.398 1.13-2.528 2.523-2.528a2.528 2.528 0 0 1-2.523-2.52v-2.52h2.523c1.398 0 2.528 1.13 2.528 2.52a2.528 2.528 0 0 1-2.528 2.523h-2.523v2.523Z"/>
-                <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
-              </svg>
-              <span>Continue with Slack</span>
-            </Button>
+            {!isBackdoorLogin ? (
+              <>
+                <Button 
+                  onClick={handleSlackLogin}
+                  className="w-full flex items-center justify-center space-x-2"
+                  size="lg"
+                  data-testid="slack-login-button"
+                >
+                  <svg 
+                    viewBox="0 0 24 24" 
+                    className="w-5 h-5" 
+                    fill="currentColor"
+                  >
+                    <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52-2.523c0-1.398 1.13-2.528 2.52-2.528h2.52v2.528c0 1.393-1.122 2.523-2.52 2.523Zm0 0a2.528 2.528 0 0 1-2.52 2.523c0-1.398 1.13-2.528 2.52-2.528v2.528h2.52c1.398 0 2.528-1.13 2.528-2.523a2.528 2.528 0 0 1-2.528-2.52H5.042v2.52Z"/>
+                    <path d="M8.958 8.835a2.528 2.528 0 0 1 2.523-2.52c1.398 0 2.528 1.13 2.528 2.52v2.52h-2.528a2.528 2.528 0 0 1-2.523-2.52Zm0 0a2.528 2.528 0 0 1-2.523-2.52c1.398 0 2.528 1.13 2.528 2.52H8.958v2.52c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523-2.528v-2.52Z"/>
+                    <path d="M15.165 18.958a2.528 2.528 0 0 1 2.523 2.52c0-1.398 1.13-2.528 2.523-2.528a2.528 2.528 0 0 1-2.523-2.52v-2.52h2.523c1.398 0 2.528 1.13 2.528 2.52a2.528 2.528 0 0 1-2.528 2.523h-2.523v2.523Z"/>
+                    <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
+                  </svg>
+                  <span>Continue with Slack</span>
+                </Button>
+                
+                <div className="text-center text-sm text-muted-foreground">
+                  <button 
+                    type="button"
+                    onClick={() => setIsBackdoorLogin(true)}
+                    className="underline hover:no-underline"
+                    data-testid="backdoor-toggle"
+                  >
+                    Developer Backdoor
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="backdoor-user">Username</Label>
+                    <Input 
+                      id="backdoor-user"
+                      value={backdoorUser}
+                      onChange={(e) => setBackdoorUser(e.target.value)}
+                      placeholder="admin"
+                      data-testid="input-backdoor-user"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="backdoor-key">Key</Label>
+                    <Input 
+                      id="backdoor-key"
+                      type="password"
+                      value={backdoorKey}
+                      onChange={(e) => setBackdoorKey(e.target.value)}
+                      placeholder="whirks-backdoor-2024"
+                      data-testid="input-backdoor-key"
+                    />
+                  </div>
+                </div>
+                
+                <Button 
+                  onClick={handleBackdoorLogin}
+                  className="w-full"
+                  size="lg"
+                  data-testid="button-backdoor-login"
+                >
+                  Login with Backdoor
+                </Button>
+                
+                <div className="text-center text-sm text-muted-foreground">
+                  <button 
+                    type="button"
+                    onClick={() => setIsBackdoorLogin(false)}
+                    className="underline hover:no-underline"
+                    data-testid="slack-toggle"
+                  >
+                    Back to Slack Login
+                  </button>
+                </div>
+              </>
+            )}
             
             <div className="text-center">
               <p className="text-sm text-muted-foreground">
