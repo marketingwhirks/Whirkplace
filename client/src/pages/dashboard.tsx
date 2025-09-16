@@ -14,6 +14,7 @@ import CheckinDetail from "@/components/checkin/checkin-detail";
 import { Heart, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Progress } from "@/components/ui/progress";
 import type { Checkin, Win, User, Question, ComplianceMetricsResult } from "@shared/schema";
@@ -24,20 +25,97 @@ interface DashboardStats {
   totalCheckins: number;
 }
 
-// Mock current user - in real app this would come from auth context
-const currentUser = {
-  id: "current-user-id",
-  name: "Sarah Johnson",
-  role: "manager",
-};
-
 export default function Dashboard() {
   const { toast } = useToast();
+  const { data: currentUser, isLoading: userLoading, error: userError } = useCurrentUser();
   const [checkinData, setCheckinData] = useState({
     overallMood: 0,
     responses: {} as Record<string, string>,
   });
   const [selectedCheckin, setSelectedCheckin] = useState<(Checkin & { user?: User }) | null>(null);
+
+  // Handle loading and error states for authentication
+  if (userLoading) {
+    return (
+      <>
+        <Header
+          title="Dashboard"
+          description="Welcome back! Here's what's happening with your team."
+        />
+        <main className="flex-1 overflow-auto p-6 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[...Array(4)].map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-6">
+                  <div className="flex items-center">
+                    <div className="flex-1">
+                      <Skeleton className="h-4 w-24 mb-2" />
+                      <Skeleton className="h-8 w-16 mb-1" />
+                      <Skeleton className="h-3 w-32" />
+                    </div>
+                    <Skeleton className="w-12 h-12 rounded-lg" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-32" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-20 w-full rounded-lg" />
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-24" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {[...Array(4)].map((_, i) => (
+                      <Skeleton key={i} className="h-12 w-full" />
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        </main>
+      </>
+    );
+  }
+
+  if (userError || !currentUser) {
+    return (
+      <>
+        <Header
+          title="Dashboard"
+          description="Please log in to access your dashboard."
+        />
+        <main className="flex-1 overflow-auto p-6">
+          <Card className="max-w-md mx-auto">
+            <CardContent className="p-6 text-center">
+              <p className="text-muted-foreground mb-4">
+                {userError ? "Failed to load user data. Please try refreshing the page." : "Please log in to access your dashboard."}
+              </p>
+              <Button onClick={() => window.location.reload()}>
+                Refresh Page
+              </Button>
+            </CardContent>
+          </Card>
+        </main>
+      </>
+    );
+  }
 
   // Fetch data with loading and error states
   const { data: stats, isLoading: statsLoading } = useQuery<DashboardStats>({
@@ -74,7 +152,7 @@ export default function Dashboard() {
   });
 
   // Get current user's team info for compliance data (if manager)
-  const currentUserProfile = Array.isArray(users) ? users.find(u => u.id === currentUser.id) : undefined;
+  const currentUserProfile = currentUser;
 
   // Build compliance query parameters for team-level data
   const complianceQueryParams = useMemo(() => {
@@ -588,20 +666,7 @@ export default function Dashboard() {
               <div className="space-y-4">
                 {/* Team Lead */}
                 <TeamMemberCard
-                  user={{
-                    id: currentUser.id,
-                    name: currentUser.name,
-                    role: "Engineering Manager",
-                    username: "sarah.johnson",
-                    password: "",
-                    email: "sarah@teampulse.com",
-                    organizationId: "current-org-id",
-                    teamId: null,
-                    managerId: null,
-                    avatar: null,
-                    isActive: true,
-                    createdAt: new Date(),
-                  }}
+                  user={currentUser}
                   isLead
                 />
 
