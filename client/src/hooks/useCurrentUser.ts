@@ -9,13 +9,17 @@ export function useCurrentUser() {
   return useQuery<User>({
     queryKey: ["/api/users/current", { org: "default" }],
     queryFn: async () => {
+      console.log("Fetching current user...");
       const response = await fetch("/api/users/current?org=default", {
         credentials: "include"
       });
+      console.log("Current user response:", response.status, response.statusText);
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-      return response.json();
+      const user = await response.json();
+      console.log("Current user loaded:", user.name, user.role);
+      return user;
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     retry: false, // Don't retry on auth failures
