@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
+import cookieParser from "cookie-parser";
 import memorystore from 'memorystore';
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
@@ -8,6 +9,7 @@ import { resolveOrganization } from "./middleware/organization";
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
 
 // Session middleware configuration - Use MemoryStore for simplicity and reliability
 const MemoryStore = memorystore(session);
