@@ -18,7 +18,7 @@ import { authorizeAnalyticsAccess } from "./middleware/authorization";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Backdoor login endpoint (for testing when Slack is unavailable)
-  app.post("/auth/backdoor", requireOrganization, async (req, res) => {
+  app.post("/auth/backdoor", requireOrganization(), async (req, res) => {
     try {
       const { username, key } = req.body;
       
