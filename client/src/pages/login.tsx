@@ -22,6 +22,7 @@ export default function LoginPage() {
       const response = await fetch('/auth/backdoor?org=default', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ username: backdoorUser, key: backdoorKey })
       });
       
