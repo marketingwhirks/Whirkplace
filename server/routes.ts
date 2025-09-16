@@ -23,8 +23,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { username, key } = req.body;
       
       // Verify backdoor credentials
-      const validUsername = process.env.BACKDOOR_USER || 'admin';
-      const validKey = process.env.BACKDOOR_KEY || 'whirks-backdoor-2024';
+      const validUsername = process.env.BACKDOOR_USER || 'Admin';
+      const validKey = process.env.BACKDOOR_KEY || 'Whirk2025!';
       
       if (username !== validUsername || key !== validKey) {
         return res.status(401).json({ 
