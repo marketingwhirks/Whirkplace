@@ -30,14 +30,19 @@ export default function LoginPage() {
       if (response.ok) {
         const data = await response.json();
         toast({ title: "Success", description: data.message });
+        
         // Clear all cached data and force fresh authentication
         queryClient.clear();
+        
+        // Clear any role switching state from previous sessions
+        sessionStorage.removeItem('viewAsRole');
         
         // Add delay and debug logging
         console.log("Login successful, redirecting...");
         setTimeout(() => {
           console.log("Navigating to dashboard...");
-          window.location.href = "/#/?org=default";
+          // Use full page reload to ensure proper state refresh
+          window.location.href = "/?org=default";
         }, 500);
       } else {
         const error = await response.json();

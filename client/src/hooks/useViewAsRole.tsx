@@ -49,6 +49,7 @@ export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
       console.warn("Role switching is only available for Matthew Patrick");
       return;
     }
+    console.log(`Switching to role: ${role} for user: ${actualUser?.email}`);
     setViewAsRole(role);
     
     // Store in sessionStorage so it persists across page reloads during testing
@@ -63,15 +64,20 @@ export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
     switchToRole(null);
   };
   
-  // Restore role from sessionStorage on mount
+  // Restore role from sessionStorage on mount - with better validation
   useEffect(() => {
-    if (canSwitchRoles && !userLoading) {
+    if (canSwitchRoles && !userLoading && actualUser) {
       const savedRole = sessionStorage.getItem('viewAsRole') as ViewAsRole | null;
       if (savedRole && ['admin', 'manager', 'member'].includes(savedRole)) {
+        console.log(`Restoring role switch to: ${savedRole} for user: ${actualUser.email}`);
         setViewAsRole(savedRole);
+      } else if (savedRole) {
+        // Invalid saved role, clear it
+        console.log(`Clearing invalid saved role: ${savedRole}`);
+        sessionStorage.removeItem('viewAsRole');
       }
     }
-  }, [canSwitchRoles, userLoading]);
+  }, [canSwitchRoles, userLoading, actualUser]);
   
   // Clear role switch if user is no longer Matthew Patrick
   useEffect(() => {
