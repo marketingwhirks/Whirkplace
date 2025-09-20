@@ -93,7 +93,7 @@ export default function Admin() {
   const [selectedTeam, setSelectedTeam] = useState<TeamType | null>(null);
   const [teamToDelete, setTeamToDelete] = useState<TeamType | null>(null);
 
-  const { data: currentUser } = useViewAsRole();
+  const { data: currentUser, actualUser, canSwitchRoles } = useViewAsRole();
 
   // Fetch all users
   const { data: users = [], isLoading: usersLoading, refetch: refetchUsers } = useQuery<UserType[]>({
@@ -103,7 +103,7 @@ export default function Admin() {
   // Fetch channel members
   const { data: channelData, isLoading: channelLoading } = useQuery<ChannelMembersResponse>({
     queryKey: ["/api/admin/channel-members"],
-    enabled: currentUser?.role === "admin",
+    enabled: (actualUser?.role === "admin") || canSwitchRoles,
   });
 
   // Sync users mutation
@@ -157,7 +157,7 @@ export default function Admin() {
   // Fetch all teams
   const { data: teams = [], isLoading: teamsLoading } = useQuery<TeamType[]>({
     queryKey: ["/api/teams"],
-    enabled: currentUser?.role === "admin",
+    enabled: (actualUser?.role === "admin") || canSwitchRoles,
   });
 
   // Update user team assignment mutation
@@ -317,7 +317,8 @@ export default function Admin() {
     return <Badge variant="secondary" className="text-xs" data-testid={`badge-team-${user.id}`}>{teamName}</Badge>;
   };
 
-  if (currentUser?.role !== "admin") {
+  // Allow access if user is actually admin OR if user can switch roles (Matthew Patrick only)
+  if (actualUser?.role !== "admin" && !canSwitchRoles) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
         <Header title="Admin Panel" />

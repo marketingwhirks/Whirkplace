@@ -29,18 +29,18 @@ export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
   const [viewAsRole, setViewAsRole] = useState<ViewAsRole | null>(null);
   
   // Check if current user is Matthew Patrick (only he can use role switching)
-  const canSwitchRoles = actualUser?.email === MATTHEW_PATRICK_EMAIL;
+  const canSwitchRoles = (actualUser as any)?.email === MATTHEW_PATRICK_EMAIL;
   
   // Create effective user based on current role switch
   const effectiveUser: User | null = actualUser && viewAsRole && canSwitchRoles 
     ? { 
-        ...actualUser, 
+        ...(actualUser as any), 
         role: viewAsRole,
         // For team assignment testing, if switching to manager/member, preserve teamId
         // If switching to admin, remove team constraints
-        teamId: viewAsRole === "admin" ? actualUser.teamId : actualUser.teamId
+        teamId: viewAsRole === "admin" ? (actualUser as any).teamId : (actualUser as any).teamId
       }
-    : actualUser;
+    : (actualUser as any);
     
   const isViewingAsRole = canSwitchRoles && viewAsRole !== null;
   
@@ -49,7 +49,7 @@ export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
       console.warn("Role switching is only available for Matthew Patrick");
       return;
     }
-    console.log(`Switching to role: ${role} for user: ${actualUser?.email}`);
+    console.log(`Switching to role: ${role} for user: ${(actualUser as any)?.email}`);
     setViewAsRole(role);
     
     // Store in sessionStorage so it persists across page reloads during testing
@@ -69,7 +69,7 @@ export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
     if (canSwitchRoles && !userLoading && actualUser) {
       const savedRole = sessionStorage.getItem('viewAsRole') as ViewAsRole | null;
       if (savedRole && ['admin', 'manager', 'member'].includes(savedRole)) {
-        console.log(`Restoring role switch to: ${savedRole} for user: ${actualUser.email}`);
+        console.log(`Restoring role switch to: ${savedRole} for user: ${(actualUser as any).email}`);
         setViewAsRole(savedRole);
       } else if (savedRole) {
         // Invalid saved role, clear it
