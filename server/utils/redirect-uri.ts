@@ -2,7 +2,7 @@ import type { Request } from 'express';
 
 /**
  * Resolves the redirect URI for OAuth callbacks based on the request environment
- * Supports both development (localhost) and live (Replit) environments
+ * Supports development, Replit dev, and production (whirkplace.com) environments
  */
 export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft/callback'): string {
   // If explicit redirect URI is set in environment, use it
@@ -16,7 +16,14 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
   // Determine host from headers (for proxied environments) or request
   const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
 
-  // Build the full callback URL
+  // For production, use the custom domain
+  if (process.env.NODE_ENV === 'production' || 
+      host === 'whirkplace.com' || 
+      host === 'www.whirkplace.com') {
+    return `https://whirkplace.com${path}`;
+  }
+
+  // Build the full callback URL for development/staging
   const baseUrl = `${protocol}://${host}`;
   return `${baseUrl}${path}`;
 }
@@ -32,7 +39,19 @@ export function isAllowedHost(host: string): boolean {
     return true;
   }
 
-  return allowedHosts.includes(host) || 
-         host === 'localhost:5000' || 
-         host.endsWith('.repl.co');
+  // Check explicitly configured hosts first
+  if (allowedHosts.includes(host)) {
+    return true;
+  }
+
+  // Development and staging environment hosts
+  if (host === 'localhost:5000' || 
+      host.endsWith('.repl.co') || 
+      host.endsWith('.replit.dev') ||
+      host === 'whirkplace.com' ||
+      host === 'www.whirkplace.com') {
+    return true;
+  }
+
+  return false;
 }
