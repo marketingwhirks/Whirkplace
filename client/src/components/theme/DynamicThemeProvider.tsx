@@ -63,60 +63,76 @@ export function DynamicThemeProvider({ children, organizationId }: DynamicThemeP
 
     // Apply custom theme if enabled and configured
     if (themeData?.enableCustomTheme && themeData?.themeConfig) {
-      // Map custom theme to complete CSS variable set
+      // Validate CSS custom property names and values
+      const isValidCSSPropertyName = (name: string): boolean => {
+        return /^--[a-z0-9-]{1,64}$/i.test(name);
+      };
+
+      const isValidCSSValue = (value: string): boolean => {
+        // Allow only safe CSS values: colors, fonts, and basic measurements
+        const safePatterns = [
+          /^#[0-9a-f]{3,8}$/i, // hex colors
+          /^rgb\(\s*\d+(\.\d+)?\s*[,\s]\s*\d+(\.\d+)?\s*[,\s]\s*\d+(\.\d+)?\s*\)$/i, // rgb colors (comma or space separated)
+          /^rgba\(\s*\d+(\.\d+)?\s*[,\s]\s*\d+(\.\d+)?\s*[,\s]\s*\d+(\.\d+)?\s*[,\/\s]\s*[0-1](\.\d+)?\s*\)$/i, // rgba colors
+          /^hsl\(\s*\d+(\.\d+)?\s*[,\s]\s*\d+(\.\d+)?%\s*[,\s]\s*\d+(\.\d+)?%\s*\)$/i, // hsl colors (comma or space separated)
+          /^hsla\(\s*\d+(\.\d+)?\s*[,\s]\s*\d+(\.\d+)?%\s*[,\s]\s*\d+(\.\d+)?%\s*[,\/\s]\s*[0-1](\.\d+)?\s*\)$/i, // hsla colors
+          /^["']?[a-zA-Z0-9 \-]+["']?(\s*,\s*["']?[a-zA-Z0-9 \-]+["']?)*$/i, // font families with quotes and stacks
+          /^\d+(\.\d+)?(px|em|rem|%|vh|vw|pt|pc|in|cm|mm|ex|ch)$/i, // measurements
+          /^(transparent|inherit|initial|unset|none|auto|normal|bold|lighter|bolder|[1-9]00)$/i, // CSS keywords
+          /^(red|blue|green|black|white|gray|grey|yellow|orange|purple|pink|brown|cyan|magenta|lime|navy|teal|olive|maroon|fuchsia|aqua|silver)$/i // named colors
+        ];
+        
+        return typeof value === 'string' && 
+               value.length > 0 && 
+               value.length <= 200 && 
+               !/(javascript|data|expression|@import|@media|url\()/i.test(value) &&
+               safePatterns.some(pattern => pattern.test(value.trim()));
+      };
+
+      // Apply theme variables programmatically to prevent CSS injection
       const themeConfig = themeData.themeConfig;
-      const cssVariables = [];
+      const appliedVariables: string[] = [];
       
-      // Primary colors
-      if (themeConfig["--primary"]) {
-        cssVariables.push(`  --primary: ${themeConfig["--primary"]};`);
-        cssVariables.push(`  --primary-foreground: hsl(210 40% 98%);`);
-      }
-      
-      // Secondary colors
-      if (themeConfig["--secondary"]) {
-        cssVariables.push(`  --secondary: ${themeConfig["--secondary"]};`);
-        cssVariables.push(`  --secondary-foreground: hsl(222.2 84% 4.9%);`);
-      }
-      
-      // Accent colors
-      if (themeConfig["--accent"]) {
-        cssVariables.push(`  --accent: ${themeConfig["--accent"]};`);
-        cssVariables.push(`  --accent-foreground: hsl(210 40% 98%);`);
-      }
-      
-      // Font family
-      if (themeConfig["--font-sans"]) {
-        cssVariables.push(`  --font-sans: ${themeConfig["--font-sans"]};`);
-      }
-      
-      // Add any other custom variables
-      Object.entries(themeConfig).forEach(([key, value]) => {
-        if (!key.match(/^--(primary|secondary|accent|font-sans)$/)) {
-          cssVariables.push(`  ${key}: ${value};`);
+      // Standard theme properties with foreground pairs
+      const standardProperties = [
+        { key: '--primary', foreground: '--primary-foreground', foregroundValue: 'hsl(210 40% 98%)' },
+        { key: '--secondary', foreground: '--secondary-foreground', foregroundValue: 'hsl(222.2 84% 4.9%)' },
+        { key: '--accent', foreground: '--accent-foreground', foregroundValue: 'hsl(210 40% 98%)' }
+      ];
+
+      // Set standard properties and their foregrounds
+      standardProperties.forEach(({ key, foreground, foregroundValue }) => {
+        if (themeConfig[key] && isValidCSSValue(themeConfig[key])) {
+          document.documentElement.style.setProperty(key, themeConfig[key]);
+          document.documentElement.style.setProperty(foreground, foregroundValue);
+          appliedVariables.push(key, foreground);
         }
       });
 
-      const styleElement = document.createElement('style');
-      styleElement.id = injectedStyleId;
-      styleElement.innerHTML = `
-        :root {
-${cssVariables.join('\n')}
-        }
-        
-        /* Ensure custom theme takes precedence */
-        .dark {
-${cssVariables.join('\n')}
-        }
-        
-        /* Apply custom font to body */
-        ${themeConfig["--font-sans"] ? `
-        body {
-          font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-        }
-        ` : ''}
-      `;
+      // Set font family on body element if provided
+      if (themeConfig["--font-sans"] && isValidCSSValue(themeConfig["--font-sans"])) {
+        document.body.style.fontFamily = `${themeConfig["--font-sans"]}, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif`;
+        appliedVariables.push("--font-sans");
+      }
 
+      // Apply any other valid custom properties
+      Object.entries(themeConfig).forEach(([key, value]) => {
+        if (typeof value === 'string' && 
+            !appliedVariables.includes(key) && 
+            isValidCSSPropertyName(key) && 
+            isValidCSSValue(value)) {
+          document.documentElement.style.setProperty(key, value);
+          appliedVariables.push(key);
+        } else if (!appliedVariables.includes(key)) {
+          console.warn(`Rejected invalid theme property: ${key} = ${value}`);
+        }
+      });
+
+      // Create marker element to track applied theme
+      const styleElement = document.createElement('meta');
+      styleElement.id = injectedStyleId;
+      styleElement.setAttribute('name', 'theme-applied');
+      styleElement.setAttribute('content', appliedVariables.join(','));
       document.head.appendChild(styleElement);
       
       console.log('✅ Custom theme applied:', themeData.themeConfig);
