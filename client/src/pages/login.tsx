@@ -93,7 +93,7 @@ export default function LoginPage() {
               <>
                 <Button 
                   onClick={handleSlackLogin}
-                  className="w-full flex items-center justify-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white border-purple-600 hover:border-purple-700"
+                  className="w-full flex items-center justify-center space-x-2"
                   size="lg"
                   data-testid="slack-login-button"
                 >
