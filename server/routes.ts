@@ -18,6 +18,7 @@ import { randomBytes } from "crypto";
 import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
 import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser, requireSuperAdmin } from "./middleware/auth";
+import { generateCSRF, validateCSRF, csrfTokenEndpoint } from "./middleware/csrf";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
 import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } from "./middleware/plan-access";
 import { registerMicrosoftTeamsRoutes } from "./routes/microsoft-teams";
@@ -61,11 +62,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Ensure Matthew Patrick's backdoor user exists
       const matthewUser = await ensureBackdoorUser(req.orgId);
       
-      // Set session
-      req.session.userId = matthewUser.id;
-      
-      // Save session before sending response to ensure persistence
-      req.session.save((err) => {
+      // SECURITY: Regenerate session ID to prevent session fixation attacks
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error('Failed to regenerate session:', regenerateErr);
+          return res.status(500).json({ message: "Session regeneration failed" });
+        }
+        
+        // Set session after regeneration
+        req.session.userId = matthewUser.id;
+        
+        // Save session before sending response to ensure persistence
+        req.session.save((err) => {
         if (err) {
           console.error('Failed to save session:', err);
           return res.status(500).json({ message: "Session save failed" });
@@ -99,14 +107,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
-        res.json({ 
-          message: "Backdoor login successful", 
-          user: { 
-            id: matthewUser.id, 
-            name: matthewUser.name, 
-            email: matthewUser.email, 
-            role: matthewUser.role 
-          } 
+          res.json({ 
+            message: "Backdoor login successful", 
+            user: { 
+              id: matthewUser.id, 
+              name: matthewUser.name, 
+              email: matthewUser.email, 
+              role: matthewUser.role 
+            } 
+          });
         });
       });
     } catch (error) {
@@ -347,53 +356,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Establish authentication session
       try {
-        // CRITICAL: Set session for production authentication 
-        if (req.session) {
+        // SECURITY: Regenerate session ID to prevent session fixation attacks
+        req.session.regenerate((regenerateErr) => {
+          if (regenerateErr) {
+            console.error('Failed to regenerate session:', regenerateErr);
+            return res.status(500).json({ message: "Session regeneration failed" });
+          }
+          
+          // CRITICAL: Set session for production authentication 
           req.session.userId = authenticatedUser.id;
           
           // Clear OAuth state after successful authentication
           req.session.slackOAuthState = undefined;
           req.session.slackOrgSlug = undefined;
-        }
-        
-        // Set HTTP-only secure cookies for authentication fallback
-        const sessionToken = randomBytes(32).toString('hex');
-        
-        res.cookie('auth_user_id', authenticatedUser.id, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-          path: '/',
-          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          
+          // Save session before setting cookies to ensure consistency
+          req.session.save((sessionErr) => {
+            if (sessionErr) {
+              console.error('Failed to save session:', sessionErr);
+              return res.status(500).json({ message: "Session save failed" });
+            }
+            
+            // Set HTTP-only secure cookies for authentication fallback
+            const sessionToken = randomBytes(32).toString('hex');
+            
+            res.cookie('auth_user_id', authenticatedUser.id, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+              path: '/',
+              maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+            });
+            
+            res.cookie('auth_org_id', organization.id, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+              path: '/',
+              maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+            });
+            
+            res.cookie('auth_session_token', sessionToken, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+              path: '/',
+              maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+            });
+            
+            console.log(`User ${authenticatedUser.name} (${authenticatedUser.email}) successfully authenticated via Slack OAuth for organization ${organization.name}`);
+            
+            // Redirect to the organization's dashboard
+            const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
+            const dashboardUrl = `${appUrl}/#/dashboard?org=${organizationSlug}`;
+            
+            res.redirect(dashboardUrl);
+          });
         });
-        
-        res.cookie('auth_org_id', organization.id, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-          path: '/',
-          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-        });
-        
-        res.cookie('auth_session_token', sessionToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-          path: '/',
-          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-        });
-        
-        console.log(`User ${authenticatedUser.name} (${authenticatedUser.email}) successfully authenticated via Slack OAuth for organization ${organization.name}`);
       } catch (error) {
         console.error("Failed to establish session:", error);
-        // Continue anyway - user is authenticated, just session might not be optimal
+        res.status(500).json({ message: "Authentication failed" });
       }
-      
-      // Redirect to the organization's dashboard
-      const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
-      const dashboardUrl = `${appUrl}/#/dashboard?org=${organizationSlug}`;
-      
-      res.redirect(dashboardUrl);
     } catch (error) {
       console.error("OAuth callback error:", error);
       res.status(500).json({ 
@@ -410,7 +433,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Apply organization middleware to all API routes
   app.use("/api", requireOrganization());
   
-  // Authentication endpoints (before global auth middleware)
+  // Apply authentication middleware to all API routes (except public endpoints)
+  app.use("/api", authenticateUser());
+  
+  // Apply CSRF protection and generation after authentication middleware
+  app.use("/api", generateCSRF());
+  
+  // CSRF token endpoint (requires authentication)
+  app.get("/api/csrf-token", csrfTokenEndpoint);
+  
+  // Authentication endpoints that must be exempt from CSRF (placed before CSRF validation)
   app.post("/api/auth/logout", (req, res) => {
     if (req.session) {
       req.session.destroy((err) => {
@@ -476,6 +508,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ message: "Logged out successfully" });
     }
   });
+  
+  // Apply CSRF validation to all remaining API routes (after logout exemption)
+  app.use("/api", validateCSRF());
   
   // Apply authentication middleware to all other API routes
   app.use("/api", authenticateUser());

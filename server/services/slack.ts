@@ -1,6 +1,7 @@
 import { WebClient, type ChatPostMessageArguments } from "@slack/web-api";
 import { randomBytes } from "crypto";
 import jwt from "jsonwebtoken";
+import jwksClient from 'jwks-client';
 import * as cron from "node-cron";
 
 if (!process.env.SLACK_BOT_TOKEN) {
@@ -177,42 +178,96 @@ export async function exchangeOIDCCode(code: string): Promise<SlackOIDCTokenResp
  */
 export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean; user?: SlackOIDCUserInfo; error?: string }> {
   try {
-    // Decode the JWT token without verification first to get the header
+    // SECURITY: Enhanced OIDC token validation with proper JWT signature verification
     const decoded = jwt.decode(idToken, { complete: true });
     if (!decoded || typeof decoded === 'string') {
       throw new Error('Invalid JWT token format');
     }
 
-    // For Slack OIDC, we can verify the token signature using Slack's public keys
-    // For now, we'll do basic validation and trust the token since it came through OAuth flow
-    // In production, you should fetch and verify against Slack's JWKS endpoint
-    const payload = jwt.decode(idToken) as SlackOIDCUserInfo;
+    // SECURITY: Verify token signature using Slack's JWKS endpoint
+    const jwksUri = 'https://slack.com/.well-known/jwks';
+    const client = jwksClient({
+      jwksUri,
+      requestHeaders: {},
+      timeout: 30000,
+      cache: true,
+      cacheMaxEntries: 5,
+      cacheMaxAge: 60000 * 60 // Cache for 1 hour
+    });
+
+    // Get the signing key
+    const key = await new Promise<string>((resolve, reject) => {
+      client.getSigningKey(decoded.header.kid, (err, signingKey) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        
+        const publicKey = 'publicKey' in signingKey ? signingKey.publicKey : signingKey.rsaPublicKey;
+        resolve(publicKey);
+      });
+    });
+
+    // SECURITY: Verify JWT signature, audience, issuer, and expiration
+    const payload = jwt.verify(idToken, key, {
+      audience: process.env.SLACK_CLIENT_ID, // Verify audience matches our client ID
+      issuer: 'https://slack.com', // Verify issuer is Slack
+      algorithms: ['RS256'], // Only allow RS256 algorithm
+      clockTolerance: 300 // Allow 5 minutes clock skew
+    }) as SlackOIDCUserInfo;
     
     if (!payload || !payload.sub) {
-      throw new Error('Invalid token payload');
+      throw new Error('Invalid token payload - missing subject');
     }
-    
-    // Basic validation - check if token is not expired
+
+    // SECURITY: Additional validation checks
     const now = Math.floor(Date.now() / 1000);
-    const tokenData = payload as any;
     
-    if (tokenData.exp && tokenData.exp < now) {
-      throw new Error('Token has expired');
+    // Ensure token has required claims
+    if (!payload.aud || !payload.iss || !payload.exp || !payload.iat) {
+      throw new Error('Token missing required claims');
     }
-    
-    if (tokenData.iat && tokenData.iat > now + 300) { // Allow 5 minute clock skew
+
+    // Validate audience matches our application
+    if (payload.aud !== process.env.SLACK_CLIENT_ID) {
+      throw new Error('Token audience mismatch');
+    }
+
+    // Validate issuer is Slack
+    if (payload.iss !== 'https://slack.com') {
+      throw new Error('Token issuer mismatch');
+    }
+
+    // Additional time validations
+    if (payload.iat > now + 300) {
       throw new Error('Token issued in the future');
     }
+
+    if (payload.exp < now) {
+      throw new Error('Token has expired');
+    }
+
+    console.log(`✅ OIDC token validation successful for user ${payload.sub}`);
     
     return {
       ok: true,
       user: payload
     };
   } catch (error) {
-    console.error('Error validating OIDC token:', error);
+    console.error('🚨 SECURITY: OIDC token validation failed:', error);
+    
+    // SECURITY: Enhanced error logging for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Token details (development only):', {
+        tokenLength: idToken?.length,
+        decodedHeader: jwt.decode(idToken, { complete: true })?.header,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+    
     return {
       ok: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Token validation failed'
     };
   }
 }

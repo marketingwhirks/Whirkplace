@@ -1,7 +1,8 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import cookieParser from "cookie-parser";
-import memorystore from 'memorystore';
+import rateLimit from 'express-rate-limit';
+import connectPgSimple from 'connect-pg-simple';
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { resolveOrganization } from "./middleware/organization";
@@ -12,14 +13,66 @@ const app = express();
 // Enable trust proxy for proper header handling in production
 app.set('trust proxy', true);
 
+// Security headers middleware
+app.use((req, res, next) => {
+  // HSTS - Force HTTPS for 1 year (production only)
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  
+  // Content Security Policy - allow embedding for Teams/Slack tabs but restrict sources
+  const cspFrameAncestors = process.env.NODE_ENV === 'production' 
+    ? "'self' https://teams.microsoft.com https://slack.com" 
+    : "'self' https://teams.microsoft.com https://slack.com http://localhost:*";
+  
+  res.setHeader('Content-Security-Policy', `frame-ancestors ${cspFrameAncestors};`);
+  
+  // Prevent MIME type sniffing
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  
+  // XSS protection
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  
+  // Referrer policy
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  
+  next();
+});
+
+// Rate limiting for authentication endpoints
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // Limit each IP to 10 requests per windowMs
+  message: {
+    message: "Too many authentication attempts, please try again later.",
+    code: "RATE_LIMIT_EXCEEDED"
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting in development
+    return process.env.NODE_ENV === 'development';
+  }
+});
+
+// Apply rate limiting to auth routes
+app.use('/auth/', authRateLimit);
+app.use('/api/auth/', authRateLimit);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// Session middleware configuration - Use MemoryStore for simplicity and reliability
-const MemoryStore = memorystore(session);
-const sessionStore = new MemoryStore({
-  checkPeriod: 86400000, // prune expired entries every 24h
+// Session middleware configuration - Use PostgreSQL store for production scalability
+const PgSession = connectPgSimple(session);
+const sessionStore = new PgSession({
+  conString: process.env.DATABASE_URL,
+  tableName: 'user_sessions', // Use custom table name to avoid conflicts
+  createTableIfMissing: true,
+  pruneSessionInterval: 60 * 15, // Prune expired sessions every 15 minutes
+  errorLog: (error) => {
+    console.error('Session store error:', error);
+  }
 });
 
 app.use(session({

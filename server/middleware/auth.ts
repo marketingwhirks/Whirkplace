@@ -140,6 +140,17 @@ export function authenticateUser() {
         console.log(`👤 Session userId: ${req.session?.userId}`);
       }
       
+      // SECURITY: Enhanced production environment check for cookie-based auth
+      if (process.env.NODE_ENV === 'production') {
+        // In production, NEVER use cookie-based authentication - log any attempts
+        const cookieHeader = req.headers.cookie;
+        if (cookieHeader && (cookieHeader.includes('auth_user_id') || cookieHeader.includes('auth_session_token'))) {
+          console.error(`🚨 SECURITY ALERT: Cookie-based authentication attempted in production for ${req.method} ${req.path}`);
+          console.error(`🚨 User agent: ${req.headers['user-agent']}`);
+          console.error(`🚨 IP: ${req.ip}`);
+        }
+      }
+      
       // Check for backdoor authentication (development environment only)
       const backdoorUser = req.headers['x-backdoor-user'] as string;
       const backdoorKey = req.headers['x-backdoor-key'] as string;
