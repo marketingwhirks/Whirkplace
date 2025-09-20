@@ -25,15 +25,16 @@ export default function LoginPage() {
   
   const handleBackdoorLogin = async () => {
     try {
-      console.log("🔄 Starting backdoor login with:", { username: backdoorUser, key: backdoorKey.substring(0, 3) + "***" });
-      console.log("🌐 Making request to:", `${window.location.origin}/auth/backdoor?org=default`);
+      console.log("🔄 Starting FRESH backdoor login with:", { username: backdoorUser, key: backdoorKey.substring(0, 3) + "***" });
+      console.log("🌐 Making request to:", `${window.location.origin}/auth/dev-login-fresh?org=default`);
       
-      const response = await fetch('/auth/backdoor?org=default', {
+      const response = await fetch('/auth/dev-login-fresh?org=default', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
+          'Pragma': 'no-cache',
+          'X-Requested-With': 'XMLHttpRequest'
         },
         credentials: 'include',
         cache: 'no-store',

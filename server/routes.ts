@@ -32,7 +32,121 @@ if (process.env.STRIPE_SECRET_KEY) {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Backdoor login endpoint (for development/testing when Slack is unavailable)
+  // NEW: Fresh backdoor endpoint with proper Replit cookie handling
+  app.post("/auth/dev-login-fresh", requireOrganization(), async (req, res) => {
+    console.log("🚀 FRESH DEV LOGIN REQUEST RECEIVED:", JSON.stringify(req.body, null, 2));
+    console.log("🌐 Request headers:", JSON.stringify(req.headers, null, 2));
+    
+    try {
+      // SECURITY: Only allow backdoor login in development environment
+      if (process.env.NODE_ENV === 'production') {
+        console.log("❌ Fresh backdoor blocked in production");
+        return res.status(404).json({ 
+          message: "Endpoint not available in production" 
+        });
+      }
+      
+      const { username, key } = req.body;
+      console.log(`🔑 Fresh login attempt: ${username} in org ${req.orgId}`);
+      
+      // Verify backdoor credentials - use defaults for development if env vars not set
+      const validUsername = process.env.BACKDOOR_USER || "Matthew";
+      const validKey = process.env.BACKDOOR_KEY || "Dev123";
+      
+      // SECURITY: Log warning if using default credentials
+      if (!process.env.BACKDOOR_USER || !process.env.BACKDOOR_KEY) {
+        console.warn("⚠️  Using default backdoor credentials for development. Set BACKDOOR_USER and BACKDOOR_KEY environment variables for production security.");
+      }
+      
+      if (username !== validUsername || key !== validKey) {
+        console.log("❌ Invalid fresh backdoor credentials");
+        return res.status(401).json({ 
+          message: "Invalid backdoor credentials" 
+        });
+      }
+      
+      // Ensure Matthew Patrick's backdoor user exists
+      const matthewUser = await ensureBackdoorUser(req.orgId);
+      console.log(`✅ Fresh backdoor user confirmed: ${matthewUser.name} (${matthewUser.email})`);
+      
+      // SECURITY: Regenerate session ID to prevent session fixation attacks
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error('Failed to regenerate session:', regenerateErr);
+          return res.status(500).json({ message: "Session regeneration failed" });
+        }
+        
+        console.log("🔄 Session regenerated successfully");
+        
+        // Set session after regeneration
+        req.session.userId = matthewUser.id;
+        
+        // Save session before sending response to ensure persistence
+        req.session.save((err) => {
+        if (err) {
+          console.error('Failed to save session:', err);
+          return res.status(500).json({ message: "Session save failed" });
+        }
+        
+        console.log(`💾 Session saved for user: ${matthewUser.id}`);
+        
+        // Also set authentication cookies for fallback (like Slack OAuth)
+        const sessionToken = randomBytes(32).toString('hex');
+        
+        // CRITICAL FIX: Use proper cookie settings for Replit environment  
+        const isReplit = !!process.env.REPL_SLUG;
+        const isProduction = process.env.NODE_ENV === 'production';
+        const useSecure = isProduction || isReplit; // Secure for production OR Replit
+        const useSameSiteNone = isProduction || isReplit; // SameSite=none for production OR Replit
+        
+        console.log(`🍪 Cookie settings: secure=${useSecure}, sameSite=${useSameSiteNone ? 'none' : 'lax'}, isReplit=${isReplit}`);
+        
+        // SECURITY: Set secure cookies for iframe compatibility (production/Replit) or lax for local development
+        res.cookie('auth_user_id', matthewUser.id, {
+          httpOnly: true,
+          secure: useSecure,
+          sameSite: useSameSiteNone ? 'none' : 'lax',
+          path: '/',
+          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        });
+        
+        res.cookie('auth_org_id', req.orgId, {
+          httpOnly: true,
+          secure: useSecure,
+          sameSite: useSameSiteNone ? 'none' : 'lax',
+          path: '/',
+          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        });
+        
+        res.cookie('auth_session_token', sessionToken, {
+          httpOnly: true,
+          secure: useSecure,
+          sameSite: useSameSiteNone ? 'none' : 'lax',
+          path: '/',
+          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        });
+        
+        console.log(`✅ Fresh backdoor login successful for ${matthewUser.name}`);
+        console.log(`🎯 Response cookies set with secure=${useSecure}, sameSite=${useSameSiteNone ? 'none' : 'lax'}`);
+        
+          res.json({ 
+            message: "Fresh backdoor login successful", 
+            user: { 
+              id: matthewUser.id, 
+              name: matthewUser.name, 
+              email: matthewUser.email, 
+              role: matthewUser.role 
+            } 
+          });
+        });
+      });
+    } catch (error) {
+      console.error("Fresh backdoor login error:", error);
+      res.status(500).json({ message: "Fresh backdoor login failed" });
+    }
+  });
+
+  // Original backdoor login endpoint (for development/testing when Slack is unavailable)
   app.post("/auth/backdoor", requireOrganization(), async (req, res) => {
     try {
       // SECURITY: Only allow backdoor login in development environment
