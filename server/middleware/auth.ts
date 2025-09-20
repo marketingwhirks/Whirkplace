@@ -127,21 +127,8 @@ declare module "express-session" {
 export function authenticateUser() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // DEVELOPMENT MODE BYPASS - automatically authenticate as Matthew Patrick
-      // BUT only if there's a valid session or explicit backdoor headers
-      if (process.env.NODE_ENV === 'development') {
-        // Check if user explicitly logged out (no session and no backdoor headers)
-        const hasBackdoorHeaders = req.headers['x-backdoor-user'] && req.headers['x-backdoor-key'];
-        const hasValidSession = req.session && req.session.userId;
-        
-        // Only return backdoor user if there's a session or explicit backdoor auth
-        if (hasValidSession || hasBackdoorHeaders) {
-          const matthewUser = await ensureBackdoorUser(req.orgId);
-          req.currentUser = matthewUser;
-          return next();
-        }
-        // If no session and no backdoor headers, continue to regular auth checks
-      }
+      // SECURITY FIX: Removed automatic backdoor authentication based on session existence
+      // This was a critical vulnerability that bypassed real authentication
       
       // SECURITY: Gate sensitive logging to avoid leaking session IDs and cookies in production
       if (process.env.NODE_ENV === 'development') {
