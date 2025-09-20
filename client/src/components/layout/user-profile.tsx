@@ -1,4 +1,5 @@
-import { LogOut, User, Settings } from "lucide-react";
+import { useState } from "react";
+import { LogOut, User, Settings, AlertTriangle } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -13,10 +14,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { queryClient } from "@/lib/queryClient";
+import { SupportReportForm } from "@/components/support/SupportReportForm";
 
 export function UserProfile() {
   const { data: currentUser } = useCurrentUser();
   const { toast } = useToast();
+  const [isSupportFormOpen, setIsSupportFormOpen] = useState(false);
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
@@ -118,6 +121,14 @@ export function UserProfile() {
           <Settings className="mr-2 h-4 w-4" />
           <span>Settings</span>
         </DropdownMenuItem>
+        <DropdownMenuItem 
+          className="cursor-pointer"
+          onClick={() => setIsSupportFormOpen(true)}
+          data-testid="support-menu-item"
+        >
+          <AlertTriangle className="mr-2 h-4 w-4" />
+          <span>Report a Problem</span>
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem 
           className="cursor-pointer text-red-600 focus:text-red-600"
@@ -129,6 +140,12 @@ export function UserProfile() {
           <span>{logoutMutation.isPending ? 'Signing out...' : 'Sign out'}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
+      
+      <SupportReportForm
+        isOpen={isSupportFormOpen}
+        onClose={() => setIsSupportFormOpen(false)}
+        defaultCategory="bug"
+      />
     </DropdownMenu>
   );
 }

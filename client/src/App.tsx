@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { RoleSwitchProvider } from "@/hooks/useViewAsRole";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HelpButton } from "@/components/support/HelpButton";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Checkins from "@/pages/checkins";
@@ -74,7 +75,12 @@ function AuthenticatedApp() {
   }
 
   // Show main app if authenticated
-  return <Router />;
+  return (
+    <>
+      <Router />
+      <HelpButton />
+    </>
+  );
 }
 
 function App() {

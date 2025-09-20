@@ -4392,6 +4392,109 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Support & Bug Reporting System
+  app.post("/api/support/reports", requireAuth(), async (req, res) => {
+    try {
+      // Validate request body using Zod schema
+      const validationSchema = insertBugReportSchema.omit({ 
+        organizationId: true, 
+        userId: true,
+        createdAt: true,
+        resolvedAt: true 
+      }).extend({
+        title: z.string().min(1).max(200),
+        description: z.string().min(10).max(2000),
+        category: z.enum(["bug", "question", "feature_request"]).default("bug"),
+        severity: z.enum(["low", "medium", "high", "critical"]).default("medium"),
+        pagePath: z.string().optional(),
+        metadata: z.object({}).optional()
+      });
+      
+      const validatedData = validationSchema.parse(req.body);
+      
+      // Create bug report
+      const bugReport = await storage.createBugReport(req.orgId, {
+        ...validatedData,
+        organizationId: req.orgId,
+        userId: req.currentUser!.id
+      });
+      
+      // Send Slack notification to admins
+      try {
+        const { sendSlackMessage } = await import("./services/slack");
+        const organization = await storage.getOrganization(req.orgId);
+        const user = req.currentUser!;
+        
+        const message = `🆘 **New Support Request**\n\n` +
+          `**From:** ${user.name} (${user.email})\n` +
+          `**Type:** ${bugReport.category} | **Severity:** ${bugReport.severity}\n` +
+          `**Page:** ${bugReport.pagePath || 'Not specified'}\n\n` +
+          `**Title:** ${bugReport.title}\n` +
+          `**Description:** ${bugReport.description.slice(0, 300)}${bugReport.description.length > 300 ? '...' : ''}\n\n` +
+          `**Report ID:** ${bugReport.id}`;
+          
+        await sendSlackMessage(message);
+      } catch (slackError) {
+        console.error("Failed to send Slack notification for bug report:", slackError);
+        // Don't fail the request if Slack notification fails
+      }
+      
+      res.status(201).json(bugReport);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      console.error("POST /api/support/reports - Error:", error);
+      res.status(500).json({ message: "Failed to create bug report" });
+    }
+  });
+
+  app.get("/api/support/reports", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const statusFilter = req.query.status as string | undefined;
+      const userId = req.query.userId as string | undefined;
+      
+      const bugReports = await storage.getBugReports(req.orgId, statusFilter, userId);
+      res.json(bugReports);
+    } catch (error) {
+      console.error("GET /api/support/reports - Error:", error);
+      res.status(500).json({ message: "Failed to fetch bug reports" });
+    }
+  });
+
+  app.patch("/api/support/reports/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const updateSchema = insertBugReportSchema.pick({
+        status: true,
+        resolutionNote: true,
+        assignedTo: true
+      }).partial().extend({
+        status: z.enum(["open", "triaged", "in_progress", "resolved", "closed"]).optional(),
+        resolutionNote: z.string().max(1000).optional()
+      });
+      
+      const validatedData = updateSchema.parse(req.body);
+      
+      // Add resolved timestamp if status is being set to resolved
+      if (validatedData.status === "resolved" || validatedData.status === "closed") {
+        (validatedData as any).resolvedAt = new Date();
+      }
+      
+      const updatedReport = await storage.updateBugReport(req.orgId, req.params.id, validatedData);
+      if (!updatedReport) {
+        return res.status(404).json({ message: "Bug report not found" });
+      }
+      
+      res.json(updatedReport);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      console.error("PATCH /api/support/reports/:id - Error:", error);
+      res.status(500).json({ message: "Failed to update bug report" });
+    }
+  });
+
   // Register additional route modules
   registerMicrosoftTeamsRoutes(app);
   registerMicrosoftAuthRoutes(app);

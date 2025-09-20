@@ -12,6 +12,7 @@ import {
   type KraTemplate, type InsertKraTemplate,
   type UserKra, type InsertUserKra,
   type ActionItem, type InsertActionItem,
+  type BugReport, type InsertBugReport,
   type ReviewCheckin, type ReviewStatusType,
   type PulseMetricsOptions, type PulseMetricsResult,
   type ShoutoutMetricsOptions, type ShoutoutMetricsResult,
@@ -19,7 +20,7 @@ import {
   type AnalyticsOverview, type AnalyticsPeriod,
   type ComplianceMetricsOptions, type ComplianceMetricsResult,
   users, teams, checkins, questions, wins, comments, shoutouts, vacations, organizations,
-  oneOnOnes, kraTemplates, userKras, actionItems,
+  oneOnOnes, kraTemplates, userKras, actionItems, bugReports,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   ReviewStatus
 } from "@shared/schema";
@@ -232,6 +233,13 @@ export interface IStorage {
   getActionItemsByMeeting(organizationId: string, meetingId: string): Promise<ActionItem[]>;
   getActionItemsByUser(organizationId: string, userId: string, statusFilter?: string): Promise<ActionItem[]>;
   getOverdueActionItems(organizationId: string): Promise<ActionItem[]>;
+
+  // Bug Reports & Support System
+  getBugReport(organizationId: string, id: string): Promise<BugReport | undefined>;
+  createBugReport(organizationId: string, bugReport: InsertBugReport): Promise<BugReport>;
+  updateBugReport(organizationId: string, id: string, bugReport: Partial<InsertBugReport>): Promise<BugReport | undefined>;
+  getBugReports(organizationId: string, statusFilter?: string, userId?: string): Promise<BugReport[]>;
+  getBugReportsByUser(organizationId: string, userId: string): Promise<BugReport[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2873,6 +2881,80 @@ export class DatabaseStorage implements IStorage {
         .orderBy(actionItems.dueDate);
     } catch (error) {
       console.error("Failed to fetch overdue action items:", error);
+      throw error;
+    }
+  }
+
+  // Bug Reports & Support System
+  async getBugReport(organizationId: string, id: string): Promise<BugReport | undefined> {
+    try {
+      const [bugReport] = await db
+        .select()
+        .from(bugReports)
+        .where(and(eq(bugReports.organizationId, organizationId), eq(bugReports.id, id)));
+      return bugReport || undefined;
+    } catch (error) {
+      console.error("Failed to fetch bug report:", error);
+      throw error;
+    }
+  }
+
+  async createBugReport(organizationId: string, bugReportData: InsertBugReport): Promise<BugReport> {
+    try {
+      const [bugReport] = await db
+        .insert(bugReports)
+        .values({ ...bugReportData, organizationId })
+        .returning();
+      return bugReport;
+    } catch (error) {
+      console.error("Failed to create bug report:", error);
+      throw error;
+    }
+  }
+
+  async updateBugReport(organizationId: string, id: string, bugReportUpdate: Partial<InsertBugReport>): Promise<BugReport | undefined> {
+    try {
+      const [updatedBugReport] = await db
+        .update(bugReports)
+        .set(bugReportUpdate)
+        .where(and(eq(bugReports.organizationId, organizationId), eq(bugReports.id, id)))
+        .returning();
+      return updatedBugReport || undefined;
+    } catch (error) {
+      console.error("Failed to update bug report:", error);
+      throw error;
+    }
+  }
+
+  async getBugReports(organizationId: string, statusFilter?: string, userId?: string): Promise<BugReport[]> {
+    try {
+      const conditions = [eq(bugReports.organizationId, organizationId)];
+      if (statusFilter) {
+        conditions.push(eq(bugReports.status, statusFilter));
+      }
+      if (userId) {
+        conditions.push(eq(bugReports.userId, userId));
+      }
+      return await db
+        .select()
+        .from(bugReports)
+        .where(and(...conditions))
+        .orderBy(desc(bugReports.createdAt));
+    } catch (error) {
+      console.error("Failed to fetch bug reports:", error);
+      throw error;
+    }
+  }
+
+  async getBugReportsByUser(organizationId: string, userId: string): Promise<BugReport[]> {
+    try {
+      return await db
+        .select()
+        .from(bugReports)
+        .where(and(eq(bugReports.organizationId, organizationId), eq(bugReports.userId, userId)))
+        .orderBy(desc(bugReports.createdAt));
+    } catch (error) {
+      console.error("Failed to fetch bug reports by user:", error);
       throw error;
     }
   }
