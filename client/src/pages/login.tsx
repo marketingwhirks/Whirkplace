@@ -15,17 +15,17 @@ export default function LoginPage() {
   
   const handleSlackLogin = () => {
     // Redirect to the Slack OAuth endpoint
-    window.location.href = "/auth/slack/login?org=whirkplace";
+    window.location.href = "/auth/slack/login?org=default";
   };
   
   const handleMicrosoftLogin = () => {
     // Redirect to the Microsoft OAuth endpoint with organization parameter
-    window.location.href = "/auth/microsoft?org=whirkplace";
+    window.location.href = "/auth/microsoft?org=default";
   };
   
   const handleBackdoorLogin = async () => {
     try {
-      const response = await fetch('/auth/backdoor?org=whirkplace', {
+      const response = await fetch('/auth/backdoor?org=default', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -46,7 +46,7 @@ export default function LoginPage() {
         console.log("Login successful, redirecting...");
         
         // Immediate reload to ensure cookies are properly available
-        window.location.href = "/?org=whirkplace";
+        window.location.href = "/?org=default";
       } else {
         const error = await response.json();
         toast({ 
