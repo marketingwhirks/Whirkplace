@@ -628,6 +628,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Hierarchical team endpoints
+  app.get("/api/teams/hierarchy", requireAuth(), async (req, res) => {
+    try {
+      const hierarchy = await storage.getTeamHierarchy(req.orgId);
+      res.json(hierarchy);
+    } catch (error) {
+      console.error("GET /api/teams/hierarchy - Error:", error);
+      res.status(500).json({ message: "Failed to fetch team hierarchy" });
+    }
+  });
+
+  app.get("/api/teams/:id/children", requireAuth(), async (req, res) => {
+    try {
+      const children = await storage.getTeamChildren(req.orgId, req.params.id);
+      res.json(children);
+    } catch (error) {
+      console.error("GET /api/teams/:id/children - Error:", error);
+      res.status(500).json({ message: "Failed to fetch team children" });
+    }
+  });
+
+  app.get("/api/teams/:id/descendants", requireAuth(), async (req, res) => {
+    try {
+      const descendants = await storage.getTeamDescendants(req.orgId, req.params.id);
+      res.json(descendants);
+    } catch (error) {
+      console.error("GET /api/teams/:id/descendants - Error:", error);
+      res.status(500).json({ message: "Failed to fetch team descendants" });
+    }
+  });
+
+  app.get("/api/teams/roots", requireAuth(), async (req, res) => {
+    try {
+      const rootTeams = await storage.getRootTeams(req.orgId);
+      res.json(rootTeams);
+    } catch (error) {
+      console.error("GET /api/teams/roots - Error:", error);
+      res.status(500).json({ message: "Failed to fetch root teams" });
+    }
+  });
+
+  app.post("/api/teams/with-hierarchy", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Create team schema that excludes organizationId and auto-calculated fields
+      const createTeamSchema = insertTeamSchema.omit({ organizationId: true });
+      const teamData = createTeamSchema.parse(req.body);
+      
+      const team = await storage.createTeamWithHierarchy(req.orgId, teamData);
+      res.status(201).json(team);
+    } catch (error) {
+      console.error("POST /api/teams/with-hierarchy - Error:", error);
+      res.status(400).json({ message: "Failed to create team with hierarchy" });
+    }
+  });
+
+  app.put("/api/teams/:id/move", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { newParentId } = req.body;
+      const team = await storage.moveTeam(req.orgId, req.params.id, newParentId || null);
+      
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      res.json(team);
+    } catch (error) {
+      console.error("PUT /api/teams/:id/move - Error:", error);
+      res.status(500).json({ message: "Failed to move team" });
+    }
+  });
+
   app.get("/api/teams/:id/members", requireAuth(), async (req, res) => {
     try {
       const currentUser = req.currentUser!;

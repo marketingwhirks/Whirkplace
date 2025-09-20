@@ -31,6 +31,17 @@ export const AuthProvider = {
 
 export type AuthProviderType = typeof AuthProvider[keyof typeof AuthProvider];
 
+// Team Type Constants
+export const TeamType = {
+  DEPARTMENT: "department",
+  SQUAD: "squad", 
+  POD: "pod",
+  DIVISION: "division",
+  PROJECT_TEAM: "project_team",
+} as const;
+
+export type TeamTypeValue = typeof TeamType[keyof typeof TeamType];
+
 // Plan Constants
 export const Plan = {
   STARTER: "starter",
@@ -106,8 +117,20 @@ export const teams = pgTable("teams", {
   description: text("description"),
   organizationId: varchar("organization_id").notNull(),
   leaderId: varchar("leader_id").notNull(),
+  parentTeamId: varchar("parent_team_id"), // For hierarchical team structure (Squads/Pods under departments)
+  teamType: text("team_type").notNull().default("department"), // department, squad, pod, division
+  depth: integer("depth").notNull().default(0), // 0 = top level, 1 = sub-team, 2 = sub-sub-team, etc.
+  path: text("path"), // Materialized path for efficient hierarchy queries (e.g., "leadership/accounting/squad1")
+  isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
-});
+}, (table) => ({
+  // Index for parent-child lookups
+  parentTeamIdx: index("teams_parent_team_idx").on(table.parentTeamId),
+  // Index for hierarchy path queries
+  pathIdx: index("teams_path_idx").on(table.path),
+  // Index for team type filtering
+  teamTypeIdx: index("teams_team_type_idx").on(table.teamType),
+}));
 
 export const checkins = pgTable("checkins", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -298,6 +321,8 @@ export const insertUserSchema = createInsertSchema(users).omit({
 export const insertTeamSchema = createInsertSchema(teams).omit({
   id: true,
   createdAt: true,
+  depth: true, // Auto-calculated based on parent
+  path: true, // Auto-calculated based on parent
 });
 
 export const insertCheckinSchema = createInsertSchema(checkins).omit({
@@ -408,6 +433,12 @@ export type User = typeof users.$inferSelect;
 
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
 export type Team = typeof teams.$inferSelect;
+
+// Team hierarchy type for UI display
+export interface TeamHierarchy extends Team {
+  children: TeamHierarchy[];
+  memberCount: number;
+}
 
 export type InsertCheckin = z.infer<typeof insertCheckinSchema>;
 export type Checkin = typeof checkins.$inferSelect;

@@ -1,6 +1,6 @@
 import { 
   type User, type InsertUser,
-  type Team, type InsertTeam,
+  type Team, type InsertTeam, type TeamHierarchy,
   type Checkin, type InsertCheckin,
   type Question, type InsertQuestion,
   type Win, type InsertWin,
@@ -114,6 +114,14 @@ export interface IStorage {
   updateTeam(organizationId: string, id: string, team: Partial<InsertTeam>): Promise<Team | undefined>;
   deleteTeam(organizationId: string, id: string): Promise<boolean>;
   getAllTeams(organizationId: string): Promise<Team[]>;
+  
+  // Hierarchical team methods
+  getTeamHierarchy(organizationId: string): Promise<TeamHierarchy[]>;
+  getTeamChildren(organizationId: string, parentId: string): Promise<Team[]>;
+  getTeamDescendants(organizationId: string, parentId: string): Promise<Team[]>;
+  getRootTeams(organizationId: string): Promise<Team[]>;
+  createTeamWithHierarchy(organizationId: string, team: InsertTeam): Promise<Team>;
+  moveTeam(organizationId: string, teamId: string, newParentId: string | null): Promise<Team | undefined>;
 
   // Check-ins
   getCheckin(organizationId: string, id: string): Promise<Checkin | undefined>;
@@ -470,6 +478,158 @@ export class DatabaseStorage implements IStorage {
 
   async getAllTeams(organizationId: string): Promise<Team[]> {
     return await db.select().from(teams).where(eq(teams.organizationId, organizationId));
+  }
+
+  // Hierarchical team methods
+  async getTeamHierarchy(organizationId: string): Promise<TeamHierarchy[]> {
+    // Get all teams and users in organization
+    const allTeams = await db.select().from(teams).where(eq(teams.organizationId, organizationId));
+    const allUsers = await db.select().from(users).where(eq(users.organizationId, organizationId));
+    
+    // Create a map for quick lookups
+    const teamMap = new Map<string, TeamHierarchy>();
+    const memberCounts = new Map<string, number>();
+    
+    // Count members for each team
+    allUsers.forEach(user => {
+      if (user.teamId) {
+        memberCounts.set(user.teamId, (memberCounts.get(user.teamId) || 0) + 1);
+      }
+    });
+    
+    // Convert teams to hierarchy objects
+    allTeams.forEach(team => {
+      teamMap.set(team.id, {
+        ...team,
+        children: [],
+        memberCount: memberCounts.get(team.id) || 0
+      });
+    });
+    
+    // Build the hierarchy
+    const roots: TeamHierarchy[] = [];
+    allTeams.forEach(team => {
+      const teamHierarchy = teamMap.get(team.id)!;
+      if (team.parentTeamId) {
+        const parent = teamMap.get(team.parentTeamId);
+        if (parent) {
+          parent.children.push(teamHierarchy);
+        } else {
+          // Orphaned team, treat as root
+          roots.push(teamHierarchy);
+        }
+      } else {
+        roots.push(teamHierarchy);
+      }
+    });
+    
+    return roots;
+  }
+
+  async getTeamChildren(organizationId: string, parentId: string): Promise<Team[]> {
+    return await db.select().from(teams).where(
+      and(eq(teams.parentTeamId, parentId), eq(teams.organizationId, organizationId))
+    );
+  }
+
+  async getTeamDescendants(organizationId: string, parentId: string): Promise<Team[]> {
+    // Use recursive CTE to get all descendants
+    const result = await db.execute(sql`
+      WITH RECURSIVE team_descendants AS (
+        -- Base case: direct children
+        SELECT * FROM ${teams} 
+        WHERE parent_team_id = ${parentId} AND organization_id = ${organizationId}
+        
+        UNION ALL
+        
+        -- Recursive case: children of children
+        SELECT t.* FROM ${teams} t
+        INNER JOIN team_descendants td ON t.parent_team_id = td.id
+        WHERE t.organization_id = ${organizationId}
+      )
+      SELECT * FROM team_descendants
+    `);
+    
+    return result.rows as Team[];
+  }
+
+  async getRootTeams(organizationId: string): Promise<Team[]> {
+    return await db.select().from(teams).where(
+      and(eq(teams.parentTeamId, null), eq(teams.organizationId, organizationId))
+    );
+  }
+
+  async createTeamWithHierarchy(organizationId: string, insertTeam: InsertTeam): Promise<Team> {
+    // Calculate hierarchy metadata
+    let depth = 0;
+    let path = insertTeam.name.toLowerCase().replace(/\s+/g, '-');
+    
+    if (insertTeam.parentTeamId) {
+      const parentTeam = await this.getTeam(organizationId, insertTeam.parentTeamId);
+      if (parentTeam) {
+        depth = (parentTeam.depth || 0) + 1;
+        path = `${parentTeam.path || parentTeam.name.toLowerCase().replace(/\s+/g, '-')}/${path}`;
+      }
+    }
+    
+    const [team] = await db
+      .insert(teams)
+      .values({
+        ...insertTeam,
+        organizationId,
+        description: insertTeam.description ?? null,
+        depth,
+        path,
+      })
+      .returning();
+    
+    return team;
+  }
+
+  async moveTeam(organizationId: string, teamId: string, newParentId: string | null): Promise<Team | undefined> {
+    // Get the team to move
+    const team = await this.getTeam(organizationId, teamId);
+    if (!team) return undefined;
+    
+    // Calculate new hierarchy metadata
+    let newDepth = 0;
+    let newPath = team.name.toLowerCase().replace(/\s+/g, '-');
+    
+    if (newParentId) {
+      const newParent = await this.getTeam(organizationId, newParentId);
+      if (newParent) {
+        newDepth = (newParent.depth || 0) + 1;
+        newPath = `${newParent.path || newParent.name.toLowerCase().replace(/\s+/g, '-')}/${newPath}`;
+      }
+    }
+    
+    // Update the team
+    const [updatedTeam] = await db
+      .update(teams)
+      .set({
+        parentTeamId: newParentId,
+        depth: newDepth,
+        path: newPath,
+      })
+      .where(and(eq(teams.id, teamId), eq(teams.organizationId, organizationId)))
+      .returning();
+    
+    // Update all descendants' paths and depths
+    const descendants = await this.getTeamDescendants(organizationId, teamId);
+    for (const descendant of descendants) {
+      const descendantDepth = newDepth + (descendant.depth || 0) - (team.depth || 0);
+      const descendantPath = descendant.path?.replace(team.path || '', newPath) || descendant.name.toLowerCase().replace(/\s+/g, '-');
+      
+      await db
+        .update(teams)
+        .set({
+          depth: descendantDepth,
+          path: descendantPath,
+        })
+        .where(and(eq(teams.id, descendant.id), eq(teams.organizationId, organizationId)));
+    }
+    
+    return updatedTeam || undefined;
   }
 
   // Check-ins
@@ -2890,6 +3050,163 @@ export class MemStorage implements IStorage {
     return Array.from(this.teams.values()).filter(team => 
       team.organizationId === organizationId
     );
+  }
+
+  // Hierarchical team methods for memory storage
+  async getTeamHierarchy(organizationId: string): Promise<TeamHierarchy[]> {
+    const allTeams = Array.from(this.teams.values()).filter(team => 
+      team.organizationId === organizationId
+    );
+    const allUsers = Array.from(this.users.values()).filter(user => 
+      user.organizationId === organizationId
+    );
+    
+    // Create a map for quick lookups
+    const teamMap = new Map<string, TeamHierarchy>();
+    const memberCounts = new Map<string, number>();
+    
+    // Count members for each team
+    allUsers.forEach(user => {
+      if (user.teamId) {
+        memberCounts.set(user.teamId, (memberCounts.get(user.teamId) || 0) + 1);
+      }
+    });
+    
+    // Convert teams to hierarchy objects
+    allTeams.forEach(team => {
+      teamMap.set(team.id, {
+        ...team,
+        children: [],
+        memberCount: memberCounts.get(team.id) || 0
+      });
+    });
+    
+    // Build the hierarchy
+    const roots: TeamHierarchy[] = [];
+    allTeams.forEach(team => {
+      const teamHierarchy = teamMap.get(team.id)!;
+      if (team.parentTeamId) {
+        const parent = teamMap.get(team.parentTeamId);
+        if (parent) {
+          parent.children.push(teamHierarchy);
+        } else {
+          // Orphaned team, treat as root
+          roots.push(teamHierarchy);
+        }
+      } else {
+        roots.push(teamHierarchy);
+      }
+    });
+    
+    return roots;
+  }
+
+  async getTeamChildren(organizationId: string, parentId: string): Promise<Team[]> {
+    return Array.from(this.teams.values()).filter(team => 
+      team.parentTeamId === parentId && team.organizationId === organizationId
+    );
+  }
+
+  async getTeamDescendants(organizationId: string, parentId: string): Promise<Team[]> {
+    const descendants: Team[] = [];
+    const visited = new Set<string>();
+    
+    const findDescendants = (currentParentId: string) => {
+      if (visited.has(currentParentId)) return; // Prevent cycles
+      visited.add(currentParentId);
+      
+      const children = Array.from(this.teams.values()).filter(team => 
+        team.parentTeamId === currentParentId && team.organizationId === organizationId
+      );
+      
+      for (const child of children) {
+        descendants.push(child);
+        findDescendants(child.id); // Recursively find descendants
+      }
+    };
+    
+    findDescendants(parentId);
+    return descendants;
+  }
+
+  async getRootTeams(organizationId: string): Promise<Team[]> {
+    return Array.from(this.teams.values()).filter(team => 
+      !team.parentTeamId && team.organizationId === organizationId
+    );
+  }
+
+  async createTeamWithHierarchy(organizationId: string, insertTeam: InsertTeam): Promise<Team> {
+    // Calculate hierarchy metadata
+    let depth = 0;
+    let path = insertTeam.name.toLowerCase().replace(/\s+/g, '-');
+    
+    if (insertTeam.parentTeamId) {
+      const parentTeam = await this.getTeam(organizationId, insertTeam.parentTeamId);
+      if (parentTeam) {
+        depth = (parentTeam.depth || 0) + 1;
+        path = `${parentTeam.path || parentTeam.name.toLowerCase().replace(/\s+/g, '-')}/${path}`;
+      }
+    }
+    
+    const team: Team = {
+      ...insertTeam,
+      id: randomUUID(),
+      organizationId,
+      createdAt: new Date(),
+      description: insertTeam.description ?? null,
+      parentTeamId: insertTeam.parentTeamId ?? null,
+      teamType: insertTeam.teamType ?? "department",
+      depth,
+      path,
+      isActive: insertTeam.isActive ?? true,
+    };
+    
+    this.teams.set(team.id, team);
+    return team;
+  }
+
+  async moveTeam(organizationId: string, teamId: string, newParentId: string | null): Promise<Team | undefined> {
+    const team = this.teams.get(teamId);
+    if (!team || team.organizationId !== organizationId) return undefined;
+    
+    // Calculate new hierarchy metadata
+    let newDepth = 0;
+    let newPath = team.name.toLowerCase().replace(/\s+/g, '-');
+    
+    if (newParentId) {
+      const newParent = await this.getTeam(organizationId, newParentId);
+      if (newParent) {
+        newDepth = (newParent.depth || 0) + 1;
+        newPath = `${newParent.path || newParent.name.toLowerCase().replace(/\s+/g, '-')}/${newPath}`;
+      }
+    }
+    
+    // Update the team
+    const updatedTeam = {
+      ...team,
+      parentTeamId: newParentId,
+      depth: newDepth,
+      path: newPath,
+    };
+    
+    this.teams.set(teamId, updatedTeam);
+    
+    // Update all descendants' paths and depths
+    const descendants = await this.getTeamDescendants(organizationId, teamId);
+    for (const descendant of descendants) {
+      const descendantDepth = newDepth + (descendant.depth || 0) - (team.depth || 0);
+      const descendantPath = descendant.path?.replace(team.path || '', newPath) || descendant.name.toLowerCase().replace(/\s+/g, '-');
+      
+      const updatedDescendant = {
+        ...descendant,
+        depth: descendantDepth,
+        path: descendantPath,
+      };
+      
+      this.teams.set(descendant.id, updatedDescendant);
+    }
+    
+    return updatedTeam;
   }
 
   // Check-ins
