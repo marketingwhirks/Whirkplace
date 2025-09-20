@@ -9,30 +9,21 @@ export function useCurrentUser() {
   return useQuery<User>({
     queryKey: ["/api/users/current", { org: "default" }],
     queryFn: async () => {
-      console.log("Development mode: returning admin user directly");
+      // Make actual API call to check current user authentication
+      const response = await fetch('/api/users/current?org=default', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
       
-      // Development mode bypass - return Matthew Patrick admin user directly
-      return {
-        id: "a5af0148-cf91-4c97-8571-e759bc5b201a",
-        username: "mpatrick",
-        password: "",
-        name: "Matthew Patrick",
-        email: "mpatrick@patrickaccounting.com",
-        role: "admin" as const,
-        organizationId: "default-org",
-        teamId: "3e9d8f4a-207b-42a0-873b-9c290645fe94",
-        managerId: null,
-        avatar: null,
-        slackUserId: "U3SEH2TDL",
-        slackUsername: null,
-        slackDisplayName: null,
-        slackEmail: null,
-        slackAvatar: null,
-        slackWorkspaceId: null,
-        authProvider: "local" as const,
-        isActive: true,
-        createdAt: "2025-09-15T22:39:21.145Z"
-      };
+      if (!response.ok) {
+        // If not authenticated, throw error to trigger loading state/redirect
+        throw new Error(`Authentication failed: ${response.status}`);
+      }
+      
+      return response.json();
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     retry: false, // Don't retry on auth failures
