@@ -25,10 +25,8 @@ import type { Question, InsertQuestion } from "@shared/schema";
 import { insertQuestionSchema } from "@shared/schema";
 import { questionCategories, questionTemplates, getQuestionsByCategory, getCategoryById, type QuestionTemplate } from "@/lib/questionBank";
 
-const createQuestionSchema = insertQuestionSchema.omit({
-  createdBy: true,
-  isActive: true,
-}).extend({
+// Only allow client to set fields they should control
+const createQuestionSchema = z.object({
   text: z.string().min(5, "Question must be at least 5 characters"),
   order: z.number().min(0, "Order must be 0 or greater").default(0),
 });
@@ -48,7 +46,7 @@ export default function Questions() {
   // Fetch questions
   const { data: questions = [], isLoading } = useQuery<Question[]>({
     queryKey: ["/api/questions"],
-    enabled: !userLoading && !!currentUser && (currentUser.role === "manager" || currentUser.role === "admin"),
+    enabled: !userLoading && !!currentUser && ((currentUser as any).role === "manager" || (currentUser as any).role === "admin"),
   });
 
   // Sort questions by order
@@ -66,10 +64,9 @@ export default function Questions() {
   // Create question mutation
   const createQuestionMutation = useMutation({
     mutationFn: async (data: CreateQuestionForm) => {
+      // Only send fields the server expects from client
       const questionData = {
         text: data.text,
-        createdBy: currentUser?.id || "admin-user", // Use current user ID
-        isActive: true,
         order: data.order,
       };
       return apiRequest("POST", "/api/questions", questionData);
@@ -245,7 +242,7 @@ export default function Questions() {
     : getQuestionsByCategory(selectedCategory);
 
   // Show access denied for non-managers/admins
-  if (!userLoading && currentUser && currentUser.role === "member") {
+  if (!userLoading && currentUser && (currentUser as any).role === "member") {
     return (
       <>
         <Header
@@ -330,7 +327,7 @@ export default function Questions() {
               
               {/* Only show tabs when creating new questions (not editing) */}
               {!editingQuestion && (
-                <Tabs value={creationMode} onValueChange={handleCreationModeChange} className="w-full">
+                <Tabs value={creationMode} onValueChange={(value) => handleCreationModeChange(value as "custom" | "template")} className="w-full">
                   <TabsList className="grid w-full grid-cols-2">
                     <TabsTrigger value="template" data-testid="tab-question-bank">
                       <BookOpen className="w-4 h-4 mr-2" />

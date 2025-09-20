@@ -1232,26 +1232,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/questions", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {
-      const questionData = insertQuestionSchema.parse(req.body);
-      const sanitizedData = sanitizeForOrganization(questionData, req.orgId);
-      const question = await storage.createQuestion(req.orgId, sanitizedData);
+      // Explicit schema for client data with server-side validation
+      const clientQuestionSchema = z.object({
+        text: z.string().min(5, "Question must be at least 5 characters"),
+        order: z.number().min(0, "Order must be 0 or greater").default(0)
+      });
+      const clientData = clientQuestionSchema.parse(req.body);
+      
+      // Server sets all security-sensitive fields
+      const fullQuestionData = {
+        ...clientData,
+        organizationId: req.orgId,
+        createdBy: req.currentUser?.id || "unknown", // Use authenticated user
+        isActive: true // Default to active
+      };
+      
+      const question = await storage.createQuestion(req.orgId, fullQuestionData);
       res.status(201).json(question);
     } catch (error) {
-      res.status(400).json({ message: "Invalid question data" });
+      console.error("Question creation error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid question data",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to create question" });
     }
   });
 
   app.patch("/api/questions/:id", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {
-      const updates = insertQuestionSchema.partial().parse(req.body);
-      const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
-      const question = await storage.updateQuestion(req.orgId, req.params.id, sanitizedUpdates);
+      // Allow updating text, order, and isActive - protect organizationId and createdBy
+      const updatesSchema = z.object({
+        text: z.string().min(5, "Question must be at least 5 characters").optional(),
+        order: z.number().min(0, "Order must be 0 or greater").optional(),
+        isActive: z.boolean().optional()
+      });
+      const updates = updatesSchema.parse(req.body);
+      
+      const question = await storage.updateQuestion(req.orgId, req.params.id, updates);
       if (!question) {
         return res.status(404).json({ message: "Question not found" });
       }
       res.json(question);
     } catch (error) {
-      res.status(400).json({ message: "Invalid question data" });
+      console.error("Question update error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid question data",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to update question" });
     }
   });
 
@@ -2267,7 +2300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Handle the slash command
         const { handleSlackSlashCommand } = await import("./services/slack");
-        const response = await handleSlackSlashCommand(command, text, userId || '', userName || '', triggerId || '', organizationId, storage);
+        const response = await handleSlackSlashCommand(command || '', text, userId || '', userName || '', triggerId || '', organizationId, storage);
         
         // Send response back to Slack
         res.status(200).json(response);
