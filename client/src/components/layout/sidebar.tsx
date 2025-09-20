@@ -84,7 +84,7 @@ const baseNavigation = [
 // Sidebar content component
 function SidebarContent() {
   const [location] = useLocation();
-  const { data: currentUser, isLoading: userLoading } = useViewAsRole();
+  const { data: currentUser, isLoading: userLoading, canSwitchRoles } = useViewAsRole();
 
   // Fetch pending check-ins count for badge
   const { data: pendingCheckins = [], isLoading: pendingLoading } = useQuery<Checkin[]>({
@@ -99,9 +99,20 @@ function SidebarContent() {
       return [];
     }
     return baseNavigation.filter(item => {
-      return item.roles.includes(currentUser.role);
+      // Normal role-based filtering
+      if (item.roles.includes(currentUser.role)) {
+        return true;
+      }
+      
+      // Special exception: Allow Admin Panel access for users who can switch roles
+      // This ensures Matthew Patrick can always access the role switcher
+      if (item.name === "Admin Panel" && canSwitchRoles) {
+        return true;
+      }
+      
+      return false;
     });
-  }, [currentUser]);
+  }, [currentUser, canSwitchRoles]);
 
   // Get badge count for items with badges
   const getBadgeCount = (item: typeof baseNavigation[0]) => {
