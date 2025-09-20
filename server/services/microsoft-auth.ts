@@ -46,7 +46,7 @@ export class MicrosoftAuthService {
       clientId,
       clientSecret,
       tenantId,
-      redirectUri: process.env.MICROSOFT_REDIRECT_URI || `${process.env.REPL_URL || 'http://localhost:5000'}/auth/microsoft/callback`,
+      redirectUri: process.env.MICROSOFT_REDIRECT_URI || `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co/auth/microsoft/callback`,
       scopes: ['openid', 'profile', 'User.Read', 'email']
     };
 
