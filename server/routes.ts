@@ -28,7 +28,7 @@ import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
 let stripe: Stripe | null = null;
 if (process.env.STRIPE_SECRET_KEY) {
   stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: "2025-08-27.basil",
+    apiVersion: "2024-06-20",
   });
 }
 
@@ -69,9 +69,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Also set authentication cookies for fallback (like Slack OAuth)
       const sessionToken = randomBytes(32).toString('hex');
       
+      // SECURITY: Set secure cookies based on environment
+      const isProduction = process.env.NODE_ENV === 'production';
+      
       res.cookie('auth_user_id', matthewUser.id, {
         httpOnly: true,
-        secure: false, // Allow HTTP in development
+        secure: isProduction, // Secure in production, allow HTTP in development
         sameSite: 'lax',
         path: '/',
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -79,7 +82,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.cookie('auth_org_id', req.orgId, {
         httpOnly: true,
-        secure: false, // Allow HTTP in development
+        secure: isProduction, // Secure in production, allow HTTP in development
         sameSite: 'lax',
         path: '/',
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -87,7 +90,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.cookie('auth_session_token', sessionToken, {
         httpOnly: true,
-        secure: false, // Allow HTTP in development
+        secure: isProduction, // Secure in production, allow HTTP in development
         sameSite: 'lax',
         path: '/',
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -307,7 +310,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Establish authentication session
       try {
-        // Set HTTP-only secure cookies for authentication
+        // CRITICAL: Set session for production authentication 
+        if (req.session) {
+          req.session.userId = authenticatedUser.id;
+        }
+        
+        // Set HTTP-only secure cookies for authentication fallback
         const sessionToken = randomBytes(32).toString('hex');
         
         res.cookie('auth_user_id', authenticatedUser.id, {

@@ -128,17 +128,22 @@ export function authenticateUser() {
         // If no session and no backdoor headers, continue to regular auth checks
       }
       
-      console.log(`🔍 Auth check for ${req.method} ${req.path}`);
-      console.log(`🍪 Raw cookies: ${req.headers.cookie}`);
-      console.log(`📦 Session ID: ${req.session?.id}`);
-      console.log(`👤 Session userId: ${req.session?.userId}`);
+      // SECURITY: Gate sensitive logging to avoid leaking session IDs and cookies in production
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🔍 Auth check for ${req.method} ${req.path}`);
+        console.log(`🍪 Raw cookies: ${req.headers.cookie}`);
+        console.log(`📦 Session ID: ${req.session?.id}`);
+        console.log(`👤 Session userId: ${req.session?.userId}`);
+      }
       
       // Check for backdoor authentication (development environment only)
       const backdoorUser = req.headers['x-backdoor-user'] as string;
       const backdoorKey = req.headers['x-backdoor-key'] as string;
       const backdoorImpersonate = req.headers['x-backdoor-impersonate'] as string;
       
-      console.log(`🔓 Backdoor headers: user=${backdoorUser}, key=${backdoorKey}, env=${process.env.NODE_ENV}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🔓 Backdoor headers: user=${backdoorUser}, key=${backdoorKey}, env=${process.env.NODE_ENV}`);
+      }
       
       // SECURITY: Backdoor only works in development environment with explicit env vars
       if (backdoorUser && backdoorKey && process.env.NODE_ENV === 'development') {
@@ -189,40 +194,45 @@ export function authenticateUser() {
         console.log(`❌ No session or session userId`);
       }
       
-      // Check for cookie-based authentication (manually parse if req.cookies not available)
-      let authUserId, authOrgId, authToken;
-      
-      if (req.cookies) {
-        // cookie-parser is working
-        authUserId = req.cookies['auth_user_id'];
-        authOrgId = req.cookies['auth_org_id'];
-        authToken = req.cookies['auth_session_token'];
-      } else {
-        // Fallback: manually parse cookies from header
-        const cookieHeader = req.headers.cookie;
-        if (cookieHeader) {
-          const cookies: Record<string, string> = {};
-          cookieHeader.split(';').forEach(cookie => {
-            const [name, value] = cookie.trim().split('=');
-            if (name && value) {
-              cookies[name] = decodeURIComponent(value);
-            }
-          });
-          authUserId = cookies['auth_user_id'];
-          authOrgId = cookies['auth_org_id'];
-          authToken = cookies['auth_session_token'];
-        }
-      }
-      
-      if (authUserId && authOrgId && authToken && authOrgId === req.orgId) {
-        const user = await storage.getUser(req.orgId, authUserId);
-        if (user && user.isActive) {
-          req.currentUser = user;
-          // Also set session for consistency
-          if (req.session) {
-            req.session.userId = authUserId;
+      // SECURITY: Cookie-based authentication disabled in production due to security risks
+      // The previous implementation trusted client-provided user IDs without proper token validation
+      if (process.env.NODE_ENV === 'development') {
+        // Check for cookie-based authentication (development only)
+        let authUserId, authOrgId, authToken;
+        
+        if (req.cookies) {
+          // cookie-parser is working
+          authUserId = req.cookies['auth_user_id'];
+          authOrgId = req.cookies['auth_org_id'];
+          authToken = req.cookies['auth_session_token'];
+        } else {
+          // Fallback: manually parse cookies from header
+          const cookieHeader = req.headers.cookie;
+          if (cookieHeader) {
+            const cookies: Record<string, string> = {};
+            cookieHeader.split(';').forEach(cookie => {
+              const [name, value] = cookie.trim().split('=');
+              if (name && value) {
+                cookies[name] = decodeURIComponent(value);
+              }
+            });
+            authUserId = cookies['auth_user_id'];
+            authOrgId = cookies['auth_org_id'];
+            authToken = cookies['auth_session_token'];
           }
-          return next();
+        }
+        
+        // TODO: Implement proper token validation instead of trusting client-provided user IDs
+        if (authUserId && authOrgId && authToken && authOrgId === req.orgId) {
+          const user = await storage.getUser(req.orgId, authUserId);
+          if (user && user.isActive) {
+            req.currentUser = user;
+            // Also set session for consistency
+            if (req.session) {
+              req.session.userId = authUserId;
+            }
+            return next();
+          }
         }
       }
       
