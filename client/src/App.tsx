@@ -25,6 +25,7 @@ import SuperAdminPage from "@/pages/SuperAdminPage";
 import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import Sidebar from "@/components/layout/sidebar";
+import { BrandGuideViewer } from "@/components/BrandGuideViewer";
 
 function Router() {
   return (
@@ -46,6 +47,7 @@ function Router() {
           <Route path="/settings" component={Settings} />
           <Route path="/admin" component={Admin} />
           <Route path="/super-admin" component={SuperAdminPage} />
+          <Route path="/brand-guide" component={BrandGuideViewer} />
           <Route component={NotFound} />
         </Switch>
       </div>
