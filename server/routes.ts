@@ -74,29 +74,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Also set authentication cookies for fallback (like Slack OAuth)
         const sessionToken = randomBytes(32).toString('hex');
         
-        // SECURITY: Set secure cookies based on environment
-        const isProduction = process.env.NODE_ENV === 'production';
-        
+        // SECURITY: Set secure cookies for iframe compatibility
         res.cookie('auth_user_id', matthewUser.id, {
           httpOnly: true,
-          secure: isProduction, // Secure in production, allow HTTP in development
-          sameSite: 'lax',
+          secure: true, // Required for SameSite=None
+          sameSite: 'none', // Allow cookies in iframe/embedded context
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
         res.cookie('auth_org_id', req.orgId, {
           httpOnly: true,
-          secure: isProduction, // Secure in production, allow HTTP in development
-          sameSite: 'lax',
+          secure: true, // Required for SameSite=None
+          sameSite: 'none', // Allow cookies in iframe/embedded context
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
         res.cookie('auth_session_token', sessionToken, {
           httpOnly: true,
-          secure: isProduction, // Secure in production, allow HTTP in development
-          sameSite: 'lax',
+          secure: true, // Required for SameSite=None
+          sameSite: 'none', // Allow cookies in iframe/embedded context
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });

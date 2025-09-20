@@ -28,11 +28,12 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   name: 'connect.sid',
+  proxy: true, // Trust proxy for Replit's TLS terminator
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: true, // Required for SameSite=None
     httpOnly: true,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    sameSite: 'lax'
+    sameSite: 'none' // Allow cookies in iframe/embedded context
   }
 }));
 
