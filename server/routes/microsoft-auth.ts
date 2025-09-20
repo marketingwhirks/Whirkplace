@@ -67,6 +67,13 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
 
   // Microsoft OAuth callback
   app.get("/auth/microsoft/callback", async (req, res) => {
+    console.log('🔄 Microsoft callback received:', {
+      code: !!req.query.code,
+      state: !!req.query.state,
+      error: req.query.error,
+      host: req.get('host'),
+      url: req.url
+    });
     try {
       const { code, state, error: authError } = req.query;
       

@@ -96,7 +96,7 @@ declare global {
     interface Request {
       userId?: string;
       orgId: string;
-      currentUser?: any;
+      currentUser?: User;
     }
   }
 }
