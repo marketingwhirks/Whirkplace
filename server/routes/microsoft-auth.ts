@@ -180,24 +180,24 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
           
           res.cookie('auth_user_id', user.id, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            secure: true, // Required for SameSite=None
+            sameSite: 'none', // Allow cookies in iframe/embedded context
             path: '/',
             maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
           });
           
           res.cookie('auth_org_id', orgId, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            secure: true, // Required for SameSite=None
+            sameSite: 'none', // Allow cookies in iframe/embedded context
             path: '/',
             maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
           });
           
           res.cookie('auth_session_token', sessionToken, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
+            secure: true, // Required for SameSite=None
+            sameSite: 'none', // Allow cookies in iframe/embedded context
             path: '/',
             maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
           });
