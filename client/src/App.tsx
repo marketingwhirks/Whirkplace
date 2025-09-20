@@ -68,17 +68,9 @@ function AuthenticatedApp() {
     );
   }
 
-  // Development mode - always show main app since we're bypassing authentication
-  if (!currentUser && isLoading) {
-    return (
-      <div className="h-screen flex items-center justify-center bg-background">
-        <div className="text-center space-y-4">
-          <Skeleton className="w-12 h-12 mx-auto rounded-lg" />
-          <Skeleton className="w-32 h-6 mx-auto" />
-          <div className="text-sm text-muted-foreground">Loading application...</div>
-        </div>
-      </div>
-    );
+  // If authentication failed or no user, redirect to login
+  if (error || !currentUser) {
+    return <LoginPage />;
   }
 
   // Show main app if authenticated
