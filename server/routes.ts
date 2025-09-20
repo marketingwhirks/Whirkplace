@@ -21,6 +21,7 @@ import { authorizeAnalyticsAccess } from "./middleware/authorization";
 import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } from "./middleware/plan-access";
 import { registerMicrosoftTeamsRoutes } from "./routes/microsoft-teams";
 import { registerMicrosoftAuthRoutes } from "./routes/microsoft-auth";
+import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Backdoor login endpoint (for development/testing when Slack is unavailable)
@@ -338,6 +339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register Microsoft integration routes
   registerMicrosoftAuthRoutes(app);
   registerMicrosoftTeamsRoutes(app);
+  registerMicrosoftCalendarRoutes(app);
   
   // Apply organization middleware to all API routes
   app.use("/api", requireOrganization());

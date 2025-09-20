@@ -692,3 +692,40 @@ export type UserKra = typeof userKras.$inferSelect;
 export const insertActionItemSchema = createInsertSchema(actionItems).omit({ id: true, createdAt: true, completedAt: true });
 export type InsertActionItem = z.infer<typeof insertActionItemSchema>;
 export type ActionItem = typeof actionItems.$inferSelect;
+
+// Calendar Event Types for Microsoft Calendar Integration
+export interface CalendarEvent {
+  id: string;
+  title: string;
+  description?: string;
+  startTime: string;
+  endTime: string;
+  timeZone?: string;
+  location?: string;
+  isOnlineMeeting?: boolean;
+  meetingUrl?: string;
+  attendees?: Array<{
+    email: string;
+    name?: string;
+    type?: string;
+  }>;
+  organizer?: {
+    email: string;
+    name?: string;
+  };
+}
+
+export interface CalendarCreateEvent {
+  title: string;
+  description?: string;
+  startTime: string;
+  endTime: string;
+  timeZone?: string;
+  location?: string;
+  isOnlineMeeting?: boolean;
+  attendees?: Array<{
+    email: string;
+    name?: string;
+    type?: string;
+  }>;
+}

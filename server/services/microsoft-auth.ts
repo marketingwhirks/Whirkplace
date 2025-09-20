@@ -36,14 +36,15 @@ export class MicrosoftAuthService {
     const tenantId = process.env.MICROSOFT_TENANT_ID;
     const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
     
-    if (!clientId || !tenantId) {
-      console.warn('Microsoft authentication not configured. Set MICROSOFT_CLIENT_ID and MICROSOFT_TENANT_ID environment variables to enable.');
+    // For confidential client applications, we need ALL credentials
+    if (!clientId || !tenantId || !clientSecret) {
+      console.warn('Microsoft authentication not fully configured. Set MICROSOFT_CLIENT_ID, MICROSOFT_TENANT_ID, and MICROSOFT_CLIENT_SECRET environment variables to enable.');
       return;
     }
 
     this.config = {
       clientId,
-      clientSecret: clientSecret || '', // Optional for public flows
+      clientSecret,
       tenantId,
       redirectUri: process.env.MICROSOFT_REDIRECT_URI || `${process.env.REPL_URL || 'http://localhost:5000'}/auth/microsoft/callback`,
       scopes: ['openid', 'profile', 'User.Read', 'email']
