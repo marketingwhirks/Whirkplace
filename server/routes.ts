@@ -3792,6 +3792,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // PDF Export Endpoints
+  
+  // Export check-in report as PDF
+  app.get("/api/reports/checkins/pdf", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { PDFExportService } = await import("./services/pdf-export");
+      
+      const { startDate, endDate, teamId } = req.query;
+      
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "Start date and end date are required" });
+      }
+      
+      const pdfBuffer = await PDFExportService.generateCheckinReport(
+        req.orgId,
+        new Date(startDate as string),
+        new Date(endDate as string),
+        teamId as string | undefined
+      );
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', 'attachment; filename="checkin-report.pdf"');
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("PDF check-in report error:", error);
+      res.status(500).json({ message: "Failed to generate check-in report PDF" });
+    }
+  });
+
+  // Export one-on-one meeting as PDF
+  app.get("/api/one-on-ones/:id/pdf", requireAuth(), async (req, res) => {
+    try {
+      const { PDFExportService } = await import("./services/pdf-export");
+      
+      // Verify user has access to this meeting
+      const meeting = await storage.getOneOnOne(req.orgId, req.params.id);
+      if (!meeting) {
+        return res.status(404).json({ message: "Meeting not found" });
+      }
+      
+      // Check if user is a participant or has admin/manager access
+      const isParticipant = meeting.participantOneId === req.currentUser!.id || 
+                           meeting.participantTwoId === req.currentUser!.id;
+      const hasManagerAccess = req.currentUser!.role === 'admin' || req.currentUser!.role === 'manager';
+      
+      if (!isParticipant && !hasManagerAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const pdfBuffer = await PDFExportService.generateOneOnOnePDF(req.orgId, req.params.id);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="one-on-one-${req.params.id}.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("PDF one-on-one export error:", error);
+      res.status(500).json({ message: "Failed to generate one-on-one PDF" });
+    }
+  });
+
+  // Export analytics report as PDF
+  app.get("/api/reports/analytics/pdf", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { PDFExportService } = await import("./services/pdf-export");
+      
+      const { period = 'month' } = req.query;
+      
+      if (!['week', 'month', 'quarter'].includes(period as string)) {
+        return res.status(400).json({ message: "Invalid period. Use 'week', 'month', or 'quarter'" });
+      }
+      
+      const pdfBuffer = await PDFExportService.generateAnalyticsReport(
+        req.orgId,
+        period as 'week' | 'month' | 'quarter'
+      );
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="analytics-${period}-report.pdf"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("PDF analytics report error:", error);
+      res.status(500).json({ message: "Failed to generate analytics report PDF" });
+    }
+  });
+
   // Business Signup and Onboarding Routes
   
   // Get available business plans
