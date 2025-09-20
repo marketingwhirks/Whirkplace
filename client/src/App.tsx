@@ -26,6 +26,7 @@ import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import Sidebar from "@/components/layout/sidebar";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
+import { ThemeCustomizer } from "@/components/ThemeCustomizer";
 
 function Router() {
   return (
@@ -48,6 +49,7 @@ function Router() {
           <Route path="/admin" component={Admin} />
           <Route path="/super-admin" component={SuperAdminPage} />
           <Route path="/brand-guide" component={BrandGuideViewer} />
+          <Route path="/theme-customizer" component={ThemeCustomizer} />
           <Route component={NotFound} />
         </Switch>
       </div>
