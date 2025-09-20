@@ -101,7 +101,7 @@ declare global {
   }
 }
 
-// Extend Express Session to include userId and Microsoft auth fields
+// Extend Express Session to include userId and auth fields
 declare module "express-session" {
   interface SessionData {
     userId?: string;
@@ -109,6 +109,8 @@ declare module "express-session" {
     authOrgId?: string;
     microsoftAccessToken?: string;
     microsoftRedirectUri?: string;
+    slackOAuthState?: string;
+    slackOrgSlug?: string;
   }
 }
 

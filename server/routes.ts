@@ -129,11 +129,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Generate OAuth URL with organization context
-      const oauthUrl = generateOAuthURL(org);
+      // Generate cryptographically secure state parameter
+      const state = randomBytes(32).toString('hex');
       
-      // Redirect to Slack OAuth
-      res.redirect(oauthUrl);
+      // Store state in session (more reliable than in-memory storage)
+      req.session.slackOAuthState = state;
+      req.session.slackOrgSlug = org;
+      
+      // Save session before redirect
+      req.session.save((err) => {
+        if (err) {
+          console.error('Failed to save session before Slack OAuth redirect:', err);
+          return res.status(500).json({ message: "Session error during authentication" });
+        }
+        
+        // Build OAuth URL
+        const clientId = process.env.SLACK_CLIENT_ID;
+        const redirectUri = process.env.SLACK_REDIRECT_URI;
+        
+        if (!clientId || !redirectUri) {
+          throw new Error("Slack OAuth not configured. Missing SLACK_CLIENT_ID or SLACK_REDIRECT_URI");
+        }
+        
+        const oauthUrl = `https://slack.com/oauth/v2/authorize?` + 
+          `client_id=${encodeURIComponent(clientId)}&` +
+          `scope=channels:read,chat:write,users:read,users:read.email,team:read,groups:read&` +
+          `state=${encodeURIComponent(state)}&` +
+          `redirect_uri=${encodeURIComponent(redirectUri)}`;
+        
+        // Redirect to Slack OAuth
+        res.redirect(oauthUrl);
+      });
     } catch (error) {
       console.error("Slack OAuth initiation error:", error);
       res.status(500).json({ 
@@ -162,8 +188,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Validate state parameter and get organization slug
-      const organizationSlug = validateOAuthState(state);
+      // Validate state parameter using session storage
+      if (!req.session.slackOAuthState || req.session.slackOAuthState !== state) {
+        return res.status(400).json({ 
+          message: "Invalid or expired OAuth state. Please try again." 
+        });
+      }
+      
+      // Get organization slug from session
+      const organizationSlug = req.session.slackOrgSlug;
       if (!organizationSlug) {
         return res.status(400).json({ 
           message: "Invalid or expired OAuth state. Please try again." 
@@ -317,6 +350,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // CRITICAL: Set session for production authentication 
         if (req.session) {
           req.session.userId = authenticatedUser.id;
+          
+          // Clear OAuth state after successful authentication
+          req.session.slackOAuthState = undefined;
+          req.session.slackOrgSlug = undefined;
         }
         
         // Set HTTP-only secure cookies for authentication fallback
@@ -324,24 +361,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         res.cookie('auth_user_id', authenticatedUser.id, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          secure: true, // Required for SameSite=None
+          sameSite: 'none', // Allow cookies in iframe/embedded context
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
         res.cookie('auth_org_id', organization.id, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          secure: true, // Required for SameSite=None
+          sameSite: 'none', // Allow cookies in iframe/embedded context
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
         res.cookie('auth_session_token', sessionToken, {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
+          secure: true, // Required for SameSite=None
+          sameSite: 'none', // Allow cookies in iframe/embedded context
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
