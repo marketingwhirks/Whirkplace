@@ -31,9 +31,17 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       if (!org || typeof org !== 'string') {
         // Default to Whirkplace master organization if no org parameter provided
         console.log("No organization parameter provided, defaulting to Whirkplace master organization");
-        organization = await storage.getOrganizationBySlug('whirkplace-master');
+        const masterOrgSlug = process.env.MASTER_ORG_SLUG || 'whirkplace-master';
+        organization = await storage.getOrganizationBySlug(masterOrgSlug);
+        
         if (!organization) {
-          // Fallback to default organization
+          // If we're in production, don't allow defaulting to master org for security
+          if (process.env.NODE_ENV === 'production') {
+            return res.status(400).json({ 
+              message: "Organization parameter is required in production environment" 
+            });
+          }
+          // Development fallback only
           organization = await storage.getOrganization('6c070124-fae2-472a-a826-cd460dd6f6ea');
         }
       } else {
@@ -149,23 +157,35 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         // Check if this is the Whirkplace master organization
         const isMasterOrg = orgId === '6c070124-fae2-472a-a826-cd460dd6f6ea';
         
+        // Security: Only allow super admin creation for specific email domains
+        const userEmail = userProfile.mail || userProfile.userPrincipalName || "";
+        const allowedSuperAdminDomains = ['whirkplace.com', 'patrickaccounting.com']; // Add your trusted domains
+        const isAllowedSuperAdminDomain = allowedSuperAdminDomains.some(domain => 
+          userEmail.toLowerCase().endsWith(`@${domain}`)
+        );
+        
+        // Only grant super admin if in master org AND from allowed domain
+        const shouldBeSuperAdmin = isMasterOrg && isAllowedSuperAdminDomain;
+        
         // Create new user
         const newUser: InsertUser = {
           username: userProfile.userPrincipalName || userProfile.mail || userProfile.id,
           password: randomBytes(32).toString('hex'), // Random password since they use Microsoft auth
           name: userProfile.displayName || userProfile.userPrincipalName || "Unknown User",
-          email: userProfile.mail || userProfile.userPrincipalName || "",
+          email: userEmail,
           organizationId: orgId, // Critical: Must include organization ID
           microsoftUserId: userProfile.id,
           authProvider: "microsoft",
-          role: isMasterOrg ? "admin" : "member", // Admin role for master org users
-          isSuperAdmin: isMasterOrg // Super admin for master org users
+          role: shouldBeSuperAdmin ? "admin" : "member", // Admin role only for verified users
+          isSuperAdmin: shouldBeSuperAdmin // Super admin only for verified users
         };
         
         user = await storage.createUser(orgId, newUser);
         
-        if (isMasterOrg) {
+        if (shouldBeSuperAdmin) {
           console.log(`🚀 Created super admin user in Whirkplace master organization: ${user.email}`);
+        } else if (isMasterOrg) {
+          console.log(`⚠️ Created regular user in master org (domain not in allowlist): ${user.email}`);
         }
       } else {
         // Update existing user with Microsoft details (account linking)
