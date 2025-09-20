@@ -28,7 +28,7 @@ import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
 let stripe: Stripe | null = null;
 if (process.env.STRIPE_SECRET_KEY) {
   stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: "2023-10-16",
+    apiVersion: "2025-08-27.basil",
   });
 }
 
@@ -2819,9 +2819,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const meeting of allMeetings) {
         const hasAccess = await canAccessOneOnOne(
           req.orgId,
-          req.userId,
-          req.currentUser.role,
-          req.currentUser.teamId,
+          req.currentUser!.id,
+          req.currentUser!.role,
+          req.currentUser!.teamId,
           meeting
         );
         if (hasAccess) {
@@ -2862,9 +2862,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const meeting of allUpcomingMeetings) {
         const hasAccess = await canAccessOneOnOne(
           req.orgId,
-          req.userId,
-          req.currentUser.role,
-          req.currentUser.teamId,
+          req.currentUser!.id,
+          req.currentUser!.role,
+          req.currentUser!.teamId,
           meeting
         );
         if (hasAccess) {
@@ -2988,19 +2988,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Verify the requesting user can create this meeting
       // Must be a participant, or a manager of one of the participants, or an admin
-      const canCreate = req.currentUser.role === "admin" || 
-                       validatedData.participantOneId === req.userId || 
-                       validatedData.participantTwoId === req.userId;
+      const canCreate = req.currentUser!.role === "admin" || 
+                       validatedData.participantOneId === req.currentUser!.id || 
+                       validatedData.participantTwoId === req.currentUser!.id;
       
-      if (!canCreate && req.currentUser.role === "manager" && req.currentUser.teamId) {
+      if (!canCreate && req.currentUser!.role === "manager" && req.currentUser!.teamId) {
         // Additional check for managers - they can create meetings for their team members
         const [participantOne, participantTwo] = await Promise.all([
           storage.getUser(req.orgId, validatedData.participantOneId),
           storage.getUser(req.orgId, validatedData.participantTwoId)
         ]);
         
-        const canCreateAsManager = (participantOne && (participantOne.teamId === req.currentUser.teamId || participantOne.managerId === req.userId)) ||
-                                  (participantTwo && (participantTwo.teamId === req.currentUser.teamId || participantTwo.managerId === req.userId));
+        const canCreateAsManager = (participantOne && (participantOne.teamId === req.currentUser!.teamId || participantOne.managerId === req.currentUser!.id)) ||
+                                  (participantTwo && (participantTwo.teamId === req.currentUser!.teamId || participantTwo.managerId === req.currentUser!.id));
         
         if (!canCreateAsManager) {
           return res.status(403).json({ message: "You can only create meetings for yourself or your team members" });
@@ -3009,7 +3009,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "You can only create meetings for yourself or your team members" });
       }
       
-      const oneOnOne = await storage.createOneOnOne(req.orgId, validatedData);
+      const oneOnOne = await storage.createOneOnOne(req.orgId, {
+        ...validatedData,
+        organizationId: req.orgId
+      });
       res.status(201).json(oneOnOne);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -3044,9 +3047,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user has access to update this meeting
       const hasAccess = await canAccessOneOnOne(
         req.orgId, 
-        req.userId, 
-        req.currentUser.role, 
-        req.currentUser.teamId, 
+        req.currentUser!.id, 
+        req.currentUser!.role, 
+        req.currentUser!.teamId, 
         existingMeeting
       );
       
