@@ -512,7 +512,106 @@ export interface ComplianceMetricsResult {
   metrics: ComplianceMetrics;
 }
 
+// One-on-One Meetings
+export const oneOnOnes = pgTable("one_on_ones", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  participantOneId: varchar("participant_one_id").notNull(), // Usually manager
+  participantTwoId: varchar("participant_two_id").notNull(), // Usually direct report
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  status: text("status").notNull().default("scheduled"), // scheduled, completed, cancelled, rescheduled
+  agenda: text("agenda"),
+  notes: text("notes"),
+  actionItems: jsonb("action_items").notNull().default([]), // Array of action items
+  duration: integer("duration").default(30), // Duration in minutes
+  location: text("location"), // Meeting location or "virtual"
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgIdx: index("one_on_ones_org_idx").on(table.organizationId),
+  participantsIdx: index("one_on_ones_participants_idx").on(table.participantOneId, table.participantTwoId),
+  scheduledIdx: index("one_on_ones_scheduled_idx").on(table.scheduledAt),
+}));
+
+// KRA Templates  
+export const kraTemplates = pgTable("kra_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  goals: jsonb("goals").notNull().default([]), // Array of goal templates
+  category: text("category").notNull().default("general"), // sales, engineering, marketing, etc.
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgCategoryIdx: index("kra_templates_org_category_idx").on(table.organizationId, table.category),
+  activeIdx: index("kra_templates_active_idx").on(table.isActive),
+}));
+
+// User KRAs (assigned to specific users)
+export const userKras = pgTable("user_kras", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  templateId: varchar("template_id"), // Reference to template, nullable for custom KRAs
+  name: text("name").notNull(),
+  description: text("description"),
+  goals: jsonb("goals").notNull().default([]), // Array with progress tracking
+  assignedBy: varchar("assigned_by").notNull(), // Manager who assigned it
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  status: text("status").notNull().default("active"), // active, completed, paused, cancelled
+  progress: integer("progress").notNull().default(0), // 0-100 percentage
+  lastUpdated: timestamp("last_updated").notNull().default(sql`now()`),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  userIdx: index("user_kras_user_idx").on(table.organizationId, table.userId),
+  assignedByIdx: index("user_kras_assigned_by_idx").on(table.assignedBy),
+  statusIdx: index("user_kras_status_idx").on(table.status),
+  templateIdx: index("user_kras_template_idx").on(table.templateId),
+}));
+
+// Meeting Action Items (extracted for better querying and tracking)
+export const actionItems = pgTable("action_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  meetingId: varchar("meeting_id").notNull(), // Reference to one_on_ones
+  description: text("description").notNull(),
+  assignedTo: varchar("assigned_to").notNull(), // User ID
+  dueDate: timestamp("due_date"),
+  status: text("status").notNull().default("pending"), // pending, completed, overdue, cancelled
+  notes: text("notes"), // Follow-up notes
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  completedAt: timestamp("completed_at"),
+}, (table) => ({
+  meetingIdx: index("action_items_meeting_idx").on(table.meetingId),
+  assignedIdx: index("action_items_assigned_idx").on(table.organizationId, table.assignedTo),
+  statusIdx: index("action_items_status_idx").on(table.status),
+  dueDateIdx: index("action_items_due_date_idx").on(table.dueDate),
+}));
+
 // Organization types
 export const insertOrganizationSchema = createInsertSchema(organizations);
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 export type Organization = typeof organizations.$inferSelect;
+
+// One-on-One types
+export const insertOneOnOneSchema = createInsertSchema(oneOnOnes).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOneOnOne = z.infer<typeof insertOneOnOneSchema>;
+export type OneOnOne = typeof oneOnOnes.$inferSelect;
+
+// KRA Template types
+export const insertKraTemplateSchema = createInsertSchema(kraTemplates).omit({ id: true, createdAt: true });
+export type InsertKraTemplate = z.infer<typeof insertKraTemplateSchema>;
+export type KraTemplate = typeof kraTemplates.$inferSelect;
+
+// User KRA types
+export const insertUserKraSchema = createInsertSchema(userKras).omit({ id: true, createdAt: true, lastUpdated: true });
+export type InsertUserKra = z.infer<typeof insertUserKraSchema>;
+export type UserKra = typeof userKras.$inferSelect;
+
+// Action Item types
+export const insertActionItemSchema = createInsertSchema(actionItems).omit({ id: true, createdAt: true, completedAt: true });
+export type InsertActionItem = z.infer<typeof insertActionItemSchema>;
+export type ActionItem = typeof actionItems.$inferSelect;
