@@ -93,13 +93,20 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         return res.status(400).json({ message: "Failed to get user profile" });
       }
       
-      // Find or create user in our system
-      let user = await storage.getUserByMicrosoftId(userProfile.id, orgId);
+      // Find or create user in our system - Check Microsoft ID first, then email
+      let user = await storage.getUserByMicrosoftId(orgId, userProfile.id);
+      
+      if (!user) {
+        // Try to find existing user by email (for account linking)
+        const email = userProfile.mail || userProfile.userPrincipalName || "";
+        if (email) {
+          user = await storage.getUserByEmail(orgId, email);
+        }
+      }
       
       if (!user) {
         // Create new user
         const newUser: InsertUser = {
-          organizationId: orgId,
           username: userProfile.userPrincipalName || userProfile.mail || userProfile.id,
           password: randomBytes(32).toString('hex'), // Random password since they use Microsoft auth
           name: userProfile.displayName || userProfile.userPrincipalName || "Unknown User",
@@ -107,13 +114,26 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
           microsoftUserId: userProfile.id,
           microsoftAccessToken: tokenData.accessToken,
           microsoftRefreshToken: tokenData.refreshToken,
+          authProvider: "microsoft",
           role: "member"
         };
         
-        user = await storage.createUser(newUser);
+        user = await storage.createUser(orgId, newUser);
       } else {
-        // Update existing user's tokens
-        await storage.updateUserMicrosoftTokens(user.id, tokenData.accessToken, tokenData.refreshToken);
+        // Update existing user with Microsoft details (account linking)
+        const updateData: Partial<InsertUser> = {
+          microsoftUserId: userProfile.id,
+          microsoftAccessToken: tokenData.accessToken,
+          microsoftRefreshToken: tokenData.refreshToken
+        };
+        
+        // If this user was originally created through Slack, keep their auth provider as 'slack'
+        // This allows them to continue using either authentication method
+        if (!user.authProvider || user.authProvider === 'local') {
+          updateData.authProvider = 'microsoft';
+        }
+        
+        user = await storage.updateUser(orgId, user.id, updateData) || user;
       }
       
       // Set session

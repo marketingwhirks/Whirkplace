@@ -109,6 +109,7 @@ export interface IStorage {
   getUserByUsername(organizationId: string, username: string): Promise<User | undefined>;
   getUserByEmail(organizationId: string, email: string): Promise<User | undefined>;
   getUserBySlackId(organizationId: string, slackUserId: string): Promise<User | undefined>;
+  getUserByMicrosoftId(organizationId: string, microsoftUserId: string): Promise<User | undefined>;
   createUser(organizationId: string, user: InsertUser): Promise<User>;
   updateUser(organizationId: string, id: string, user: Partial<InsertUser>): Promise<User | undefined>;
   getUsersByTeam(organizationId: string, teamId: string, includeInactive?: boolean): Promise<User[]>;
@@ -332,6 +333,13 @@ export class DatabaseStorage implements IStorage {
   async getUserBySlackId(organizationId: string, slackUserId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(
       and(eq(users.slackUserId, slackUserId), eq(users.organizationId, organizationId))
+    );
+    return user || undefined;
+  }
+
+  async getUserByMicrosoftId(organizationId: string, microsoftUserId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(
+      and(eq(users.microsoftUserId, microsoftUserId), eq(users.organizationId, organizationId))
     );
     return user || undefined;
   }
