@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -78,14 +78,67 @@ export function ThemeOnboarding({ onComplete, onSkip, isLoading = false, classNa
     if (values.enableCustomTheme) {
       const themeConfig: Record<string, string> = {};
       
-      if (values.primaryColor) themeConfig["--primary"] = `hsl(${hexToHsl(values.primaryColor)})`;
-      if (values.secondaryColor) themeConfig["--secondary"] = `hsl(${hexToHsl(values.secondaryColor)})`;
-      if (values.accentColor) themeConfig["--accent"] = `hsl(${hexToHsl(values.accentColor)})`;
-      if (values.fontFamily) themeConfig["--font-sans"] = values.fontFamily;
+      if (values.primaryColor) {
+        themeConfig["--primary"] = `hsl(${hexToHsl(values.primaryColor)})`;
+        themeConfig["--primary-foreground"] = "hsl(210 40% 98%)";
+      }
+      if (values.secondaryColor) {
+        themeConfig["--secondary"] = `hsl(${hexToHsl(values.secondaryColor)})`;
+        themeConfig["--secondary-foreground"] = "hsl(222.2 84% 4.9%)";
+      }
+      if (values.accentColor) {
+        themeConfig["--accent"] = `hsl(${hexToHsl(values.accentColor)})`;
+        themeConfig["--accent-foreground"] = "hsl(210 40% 98%)";
+      }
+      if (values.fontFamily) {
+        themeConfig["--font-sans"] = values.fontFamily;
+      }
       
       setPreviewTheme(themeConfig);
+      
+      // Apply theme immediately to the page during signup
+      applyThemeToPage(themeConfig);
     } else {
       setPreviewTheme(null);
+      removePageTheme();
+    }
+  };
+
+  const applyThemeToPage = (themeConfig: Record<string, string>) => {
+    // Remove existing preview style
+    const existingStyle = document.getElementById('signup-theme-preview');
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+
+    // Create new style element
+    const cssVariables = Object.entries(themeConfig)
+      .map(([key, value]) => `  ${key}: ${value};`)
+      .join('\n');
+
+    const styleElement = document.createElement('style');
+    styleElement.id = 'signup-theme-preview';
+    styleElement.innerHTML = `
+      :root {
+${cssVariables}
+      }
+      .dark {
+${cssVariables}
+      }
+      ${themeConfig["--font-sans"] ? `
+      body {
+        font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+      }
+      ` : ''}
+    `;
+
+    document.head.appendChild(styleElement);
+  };
+
+  const removePageTheme = () => {
+    const existingStyle = document.getElementById('signup-theme-preview');
+    if (existingStyle) {
+      existingStyle.remove();
     }
   };
 
@@ -122,19 +175,39 @@ export function ThemeOnboarding({ onComplete, onSkip, isLoading = false, classNa
       // Convert form data to theme config
       const themeConfig: Record<string, string> = {};
       
-      if (data.primaryColor) themeConfig["--primary"] = `hsl(${hexToHsl(data.primaryColor)})`;
-      if (data.secondaryColor) themeConfig["--secondary"] = `hsl(${hexToHsl(data.secondaryColor)})`;
-      if (data.accentColor) themeConfig["--accent"] = `hsl(${hexToHsl(data.accentColor)})`;
-      if (data.fontFamily) themeConfig["--font-sans"] = data.fontFamily;
+      if (data.primaryColor) {
+        themeConfig["--primary"] = `hsl(${hexToHsl(data.primaryColor)})`;
+        themeConfig["--primary-foreground"] = "hsl(210 40% 98%)";
+      }
+      if (data.secondaryColor) {
+        themeConfig["--secondary"] = `hsl(${hexToHsl(data.secondaryColor)})`;
+        themeConfig["--secondary-foreground"] = "hsl(222.2 84% 4.9%)";
+      }
+      if (data.accentColor) {
+        themeConfig["--accent"] = `hsl(${hexToHsl(data.accentColor)})`;
+        themeConfig["--accent-foreground"] = "hsl(210 40% 98%)";
+      }
+      if (data.fontFamily) {
+        themeConfig["--font-sans"] = data.fontFamily;
+      }
       
       onComplete({
         ...data,
         themeConfig
       } as any);
     } else {
+      // Clean up theme when skipping
+      removePageTheme();
       onComplete(data);
     }
   };
+
+  // Cleanup on component unmount
+  useEffect(() => {
+    return () => {
+      removePageTheme();
+    };
+  }, []);
 
   return (
     <div className={`max-w-4xl mx-auto space-y-6 ${className}`} data-testid="theme-onboarding">
@@ -159,6 +232,9 @@ export function ThemeOnboarding({ onComplete, onSkip, isLoading = false, classNa
                     form.setValue("enableCustomTheme", checked);
                     if (!checked) {
                       setPreviewTheme(null);
+                      removePageTheme();
+                    } else {
+                      updatePreview();
                     }
                   }}
                 />

@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Building2, CreditCard, Palette, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { DynamicThemeProvider } from "@/components/theme/DynamicThemeProvider";
 
 type SignupStep = "signup" | "plan-selection" | "theme" | "onboarding" | "payment" | "complete";
 
@@ -184,6 +185,12 @@ export default function BusinessSignupPage() {
   };
 
   const handleThemeSkip = () => {
+    // Clean up any preview theme
+    const existingStyle = document.getElementById('signup-theme-preview');
+    if (existingStyle) {
+      existingStyle.remove();
+    }
+    
     setCurrentStep("onboarding");
     toast({
       title: "Theme Skipped",
@@ -276,8 +283,9 @@ export default function BusinessSignupPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5" data-testid="business-signup-page">
-      <div className="container mx-auto px-4 py-8">
+    <DynamicThemeProvider organizationId={signupData.businessInfo?.organizationId}>
+      <div className="min-h-screen bg-gradient-to-br from-primary/5 to-secondary/5" data-testid="business-signup-page">
+        <div className="container mx-auto px-4 py-8">
         {/* Header with Progress */}
         {currentStep !== "complete" && (
           <div className="max-w-4xl mx-auto mb-8">
@@ -329,7 +337,8 @@ export default function BusinessSignupPage() {
         <div className="max-w-6xl mx-auto">
           {renderCurrentStep()}
         </div>
+        </div>
       </div>
-    </div>
+    </DynamicThemeProvider>
   );
 }
