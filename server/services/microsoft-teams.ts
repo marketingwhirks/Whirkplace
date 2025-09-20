@@ -270,5 +270,4 @@ export class MicrosoftTeamsService {
 }
 
 // Export both named and default for compatibility
-export { MicrosoftTeamsService };
-export default MicrosoftTeamsService;
+// Export is already done in class declaration above

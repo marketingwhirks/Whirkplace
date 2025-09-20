@@ -1,1 +1,196 @@
-import type { Express } from \"express\";\nimport { randomBytes } from \"crypto\";\nimport { z } from \"zod\";\nimport { storage } from \"../storage\";\nimport { microsoftAuthService } from \"../services/microsoft-auth\";\nimport { requireOrganization } from \"../middleware/organization\";\nimport { requireAuth, requireRole } from \"../middleware/auth\";\nimport type { InsertUser } from \"@shared/schema\";\n\ninterface MicrosoftTokenData {\n  accessToken: string;\n  account: {\n    homeAccountId: string;\n    localAccountId: string;\n    username: string;\n    name: string;\n    tenantId: string;\n  };\n}\n\nexport function registerMicrosoftAuthRoutes(app: Express): void {\n  \n  // Microsoft OAuth initiation\n  app.get(\"/auth/microsoft\", requireOrganization(), async (req, res) => {\n    try {\n      // Check if Microsoft auth is configured and enabled for this organization\n      const organization = await storage.getOrganization(req.orgId);\n      if (!organization) {\n        return res.status(404).json({ message: \"Organization not found\" });\n      }\n      \n      if (!organization.enableMicrosoftAuth) {\n        return res.status(403).json({ \n          message: \"Microsoft authentication is not enabled for this organization\" \n        });\n      }\n      \n      if (!microsoftAuthService.isConfigured()) {\n        return res.status(500).json({ \n          message: \"Microsoft authentication is not configured on this server\" \n        });\n      }\n      \n      // Generate random state for CSRF protection\n      const state = randomBytes(32).toString('hex');\n      req.session.microsoftAuthState = state;\n      req.session.authOrgId = req.orgId; // Store org ID for callback\n      \n      const authUrl = await microsoftAuthService.getAuthUrl(state);\n      res.redirect(authUrl);\n    } catch (error) {\n      console.error(\"Microsoft auth initiation error:\", error);\n      res.status(500).json({ message: \"Failed to initiate Microsoft authentication\" });\n    }\n  });\n  \n  // Microsoft OAuth callback\n  app.get(\"/auth/microsoft/callback\", async (req, res) => {\n    try {\n      const { code, state, error: authError } = req.query;\n      \n      // Handle OAuth errors\n      if (authError) {\n        console.error(\"Microsoft OAuth error:\", authError);\n        return res.redirect(`/login?error=microsoft_auth_failed`);\n      }\n      \n      // Validate state parameter for CSRF protection\n      if (!state || state !== req.session.microsoftAuthState) {\n        console.error(\"Microsoft auth state mismatch\");\n        return res.redirect(`/login?error=invalid_state`);\n      }\n      \n      if (!code) {\n        return res.redirect(`/login?error=no_authorization_code`);\n      }\n      \n      // Get organization ID from session\n      const orgId = req.session.authOrgId;\n      if (!orgId) {\n        return res.redirect(`/login?error=missing_organization`);\n      }\n      \n      // Exchange code for token\n      const tokenResponse = await microsoftAuthService.exchangeCodeForToken(code as string, state as string);\n      \n      // Get user profile from Microsoft Graph\n      const userProfile = await microsoftAuthService.getUserProfile(tokenResponse.accessToken);\n      \n      // SECURITY: Validate tenant matches organization settings\n      const organization = await storage.getOrganization(orgId);\n      if (!organization) {\n        return res.redirect(`/login?error=organization_not_found`);\n      }\n      \n      // Verify tenant ID matches if organization has specified one\n      if (organization.microsoftTenantId && organization.microsoftTenantId !== tokenResponse.account.tenantId) {\n        console.warn(`Microsoft tenant mismatch: expected ${organization.microsoftTenantId}, got ${tokenResponse.account.tenantId}`);\n        return res.redirect(`/login?error=unauthorized_tenant`);\n      }\n      \n      // Check if user exists in our system\n      let user = await storage.getUserByEmail(orgId, userProfile.mail);\n      \n      if (!user) {\n        // Create new user account\n        const newUserData: InsertUser = {\n          username: userProfile.userPrincipalName.split('@')[0], // Use UPN prefix as username\n          password: randomBytes(32).toString('hex'), // Random password (not used for Microsoft auth)\n          name: userProfile.displayName,\n          email: userProfile.mail,\n          role: \"member\",\n          authProvider: \"microsoft\",\n          microsoftUserId: userProfile.id,\n          microsoftUserPrincipalName: userProfile.userPrincipalName,\n          microsoftDisplayName: userProfile.displayName,\n          microsoftEmail: userProfile.mail,\n          microsoftTenantId: tokenResponse.account.tenantId,\n          isActive: true\n        };\n        \n        user = await storage.createUser(orgId, newUserData);\n      } else {\n        // Update existing user with Microsoft profile data\n        await storage.updateUser(orgId, user.id, {\n          microsoftUserId: userProfile.id,\n          microsoftUserPrincipalName: userProfile.userPrincipalName,\n          microsoftDisplayName: userProfile.displayName,\n          microsoftEmail: userProfile.mail,\n          microsoftTenantId: tokenResponse.account.tenantId,\n          authProvider: \"microsoft\"\n        });\n        \n        // Fetch updated user\n        user = await storage.getUser(orgId, user.id);\n      }\n      \n      if (!user) {\n        return res.redirect(`/login?error=user_creation_failed`);\n      }\n      \n      // Set session\n      req.session.userId = user.id;\n      req.session.organizationId = orgId;\n      req.session.microsoftTokens = {\n        accessToken: tokenResponse.accessToken,\n        account: tokenResponse.account\n      } as MicrosoftTokenData;\n      \n      // Clear auth state\n      delete req.session.microsoftAuthState;\n      delete req.session.authOrgId;\n      \n      console.log(`Microsoft SSO login successful for user: ${user.email}`);\n      \n      // Redirect to dashboard\n      res.redirect('/dashboard');\n    } catch (error) {\n      console.error(\"Microsoft auth callback error:\", error);\n      res.redirect(`/login?error=microsoft_auth_callback_failed`);\n    }\n  });\n  \n  // Microsoft logout\n  app.get(\"/auth/microsoft/logout\", (req, res) => {\n    try {\n      const logoutUrl = microsoftAuthService.getLogoutUrl(`${process.env.REPL_URL || 'http://localhost:5000'}/login`);\n      \n      // Clear session\n      req.session.destroy((err) => {\n        if (err) {\n          console.error('Session destruction error:', err);\n        }\n        res.redirect(logoutUrl);\n      });\n    } catch (error) {\n      console.error(\"Microsoft logout error:\", error);\n      res.redirect('/login');\n    }\n  });\n  \n  // Get Microsoft auth status\n  app.get(\"/api/auth/microsoft/status\", requireOrganization(), async (req, res) => {\n    try {\n      const organization = await storage.getOrganization(req.orgId);\n      if (!organization) {\n        return res.status(404).json({ message: \"Organization not found\" });\n      }\n      \n      res.json({\n        enabled: organization.enableMicrosoftAuth,\n        configured: microsoftAuthService.isConfigured(),\n        tenantId: organization.microsoftTenantId\n      });\n    } catch (error) {\n      console.error(\"Microsoft auth status error:\", error);\n      res.status(500).json({ message: \"Failed to get Microsoft auth status\" });\n    }\n  });\n  \n  // Enable/disable Microsoft auth for organization (admin only)\n  app.put(\"/api/auth/microsoft/settings\", requireAuth(), requireRole('admin'), requireOrganization(), async (req, res) => {\n    try {\n      // This would need proper admin authentication middleware\n      // For now, we'll implement a basic version\n      \n      const { enableMicrosoftAuth, microsoftTenantId } = req.body;\n      \n      const updateData: any = {};\n      if (typeof enableMicrosoftAuth === 'boolean') {\n        updateData.enableMicrosoftAuth = enableMicrosoftAuth;\n      }\n      if (typeof microsoftTenantId === 'string') {\n        updateData.microsoftTenantId = microsoftTenantId;\n      }\n      \n      const organization = await storage.updateOrganization(req.orgId, updateData);\n      \n      if (!organization) {\n        return res.status(404).json({ message: \"Organization not found\" });\n      }\n      \n      res.json({\n        enableMicrosoftAuth: organization.enableMicrosoftAuth,\n        microsoftTenantId: organization.microsoftTenantId\n      });\n    } catch (error) {\n      console.error(\"Microsoft auth settings error:\", error);\n      res.status(500).json({ message: \"Failed to update Microsoft auth settings\" });\n    }\n  });\n}
+import type { Express } from "express";
+import { randomBytes } from "crypto";
+import { z } from "zod";
+import { storage } from "../storage";
+import { microsoftAuthService } from "../services/microsoft-auth";
+import { requireOrganization } from "../middleware/organization";
+import { requireAuth, requireRole } from "../middleware/auth";
+import type { InsertUser } from "@shared/schema";
+
+interface MicrosoftTokenData {
+  accessToken: string;
+  account: {
+    homeAccountId: string;
+    localAccountId: string;
+    username: string;
+    name: string;
+    tenantId: string;
+  };
+}
+
+export function registerMicrosoftAuthRoutes(app: Express): void {
+  
+  // Microsoft OAuth initiation
+  app.get("/auth/microsoft", requireOrganization(), async (req, res) => {
+    try {
+      // Check if Microsoft auth is configured and enabled for this organization
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      if (!organization.enableMicrosoftAuth) {
+        return res.status(403).json({ 
+          message: "Microsoft authentication is not enabled for this organization" 
+        });
+      }
+      
+      if (!microsoftAuthService.isConfigured()) {
+        return res.status(500).json({ 
+          message: "Microsoft authentication is not configured on this server" 
+        });
+      }
+      
+      // Generate random state for CSRF protection
+      const state = randomBytes(32).toString('hex');
+      req.session.microsoftAuthState = state;
+      req.session.authOrgId = req.orgId; // Store org ID for callback
+      
+      const authUrl = await microsoftAuthService.getAuthUrl(state);
+      res.redirect(authUrl);
+    } catch (error) {
+      console.error("Microsoft auth initiation error:", error);
+      res.status(500).json({ message: "Failed to initiate Microsoft authentication" });
+    }
+  });
+
+  // Microsoft OAuth callback
+  app.get("/auth/microsoft/callback", async (req, res) => {
+    try {
+      const { code, state, error: authError } = req.query;
+      
+      // Check for OAuth errors
+      if (authError) {
+        console.error("Microsoft OAuth error:", authError);
+        return res.status(400).json({ message: `OAuth error: ${authError}` });
+      }
+      
+      // Validate required parameters
+      if (!code || !state || typeof code !== 'string' || typeof state !== 'string') {
+        return res.status(400).json({ message: "Invalid OAuth callback parameters" });
+      }
+      
+      // Validate state parameter
+      if (!req.session.microsoftAuthState || req.session.microsoftAuthState !== state) {
+        return res.status(400).json({ message: "Invalid or expired OAuth state" });
+      }
+      
+      // Get organization ID from session
+      const orgId = req.session.authOrgId;
+      if (!orgId) {
+        return res.status(400).json({ message: "Organization context lost" });
+      }
+      
+      // Exchange authorization code for access token
+      const tokenData = await microsoftAuthService.getTokenFromCode(code);
+      if (!tokenData) {
+        return res.status(400).json({ message: "Failed to exchange authorization code" });
+      }
+      
+      // Get user profile from Microsoft Graph
+      const userProfile = await microsoftAuthService.getUserProfile(tokenData.accessToken);
+      if (!userProfile) {
+        return res.status(400).json({ message: "Failed to get user profile" });
+      }
+      
+      // Find or create user in our system
+      let user = await storage.getUserByMicrosoftId(userProfile.id, orgId);
+      
+      if (!user) {
+        // Create new user
+        const newUser: InsertUser = {
+          organizationId: orgId,
+          username: userProfile.userPrincipalName || userProfile.mail || userProfile.id,
+          password: randomBytes(32).toString('hex'), // Random password since they use Microsoft auth
+          name: userProfile.displayName || userProfile.userPrincipalName || "Unknown User",
+          email: userProfile.mail || userProfile.userPrincipalName || "",
+          microsoftUserId: userProfile.id,
+          microsoftAccessToken: tokenData.accessToken,
+          microsoftRefreshToken: tokenData.refreshToken,
+          role: "member"
+        };
+        
+        user = await storage.createUser(newUser);
+      } else {
+        // Update existing user's tokens
+        await storage.updateUserMicrosoftTokens(user.id, tokenData.accessToken, tokenData.refreshToken);
+      }
+      
+      // Set session
+      req.session.userId = user.id;
+      req.session.microsoftAuthState = undefined; // Clear state
+      req.session.authOrgId = undefined; // Clear temp org ID
+      
+      // Set authentication cookies
+      const sessionToken = randomBytes(32).toString('hex');
+      
+      res.cookie('auth_user_id', user.id, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+      });
+      
+      res.cookie('auth_org_id', orgId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+      });
+      
+      res.cookie('auth_session_token', sessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+      });
+      
+      // Redirect to dashboard
+      const organization = await storage.getOrganization(orgId);
+      const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
+      const dashboardUrl = `${appUrl}/#/dashboard?org=${organization?.slug}`;
+      
+      res.redirect(dashboardUrl);
+    } catch (error) {
+      console.error("Microsoft OAuth callback error:", error);
+      res.status(500).json({ message: "Authentication failed" });
+    }
+  });
+
+  // Get current Microsoft auth status
+  app.get("/api/auth/microsoft/status", requireOrganization(), requireAuth(), async (req, res) => {
+    try {
+      const user = await storage.getUser(req.userId!);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const hasValidToken = user.microsoftAccessToken && user.microsoftUserId;
+      
+      res.json({
+        connected: hasValidToken,
+        email: user.email,
+        name: user.name,
+        microsoftUserId: user.microsoftUserId
+      });
+    } catch (error) {
+      console.error("Microsoft auth status error:", error);
+      res.status(500).json({ message: "Failed to get authentication status" });
+    }
+  });
+
+  // Disconnect Microsoft account
+  app.post("/api/auth/microsoft/disconnect", requireOrganization(), requireAuth(), async (req, res) => {
+    try {
+      await storage.clearUserMicrosoftTokens(req.userId!);
+      
+      res.json({ message: "Microsoft account disconnected successfully" });
+    } catch (error) {
+      console.error("Microsoft disconnect error:", error);
+      res.status(500).json({ message: "Failed to disconnect Microsoft account" });
+    }
+  });
+}

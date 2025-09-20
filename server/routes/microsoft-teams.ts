@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
-import MicrosoftTeamsService from "../services/microsoft-teams";
+import { MicrosoftTeamsService } from "../services/microsoft-teams";
 import { requireAuth, requireRole } from "../middleware/auth";
 import { requireOrganization } from "../middleware/organization";
 import { requireFeatureAccess } from "../middleware/plan-access";
