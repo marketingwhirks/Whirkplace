@@ -61,8 +61,26 @@ function AuthenticatedApp() {
     );
   }
 
-  // Show login page if not authenticated or authentication failed
-  if (!currentUser || error) {
+  // Show login page only if definitely not authenticated (401 error)
+  if (error && error.message.includes('401')) {
+    return <LoginPage />;
+  }
+  
+  // If we have an error but it's not 401, show loading (temporary issue)
+  if (error && !currentUser) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <div className="text-center space-y-4">
+          <Skeleton className="w-12 h-12 mx-auto rounded-lg" />
+          <Skeleton className="w-32 h-6 mx-auto" />
+          <div className="text-sm text-muted-foreground">Loading user data...</div>
+        </div>
+      </div>
+    );
+  }
+  
+  // Show login page if definitely no user
+  if (!currentUser) {
     return <LoginPage />;
   }
 

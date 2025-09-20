@@ -42,7 +42,7 @@ export default function LoginPage() {
         setTimeout(() => {
           console.log("Navigating to dashboard...");
           // Use full page reload to ensure proper state refresh
-          window.location.href = "/?org=default";
+          window.location.reload();
         }, 500);
       } else {
         const error = await response.json();

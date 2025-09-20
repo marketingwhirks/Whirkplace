@@ -2100,7 +2100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "User ID is required" });
       }
       
-      const user = await storage.getUserById(req.orgId, userId);
+      const user = await storage.getUser(req.orgId, userId);
       if (!user || !user.slackUserId) {
         return res.status(404).json({ message: "User not found or doesn't have Slack integration" });
       }
@@ -2267,7 +2267,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Handle the slash command
         const { handleSlackSlashCommand } = await import("./services/slack");
-        const response = await handleSlackSlashCommand(command, text, userId, userName, triggerId, organizationId, storage);
+        const response = await handleSlackSlashCommand(command, text, userId || '', userName || '', triggerId || '', organizationId, storage);
         
         // Send response back to Slack
         res.status(200).json(response);
