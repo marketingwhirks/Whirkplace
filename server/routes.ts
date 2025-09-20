@@ -3792,6 +3792,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Send one-on-one meeting report to Slack
+  app.post("/api/one-on-ones/:id/send-to-slack", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
+    try {
+      const meetingId = req.params.id;
+      
+      // Get the meeting and check access permissions
+      const meeting = await storage.getOneOnOne(req.orgId, meetingId);
+      if (!meeting) {
+        return res.status(404).json({ message: "Meeting not found" });
+      }
+      
+      // Check if user has access to this meeting
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId,
+        req.currentUser!.id,
+        req.currentUser!.role,
+        req.currentUser!.teamId,
+        meeting
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get user's Slack ID from their profile
+      const currentUser = req.currentUser!;
+      if (!currentUser.slackUserId) {
+        return res.status(400).json({ 
+          message: "Slack account not connected. Please connect your Slack account first." 
+        });
+      }
+      
+      // Get the other participant's name for the report
+      const otherParticipantId = meeting.participantOneId === currentUser.id 
+        ? meeting.participantTwoId 
+        : meeting.participantOneId;
+      const otherParticipant = await storage.getUser(req.orgId, otherParticipantId);
+      
+      // Import the Slack service function
+      const { sendOneOnOneReportToUser } = await import("./services/slack");
+      
+      // Send the report to Slack
+      const result = await sendOneOnOneReportToUser(
+        currentUser.slackUserId,
+        currentUser.name || currentUser.username,
+        {
+          id: meeting.id,
+          participantName: otherParticipant?.name || 'Unknown',
+          scheduledAt: new Date(meeting.scheduledAt),
+          agenda: meeting.agenda || undefined,
+          notes: meeting.notes || undefined,
+          actionItems: Array.isArray(meeting.actionItems) ? meeting.actionItems : [],
+          duration: meeting.duration || 30,
+          location: meeting.location || undefined,
+          status: meeting.status
+        }
+      );
+      
+      if (result?.success) {
+        res.json({ 
+          message: "Meeting report sent to your Slack DMs successfully!",
+          success: true 
+        });
+      } else {
+        res.status(500).json({ 
+          message: result?.message || "Failed to send report to Slack",
+          success: false 
+        });
+      }
+    } catch (error) {
+      console.error("Send one-on-one to Slack error:", error);
+      res.status(500).json({ message: "Failed to send meeting report to Slack" });
+    }
+  });
+
   // PDF Export Endpoints
   
   // Export check-in report as PDF

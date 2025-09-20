@@ -967,6 +967,146 @@ export async function sendCheckinReviewReminder(
 }
 
 /**
+ * Send one-on-one meeting report to user via DM
+ */
+export async function sendOneOnOneReportToUser(
+  userId: string,
+  userName: string,
+  meetingDetails: {
+    id: string;
+    participantName: string;
+    scheduledAt: Date;
+    agenda?: string;
+    notes?: string;
+    actionItems?: Array<{
+      id?: string;
+      description: string;
+      assignedTo?: string;
+      dueDate?: string;
+      completed?: boolean;
+    }>;
+    duration?: number;
+    location?: string;
+    status: string;
+  }
+) {
+  if (!slack) return;
+
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const meetingUrl = `${appUrl}/#/one-on-ones`;
+  
+  const formatDate = (date: Date) => {
+    return date.toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    });
+  };
+
+  const reportBlocks = [
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `📋 *Your One-on-One Meeting Report*`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `Hi ${userName}! 👋 Here's your meeting summary with *${meetingDetails.participantName}*.`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `📅 *When:* ${formatDate(meetingDetails.scheduledAt)}\n⏱️ *Duration:* ${meetingDetails.duration || 30} minutes\n📍 *Location:* ${meetingDetails.location || 'Not specified'}\n📊 *Status:* ${meetingDetails.status}`
+      }
+    }
+  ];
+
+  // Add agenda section if present
+  if (meetingDetails.agenda && meetingDetails.agenda.trim()) {
+    reportBlocks.push({
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `📋 *Agenda:*\n${meetingDetails.agenda.length > 500 ? meetingDetails.agenda.substring(0, 500) + '...' : meetingDetails.agenda}`
+      }
+    });
+  }
+
+  // Add notes section if present
+  if (meetingDetails.notes && meetingDetails.notes.trim()) {
+    reportBlocks.push({
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `📝 *Meeting Notes:*\n${meetingDetails.notes.length > 1000 ? meetingDetails.notes.substring(0, 1000) + '...' : meetingDetails.notes}`
+      }
+    });
+  }
+
+  // Add action items section if present
+  if (meetingDetails.actionItems && meetingDetails.actionItems.length > 0) {
+    const actionItemsText = meetingDetails.actionItems
+      .map((item, index) => {
+        const status = item.completed ? '✅' : '⏳';
+        const dueText = item.dueDate ? ` (Due: ${new Date(item.dueDate).toLocaleDateString()})` : '';
+        return `${status} ${index + 1}. ${item.description}${dueText}`;
+      })
+      .join('\n');
+
+    reportBlocks.push({
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `🎯 *Action Items:*\n${actionItemsText}`
+      }
+    });
+  }
+
+  // Add footer with link to app
+  reportBlocks.push({
+    type: 'section' as const,
+    text: {
+      type: 'mrkdwn' as const,
+      text: `💡 *Need to update or review more details?* <${meetingUrl}|Open in Whirkplace>`
+    }
+  });
+
+  try {
+    // Send as DM to the user
+    const dmResult = await slack.conversations.open({
+      users: userId
+    });
+
+    if (dmResult.ok && dmResult.channel?.id) {
+      await sendSlackMessage({
+        channel: dmResult.channel.id,
+        blocks: reportBlocks,
+        text: `One-on-one meeting report with ${meetingDetails.participantName}`
+      });
+
+      console.log(`One-on-one report sent to ${userName} (${userId})`);
+      return { success: true, message: 'Report sent successfully' };
+    } else {
+      console.warn(`Failed to send one-on-one report to ${userName}: ${dmResult.error}`);
+      return { success: false, message: `Failed to open DM: ${dmResult.error}` };
+    }
+  } catch (error) {
+    console.error(`Error sending one-on-one report to ${userName}:`, error);
+    return { success: false, message: 'Failed to send report' };
+  }
+}
+
+/**
  * Send personalized welcome message to new users joining the Slack channel
  */
 export async function sendWelcomeMessage(userId: string, userName: string, channelId: string, organizationName?: string) {
