@@ -61,6 +61,11 @@ async function validateAnalyticsAccess(
   requestedScope: AnalyticsScope | undefined, 
   requestedEntityId: string | undefined
 ): Promise<AuthorizationResult> {
+  // Super admin users can access everything across all organizations
+  if (user.isSuperAdmin) {
+    return { authorized: true };
+  }
+
   // Admin users can access all scopes within their organization
   if (user.role === "admin") {
     return { authorized: true };

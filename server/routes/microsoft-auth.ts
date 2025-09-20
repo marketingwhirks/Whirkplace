@@ -26,15 +26,20 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
     try {
       const { org } = req.query;
       
-      // Validate organization slug parameter
-      if (!org || typeof org !== 'string') {
-        return res.status(400).json({ 
-          message: "Organization slug is required. Use ?org=your-organization-slug" 
-        });
-      }
+      let organization;
       
-      // Get organization by slug to validate it exists and get its ID
-      const organization = await storage.getOrganizationBySlug(org);
+      if (!org || typeof org !== 'string') {
+        // Default to Whirkplace master organization if no org parameter provided
+        console.log("No organization parameter provided, defaulting to Whirkplace master organization");
+        organization = await storage.getOrganizationBySlug('whirkplace-master');
+        if (!organization) {
+          // Fallback to default organization
+          organization = await storage.getOrganization('6c070124-fae2-472a-a826-cd460dd6f6ea');
+        }
+      } else {
+        // Get organization by slug to validate it exists and get its ID
+        organization = await storage.getOrganizationBySlug(org);
+      }
       if (!organization) {
         return res.status(404).json({ message: "Organization not found" });
       }
@@ -141,6 +146,9 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       }
       
       if (!user) {
+        // Check if this is the Whirkplace master organization
+        const isMasterOrg = orgId === '6c070124-fae2-472a-a826-cd460dd6f6ea';
+        
         // Create new user
         const newUser: InsertUser = {
           username: userProfile.userPrincipalName || userProfile.mail || userProfile.id,
@@ -150,10 +158,15 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
           organizationId: orgId, // Critical: Must include organization ID
           microsoftUserId: userProfile.id,
           authProvider: "microsoft",
-          role: "member"
+          role: isMasterOrg ? "admin" : "member", // Admin role for master org users
+          isSuperAdmin: isMasterOrg // Super admin for master org users
         };
         
         user = await storage.createUser(orgId, newUser);
+        
+        if (isMasterOrg) {
+          console.log(`🚀 Created super admin user in Whirkplace master organization: ${user.email}`);
+        }
       } else {
         // Update existing user with Microsoft details (account linking)
         const updateData: Partial<InsertUser> = {

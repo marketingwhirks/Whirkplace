@@ -278,6 +278,11 @@ export function requireRole(roles: string[] | string) {
       });
     }
 
+    // Super admin users bypass all role restrictions
+    if (req.currentUser.isSuperAdmin) {
+      return next();
+    }
+
     const allowedRoles = Array.isArray(roles) ? roles : [roles];
     
     if (!allowedRoles.includes(req.currentUser.role)) {
@@ -306,6 +311,11 @@ export function requireTeamLead() {
     }
 
     const user = req.currentUser;
+    
+    // Super admins can access everything
+    if (user.isSuperAdmin) {
+      return next();
+    }
     
     // Admins can access everything
     if (user.role === "admin") {
