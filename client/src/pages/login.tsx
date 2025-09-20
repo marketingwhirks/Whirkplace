@@ -18,6 +18,11 @@ export default function LoginPage() {
     window.location.href = "/auth/slack/login?org=default"; // Replace 'default' with actual org slug if needed
   };
   
+  const handleMicrosoftLogin = () => {
+    // Redirect to the Microsoft OAuth endpoint
+    window.location.href = "/auth/microsoft?org=default";
+  };
+  
   const handleBackdoorLogin = async () => {
     try {
       const response = await fetch('/auth/backdoor?org=default', {
@@ -80,7 +85,7 @@ export default function LoginPage() {
           <CardHeader className="text-center">
             <CardTitle>Sign In</CardTitle>
             <CardDescription>
-              Connect with your Slack account to get started
+              Connect with your Slack or Microsoft account to get started
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -103,6 +108,23 @@ export default function LoginPage() {
                     <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
                   </svg>
                   <span>Continue with Slack</span>
+                </Button>
+                
+                <Button 
+                  onClick={handleMicrosoftLogin}
+                  className="w-full flex items-center justify-center space-x-2"
+                  variant="outline"
+                  size="lg"
+                  data-testid="microsoft-login-button"
+                >
+                  <svg 
+                    viewBox="0 0 24 24" 
+                    className="w-5 h-5" 
+                    fill="currentColor"
+                  >
+                    <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
+                  </svg>
+                  <span>Continue with Microsoft</span>
                 </Button>
                 
                 <div className="text-center text-sm text-muted-foreground">
