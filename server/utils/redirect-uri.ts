@@ -23,9 +23,9 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
     return `https://whirkplace.com${path}`;
   }
 
-  // TEMPORARY FIX: Force use of registered workspace URL for any Replit environment
+  // Use the actual current host for Replit environments
   if (host.includes('.replit.dev') || host.includes('repl.co')) {
-    return `https://workspace.marketingwhirks.repl.co${path}`;
+    return `${protocol}://${host}${path}`;
   }
 
   // Build the full callback URL for development/staging
