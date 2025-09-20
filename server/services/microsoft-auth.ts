@@ -82,12 +82,12 @@ export class MicrosoftAuthService {
     
     try {
       const authCodeUrlParameters = {
-        scopes: this.config.scopes,
-        redirectUri: this.config.redirectUri,
+        scopes: this.config!.scopes,
+        redirectUri: this.config!.redirectUri,
         state: state || undefined,
       };
 
-      const authCodeRequestUrl = await this.msalApp.getAuthCodeUrl(authCodeUrlParameters);
+      const authCodeRequestUrl = await this.msalApp!.getAuthCodeUrl(authCodeUrlParameters);
       return authCodeRequestUrl;
     } catch (error) {
       console.error('Failed to generate Microsoft auth URL:', error);
@@ -106,11 +106,11 @@ export class MicrosoftAuthService {
     try {
       const tokenRequest = {
         code,
-        scopes: this.config.scopes,
-        redirectUri: this.config.redirectUri,
+        scopes: this.config!.scopes,
+        redirectUri: this.config!.redirectUri,
       };
 
-      const response = await this.msalApp.acquireTokenByCode(tokenRequest);
+      const response = await this.msalApp!.acquireTokenByCode(tokenRequest);
       return response;
     } catch (error) {
       console.error('Failed to exchange code for token:', error);

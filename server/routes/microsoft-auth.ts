@@ -111,6 +111,7 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
           password: randomBytes(32).toString('hex'), // Random password since they use Microsoft auth
           name: userProfile.displayName || userProfile.userPrincipalName || "Unknown User",
           email: userProfile.mail || userProfile.userPrincipalName || "",
+          organizationId: orgId, // Critical: Must include organization ID
           microsoftUserId: userProfile.id,
           authProvider: "microsoft",
           role: "member"
