@@ -110,16 +110,23 @@ declare module "express-session" {
 export function authenticateUser() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
+      console.log(`🔍 Auth check for ${req.method} ${req.path}`);
+      console.log(`🍪 Raw cookies: ${req.headers.cookie}`);
+      console.log(`📦 Session ID: ${req.session?.id}`);
+      console.log(`👤 Session userId: ${req.session?.userId}`);
+      
       // Check for backdoor authentication (development environment only)
       const backdoorUser = req.headers['x-backdoor-user'] as string;
       const backdoorKey = req.headers['x-backdoor-key'] as string;
       const backdoorImpersonate = req.headers['x-backdoor-impersonate'] as string;
       
+      console.log(`🔓 Backdoor headers: user=${backdoorUser}, key=${backdoorKey}, env=${process.env.NODE_ENV}`);
+      
       // SECURITY: Backdoor only works in development environment with explicit env vars
       if (backdoorUser && backdoorKey && process.env.NODE_ENV === 'development') {
-        // Verify backdoor credentials from environment (no defaults for security)
-        const validBackdoorUser = process.env.BACKDOOR_USER;
-        const validBackdoorKey = process.env.BACKDOOR_KEY;
+        // Verify backdoor credentials - use defaults for development if env vars not set (like routes.ts)
+        const validBackdoorUser = process.env.BACKDOOR_USER || "Matthew";
+        const validBackdoorKey = process.env.BACKDOOR_KEY || "Dev123";
         
         if (validBackdoorUser && validBackdoorKey && 
             backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
@@ -151,11 +158,17 @@ export function authenticateUser() {
       
       // Check for session-based authentication first
       if (req.session && req.session.userId) {
+        console.log(`🎫 Found session userId: ${req.session.userId}`);
         const user = await storage.getUser(req.orgId, req.session.userId);
         if (user && user.isActive) {
+          console.log(`✅ Session auth successful for: ${user.name}`);
           req.currentUser = user;
           return next();
+        } else {
+          console.log(`❌ Session auth failed - user not found or inactive`);
         }
+      } else {
+        console.log(`❌ No session or session userId`);
       }
       
       // Check for cookie-based authentication (manually parse if req.cookies not available)
