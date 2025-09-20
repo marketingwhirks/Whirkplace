@@ -16,9 +16,6 @@ export async function apiRequest(
     method,
     headers: {
       ...(data ? { "Content-Type": "application/json" } : {}),
-      // Development mode bypass - use backdoor headers if no cookies
-      'x-backdoor-user': 'Matthew',
-      'x-backdoor-key': 'Dev123'
     },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
@@ -62,11 +59,6 @@ export const getQueryFn: <T>(options: {
 
     const res = await fetch(url, {
       credentials: "include",
-      headers: {
-        // Development mode bypass - use backdoor headers if no cookies  
-        'x-backdoor-user': 'Matthew',
-        'x-backdoor-key': 'Dev123'
-      }
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
