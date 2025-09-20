@@ -58,11 +58,13 @@ export default function LoginPage() {
         // Clear any role switching state from previous sessions
         sessionStorage.removeItem('viewAsRole');
         
-        // Add delay and debug logging
-        console.log("Login successful, redirecting...");
+        console.log("🕐 Waiting for cookies to be set...");
         
-        // Immediate reload to ensure cookies are properly available
-        window.location.href = "/?org=default";
+        // CRITICAL FIX: Wait for cookies to be fully set before redirecting
+        setTimeout(() => {
+          console.log("🔄 Redirecting after cookie delay...");
+          window.location.reload(); // Use reload instead of href to ensure same domain
+        }, 500); // 500ms delay to ensure cookies are set
       } else {
         console.error("❌ Login failed with status:", response.status);
         const error = await response.json();
