@@ -377,7 +377,7 @@ export class MicrosoftCalendarService {
   /**
    * Check if calendar integration is available (user is connected)
    */
-  static async isConnected(): Promise<boolean> {
+  async isConnected(): Promise<boolean> {
     try {
       await getUncachableOutlookClient();
       return true;

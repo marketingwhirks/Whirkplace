@@ -9,7 +9,7 @@ export function registerMicrosoftCalendarRoutes(app: Express): void {
   // Get calendar connection status
   app.get("/api/calendar/status", requireOrganization(), requireAuth(), async (req, res) => {
     try {
-      const isConnected = await microsoftCalendarService.constructor.isConnected();
+      const isConnected = await microsoftCalendarService.isConnected();
       
       res.json({
         connected: isConnected,

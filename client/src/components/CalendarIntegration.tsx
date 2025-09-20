@@ -54,7 +54,10 @@ export function CalendarIntegration() {
 
   // Refresh connection status
   const refreshStatus = useMutation({
-    mutationFn: () => apiRequest('/api/calendar/status'),
+    mutationFn: () => fetch('/api/calendar/status').then(res => {
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/calendar/status'] });
       toast({
