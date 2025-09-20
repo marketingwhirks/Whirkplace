@@ -19,8 +19,8 @@ export default function LoginPage() {
   };
   
   const handleMicrosoftLogin = () => {
-    // Redirect to the Microsoft OAuth endpoint  
-    window.location.href = "/auth/microsoft";
+    // Redirect to the Microsoft OAuth endpoint with organization parameter
+    window.location.href = "/auth/microsoft?org=default";
   };
   
   const handleBackdoorLogin = async () => {
