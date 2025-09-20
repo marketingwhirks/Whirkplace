@@ -22,6 +22,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { CalendarIntegration } from "@/components/CalendarIntegration";
 
 import type { User as UserType, Team } from "@shared/schema";
 import { DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
@@ -372,7 +373,7 @@ export default function Settings() {
       <main className="flex-1 overflow-auto p-4 md:p-6">
         <div className="max-w-4xl mx-auto space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-5" data-testid="tabs-settings">
+            <TabsList className="grid w-full grid-cols-6" data-testid="tabs-settings">
               <TabsTrigger value="profile" data-testid="tab-profile">
                 <User className="w-4 h-4 mr-2" />
                 Profile
@@ -394,6 +395,10 @@ export default function Settings() {
               <TabsTrigger value="preferences" data-testid="tab-preferences">
                 <SettingsIcon className="w-4 h-4 mr-2" />
                 Preferences
+              </TabsTrigger>
+              <TabsTrigger value="integrations" data-testid="tab-integrations">
+                <Globe className="w-4 h-4 mr-2" />
+                Integrations
               </TabsTrigger>
             </TabsList>
 
@@ -1224,6 +1229,11 @@ export default function Settings() {
                   </Form>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* Integrations Settings */}
+            <TabsContent value="integrations" className="space-y-6">
+              <CalendarIntegration />
             </TabsContent>
           </Tabs>
         </div>
