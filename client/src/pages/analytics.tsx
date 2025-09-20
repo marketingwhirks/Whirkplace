@@ -858,7 +858,7 @@ const Leaderboard = ({ filters }: { filters: FilterState }) => {
 export default function Analytics() {
   // Get current user and permissions
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
-  const { canViewScope, getDefaultScope, getEntityId } = useUserPermissions();
+  const { canViewScope, getDefaultScope, getEntityId } = useViewAsPermissions();
   
   // Initialize filters based on user role
   const getInitialFilters = (): FilterState => {
