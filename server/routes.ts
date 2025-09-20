@@ -2677,12 +2677,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper function to check One-on-One meeting access permissions
+  async function canAccessOneOnOne(orgId: string, userId: string, userRole: string, userTeamId: string | null, meeting: any): Promise<boolean> {
+    // Admin users can access all meetings
+    if (userRole === "admin") {
+      return true;
+    }
+    
+    // Participants can always access their own meetings
+    if (meeting.participantOneId === userId || meeting.participantTwoId === userId) {
+      return true;
+    }
+    
+    // Managers can access meetings for their team members
+    if (userRole === "manager" && userTeamId) {
+      // Get both participants to check if either is in the manager's team
+      const [participantOne, participantTwo] = await Promise.all([
+        storage.getUser(orgId, meeting.participantOneId),
+        storage.getUser(orgId, meeting.participantTwoId)
+      ]);
+      
+      // Check if either participant is in the manager's team or is their direct report
+      const canAccessParticipantOne = participantOne && (
+        participantOne.teamId === userTeamId || participantOne.managerId === userId
+      );
+      const canAccessParticipantTwo = participantTwo && (
+        participantTwo.teamId === userTeamId || participantTwo.managerId === userId
+      );
+      
+      return canAccessParticipantOne || canAccessParticipantTwo;
+    }
+    
+    return false;
+  }
+
   // One-on-One Meetings endpoints
   app.get("/api/one-on-ones", requireAuth(), async (req, res) => {
     try {
-      const userId = req.userId;
-      const oneOnOnes = await storage.getOneOnOnesByUser(req.orgId, userId);
-      res.json(oneOnOnes);
+      // Get all meetings in the organization, then filter by access permissions
+      const allMeetings = await storage.getAllOneOnOnes(req.orgId);
+      
+      // Filter meetings based on user's access permissions
+      const accessibleMeetings = [];
+      for (const meeting of allMeetings) {
+        const hasAccess = await canAccessOneOnOne(
+          req.orgId,
+          req.userId,
+          req.currentUser.role,
+          req.currentUser.teamId,
+          meeting
+        );
+        if (hasAccess) {
+          accessibleMeetings.push(meeting);
+        }
+      }
+      
+      res.json(accessibleMeetings);
     } catch (error) {
       console.error("GET /api/one-on-ones - Error:", error);
       res.status(500).json({ message: "Failed to fetch one-on-ones" });
@@ -2706,22 +2756,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const { page, limit } = queryResult.data;
-      const userId = req.userId;
       
-      const allUpcomingMeetings = await storage.getUpcomingOneOnOnes(req.orgId, userId);
+      // Get all upcoming meetings in the organization, then filter by access permissions
+      const allUpcomingMeetings = await storage.getAllUpcomingOneOnOnes(req.orgId);
       
-      // Apply pagination
+      // Filter meetings based on user's access permissions
+      const accessibleMeetings = [];
+      for (const meeting of allUpcomingMeetings) {
+        const hasAccess = await canAccessOneOnOne(
+          req.orgId,
+          req.userId,
+          req.currentUser.role,
+          req.currentUser.teamId,
+          meeting
+        );
+        if (hasAccess) {
+          accessibleMeetings.push(meeting);
+        }
+      }
+      
+      // Apply pagination after filtering
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
-      const paginatedMeetings = allUpcomingMeetings.slice(startIndex, endIndex);
+      const paginatedMeetings = accessibleMeetings.slice(startIndex, endIndex);
       
       res.json({
         meetings: paginatedMeetings,
         pagination: {
           page,
           limit,
-          total: allUpcomingMeetings.length,
-          totalPages: Math.ceil(allUpcomingMeetings.length / limit)
+          total: accessibleMeetings.length,
+          totalPages: Math.ceil(accessibleMeetings.length / limit)
         }
       });
     } catch (error) {
@@ -2747,25 +2812,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const { page, limit } = queryResult.data;
-      const userId = req.userId;
       
-      // Get more records than needed for pagination
-      const maxRecords = page * limit + limit;
-      const pastMeetings = await storage.getPastOneOnOnes(req.orgId, userId, maxRecords);
+      // Get all past meetings in the organization, then filter by access permissions  
+      const allPastMeetings = await storage.getAllPastOneOnOnes(req.orgId);
       
-      // Apply pagination
+      // Filter meetings based on user's access permissions
+      const accessibleMeetings = [];
+      for (const meeting of allPastMeetings) {
+        const hasAccess = await canAccessOneOnOne(
+          req.orgId,
+          req.userId,
+          req.currentUser.role,
+          req.currentUser.teamId,
+          meeting
+        );
+        if (hasAccess) {
+          accessibleMeetings.push(meeting);
+        }
+      }
+      
+      // Apply pagination after filtering
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
-      const paginatedMeetings = pastMeetings.slice(startIndex, endIndex);
+      const paginatedMeetings = accessibleMeetings.slice(startIndex, endIndex);
       
       res.json({
         meetings: paginatedMeetings,
         pagination: {
           page,
           limit,
-          total: pastMeetings.length,
-          totalPages: Math.ceil(pastMeetings.length / limit),
-          hasMore: pastMeetings.length === maxRecords // Indicates there might be more records
+          total: accessibleMeetings.length,
+          totalPages: Math.ceil(accessibleMeetings.length / limit)
         }
       });
     } catch (error) {
@@ -2781,9 +2858,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "One-on-one not found" });
       }
       
-      // Check if user is a participant in this meeting
-      if (oneOnOne.participantOneId !== req.userId && oneOnOne.participantTwoId !== req.userId) {
-        return res.status(403).json({ message: "You can only access meetings you participate in" });
+      // Check if user has access to this meeting
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId, 
+        req.userId, 
+        req.currentUser.role, 
+        req.currentUser.teamId, 
+        oneOnOne
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
       }
       
       res.json(oneOnOne);
@@ -2804,9 +2889,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const validatedData = validationSchema.parse(req.body);
       
-      // Verify the requesting user is one of the participants
-      if (validatedData.participantOneId !== req.userId && validatedData.participantTwoId !== req.userId) {
-        return res.status(403).json({ message: "You can only create meetings you participate in" });
+      // Verify the requesting user can create this meeting
+      // Must be a participant, or a manager of one of the participants, or an admin
+      const canCreate = req.currentUser.role === "admin" || 
+                       validatedData.participantOneId === req.userId || 
+                       validatedData.participantTwoId === req.userId;
+      
+      if (!canCreate && req.currentUser.role === "manager" && req.currentUser.teamId) {
+        // Additional check for managers - they can create meetings for their team members
+        const [participantOne, participantTwo] = await Promise.all([
+          storage.getUser(req.orgId, validatedData.participantOneId),
+          storage.getUser(req.orgId, validatedData.participantTwoId)
+        ]);
+        
+        const canCreateAsManager = (participantOne && (participantOne.teamId === req.currentUser.teamId || participantOne.managerId === req.userId)) ||
+                                  (participantTwo && (participantTwo.teamId === req.currentUser.teamId || participantTwo.managerId === req.userId));
+        
+        if (!canCreateAsManager) {
+          return res.status(403).json({ message: "You can only create meetings for yourself or your team members" });
+        }
+      } else if (!canCreate) {
+        return res.status(403).json({ message: "You can only create meetings for yourself or your team members" });
       }
       
       const oneOnOne = await storage.createOneOnOne(req.orgId, validatedData);
@@ -2841,9 +2944,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "One-on-one not found" });
       }
       
-      // Check if user is a participant in this meeting
-      if (existingMeeting.participantOneId !== req.userId && existingMeeting.participantTwoId !== req.userId) {
-        return res.status(403).json({ message: "You can only update meetings you participate in" });
+      // Check if user has access to update this meeting
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId, 
+        req.userId, 
+        req.currentUser.role, 
+        req.currentUser.teamId, 
+        existingMeeting
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
       }
       
       const updatedOneOnOne = await storage.updateOneOnOne(req.orgId, req.params.id, validatedData);
@@ -2869,9 +2980,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "One-on-one not found" });
       }
       
-      // Check if user is a participant in this meeting
-      if (existingMeeting.participantOneId !== req.userId && existingMeeting.participantTwoId !== req.userId) {
-        return res.status(403).json({ message: "You can only delete meetings you participate in" });
+      // Check if user has access to delete this meeting
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId, 
+        req.userId, 
+        req.currentUser.role, 
+        req.currentUser.teamId, 
+        existingMeeting
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
       }
       
       const deleted = await storage.deleteOneOnOne(req.orgId, req.params.id);
@@ -2895,8 +3014,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "One-on-one not found" });
       }
       
-      if (meeting.participantOneId !== req.userId && meeting.participantTwoId !== req.userId) {
-        return res.status(403).json({ message: "You can only access action items for meetings you participate in" });
+      // Check if user has access to this meeting's action items
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId, 
+        req.userId, 
+        req.currentUser.role, 
+        req.currentUser.teamId, 
+        meeting
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
       }
       
       const actionItems = await storage.getActionItemsByMeeting(req.orgId, req.params.id);
@@ -2923,8 +3051,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "One-on-one not found" });
       }
       
-      if (meeting.participantOneId !== req.userId && meeting.participantTwoId !== req.userId) {
-        return res.status(403).json({ message: "You can only create action items for meetings you participate in" });
+      // Check if user has access to create action items for this meeting
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId, 
+        req.userId, 
+        req.currentUser.role, 
+        req.currentUser.teamId, 
+        meeting
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
       }
       
       const actionItemData = {
@@ -2959,12 +3096,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Associated meeting not found" });
       }
       
-      const canUpdate = existingActionItem.assignedTo === req.userId || 
-                       meeting.participantOneId === req.userId || 
-                       meeting.participantTwoId === req.userId;
+      // Check if user has access to update this action item
+      const hasMeetingAccess = await canAccessOneOnOne(
+        req.orgId, 
+        req.userId, 
+        req.currentUser.role, 
+        req.currentUser.teamId, 
+        meeting
+      );
+      
+      const canUpdate = existingActionItem.assignedTo === req.userId || hasMeetingAccess;
       
       if (!canUpdate) {
-        return res.status(403).json({ message: "You can only update action items you're assigned to or from meetings you participate in" });
+        return res.status(403).json({ message: "Access denied" });
       }
       
       const updateData: any = {};
@@ -2999,12 +3143,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Associated meeting not found" });
       }
       
-      const canDelete = existingActionItem.assignedTo === req.userId || 
-                       meeting.participantOneId === req.userId || 
-                       meeting.participantTwoId === req.userId;
+      // Check if user has access to delete this action item
+      const hasMeetingAccess = await canAccessOneOnOne(
+        req.orgId, 
+        req.userId, 
+        req.currentUser.role, 
+        req.currentUser.teamId, 
+        meeting
+      );
+      
+      const canDelete = existingActionItem.assignedTo === req.userId || hasMeetingAccess;
       
       if (!canDelete) {
-        return res.status(403).json({ message: "You can only delete action items you're assigned to or from meetings you participate in" });
+        return res.status(403).json({ message: "Access denied" });
       }
       
       const deleted = await storage.deleteActionItem(req.orgId, req.params.id);

@@ -179,12 +179,15 @@ export interface IStorage {
 
   // One-on-One Meetings
   getOneOnOne(organizationId: string, id: string): Promise<OneOnOne | undefined>;
+  getAllOneOnOnes(organizationId: string): Promise<OneOnOne[]>;
   createOneOnOne(organizationId: string, oneOnOne: InsertOneOnOne): Promise<OneOnOne>;
   updateOneOnOne(organizationId: string, id: string, oneOnOne: Partial<InsertOneOnOne>): Promise<OneOnOne | undefined>;
   deleteOneOnOne(organizationId: string, id: string): Promise<boolean>;
   getOneOnOnesByUser(organizationId: string, userId: string): Promise<OneOnOne[]>;
   getOneOnOnesByParticipants(organizationId: string, participantOneId: string, participantTwoId: string): Promise<OneOnOne[]>;
+  getAllUpcomingOneOnOnes(organizationId: string): Promise<OneOnOne[]>;
   getUpcomingOneOnOnes(organizationId: string, userId: string): Promise<OneOnOne[]>;
+  getAllPastOneOnOnes(organizationId: string): Promise<OneOnOne[]>;
   getPastOneOnOnes(organizationId: string, userId: string, limit?: number): Promise<OneOnOne[]>;
 
   // KRA Templates
@@ -2152,6 +2155,19 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async getAllOneOnOnes(organizationId: string): Promise<OneOnOne[]> {
+    try {
+      return await db
+        .select()
+        .from(oneOnOnes)
+        .where(eq(oneOnOnes.organizationId, organizationId))
+        .orderBy(desc(oneOnOnes.scheduledAt));
+    } catch (error) {
+      console.error("Failed to fetch all one-on-ones:", error);
+      throw error;
+    }
+  }
+
   async getOneOnOnesByUser(organizationId: string, userId: string): Promise<OneOnOne[]> {
     try {
       return await db
@@ -2187,6 +2203,24 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async getAllUpcomingOneOnOnes(organizationId: string): Promise<OneOnOne[]> {
+    try {
+      const now = new Date();
+      return await db
+        .select()
+        .from(oneOnOnes)
+        .where(and(
+          eq(oneOnOnes.organizationId, organizationId),
+          gte(oneOnOnes.scheduledAt, now),
+          eq(oneOnOnes.status, "scheduled")
+        ))
+        .orderBy(oneOnOnes.scheduledAt);
+    } catch (error) {
+      console.error("Failed to fetch all upcoming one-on-ones:", error);
+      throw error;
+    }
+  }
+
   async getUpcomingOneOnOnes(organizationId: string, userId: string): Promise<OneOnOne[]> {
     try {
       const now = new Date();
@@ -2202,6 +2236,23 @@ export class DatabaseStorage implements IStorage {
         .orderBy(oneOnOnes.scheduledAt);
     } catch (error) {
       console.error("Failed to fetch upcoming one-on-ones:", error);
+      throw error;
+    }
+  }
+
+  async getAllPastOneOnOnes(organizationId: string): Promise<OneOnOne[]> {
+    try {
+      const now = new Date();
+      return await db
+        .select()
+        .from(oneOnOnes)
+        .where(and(
+          eq(oneOnOnes.organizationId, organizationId),
+          lt(oneOnOnes.scheduledAt, now)
+        ))
+        .orderBy(desc(oneOnOnes.scheduledAt));
+    } catch (error) {
+      console.error("Failed to fetch all past one-on-ones:", error);
       throw error;
     }
   }
