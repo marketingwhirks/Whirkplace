@@ -72,6 +72,7 @@ export class MicrosoftAuthService {
 
   /**
    * Generate Microsoft OAuth authorization URL
+   * Build manually to avoid MSAL authority metadata fetch hanging
    */
   async getAuthUrl(redirectUri: string, state?: string): Promise<string> {
     if (!this.isConfigured()) {
@@ -79,14 +80,27 @@ export class MicrosoftAuthService {
     }
     
     try {
-      const authCodeUrlParameters = {
-        scopes: this.config!.scopes,
-        redirectUri,
-        state: state || undefined,
-      };
-
-      const authCodeRequestUrl = await this.msalApp!.getAuthCodeUrl(authCodeUrlParameters);
-      return authCodeRequestUrl;
+      // Build authorize URL manually to avoid MSAL network hangs
+      const tenantId = this.config!.tenantId;
+      const clientId = this.config!.clientId;
+      const scopes = encodeURIComponent('openid profile email User.Read');
+      
+      const params = new URLSearchParams({
+        client_id: clientId,
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        response_mode: 'query',
+        scope: scopes,
+        prompt: 'select_account'
+      });
+      
+      if (state) {
+        params.append('state', state);
+      }
+      
+      const authUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params.toString()}`;
+      console.log('Generated Microsoft auth URL:', authUrl);
+      return authUrl;
     } catch (error) {
       console.error('Failed to generate Microsoft auth URL:', error);
       throw new Error('Failed to generate authorization URL');

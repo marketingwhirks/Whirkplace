@@ -57,8 +57,23 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       req.session.authOrgId = req.orgId; // Store org ID for callback
       req.session.microsoftRedirectUri = redirectUri; // Store for callback validation
       
-      const authUrl = await microsoftAuthService.getAuthUrl(redirectUri, state);
-      res.redirect(authUrl);
+      // Save session before redirect to ensure state persistence
+      req.session.save((err) => {
+        if (err) {
+          console.error('Failed to save session before redirect:', err);
+          return res.status(500).json({ message: "Session error during authentication" });
+        }
+        
+        microsoftAuthService.getAuthUrl(redirectUri, state)
+          .then(authUrl => {
+            console.log('Redirecting to Microsoft auth URL:', authUrl);
+            res.redirect(authUrl);
+          })
+          .catch(error => {
+            console.error("Microsoft auth URL generation error:", error);
+            res.status(500).json({ message: "Failed to initiate Microsoft authentication" });
+          });
+      });
     } catch (error) {
       console.error("Microsoft auth initiation error:", error);
       res.status(500).json({ message: "Failed to initiate Microsoft authentication" });
