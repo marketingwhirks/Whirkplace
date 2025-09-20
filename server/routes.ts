@@ -452,29 +452,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         // Clear session cookie with matching attributes from session config
         res.clearCookie('connect.sid', {
-          secure: process.env.NODE_ENV === 'production',
+          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
           httpOnly: true,
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
           path: '/'
         });
         // Also clear auth cookies used by cookie-based authentication
         // SECURITY FIX: Must match exact same attributes used when setting cookies
         res.clearCookie('auth_user_id', {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
           path: '/'
         });
         res.clearCookie('auth_org_id', {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
           path: '/'
         });
         res.clearCookie('auth_session_token', {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
           path: '/'
         });
         res.json({ message: "Logged out successfully" });
@@ -482,27 +482,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } else {
       // If no session exists, just clear cookies and respond
       res.clearCookie('connect.sid', {
-        secure: process.env.NODE_ENV === 'production',
+        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
         httpOnly: true,
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
         path: '/'
       });
       res.clearCookie('auth_user_id', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
         path: '/'
       });
       res.clearCookie('auth_org_id', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
         path: '/'
       });
       res.clearCookie('auth_session_token', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
         path: '/'
       });
       res.json({ message: "Logged out successfully" });

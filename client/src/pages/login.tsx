@@ -67,13 +67,13 @@ export default function LoginPage() {
           variant: "destructive" 
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("🚨 Network/Fetch error:", error);
-      console.error("🚨 Error type:", error.name);
-      console.error("🚨 Error message:", error.message);
+      console.error("🚨 Error type:", error?.name);
+      console.error("🚨 Error message:", error?.message);
       toast({ 
         title: "Error", 
-        description: `Network error: ${error.message}`,
+        description: `Network error: ${error?.message || 'Unknown error'}`,
         variant: "destructive" 
       });
     }

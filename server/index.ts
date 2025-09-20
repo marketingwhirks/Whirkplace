@@ -83,10 +83,11 @@ app.use(session({
   name: 'connect.sid',
   proxy: true, // Trust proxy for Replit's TLS terminator
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // Use secure only in production (HTTPS)
+    secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG, // Use secure for production or Replit environment
     httpOnly: true,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // Allow iframe in production, lax for dev
+    sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax', // Allow iframe for Replit/production
+    domain: undefined // Let browser set domain automatically
   }
 }));
 
