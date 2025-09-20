@@ -678,6 +678,28 @@ export const actionItems = pgTable("action_items", {
   dueDateIdx: index("action_items_due_date_idx").on(table.dueDate),
 }));
 
+// Bug Reports & Support System
+export const bugReports = pgTable("bug_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: text("category").notNull().default("bug"), // bug, question, feature_request
+  severity: text("severity").notNull().default("medium"), // low, medium, high, critical
+  pagePath: text("page_path"),
+  metadata: jsonb("metadata").default({}),
+  status: text("status").notNull().default("open"), // open, triaged, in_progress, resolved, closed
+  resolutionNote: text("resolution_note"),
+  assignedTo: varchar("assigned_to"),
+  screenshotUrl: text("screenshot_url"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  resolvedAt: timestamp("resolved_at"),
+}, (table) => ({
+  orgStatusIdx: index("bug_reports_org_status_idx").on(table.organizationId, table.status),
+  orgCreatedAtIdx: index("bug_reports_org_created_at_idx").on(table.organizationId, table.createdAt),
+}));
+
 // Business Plans
 export const businessPlans = pgTable("business_plans", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -775,6 +797,10 @@ export type UserKra = typeof userKras.$inferSelect;
 export const insertActionItemSchema = createInsertSchema(actionItems).omit({ id: true, createdAt: true, completedAt: true });
 export type InsertActionItem = z.infer<typeof insertActionItemSchema>;
 export type ActionItem = typeof actionItems.$inferSelect;
+
+export const insertBugReportSchema = createInsertSchema(bugReports).omit({ id: true, createdAt: true, resolvedAt: true });
+export type InsertBugReport = z.infer<typeof insertBugReportSchema>;
+export type BugReport = typeof bugReports.$inferSelect;
 
 // Calendar Event Types for Microsoft Calendar Integration
 export interface CalendarEvent {
