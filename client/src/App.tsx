@@ -21,6 +21,7 @@ import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import Admin from "@/pages/admin";
 import LoginPage from "@/pages/login";
+import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import Sidebar from "@/components/layout/sidebar";
 
 function Router() {
@@ -88,7 +89,11 @@ function App() {
       <TooltipProvider>
         <RoleSwitchProvider>
           <Toaster />
-          <AuthenticatedApp />
+          <Switch>
+            <Route path="/signup" component={BusinessSignupPage} />
+            <Route path="/login" component={LoginPage} />
+            <Route component={AuthenticatedApp} />
+          </Switch>
         </RoleSwitchProvider>
       </TooltipProvider>
     </QueryClientProvider>

@@ -668,10 +668,83 @@ export const actionItems = pgTable("action_items", {
   dueDateIdx: index("action_items_due_date_idx").on(table.dueDate),
 }));
 
+// Business Plans
+export const businessPlans = pgTable("business_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // "Starter", "Professional", "Enterprise"
+  displayName: text("display_name").notNull(),
+  description: text("description"),
+  price: integer("price").notNull().default(0), // Price in cents
+  billingPeriod: text("billing_period").notNull().default("monthly"), // "monthly", "annual"
+  features: text("features").array().notNull().default(sql`'{}'`), // Array of feature descriptions
+  maxUsers: integer("max_users"), // null = unlimited
+  maxTeams: integer("max_teams"), // null = unlimited
+  hasSlackIntegration: boolean("has_slack_integration").notNull().default(false),
+  hasMicrosoftIntegration: boolean("has_microsoft_integration").notNull().default(false),
+  hasAdvancedAnalytics: boolean("has_advanced_analytics").notNull().default(false),
+  hasApiAccess: boolean("has_api_access").notNull().default(false),
+  priority: integer("priority").notNull().default(0), // Display order
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+});
+
+// Organization onboarding status
+export const organizationOnboarding = pgTable("organization_onboarding", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  step: text("step").notNull().default("signup"), // "signup", "plan_selection", "team_setup", "user_invites", "settings", "completed"
+  isCompleted: boolean("is_completed").notNull().default(false),
+  completedSteps: text("completed_steps").array().notNull().default(sql`'{}'`), // Array of completed step names
+  currentStepData: jsonb("current_step_data"), // Store step-specific data
+  startedAt: timestamp("started_at").notNull().default(sql`now()`),
+  completedAt: timestamp("completed_at"),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgIdx: index("onboarding_organization_idx").on(table.organizationId),
+  stepIdx: index("onboarding_step_idx").on(table.step),
+}));
+
+// User invitations during onboarding
+export const userInvitations = pgTable("user_invitations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  name: text("name"),
+  role: text("role").notNull().default("member"), // "admin", "manager", "member"
+  teamId: varchar("team_id").references(() => teams.id, { onDelete: "set null" }),
+  invitedBy: varchar("invited_by").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("pending"), // "pending", "accepted", "expired"
+  token: text("token").notNull().unique(), // Secure invitation token
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgIdx: index("invitations_organization_idx").on(table.organizationId),
+  emailIdx: index("invitations_email_idx").on(table.email),
+  tokenIdx: index("invitations_token_idx").on(table.token),
+  statusIdx: index("invitations_status_idx").on(table.status),
+}));
+
 // Organization types
 export const insertOrganizationSchema = createInsertSchema(organizations);
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 export type Organization = typeof organizations.$inferSelect;
+
+// Business Plan types
+export const insertBusinessPlanSchema = createInsertSchema(businessPlans).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertBusinessPlan = z.infer<typeof insertBusinessPlanSchema>;
+export type BusinessPlan = typeof businessPlans.$inferSelect;
+
+// Organization Onboarding types
+export const insertOrganizationOnboardingSchema = createInsertSchema(organizationOnboarding).omit({ id: true, startedAt: true, updatedAt: true });
+export type InsertOrganizationOnboarding = z.infer<typeof insertOrganizationOnboardingSchema>;
+export type OrganizationOnboarding = typeof organizationOnboarding.$inferSelect;
+
+// User Invitation types
+export const insertUserInvitationSchema = createInsertSchema(userInvitations).omit({ id: true, token: true, createdAt: true });
+export type InsertUserInvitation = z.infer<typeof insertUserInvitationSchema>;
+export type UserInvitation = typeof userInvitations.$inferSelect;
 
 // One-on-One types
 export const insertOneOnOneSchema = createInsertSchema(oneOnOnes).omit({ id: true, createdAt: true, updatedAt: true });

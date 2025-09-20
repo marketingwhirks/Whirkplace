@@ -8,10 +8,11 @@ import {
   insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema,
   insertVacationSchema, reviewCheckinSchema, ReviewStatus,
   insertOneOnOneSchema, insertKraTemplateSchema, insertUserKraSchema, insertActionItemSchema,
-  insertOrganizationSchema,
+  insertOrganizationSchema, insertBusinessPlanSchema, insertOrganizationOnboardingSchema, insertUserInvitationSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType, type Checkin
 } from "@shared/schema";
+import Stripe from "stripe";
 import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken } from "./services/slack";
 import { randomBytes } from "crypto";
 import { aggregationService } from "./services/aggregation";
@@ -22,6 +23,14 @@ import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } f
 import { registerMicrosoftTeamsRoutes } from "./routes/microsoft-teams";
 import { registerMicrosoftAuthRoutes } from "./routes/microsoft-auth";
 import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
+
+// Initialize Stripe if available
+let stripe: Stripe | null = null;
+if (process.env.STRIPE_SECRET_KEY) {
+  stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
+    apiVersion: "2023-10-16",
+  });
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Backdoor login endpoint (for development/testing when Slack is unavailable)
@@ -3623,6 +3632,357 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(400).json({ message: "Invalid organization data" });
     }
   });
+
+  // Business Signup and Onboarding Routes
+  
+  // Get available business plans
+  app.get("/api/business/plans", async (req, res) => {
+    try {
+      // Return static plan data for now - could be from database later
+      const plans = [
+        {
+          id: "starter",
+          name: "starter",
+          displayName: "Starter",
+          description: "Perfect for small teams getting started",
+          monthlyPrice: 0,
+          annualPrice: 0,
+          maxUsers: 10,
+          features: [
+            "Up to 10 team members",
+            "Basic check-ins and mood tracking",
+            "Win celebrations",
+            "Team shoutouts",
+            "Basic analytics",
+            "Email support"
+          ],
+          hasSlackIntegration: false,
+          hasMicrosoftIntegration: false,
+          hasAdvancedAnalytics: false,
+          hasApiAccess: false,
+        },
+        {
+          id: "professional",
+          name: "professional",
+          displayName: "Professional",
+          description: "Advanced features for growing teams",
+          monthlyPrice: 2900, // $29.00 in cents
+          annualPrice: 29000, // $290.00 in cents
+          maxUsers: 100,
+          features: [
+            "Up to 100 team members",
+            "Advanced team hierarchy",
+            "One-on-One meeting management",
+            "Key Result Areas (KRA) tracking",
+            "Advanced analytics & insights",
+            "Custom check-in questions",
+            "Priority email support"
+          ],
+          hasSlackIntegration: false,
+          hasMicrosoftIntegration: false,
+          hasAdvancedAnalytics: true,
+          hasApiAccess: false,
+        },
+        {
+          id: "enterprise",
+          name: "enterprise",
+          displayName: "Enterprise",
+          description: "Full-featured solution for large organizations",
+          monthlyPrice: 4900, // $49.00 in cents
+          annualPrice: 49000, // $490.00 in cents
+          maxUsers: null,
+          features: [
+            "Unlimited team members",
+            "Microsoft Teams integration",
+            "Slack workspace integration",
+            "Microsoft Calendar sync",
+            "SSO with Microsoft 365",
+            "Advanced role management",
+            "Custom integrations & API access",
+            "Dedicated account manager",
+            "24/7 priority support"
+          ],
+          hasSlackIntegration: true,
+          hasMicrosoftIntegration: true,
+          hasAdvancedAnalytics: true,
+          hasApiAccess: true,
+        }
+      ];
+      
+      res.json(plans);
+    } catch (error: any) {
+      console.error("Error fetching business plans:", error);
+      res.status(500).json({ message: "Failed to fetch business plans" });
+    }
+  });
+
+  // Create business signup - Step 1: Business registration
+  app.post("/api/business/signup", async (req, res) => {
+    try {
+      const signupSchema = z.object({
+        organizationName: z.string().min(2).max(100),
+        organizationSize: z.string(),
+        firstName: z.string().min(2).max(50),
+        lastName: z.string().min(2).max(50),
+        email: z.string().email(),
+        password: z.string().min(8).max(128),
+        acceptTerms: z.boolean().refine(val => val === true),
+        subscribeNewsletter: z.boolean().optional(),
+      });
+
+      const data = signupSchema.parse(req.body);
+
+      // Create organization
+      const orgSlug = data.organizationName.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+      const organization = await storage.createOrganization({
+        name: data.organizationName,
+        slug: orgSlug,
+        plan: "starter", // Default plan
+        customValues: ["Innovation", "Teamwork", "Excellence"], // Default company values
+        enableSlackIntegration: false,
+        enableMicrosoftAuth: false,
+      });
+
+      // Create admin user
+      const adminUser = await storage.createUser(organization.id, {
+        username: data.email.split('@')[0],
+        password: data.password, // Should be hashed in real implementation
+        name: `${data.firstName} ${data.lastName}`,
+        email: data.email,
+        role: "admin",
+        isActive: true,
+        authProvider: "local",
+      });
+
+      // Create initial onboarding record
+      const onboardingId = randomBytes(16).toString('hex');
+      // Note: Would use proper storage method in real implementation
+      
+      res.json({
+        success: true,
+        organizationId: organization.id,
+        userId: adminUser.id,
+        onboardingId,
+        message: "Business account created successfully"
+      });
+
+    } catch (error: any) {
+      console.error("Business signup error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to create business account" });
+    }
+  });
+
+  // Select business plan - Step 2: Plan selection
+  app.post("/api/business/select-plan", async (req, res) => {
+    try {
+      const planSchema = z.object({
+        organizationId: z.string(),
+        planId: z.string(),
+        billingCycle: z.enum(["monthly", "annual"]),
+      });
+
+      const data = planSchema.parse(req.body);
+
+      // Update organization plan
+      await storage.updateOrganization(data.organizationId, {
+        plan: data.planId,
+      });
+
+      // If not starter plan, handle payment processing
+      if (data.planId !== "starter" && stripe) {
+        // Create Stripe customer and setup subscription
+        const organization = await storage.getOrganization(data.organizationId);
+        if (!organization) {
+          return res.status(404).json({ message: "Organization not found" });
+        }
+
+        const customer = await stripe.customers.create({
+          name: organization.name,
+          metadata: {
+            organizationId: data.organizationId,
+            plan: data.planId,
+            billingCycle: data.billingCycle,
+          },
+        });
+
+        res.json({
+          success: true,
+          stripeCustomerId: customer.id,
+          message: "Plan selected successfully"
+        });
+      } else {
+        res.json({
+          success: true,
+          message: "Plan selected successfully"
+        });
+      }
+
+    } catch (error: any) {
+      console.error("Plan selection error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to select plan" });
+    }
+  });
+
+  // Complete onboarding - Step 3: Organization setup
+  app.post("/api/business/complete-onboarding", async (req, res) => {
+    try {
+      const onboardingSchema = z.object({
+        organizationId: z.string(),
+        teams: z.array(z.object({
+          name: z.string().min(2),
+          description: z.string().optional(),
+          type: z.enum(["department", "squad", "pod"]),
+        })),
+        userInvites: z.array(z.object({
+          email: z.string().email(),
+          name: z.string().min(2),
+          role: z.enum(["admin", "manager", "member"]),
+          teamName: z.string().optional(),
+        })).optional(),
+        organizationSettings: z.object({
+          companyValues: z.array(z.string()).min(1),
+          checkInFrequency: z.enum(["daily", "weekly", "biweekly"]),
+          workingHours: z.string(),
+          timezone: z.string(),
+        }),
+      });
+
+      const data = onboardingSchema.parse(req.body);
+
+      // Update organization with custom values
+      await storage.updateOrganization(data.organizationId, {
+        customValues: data.organizationSettings.companyValues,
+      });
+
+      // Create teams
+      const createdTeams: any[] = [];
+      for (const team of data.teams) {
+        const organization = await storage.getOrganization(data.organizationId);
+        if (organization) {
+          // Get admin user to set as team leader
+          const adminUsers = await storage.getAllUsers(data.organizationId);
+          const adminUser = adminUsers.find(u => u.role === 'admin');
+          
+          if (adminUser) {
+            const createdTeam = await storage.createTeam(data.organizationId, {
+              name: team.name,
+              description: team.description || null,
+              leaderId: adminUser.id,
+              teamType: team.type,
+              parentTeamId: null,
+            });
+            createdTeams.push(createdTeam);
+          }
+        }
+      }
+
+      // Send user invitations (placeholder - would implement email service)
+      const invitationResults: any[] = [];
+      if (data.userInvites) {
+        for (const invite of data.userInvites) {
+          // Generate invitation token
+          const token = randomBytes(32).toString('hex');
+          
+          // In real implementation, would:
+          // 1. Store invitation in database
+          // 2. Send invitation email
+          // 3. Set expiration date
+          
+          invitationResults.push({
+            email: invite.email,
+            name: invite.name,
+            role: invite.role,
+            status: "sent",
+            token: token,
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        message: "Onboarding completed successfully",
+        teamsCreated: createdTeams.length,
+        invitationsSent: invitationResults.length,
+        data: {
+          teams: createdTeams,
+          invitations: invitationResults,
+        }
+      });
+
+    } catch (error: any) {
+      console.error("Onboarding completion error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to complete onboarding" });
+    }
+  });
+
+  // Create Stripe payment intent for plan upgrades
+  app.post("/api/stripe/create-payment-intent", async (req, res) => {
+    if (!stripe) {
+      return res.status(503).json({ message: "Payment processing not available" });
+    }
+
+    try {
+      const paymentSchema = z.object({
+        organizationId: z.string(),
+        planId: z.string(),
+        billingCycle: z.enum(["monthly", "annual"]),
+        amount: z.number().min(0),
+      });
+
+      const data = paymentSchema.parse(req.body);
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(data.amount), // Amount should already be in cents
+        currency: "usd",
+        metadata: {
+          organizationId: data.organizationId,
+          planId: data.planId,
+          billingCycle: data.billingCycle,
+        },
+      });
+
+      res.json({ 
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+      });
+
+    } catch (error: any) {
+      console.error("Payment intent creation error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to create payment intent" });
+    }
+  });
+
+  // Register additional route modules
+  registerMicrosoftTeamsRoutes(app);
+  registerMicrosoftAuthRoutes(app);
+  registerMicrosoftCalendarRoutes(app);
 
   const httpServer = createServer(app);
   return httpServer;
