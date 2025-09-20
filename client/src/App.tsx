@@ -7,6 +7,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { RoleSwitchProvider } from "@/hooks/useViewAsRole";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HelpButton } from "@/components/support/HelpButton";
+import { DynamicThemeProvider } from "@/components/theme/DynamicThemeProvider";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Checkins from "@/pages/checkins";
@@ -80,10 +81,10 @@ function AuthenticatedApp() {
 
   // Show main app if authenticated
   return (
-    <>
+    <DynamicThemeProvider>
       <Router />
       <HelpButton />
-    </>
+    </DynamicThemeProvider>
   );
 }
 

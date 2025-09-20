@@ -3,15 +3,16 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { BusinessSignup } from "@/components/business/BusinessSignup";
 import { PlanSelection } from "@/components/business/PlanSelection";
+import { ThemeOnboarding } from "@/components/business/ThemeOnboarding";
 import { OnboardingWalkthrough } from "@/components/business/OnboardingWalkthrough";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Building2, CreditCard, Users } from "lucide-react";
+import { CheckCircle, Building2, CreditCard, Palette, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 
-type SignupStep = "signup" | "plan-selection" | "onboarding" | "payment" | "complete";
+type SignupStep = "signup" | "plan-selection" | "theme" | "onboarding" | "payment" | "complete";
 
 interface SignupData {
   businessInfo?: any;
@@ -19,12 +20,14 @@ interface SignupData {
     planId: string;
     billingCycle: 'monthly' | 'annual';
   };
+  themeData?: any;
   onboardingData?: any;
 }
 
 const signupSteps = [
   { id: "signup", title: "Account", icon: <Building2 className="h-4 w-4" /> },
   { id: "plan-selection", title: "Plan", icon: <CreditCard className="h-4 w-4" /> },
+  { id: "theme", title: "Brand", icon: <Palette className="h-4 w-4" /> },
   { id: "onboarding", title: "Setup", icon: <Users className="h-4 w-4" /> },
 ];
 
@@ -88,16 +91,44 @@ export default function BusinessSignupPage() {
         selectedPlan: { planId: data.planId, billingCycle: data.billingCycle },
         stripeCustomerId: data.stripeCustomerId,
       }));
-      setCurrentStep("onboarding");
+      setCurrentStep("theme");
       toast({
         title: "Plan Selected!",
-        description: `You've selected your plan. Let's set up your organization.`,
+        description: `You've selected your plan. Now let's customize your brand.`,
       });
     },
     onError: (error: any) => {
       toast({
         title: "Plan Selection Failed",
         description: error.message || "There was an error selecting your plan. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Theme configuration mutation
+  const themeMutation = useMutation({
+    mutationFn: async (themeData: any) => {
+      if (themeData.enableCustomTheme && themeData.themeConfig) {
+        const response = await apiRequest('PUT', `/api/organizations/${signupData.businessInfo?.organizationId}/theme`, {
+          themeConfig: themeData.themeConfig,
+          enableCustomTheme: true,
+        });
+        return response.json();
+      }
+      return { message: "Theme skipped" };
+    },
+    onSuccess: () => {
+      setCurrentStep("onboarding");
+      toast({
+        title: "Theme Applied!",
+        description: "Your brand customization has been saved. Let's set up your organization.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Theme Save Failed",
+        description: error.message || "There was an error saving your theme. Please try again.",
         variant: "destructive",
       });
     },
@@ -147,6 +178,19 @@ export default function BusinessSignupPage() {
     planMutation.mutate({ planId, billingCycle });
   };
 
+  const handleThemeComplete = async (themeData: any) => {
+    setSignupData(prev => ({ ...prev, themeData }));
+    themeMutation.mutate(themeData);
+  };
+
+  const handleThemeSkip = () => {
+    setCurrentStep("onboarding");
+    toast({
+      title: "Theme Skipped",
+      description: "You can customize your brand later in settings.",
+    });
+  };
+
   const handleOnboardingComplete = async (onboardingData: any) => {
     onboardingMutation.mutate(onboardingData);
   };
@@ -168,6 +212,15 @@ export default function BusinessSignupPage() {
             selectedPlan={signupData.selectedPlan?.planId}
             onPlanSelect={handlePlanSelection}
             isLoading={planMutation.isPending || plansLoading}
+          />
+        );
+      
+      case "theme":
+        return (
+          <ThemeOnboarding 
+            onComplete={handleThemeComplete}
+            onSkip={handleThemeSkip}
+            isLoading={themeMutation.isPending}
           />
         );
       
@@ -193,6 +246,8 @@ export default function BusinessSignupPage() {
             </div>
             <div className="space-y-2 text-sm text-muted-foreground">
               <p>✅ Organization created</p>
+              <p>✅ Plan selected</p>
+              <p>✅ Brand customized</p>
               <p>✅ Teams configured</p>
               <p>✅ User invitations sent</p>
               <p>✅ Settings customized</p>
