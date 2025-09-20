@@ -39,11 +39,9 @@ export default function LoginPage() {
         
         // Add delay and debug logging
         console.log("Login successful, redirecting...");
-        setTimeout(() => {
-          console.log("Navigating to dashboard...");
-          // Use full page reload to ensure proper state refresh
-          window.location.reload();
-        }, 500);
+        
+        // Immediate reload to ensure cookies are properly available
+        window.location.href = "/?org=default";
       } else {
         const error = await response.json();
         toast({ 

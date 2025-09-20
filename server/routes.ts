@@ -56,7 +56,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.cookie('auth_user_id', matthewUser.id, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: false, // Allow HTTP in development
         sameSite: 'lax',
         path: '/',
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -64,7 +64,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.cookie('auth_org_id', req.orgId, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: false, // Allow HTTP in development
         sameSite: 'lax',
         path: '/',
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
@@ -72,7 +72,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.cookie('auth_session_token', sessionToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: false, // Allow HTTP in development
         sameSite: 'lax',
         path: '/',
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
