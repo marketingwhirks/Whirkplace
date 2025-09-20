@@ -581,6 +581,11 @@ export const oneOnOnes = pgTable("one_on_ones", {
   actionItems: jsonb("action_items").notNull().default([]), // Array of action items
   duration: integer("duration").default(30), // Duration in minutes
   location: text("location"), // Meeting location or "virtual"
+  // Outlook Calendar Integration
+  outlookEventId: text("outlook_event_id"), // Microsoft Graph Event ID
+  meetingUrl: text("meeting_url"), // Teams meeting URL or other online meeting link
+  isOnlineMeeting: boolean("is_online_meeting").notNull().default(false),
+  syncWithOutlook: boolean("sync_with_outlook").notNull().default(false), // Whether to sync with Outlook
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
 }, (table) => ({

@@ -8,15 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Badge } from "@/components/ui/badge";
 import TeamMemberCard from "@/components/team/team-member-card";
-import { Plus, Users, UserCog, Building, AlertCircle } from "lucide-react";
+import { Plus, Users, UserCog, Building, AlertCircle, ChevronRight, ChevronDown, Network, Briefcase, Target, Move } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import type { User, Team, InsertUser, InsertTeam } from "@shared/schema";
+import type { User, Team, InsertUser, InsertTeam, TeamHierarchy } from "@shared/schema";
 
 // Form schemas
 const createUserSchema = z.object({
@@ -33,6 +34,8 @@ const createTeamSchema = z.object({
   name: z.string().min(2, "Team name must be at least 2 characters"),
   description: z.string().optional(),
   leaderId: z.string().refine(val => val !== "no-leader", "Please select a team leader"),
+  parentTeamId: z.string().optional(),
+  teamType: z.enum(["department", "squad", "pod"]),
 });
 
 type CreateUserForm = z.infer<typeof createUserSchema>;
@@ -42,6 +45,8 @@ export default function Team() {
   const { toast } = useToast();
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [showCreateTeam, setShowCreateTeam] = useState(false);
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
 
   const { data: currentUser } = useCurrentUser();
 
@@ -52,6 +57,10 @@ export default function Team() {
 
   const { data: teams = [] } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
+  });
+
+  const { data: teamHierarchy = [] } = useQuery<TeamHierarchy[]>({
+    queryKey: ["/api/teams/hierarchy"],
   });
 
   // Forms
@@ -74,17 +83,125 @@ export default function Team() {
       name: "",
       description: "",
       leaderId: "no-leader",
+      parentTeamId: "no-parent",
+      teamType: "department",
     },
   });
 
-  // Get team structure
-  const teamStructure = teams.map(team => ({
-    ...team,
-    members: users.filter(user => user.teamId === team.id),
-    leader: users.find(user => user.id === team.leaderId),
-  }));
+  // Helper functions for team hierarchy
+  const toggleTeamExpansion = (teamId: string) => {
+    const newExpanded = new Set(expandedTeams);
+    if (newExpanded.has(teamId)) {
+      newExpanded.delete(teamId);
+    } else {
+      newExpanded.add(teamId);
+    }
+    setExpandedTeams(newExpanded);
+  };
+
+  const getTeamTypeIcon = (teamType: string) => {
+    switch (teamType) {
+      case "department": return <Building className="w-4 h-4" />;
+      case "squad": return <Network className="w-4 h-4" />;
+      case "pod": return <Target className="w-4 h-4" />;
+      default: return <Users className="w-4 h-4" />;
+    }
+  };
+
+  const getTeamTypeColor = (teamType: string) => {
+    switch (teamType) {
+      case "department": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
+      case "squad": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      case "pod": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
+      default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
+    }
+  };
 
   const unassignedUsers = users.filter(user => !user.teamId);
+
+  // Recursive component for rendering team hierarchy
+  const TeamHierarchyItem = ({ team, depth = 0 }: { team: TeamHierarchy; depth?: number }) => {
+    const isExpanded = expandedTeams.has(team.id);
+    const hasChildren = team.children && team.children.length > 0;
+    const indentClass = depth > 0 ? `ml-${depth * 6}` : "";
+    const teamLeader = users.find(user => user.id === team.leaderId);
+    
+    return (
+      <div key={team.id} className="space-y-2">
+        <Card className={`${indentClass} transition-all duration-200 hover:shadow-md`}>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {hasChildren && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleTeamExpansion(team.id)}
+                    data-testid={`button-toggle-${team.id}`}
+                  >
+                    {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </Button>
+                )}
+                {!hasChildren && <div className="w-8" />}
+                {getTeamTypeIcon(team.teamType || "department")}
+                <div>
+                  <CardTitle className="text-lg flex items-center space-x-2" data-testid={`text-team-${team.id}`}>
+                    <span>{team.name}</span>
+                    <Badge className={getTeamTypeColor(team.teamType || "department")}>
+                      {team.teamType || "department"}
+                    </Badge>
+                  </CardTitle>
+                  {team.description && (
+                    <p className="text-sm text-muted-foreground mt-1">{team.description}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Depth: {team.depth || 0} • Path: {team.path || "root"} • {team.memberCount || 0} members
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Badge variant="outline">
+                  {team.memberCount || 0} members
+                </Badge>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {/* Team Leader */}
+            {teamLeader && (
+              <div className="mb-3">
+                <Label className="text-xs font-medium text-muted-foreground mb-2 block">
+                  TEAM LEADER
+                </Label>
+                <TeamMemberCard user={teamLeader} isLead />
+              </div>
+            )}
+
+            {/* Team Members */}
+            {team.memberCount && team.memberCount > 0 && (
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground mb-2 block">
+                  MEMBERS
+                </Label>
+                <div className="text-sm text-muted-foreground">
+                  {team.memberCount} team members
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        
+        {/* Render children if expanded */}
+        {hasChildren && isExpanded && (
+          <div className="space-y-2">
+            {team.children!.map(child => (
+              <TeamHierarchyItem key={child.id} team={child} depth={depth + 1} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const handleCreateUser = async (data: CreateUserForm) => {
     try {
@@ -126,10 +243,13 @@ export default function Team() {
         name: data.name,
         description: data.description || null,
         leaderId: data.leaderId,
+        parentTeamId: data.parentTeamId && data.parentTeamId !== "no-parent" ? data.parentTeamId : null,
+        teamType: data.teamType,
       };
 
-      await apiRequest("POST", "/api/teams", teamData);
+      await apiRequest("POST", "/api/teams/with-hierarchy", teamData);
       await queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/teams/hierarchy"] });
       
       toast({
         title: "Team created successfully",
@@ -252,6 +372,63 @@ export default function Team() {
                     
                     <FormField
                       control={teamForm.control}
+                      name="teamType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Team Type</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-team-type">
+                                <SelectValue placeholder="Select team type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="department">Department</SelectItem>
+                              <SelectItem value="squad">Squad</SelectItem>
+                              <SelectItem value="pod">Pod</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Department → Squad → Pod hierarchy levels
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={teamForm.control}
+                      name="parentTeamId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Parent Team (Optional)</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-parent-team">
+                                <SelectValue placeholder="Select parent team" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="no-parent">No Parent (Root Level)</SelectItem>
+                              {teams
+                                .filter(team => team.id && team.id.trim() !== "")
+                                .map(team => (
+                                  <SelectItem key={team.id} value={team.id}>
+                                    {team.name} ({team.teamType || "department"})
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Create a nested team under an existing team
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={teamForm.control}
                       name="leaderId"
                       render={({ field }) => (
                         <FormItem>
@@ -265,8 +442,7 @@ export default function Team() {
                             <SelectContent>
                               <SelectItem value="no-leader">Select a leader</SelectItem>
                               {users
-                                .filter(user => user.role === "manager" || user.role === "admin")
-                                .filter(user => user.id && user.id.trim() !== "") // Ensure valid user IDs
+                                .filter(user => (user.role === "manager" || user.role === "admin") && user.id && user.id.trim() !== "")
                                 .map(user => (
                                   <SelectItem key={user.id} value={user.id}>
                                     {user.name} ({user.role})
@@ -461,83 +637,61 @@ export default function Team() {
           </div>
         </div>
 
-        {/* Team Structure */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {teamStructure.map(team => (
-            <Card key={team.id}>
-              <CardHeader>
-                <div className="flex items-center space-x-2">
-                  <Users className="w-5 h-5 text-primary" />
-                  <CardTitle className="text-lg" data-testid={`text-team-${team.id}`}>
-                    {team.name}
-                  </CardTitle>
-                  <span className="text-sm text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                    {team.members.length} members
-                  </span>
-                </div>
-                {team.description && (
-                  <p className="text-sm text-muted-foreground">{team.description}</p>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {/* Team Leader */}
-                {team.leader && (
-                  <div>
-                    <Label className="text-xs font-medium text-muted-foreground mb-2 block">
-                      TEAM LEADER
-                    </Label>
-                    <TeamMemberCard user={team.leader} isLead />
-                  </div>
-                )}
-
-                {/* Team Members */}
-                {team.members.length > 0 && (
-                  <div>
-                    <Label className="text-xs font-medium text-muted-foreground mb-2 block">
-                      MEMBERS
-                    </Label>
-                    <div className="space-y-2">
-                      {team.members
-                        .filter(member => member.id !== team.leaderId)
-                        .map(member => (
-                          <TeamMemberCard key={member.id} user={member} />
-                        ))}
-                    </div>
-                  </div>
-                )}
-
-                {team.members.length === 0 && !team.leader && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No members assigned yet
+        {/* Hierarchical Team Structure */}
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Team Hierarchy</h3>
+              <p className="text-sm text-muted-foreground">
+                Hierarchical view of your organization structure
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setExpandedTeams(new Set(teams.map(t => t.id)))}
+                data-testid="button-expand-all"
+              >
+                Expand All
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setExpandedTeams(new Set())}
+                data-testid="button-collapse-all"
+              >
+                Collapse All
+              </Button>
+            </div>
+          </div>
+          
+          <div className="space-y-4">
+            {teamHierarchy.length === 0 ? (
+              <Card>
+                <CardContent className="text-center py-8">
+                  <Building className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium text-foreground mb-2">No Teams Yet</h3>
+                  <p className="text-muted-foreground mb-4">
+                    Create your first team to get started with team management
                   </p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-
-          {/* Unassigned Users */}
-          {unassignedUsers.length > 0 && (
-            <Card>
-              <CardHeader>
-                <div className="flex items-center space-x-2">
-                  <UserCog className="w-5 h-5 text-muted-foreground" />
-                  <CardTitle className="text-lg">Unassigned</CardTitle>
-                  <span className="text-sm text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                    {unassignedUsers.length} users
-                  </span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {unassignedUsers.map(user => (
-                  <TeamMemberCard key={user.id} user={user} />
-                ))}
-              </CardContent>
-            </Card>
-          )}
+                  <Button onClick={() => setShowCreateTeam(true)}>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create First Team
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              teamHierarchy.map(team => (
+                <TeamHierarchyItem key={team.id} team={team} depth={0} />
+              ))
+            )}
+          </div>
         </div>
 
+
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="text-center">
@@ -563,10 +717,10 @@ export default function Team() {
           <Card>
             <CardContent className="p-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-foreground" data-testid="text-total-managers">
-                  {users.filter(u => u.role === "manager" || u.role === "admin").length}
+                <p className="text-2xl font-bold text-foreground" data-testid="text-departments">
+                  {teams.filter(t => t.teamType === "department").length}
                 </p>
-                <p className="text-sm text-muted-foreground">Managers</p>
+                <p className="text-sm text-muted-foreground">Departments</p>
               </div>
             </CardContent>
           </Card>
@@ -574,14 +728,45 @@ export default function Team() {
           <Card>
             <CardContent className="p-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-foreground" data-testid="text-unassigned-users">
-                  {unassignedUsers.length}
+                <p className="text-2xl font-bold text-foreground" data-testid="text-squads">
+                  {teams.filter(t => t.teamType === "squad").length}
                 </p>
-                <p className="text-sm text-muted-foreground">Unassigned</p>
+                <p className="text-sm text-muted-foreground">Squads</p>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-4">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-foreground" data-testid="text-pods">
+                  {teams.filter(t => t.teamType === "pod").length}
+                </p>
+                <p className="text-sm text-muted-foreground">Pods</p>
               </div>
             </CardContent>
           </Card>
         </div>
+        
+        {/* Unassigned Users */}
+        {unassignedUsers.length > 0 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center space-x-2">
+                <UserCog className="w-5 h-5 text-muted-foreground" />
+                <CardTitle className="text-lg">Unassigned Users</CardTitle>
+                <Badge variant="outline">
+                  {unassignedUsers.length} users
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {unassignedUsers.map(user => (
+                <TeamMemberCard key={user.id} user={user} />
+              ))}
+            </CardContent>
+          </Card>
+        )}
       </main>
     </>
   );
