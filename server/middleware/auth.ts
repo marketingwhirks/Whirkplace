@@ -90,10 +90,13 @@ declare global {
   }
 }
 
-// Extend Express Session to include userId
+// Extend Express Session to include userId and Microsoft auth fields
 declare module "express-session" {
   interface SessionData {
     userId?: string;
+    microsoftAuthState?: string;
+    authOrgId?: string;
+    microsoftAccessToken?: string;
   }
 }
 

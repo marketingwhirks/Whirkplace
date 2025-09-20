@@ -27,6 +27,7 @@ export type ReviewStatusType = typeof ReviewStatus[keyof typeof ReviewStatus];
 export const AuthProvider = {
   LOCAL: "local",
   SLACK: "slack",
+  MICROSOFT: "microsoft",
 } as const;
 
 export type AuthProviderType = typeof AuthProvider[keyof typeof AuthProvider];
@@ -125,6 +126,8 @@ export const users = pgTable("users", {
   microsoftEmail: text("microsoft_email"), // Microsoft-verified email
   microsoftAvatar: text("microsoft_avatar"), // Microsoft profile image URL
   microsoftTenantId: text("microsoft_tenant_id"), // Microsoft tenant association
+  microsoftAccessToken: text("microsoft_access_token"), // Microsoft OAuth access token
+  microsoftRefreshToken: text("microsoft_refresh_token"), // Microsoft OAuth refresh token
   authProvider: text("auth_provider").notNull().default("local"), // local, slack, microsoft
   isActive: boolean("is_active").notNull().default(true),
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
@@ -344,7 +347,16 @@ export const insertUserSchema = createInsertSchema(users).omit({
   slackEmail: z.string().email("Invalid Slack email format").optional(),
   slackAvatar: z.string().url("Invalid avatar URL").optional(),
   slackWorkspaceId: z.string().min(1, "Slack workspace ID required").optional(),
-  authProvider: z.enum([AuthProvider.LOCAL, AuthProvider.SLACK]).default(AuthProvider.LOCAL),
+  // Microsoft field validation
+  microsoftUserId: z.string().min(1, "Microsoft user ID required").optional(),
+  microsoftUserPrincipalName: z.string().min(1, "Microsoft UPN required").optional(),
+  microsoftDisplayName: z.string().max(100, "Display name too long").optional(),
+  microsoftEmail: z.string().email("Invalid Microsoft email format").optional(),
+  microsoftAvatar: z.string().url("Invalid avatar URL").optional(),
+  microsoftTenantId: z.string().min(1, "Microsoft tenant ID required").optional(),
+  microsoftAccessToken: z.string().optional(),
+  microsoftRefreshToken: z.string().optional(),
+  authProvider: z.enum([AuthProvider.LOCAL, AuthProvider.SLACK, AuthProvider.MICROSOFT]).default(AuthProvider.LOCAL),
 });
 
 export const insertTeamSchema = createInsertSchema(teams).omit({

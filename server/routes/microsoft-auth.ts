@@ -82,7 +82,7 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       }
       
       // Exchange authorization code for access token
-      const tokenData = await microsoftAuthService.getTokenFromCode(code);
+      const tokenData = await microsoftAuthService.exchangeCodeForToken(code);
       if (!tokenData) {
         return res.status(400).json({ message: "Failed to exchange authorization code" });
       }
@@ -112,8 +112,6 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
           name: userProfile.displayName || userProfile.userPrincipalName || "Unknown User",
           email: userProfile.mail || userProfile.userPrincipalName || "",
           microsoftUserId: userProfile.id,
-          microsoftAccessToken: tokenData.accessToken,
-          microsoftRefreshToken: tokenData.refreshToken,
           authProvider: "microsoft",
           role: "member"
         };
@@ -122,9 +120,7 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       } else {
         // Update existing user with Microsoft details (account linking)
         const updateData: Partial<InsertUser> = {
-          microsoftUserId: userProfile.id,
-          microsoftAccessToken: tokenData.accessToken,
-          microsoftRefreshToken: tokenData.refreshToken
+          microsoftUserId: userProfile.id
         };
         
         // Smart authProvider handling: preserve existing provider or set Microsoft
@@ -138,6 +134,7 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       
       // Set session
       req.session.userId = user.id;
+      req.session.microsoftAccessToken = tokenData.accessToken; // Store token in session only
       req.session.microsoftAuthState = undefined; // Clear state
       req.session.authOrgId = undefined; // Clear temp org ID
       
