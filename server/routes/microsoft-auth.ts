@@ -127,11 +127,11 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
           microsoftRefreshToken: tokenData.refreshToken
         };
         
-        // If this user was originally created through Slack, keep their auth provider as 'slack'
-        // This allows them to continue using either authentication method
+        // Smart authProvider handling: preserve existing provider or set Microsoft
         if (!user.authProvider || user.authProvider === 'local') {
           updateData.authProvider = 'microsoft';
         }
+        // If user already has Slack auth, don't overwrite - they can use either method
         
         user = await storage.updateUser(orgId, user.id, updateData) || user;
       }

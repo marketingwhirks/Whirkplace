@@ -236,21 +236,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const slackUserId = user.sub;
           const displayName = user.name || user.given_name || slackUserId;
           
-          authenticatedUser = await storage.updateUser(organization.id, existingUser.id, {
+          // Prepare update data with Slack information
+          const updateData: any = {
             slackUserId: slackUserId,
             slackUsername: slackUserId, // OIDC doesn't provide username, use ID
             slackDisplayName: displayName,
             slackEmail: user.email,
             slackAvatar: user.picture,
             slackWorkspaceId: team?.id || user["https://slack.com/team_id"],
-            authProvider: "slack" as const,
             avatar: user.picture || existingUser.avatar,
             // Update email if not set and Slack provides one
             email: existingUser.email || user.email || existingUser.email,
             // Update name if it's just the default email
             name: existingUser.name === existingUser.email && displayName ? 
                   displayName : existingUser.name
-          });
+          };
+
+          // Smart authProvider handling: preserve existing provider or set multi-provider state
+          if (!existingUser.authProvider || existingUser.authProvider === 'local') {
+            updateData.authProvider = 'slack';
+          }
+          // If user already has Microsoft auth, don't overwrite - they can use either method
+          
+          authenticatedUser = await storage.updateUser(organization.id, existingUser.id, updateData);
         } catch (error) {
           console.error("Failed to update user with Slack data:", error);
           return res.status(500).json({ 
