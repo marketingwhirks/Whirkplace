@@ -23,16 +23,22 @@ interface AuthConfig {
 }
 
 export class MicrosoftAuthService {
-  private msalApp: ConfidentialClientApplication;
-  private config: AuthConfig;
+  private msalApp: ConfidentialClientApplication | null = null;
+  private config: AuthConfig | null = null;
 
   constructor() {
+    // Lazy initialization to prevent crashes when env vars are missing
+    this.initializeIfConfigured();
+  }
+
+  private initializeIfConfigured() {
     const clientId = process.env.MICROSOFT_CLIENT_ID;
     const tenantId = process.env.MICROSOFT_TENANT_ID;
     const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
     
     if (!clientId || !tenantId) {
-      throw new Error('Microsoft authentication not configured. Please set MICROSOFT_CLIENT_ID and MICROSOFT_TENANT_ID environment variables.');
+      console.warn('Microsoft authentication not configured. Set MICROSOFT_CLIENT_ID and MICROSOFT_TENANT_ID environment variables to enable.');
+      return;
     }
 
     this.config = {
@@ -69,6 +75,10 @@ export class MicrosoftAuthService {
    * Generate Microsoft OAuth authorization URL
    */
   async getAuthUrl(state?: string): Promise<string> {
+    if (!this.isConfigured()) {
+      throw new Error('Microsoft authentication is not configured');
+    }
+    
     try {
       const authCodeUrlParameters = {
         scopes: this.config.scopes,
@@ -88,6 +98,10 @@ export class MicrosoftAuthService {
    * Exchange authorization code for access token
    */
   async exchangeCodeForToken(code: string, state?: string): Promise<AuthenticationResult> {
+    if (!this.isConfigured()) {
+      throw new Error('Microsoft authentication is not configured');
+    }
+    
     try {
       const tokenRequest = {
         code,
@@ -175,7 +189,7 @@ export class MicrosoftAuthService {
    * Check if Microsoft authentication is configured
    */
   isConfigured(): boolean {
-    return !!(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_TENANT_ID);
+    return !!(this.msalApp && this.config && process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_TENANT_ID);
   }
 }
 
