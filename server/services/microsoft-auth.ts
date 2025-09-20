@@ -150,13 +150,17 @@ export class MicrosoftAuthService {
    * Refresh access token silently
    */
   async refreshToken(account: any): Promise<AuthenticationResult> {
+    if (!this.isConfigured()) {
+      throw new Error('Microsoft authentication is not configured');
+    }
+    
     try {
       const silentRequest = {
         account,
-        scopes: this.config.scopes,
+        scopes: this.config!.scopes,
       };
 
-      const response = await this.msalApp.acquireTokenSilent(silentRequest);
+      const response = await this.msalApp!.acquireTokenSilent(silentRequest);
       return response;
     } catch (error) {
       console.error('Failed to refresh Microsoft token:', error);
