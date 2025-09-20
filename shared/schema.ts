@@ -74,16 +74,25 @@ export const organizations = pgTable("organizations", {
   slug: text("slug").notNull().unique(), // for URL routing: company.whirkplace.com
   customValues: text("custom_values").array().notNull().default(defaultCompanyValuesArray),
   plan: text("plan").notNull().default("starter"), // starter, professional, enterprise
-  // Slack Integration
+  // Slack Integration - Per Organization OAuth Configuration
+  slackClientId: text("slack_client_id"), // Organization's Slack app client ID
+  slackClientSecret: text("slack_client_secret"), // Organization's Slack app client secret
   slackWorkspaceId: text("slack_workspace_id"), // Slack workspace ID for validation
   slackChannelId: text("slack_channel_id"), // Default Slack channel for notifications
   slackBotToken: text("slack_bot_token"), // Slack bot token for API calls
+  slackSigningSecret: text("slack_signing_secret"), // For webhook verification
   enableSlackIntegration: boolean("enable_slack_integration").notNull().default(false),
-  // Microsoft Integration
+  slackConnectionStatus: text("slack_connection_status").default("not_configured"), // not_configured, connected, error
+  slackLastConnected: timestamp("slack_last_connected"),
+  // Microsoft Integration - Per Organization OAuth Configuration  
+  microsoftClientId: text("microsoft_client_id"), // Organization's Azure app client ID
+  microsoftClientSecret: text("microsoft_client_secret"), // Organization's Azure app client secret
   microsoftTenantId: text("microsoft_tenant_id"), // Microsoft tenant ID for SSO
   microsoftTeamsWebhookUrl: text("microsoft_teams_webhook_url"), // Teams webhook for notifications
   enableMicrosoftAuth: boolean("enable_microsoft_auth").notNull().default(false),
   enableTeamsIntegration: boolean("enable_teams_integration").notNull().default(false),
+  microsoftConnectionStatus: text("microsoft_connection_status").default("not_configured"), // not_configured, connected, error
+  microsoftLastConnected: timestamp("microsoft_last_connected"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });

@@ -27,9 +27,7 @@ import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
 // Initialize Stripe if available
 let stripe: Stripe | null = null;
 if (process.env.STRIPE_SECRET_KEY) {
-  stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-    apiVersion: "2024-06-20",
-  });
+  stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -708,7 +706,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const createTeamSchema = insertTeamSchema.omit({ organizationId: true });
       const teamData = createTeamSchema.parse(req.body);
       
-      const team = await storage.createTeamWithHierarchy(req.orgId, teamData);
+      const team = await storage.createTeamWithHierarchy(req.orgId, {
+        ...teamData,
+        organizationId: req.orgId
+      });
       res.status(201).json(team);
     } catch (error) {
       console.error("POST /api/teams/with-hierarchy - Error:", error);
@@ -2926,9 +2927,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const meeting of allPastMeetings) {
         const hasAccess = await canAccessOneOnOne(
           req.orgId,
-          req.userId,
-          req.currentUser.role,
-          req.currentUser.teamId,
+          req.currentUser!.id,
+          req.currentUser!.role,
+          req.currentUser!.teamId,
           meeting
         );
         if (hasAccess) {
@@ -3649,6 +3650,145 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("PUT /api/organizations/:id - Validation error:", error);
       res.status(400).json({ message: "Invalid organization data" });
+    }
+  });
+
+  // Integration Management Endpoints for Multi-Tenant OAuth Configuration
+  
+  // Get organization integration status
+  app.get("/api/organizations/:id/integrations", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only access your own organization" });
+      }
+      
+      const organization = await storage.getOrganization(req.params.id);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Return integration status without sensitive secrets
+      const integrationStatus = {
+        slack: {
+          configured: !!(organization.slackClientId && organization.slackClientSecret),
+          connected: organization.slackConnectionStatus === 'connected',
+          status: organization.slackConnectionStatus || 'not_configured',
+          lastConnected: organization.slackLastConnected,
+          workspaceId: organization.slackWorkspaceId,
+          channelId: organization.slackChannelId,
+          enabled: organization.enableSlackIntegration
+        },
+        microsoft: {
+          configured: !!(organization.microsoftClientId && organization.microsoftClientSecret),
+          connected: organization.microsoftConnectionStatus === 'connected',
+          status: organization.microsoftConnectionStatus || 'not_configured',
+          lastConnected: organization.microsoftLastConnected,
+          tenantId: organization.microsoftTenantId,
+          enabled: organization.enableMicrosoftAuth
+        }
+      };
+      
+      res.json(integrationStatus);
+    } catch (error) {
+      console.error("GET /api/organizations/:id/integrations - Error:", error);
+      res.status(500).json({ message: "Failed to fetch integration status" });
+    }
+  });
+
+  // Configure Slack OAuth integration
+  app.put("/api/organizations/:id/integrations/slack", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only update your own organization" });
+      }
+      
+      const slackConfigSchema = z.object({
+        clientId: z.string().min(1, "Slack Client ID is required"),
+        clientSecret: z.string().min(1, "Slack Client Secret is required"),
+        signingSecret: z.string().optional(),
+        channelId: z.string().optional(),
+        enabled: z.boolean().default(true)
+      });
+      
+      const slackConfig = slackConfigSchema.parse(req.body);
+      
+      // Update organization with Slack OAuth configuration
+      const updateData = {
+        slackClientId: slackConfig.clientId,
+        slackClientSecret: slackConfig.clientSecret,
+        slackSigningSecret: slackConfig.signingSecret || null,
+        slackChannelId: slackConfig.channelId || null,
+        enableSlackIntegration: slackConfig.enabled,
+        slackConnectionStatus: 'configured' // Will be updated to 'connected' after successful OAuth
+      };
+      
+      const updatedOrganization = await storage.updateOrganization(req.params.id, updateData);
+      if (!updatedOrganization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({ 
+        message: "Slack integration configured successfully",
+        status: "configured",
+        authUrl: `/auth/slack/login?org=${updatedOrganization.slug}` // Provide OAuth URL for testing
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid Slack configuration", errors: error.errors });
+      }
+      console.error("PUT /api/organizations/:id/integrations/slack - Error:", error);
+      res.status(500).json({ message: "Failed to configure Slack integration" });
+    }
+  });
+
+  // Configure Microsoft OAuth integration
+  app.put("/api/organizations/:id/integrations/microsoft", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only update your own organization" });
+      }
+      
+      const microsoftConfigSchema = z.object({
+        clientId: z.string().min(1, "Microsoft Client ID is required"),
+        clientSecret: z.string().min(1, "Microsoft Client Secret is required"),
+        tenantId: z.string().min(1, "Microsoft Tenant ID is required"),
+        teamsWebhookUrl: z.string().url().optional(),
+        enableAuth: z.boolean().default(true),
+        enableTeams: z.boolean().default(false)
+      });
+      
+      const microsoftConfig = microsoftConfigSchema.parse(req.body);
+      
+      // Update organization with Microsoft OAuth configuration
+      const updateData = {
+        microsoftClientId: microsoftConfig.clientId,
+        microsoftClientSecret: microsoftConfig.clientSecret,
+        microsoftTenantId: microsoftConfig.tenantId,
+        microsoftTeamsWebhookUrl: microsoftConfig.teamsWebhookUrl || null,
+        enableMicrosoftAuth: microsoftConfig.enableAuth,
+        enableTeamsIntegration: microsoftConfig.enableTeams,
+        microsoftConnectionStatus: 'configured' // Will be updated to 'connected' after successful OAuth
+      };
+      
+      const updatedOrganization = await storage.updateOrganization(req.params.id, updateData);
+      if (!updatedOrganization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({ 
+        message: "Microsoft integration configured successfully",
+        status: "configured",
+        authUrl: `/auth/microsoft/login?org=${updatedOrganization.slug}` // Provide OAuth URL for testing
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid Microsoft configuration", errors: error.errors });
+      }
+      console.error("PUT /api/organizations/:id/integrations/microsoft - Error:", error);
+      res.status(500).json({ message: "Failed to configure Microsoft integration" });
     }
   });
 
