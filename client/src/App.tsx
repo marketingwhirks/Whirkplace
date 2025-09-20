@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Checkins from "@/pages/checkins";
+import OneOnOnesPage from "@/pages/one-on-ones";
 import Team from "@/pages/team";
 import Wins from "@/pages/wins";
 import ShoutoutsPage from "@/pages/shoutouts";
@@ -29,6 +30,7 @@ function Router() {
         <Switch>
           <Route path="/" component={Dashboard} />
           <Route path="/checkins" component={Checkins} />
+          <Route path="/one-on-ones" component={OneOnOnesPage} />
           <Route path="/team" component={Team} />
           <Route path="/wins" component={Wins} />
           <Route path="/shoutouts" component={ShoutoutsPage} />

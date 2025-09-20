@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu, Gift, 
-  ClipboardCheck, Shield, Crown, LogOut 
+  ClipboardCheck, Shield, Crown, LogOut, Calendar
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -68,6 +68,7 @@ function LogoutButton() {
 const baseNavigation = [
   { name: "Dashboard", href: "/", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Check-ins", href: "/checkins", icon: ClipboardList, roles: ["member", "manager", "admin"] },
+  { name: "One-on-Ones", href: "/one-on-ones", icon: Calendar, roles: ["member", "manager", "admin"] },
   { name: "Team", href: "/team", icon: Users, roles: ["member", "manager", "admin"] },
   { name: "Wins", href: "/wins", icon: Trophy, roles: ["member", "manager", "admin"] },
   { name: "Shout Outs", href: "/shoutouts", icon: Gift, roles: ["member", "manager", "admin"] },
