@@ -31,8 +31,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { username, key } = req.body;
       
       // Verify backdoor credentials - use defaults for development if env vars not set
-      const validUsername = process.env.BACKDOOR_USER || "matthew";
-      const validKey = process.env.BACKDOOR_KEY || "dev123";
+      const validUsername = process.env.BACKDOOR_USER || "Matthew";
+      const validKey = process.env.BACKDOOR_KEY || "Dev123";
       
       // SECURITY: Log warning if using default credentials
       if (!process.env.BACKDOOR_USER || !process.env.BACKDOOR_KEY) {
