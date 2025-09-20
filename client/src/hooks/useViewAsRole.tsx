@@ -89,8 +89,8 @@ export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
   
   const contextValue: RoleSwitchContextType = {
     viewAsRole,
-    actualUser,
-    effectiveUser,
+    actualUser: actualUser as User | null,
+    effectiveUser: effectiveUser as User | null,
     isViewingAsRole,
     canSwitchRoles,
     switchToRole,
