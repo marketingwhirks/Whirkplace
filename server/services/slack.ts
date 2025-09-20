@@ -791,7 +791,7 @@ export async function sendOneOnOneMeetingReminder(
   }
 
   // Add action buttons
-  const actionElements = [
+  const actionElements: any[] = [
     {
       type: 'button' as const,
       text: {
@@ -817,7 +817,7 @@ export async function sendOneOnOneMeetingReminder(
   reminderBlocks.push({
     type: 'actions' as const,
     elements: actionElements
-  });
+  } as any);
 
   try {
     // Send as DM to the user
@@ -874,7 +874,9 @@ export async function sendCheckinReviewReminder(
       type: 'section' as const,
       text: {
         type: 'mrkdwn' as const,
-        text: `Hi ${managerName}! 👋 Your team has submitted ${totalCheckins} check-ins this week.`
+        text: totalCheckins > 0 
+          ? `Hi ${managerName}! 👋 Your team has submitted ${totalCheckins} check-ins this week.`
+          : `Hi ${managerName}! 👋 No check-ins have been submitted this week yet.`
       }
     }
   ];
@@ -889,17 +891,27 @@ export async function sendCheckinReviewReminder(
     });
   }
 
-  // Add summary of mood ratings
-  const avgMood = teamMemberCheckins.reduce((sum, c) => sum + c.moodRating, 0) / totalCheckins;
-  const moodEmoji = avgMood >= 4 ? '😊' : avgMood >= 3 ? '😐' : '😔';
-  
-  reminderBlocks.push({
-    type: 'section' as const,
-    text: {
-      type: 'mrkdwn' as const,
-      text: `${moodEmoji} *Team Mood Average:* ${avgMood.toFixed(1)}/5`
-    }
-  });
+  // Add summary of mood ratings (only if there are check-ins)
+  if (totalCheckins > 0) {
+    const avgMood = teamMemberCheckins.reduce((sum, c) => sum + c.moodRating, 0) / totalCheckins;
+    const moodEmoji = avgMood >= 4 ? '😊' : avgMood >= 3 ? '😐' : '😔';
+    
+    reminderBlocks.push({
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `${moodEmoji} *Team Mood Average:* ${avgMood.toFixed(1)}/5`
+      }
+    });
+  } else {
+    reminderBlocks.push({
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `📝 *No check-ins yet this week* - consider sending a gentle reminder to your team.`
+      }
+    });
+  }
 
   // Add recent check-ins summary
   if (teamMemberCheckins.length > 0) {
@@ -930,7 +942,7 @@ export async function sendCheckinReviewReminder(
         style: 'primary' as const
       }
     ]
-  });
+  } as any);
 
   try {
     // Send as DM to the manager
