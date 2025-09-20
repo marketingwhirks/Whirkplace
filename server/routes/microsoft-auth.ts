@@ -66,7 +66,7 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         
         microsoftAuthService.getAuthUrl(redirectUri, state)
           .then(authUrl => {
-            console.log('Redirecting to Microsoft auth URL:', authUrl);
+            console.log('Redirecting to Microsoft auth (URL masked for security)');
             res.redirect(authUrl);
           })
           .catch(error => {
@@ -160,48 +160,61 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         user = await storage.updateUser(orgId, user.id, updateData) || user;
       }
       
-      // Set session
-      req.session.userId = user.id;
-      req.session.microsoftAccessToken = tokenData.accessToken; // Store token in session only
-      req.session.microsoftAuthState = undefined; // Clear state
-      req.session.authOrgId = undefined; // Clear temp org ID
-      req.session.microsoftRedirectUri = undefined; // Clear stored redirect URI
-      
-      // Set authentication cookies
-      const sessionToken = randomBytes(32).toString('hex');
-      
-      res.cookie('auth_user_id', user.id, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+      // Regenerate session to prevent session fixation
+      req.session.regenerate(async (err) => {
+        if (err) {
+          console.error('Failed to regenerate session:', err);
+          return res.status(500).json({ message: "Session regeneration failed" });
+        }
+        
+        try {
+          // Set session data
+          req.session.userId = user.id;
+          req.session.microsoftAccessToken = tokenData.accessToken; // Store token in session only
+          req.session.microsoftAuthState = undefined; // Clear state
+          req.session.authOrgId = undefined; // Clear temp org ID
+          req.session.microsoftRedirectUri = undefined; // Clear stored redirect URI
+        
+          // Set authentication cookies
+          const sessionToken = randomBytes(32).toString('hex');
+          
+          res.cookie('auth_user_id', user.id, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          });
+          
+          res.cookie('auth_org_id', orgId, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          });
+          
+          res.cookie('auth_session_token', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          });
+          
+          // Redirect to dashboard using current request's base URL
+          const organization = await storage.getOrganization(orgId);
+          const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
+          const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
+          const baseUrl = `${protocol}://${host}`;
+          const dashboardUrl = `${baseUrl}/#/dashboard?org=${organization?.slug}`;
+          
+          res.redirect(dashboardUrl);
+        } catch (error) {
+          console.error('Error in session regeneration callback:', error);
+          res.status(500).json({ message: "Authentication failed" });
+        }
       });
-      
-      res.cookie('auth_org_id', orgId, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-      });
-      
-      res.cookie('auth_session_token', sessionToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-      });
-      
-      // Redirect to dashboard using current request's base URL
-      const organization = await storage.getOrganization(orgId);
-      const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
-      const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
-      const baseUrl = `${protocol}://${host}`;
-      const dashboardUrl = `${baseUrl}/#/dashboard?org=${organization?.slug}`;
-      
-      res.redirect(dashboardUrl);
     } catch (error) {
       console.error("Microsoft OAuth callback error:", error);
       res.status(500).json({ message: "Authentication failed" });
@@ -216,10 +229,11 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         return res.status(404).json({ message: "User not found" });
       }
       
-      const hasValidToken = user.microsoftAccessToken && user.microsoftUserId;
+      // Check token from session since we store tokens in session only
+      const connected = Boolean(req.session.microsoftAccessToken && user.microsoftUserId);
       
       res.json({
-        connected: hasValidToken,
+        connected,
         email: user.email,
         name: user.name,
         microsoftUserId: user.microsoftUserId

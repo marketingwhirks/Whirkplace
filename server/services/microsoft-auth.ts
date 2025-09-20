@@ -83,7 +83,7 @@ export class MicrosoftAuthService {
       // Build authorize URL manually to avoid MSAL network hangs
       const tenantId = this.config!.tenantId;
       const clientId = this.config!.clientId;
-      const scopes = encodeURIComponent('openid profile email User.Read');
+      const scopes = 'openid profile email User.Read'; // Let URLSearchParams handle encoding
       
       const params = new URLSearchParams({
         client_id: clientId,
@@ -99,7 +99,7 @@ export class MicrosoftAuthService {
       }
       
       const authUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params.toString()}`;
-      console.log('Generated Microsoft auth URL:', authUrl);
+      console.log('Generated Microsoft auth URL (state masked):', authUrl.replace(/state=[^&]+/, 'state=***'));
       return authUrl;
     } catch (error) {
       console.error('Failed to generate Microsoft auth URL:', error);
