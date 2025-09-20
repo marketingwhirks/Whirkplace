@@ -2675,6 +2675,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Organization management endpoints
+  app.get("/api/organizations/:id", requireAuth(), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only access your own organization" });
+      }
+      
+      const organization = await storage.getOrganization(req.params.id);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json(organization);
+    } catch (error) {
+      console.error("GET /api/organizations/:id - Error:", error);
+      res.status(500).json({ message: "Failed to fetch organization" });
+    }
+  });
+
+  app.put("/api/organizations/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Only allow updating specific fields (server controls security-sensitive fields)
+      const updateSchema = insertOrganizationSchema.partial().pick({
+        name: true,
+        customValues: true,
+      });
+      
+      const organizationData = updateSchema.parse(req.body);
+      
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only update your own organization" });
+      }
+      
+      const updatedOrganization = await storage.updateOrganization(req.params.id, organizationData);
+      if (!updatedOrganization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({ message: "Organization updated successfully", organization: updatedOrganization });
+    } catch (error) {
+      console.error("PUT /api/organizations/:id - Validation error:", error);
+      res.status(400).json({ message: "Invalid organization data" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

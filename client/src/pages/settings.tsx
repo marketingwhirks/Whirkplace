@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe } from "lucide-react";
+import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw } from "lucide-react";
 
 import Header from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
@@ -76,12 +76,27 @@ export default function Settings() {
   const [showPassword, setShowPassword] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [newCompanyValue, setNewCompanyValue] = useState("");
+  const [editingValueIndex, setEditingValueIndex] = useState<number | null>(null);
+  const [editingValue, setEditingValue] = useState("");
 
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   
   // Fetch teams for profile section
   const { data: teams = [] } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
+  });
+
+  // Fetch current organization data for admin users
+  const { data: currentOrganization, isLoading: orgLoading } = useQuery({
+    queryKey: ["/api/organizations", currentUser?.organizationId],
+    queryFn: async () => {
+      if (!currentUser?.organizationId) return null;
+      const response = await fetch(`/api/organizations/${currentUser.organizationId}`);
+      if (!response.ok) throw new Error('Failed to fetch organization');
+      return response.json();
+    },
+    enabled: !!currentUser?.organizationId && currentUser?.role === "admin",
   });
 
   // Initialize forms with current user data
@@ -110,9 +125,9 @@ export default function Settings() {
 
   const organizationForm = useForm<OrganizationForm>({
     resolver: zodResolver(organizationFormSchema),
-    defaultValues: {
-      name: "TeamPulse Organization",
-      customValues: defaultCompanyValuesArray,
+    values: {
+      name: currentOrganization?.name || "TeamPulse Organization",
+      customValues: currentOrganization?.customValues || defaultCompanyValuesArray,
     },
   });
 
@@ -209,12 +224,88 @@ export default function Settings() {
     });
   };
 
+  // Organization update mutation
+  const updateOrganizationMutation = useMutation({
+    mutationFn: async (data: OrganizationForm) => {
+      if (!currentUser?.organizationId) throw new Error("No organization ID");
+      return apiRequest("PUT", `/api/organizations/${currentUser.organizationId}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", currentUser?.organizationId] });
+      toast({
+        title: "Organization updated",
+        description: "Organization settings have been saved successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Update failed",
+        description: "Failed to update organization settings. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleOrganizationSubmit = (data: OrganizationForm) => {
-    // Placeholder for organization update
-    toast({
-      title: "Organization updated",
-      description: "Organization settings have been saved.",
-    });
+    updateOrganizationMutation.mutate(data);
+  };
+
+  // Company values management functions
+  const addCompanyValue = () => {
+    if (!newCompanyValue.trim()) return;
+    
+    const currentValues = organizationForm.getValues("customValues");
+    if (currentValues.includes(newCompanyValue.trim().toLowerCase())) {
+      toast({
+        title: "Duplicate value",
+        description: "This company value already exists.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    organizationForm.setValue("customValues", [...currentValues, newCompanyValue.trim().toLowerCase()]);
+    setNewCompanyValue("");
+  };
+
+  const removeCompanyValue = (index: number) => {
+    const currentValues = organizationForm.getValues("customValues");
+    const newValues = currentValues.filter((_, i) => i !== index);
+    organizationForm.setValue("customValues", newValues);
+  };
+
+  const startEditingValue = (index: number) => {
+    const currentValues = organizationForm.getValues("customValues");
+    setEditingValueIndex(index);
+    setEditingValue(currentValues[index]);
+  };
+
+  const saveEditingValue = () => {
+    if (!editingValue.trim() || editingValueIndex === null) return;
+    
+    const currentValues = organizationForm.getValues("customValues");
+    const trimmedValue = editingValue.trim().toLowerCase();
+    
+    // Check if the new value already exists (but not at the current index)
+    if (currentValues.some((value, i) => value === trimmedValue && i !== editingValueIndex)) {
+      toast({
+        title: "Duplicate value",
+        description: "This company value already exists.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    const newValues = [...currentValues];
+    newValues[editingValueIndex] = trimmedValue;
+    organizationForm.setValue("customValues", newValues);
+    setEditingValueIndex(null);
+    setEditingValue("");
+  };
+
+  const cancelEditingValue = () => {
+    setEditingValueIndex(null);
+    setEditingValue("");
   };
 
   const handlePasswordSubmit = (data: PasswordForm) => {
@@ -697,32 +788,141 @@ export default function Settings() {
                           )}
                         />
 
-                        <div className="space-y-4">
-                          <FormLabel>Company Values</FormLabel>
-                          <FormDescription>
-                            Manage the core values that your team uses for recognition and wins
-                          </FormDescription>
-                          <div className="space-y-2">
-                            {defaultCompanyValuesArray.map((value, index) => (
-                              <div key={value} className="flex items-center space-x-2 p-3 border rounded-lg">
-                                <Badge variant="secondary" className="capitalize">
-                                  {value}
-                                </Badge>
-                                <span className="text-sm text-muted-foreground flex-1">
-                                  Core company value #{index + 1}
-                                </span>
+                        <FormField
+                          control={organizationForm.control}
+                          name="customValues"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Company Values</FormLabel>
+                              <FormDescription>
+                                Manage the core values that your team uses for recognition and wins
+                              </FormDescription>
+                              <div className="space-y-3">
+                                {/* Current company values */}
+                                <div className="space-y-2">
+                                  {field.value.map((value, index) => (
+                                    <div key={index} className="flex items-center space-x-2 p-3 border rounded-lg bg-muted/30">
+                                      {editingValueIndex === index ? (
+                                        <>
+                                          <Input
+                                            value={editingValue}
+                                            onChange={(e) => setEditingValue(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                saveEditingValue();
+                                              } else if (e.key === 'Escape') {
+                                                cancelEditingValue();
+                                              }
+                                            }}
+                                            placeholder="Enter company value"
+                                            className="flex-1"
+                                            data-testid={`input-edit-value-${index}`}
+                                          />
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={saveEditingValue}
+                                            data-testid={`button-save-value-${index}`}
+                                          >
+                                            <Check className="w-4 h-4" />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={cancelEditingValue}
+                                            data-testid={`button-cancel-edit-${index}`}
+                                          >
+                                            <X className="w-4 h-4" />
+                                          </Button>
+                                        </>
+                                      ) : (
+                                        <>
+                                          <Badge variant="secondary" className="capitalize flex-1">
+                                            {value}
+                                          </Badge>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => startEditingValue(index)}
+                                            data-testid={`button-edit-value-${index}`}
+                                          >
+                                            <Edit3 className="w-4 h-4" />
+                                          </Button>
+                                          <Button
+                                            type="button"
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => removeCompanyValue(index)}
+                                            data-testid={`button-remove-value-${index}`}
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </Button>
+                                        </>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+
+                                {/* Add new company value */}
+                                <div className="flex items-center space-x-2 p-3 border-2 border-dashed rounded-lg">
+                                  <Input
+                                    value={newCompanyValue}
+                                    onChange={(e) => setNewCompanyValue(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        addCompanyValue();
+                                      }
+                                    }}
+                                    placeholder="Add new company value..."
+                                    className="flex-1"
+                                    data-testid="input-new-company-value"
+                                  />
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={addCompanyValue}
+                                    disabled={!newCompanyValue.trim()}
+                                    data-testid="button-add-company-value"
+                                  >
+                                    <Plus className="w-4 h-4 mr-1" />
+                                    Add
+                                  </Button>
+                                </div>
+
+                                {field.value.length === 0 && (
+                                  <p className="text-sm text-muted-foreground text-center py-4">
+                                    No company values defined. Add at least one value to continue.
+                                  </p>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            Custom value management will be available in a future update.
-                          </p>
-                        </div>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
                         <div className="flex justify-end">
-                          <Button type="submit" data-testid="button-save-organization">
-                            <Save className="w-4 h-4 mr-2" />
-                            Save Organization Settings
+                          <Button 
+                            type="submit" 
+                            data-testid="button-save-organization"
+                            disabled={updateOrganizationMutation.isPending || orgLoading}
+                          >
+                            {updateOrganizationMutation.isPending ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                <Save className="w-4 h-4 mr-2" />
+                                Save Organization Settings
+                              </>
+                            )}
                           </Button>
                         </div>
                       </form>

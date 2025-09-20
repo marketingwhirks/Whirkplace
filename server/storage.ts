@@ -89,6 +89,7 @@ export interface IStorage {
   getOrganization(id: string): Promise<Organization | undefined>;
   getOrganizationBySlug(slug: string): Promise<Organization | undefined>;
   createOrganization(organization: InsertOrganization): Promise<Organization>;
+  updateOrganization(id: string, organization: Partial<InsertOrganization>): Promise<Organization | undefined>;
   
   // Users
   getUser(organizationId: string, id: string): Promise<User | undefined>;
@@ -221,6 +222,29 @@ export class DatabaseStorage implements IStorage {
       .values(orgValues)
       .returning();
     return organization;
+  }
+
+  async updateOrganization(id: string, organizationUpdate: Partial<InsertOrganization>): Promise<Organization | undefined> {
+    const updateData: Partial<typeof organizations.$inferInsert> = {};
+    
+    if (organizationUpdate.name !== undefined) updateData.name = organizationUpdate.name;
+    if (organizationUpdate.customValues !== undefined) updateData.customValues = organizationUpdate.customValues;
+    if (organizationUpdate.plan !== undefined) updateData.plan = organizationUpdate.plan;
+    if (organizationUpdate.slackWorkspaceId !== undefined) updateData.slackWorkspaceId = organizationUpdate.slackWorkspaceId;
+    if (organizationUpdate.isActive !== undefined) updateData.isActive = organizationUpdate.isActive;
+
+    try {
+      const [updatedOrganization] = await db
+        .update(organizations)
+        .set(updateData)
+        .where(eq(organizations.id, id))
+        .returning();
+      
+      return updatedOrganization || undefined;
+    } catch (error) {
+      console.error("Failed to update organization:", error);
+      return undefined;
+    }
   }
 
   // Users
@@ -2105,6 +2129,23 @@ export class MemStorage implements IStorage {
     
     this.organizations.set(organization.id, organization);
     return organization;
+  }
+
+  async updateOrganization(id: string, organizationUpdate: Partial<InsertOrganization>): Promise<Organization | undefined> {
+    const existingOrganization = this.organizations.get(id);
+    if (!existingOrganization) return undefined;
+
+    const updatedOrganization: Organization = {
+      ...existingOrganization,
+      ...(organizationUpdate.name !== undefined && { name: organizationUpdate.name }),
+      ...(organizationUpdate.customValues !== undefined && { customValues: organizationUpdate.customValues }),
+      ...(organizationUpdate.plan !== undefined && { plan: organizationUpdate.plan }),
+      ...(organizationUpdate.slackWorkspaceId !== undefined && { slackWorkspaceId: organizationUpdate.slackWorkspaceId }),
+      ...(organizationUpdate.isActive !== undefined && { isActive: organizationUpdate.isActive }),
+    };
+
+    this.organizations.set(id, updatedOrganization);
+    return updatedOrganization;
   }
 
   constructor() {
