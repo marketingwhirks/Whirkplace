@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown } from "lucide-react";
+import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -100,10 +100,29 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
 }
 
 function MeetingCard({ meeting }: { meeting: OneOnOneMeeting }) {
+  const { toast } = useToast();
   const scheduledDate = typeof meeting.scheduledAt === 'string' 
     ? parseISO(meeting.scheduledAt) 
     : new Date(meeting.scheduledAt);
   const isUpcoming = scheduledDate > new Date();
+  
+  // Mutation for sending meeting report to Slack
+  const sendToSlackMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/one-on-ones/${meeting.id}/send-to-slack`),
+    onSuccess: () => {
+      toast({
+        title: "Sent to Slack! 📤",
+        description: "Your meeting report has been sent to your Slack DMs.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to send",
+        description: error.message || "Please check your Slack connection and try again.",
+        variant: "destructive",
+      });
+    },
+  });
   
   return (
     <Card className="hover:shadow-md transition-shadow" data-testid={`card-meeting-${meeting.id}`}>
@@ -147,9 +166,21 @@ function MeetingCard({ meeting }: { meeting: OneOnOneMeeting }) {
               </span>
             </div>
             
-            <Button variant="outline" size="sm" data-testid={`button-view-${meeting.id}`}>
-              View Details
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => sendToSlackMutation.mutate()}
+                disabled={sendToSlackMutation.isPending}
+                data-testid={`button-slack-${meeting.id}`}
+              >
+                <MessageSquare className="w-3 h-3 mr-1" />
+                {sendToSlackMutation.isPending ? "Sending..." : "Send to Slack"}
+              </Button>
+              <Button variant="outline" size="sm" data-testid={`button-view-${meeting.id}`}>
+                View Details
+              </Button>
+            </div>
           </div>
         </div>
       </CardContent>
