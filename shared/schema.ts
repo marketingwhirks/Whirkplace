@@ -115,6 +115,7 @@ export const users = pgTable("users", {
   microsoftTenantId: text("microsoft_tenant_id"), // Microsoft tenant association
   authProvider: text("auth_provider").notNull().default("local"), // local, slack, microsoft
   isActive: boolean("is_active").notNull().default(true),
+  isSuperAdmin: boolean("is_super_admin").notNull().default(false),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 }, (table) => ({
   // Unique index on Slack user ID for fast lookups

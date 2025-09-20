@@ -17,7 +17,7 @@ import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutou
 import { randomBytes } from "crypto";
 import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
-import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser } from "./middleware/auth";
+import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser, requireSuperAdmin } from "./middleware/auth";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
 import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } from "./middleware/plan-access";
 import { registerMicrosoftTeamsRoutes } from "./routes/microsoft-teams";
@@ -3983,13 +3983,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // These routes allow a super admin to manage all organizations and users globally
   
   // Get all organizations for super admin
-  app.get("/api/super-admin/organizations", requireAuth(), async (req, res) => {
+  app.get("/api/super-admin/organizations", requireSuperAdmin(), async (req, res) => {
     try {
-      // Check if user is a super admin (Matthew Patrick with backdoor access)
-      const currentUser = req.currentUser!;
-      if (currentUser.username !== 'mpatrick' && !currentUser.username?.includes('backdoor')) {
-        return res.status(403).json({ message: "Super admin access required" });
-      }
 
       const organizations = await storage.getAllOrganizations();
       
@@ -4009,13 +4004,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all users globally for super admin
-  app.get("/api/super-admin/users", requireAuth(), async (req, res) => {
+  app.get("/api/super-admin/users", requireSuperAdmin(), async (req, res) => {
     try {
-      // Check if user is a super admin
-      const currentUser = req.currentUser!;
-      if (currentUser.username !== 'mpatrick' && !currentUser.username?.includes('backdoor')) {
-        return res.status(403).json({ message: "Super admin access required" });
-      }
 
       const includeInactive = req.query.includeInactive === 'true';
       const users = await storage.getAllUsersGlobal(includeInactive);
@@ -4037,13 +4027,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update user globally
-  app.patch("/api/super-admin/users/:id", requireAuth(), async (req, res) => {
+  app.patch("/api/super-admin/users/:id", requireSuperAdmin(), async (req, res) => {
     try {
-      // Check if user is a super admin
-      const currentUser = req.currentUser!;
-      if (currentUser.username !== 'mpatrick' && !currentUser.username?.includes('backdoor')) {
-        return res.status(403).json({ message: "Super admin access required" });
-      }
 
       const updates = insertUserSchema.partial().parse(req.body);
       const updatedUser = await storage.updateUserGlobal(req.params.id, updates);
@@ -4060,13 +4045,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Deactivate organization
-  app.patch("/api/super-admin/organizations/:id/deactivate", requireAuth(), async (req, res) => {
+  app.patch("/api/super-admin/organizations/:id/deactivate", requireSuperAdmin(), async (req, res) => {
     try {
-      // Check if user is a super admin
-      const currentUser = req.currentUser!;
-      if (currentUser.username !== 'mpatrick' && !currentUser.username?.includes('backdoor')) {
-        return res.status(403).json({ message: "Super admin access required" });
-      }
 
       const success = await storage.deactivateOrganization(req.params.id);
       
@@ -4082,13 +4062,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get system statistics
-  app.get("/api/super-admin/stats", requireAuth(), async (req, res) => {
+  app.get("/api/super-admin/stats", requireSuperAdmin(), async (req, res) => {
     try {
-      // Check if user is a super admin
-      const currentUser = req.currentUser!;
-      if (currentUser.username !== 'mpatrick' && !currentUser.username?.includes('backdoor')) {
-        return res.status(403).json({ message: "Super admin access required" });
-      }
 
       const stats = await storage.getSystemStats();
       res.json(stats);
