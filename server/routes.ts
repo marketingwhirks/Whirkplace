@@ -74,27 +74,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Also set authentication cookies for fallback (like Slack OAuth)
         const sessionToken = randomBytes(32).toString('hex');
         
-        // SECURITY: Set secure cookies for iframe compatibility
+        // SECURITY: Set secure cookies for iframe compatibility (production) or lax for development
         res.cookie('auth_user_id', matthewUser.id, {
           httpOnly: true,
-          secure: true, // Required for SameSite=None
-          sameSite: 'none', // Allow cookies in iframe/embedded context
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
         res.cookie('auth_org_id', req.orgId, {
           httpOnly: true,
-          secure: true, // Required for SameSite=None
-          sameSite: 'none', // Allow cookies in iframe/embedded context
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
         res.cookie('auth_session_token', sessionToken, {
           httpOnly: true,
-          secure: true, // Required for SameSite=None
-          sameSite: 'none', // Allow cookies in iframe/embedded context
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
@@ -361,24 +361,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         res.cookie('auth_user_id', authenticatedUser.id, {
           httpOnly: true,
-          secure: true, // Required for SameSite=None
-          sameSite: 'none', // Allow cookies in iframe/embedded context
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
         res.cookie('auth_org_id', organization.id, {
           httpOnly: true,
-          secure: true, // Required for SameSite=None
-          sameSite: 'none', // Allow cookies in iframe/embedded context
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
         res.cookie('auth_session_token', sessionToken, {
           httpOnly: true,
-          secure: true, // Required for SameSite=None
-          sameSite: 'none', // Allow cookies in iframe/embedded context
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
           path: '/',
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
@@ -418,19 +418,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error("Session destroy error:", err);
           return res.status(500).json({ message: "Failed to logout" });
         }
-        res.clearCookie('connect.sid'); // Clear session cookie
+        // Clear session cookie with matching attributes from session config
+        res.clearCookie('connect.sid', {
+          secure: process.env.NODE_ENV === 'production',
+          httpOnly: true,
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          path: '/'
+        });
         // Also clear auth cookies used by cookie-based authentication
-        res.clearCookie('auth_user_id');
-        res.clearCookie('auth_org_id');
-        res.clearCookie('auth_session_token');
+        // SECURITY FIX: Must match exact same attributes used when setting cookies
+        res.clearCookie('auth_user_id', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          path: '/'
+        });
+        res.clearCookie('auth_org_id', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          path: '/'
+        });
+        res.clearCookie('auth_session_token', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+          path: '/'
+        });
         res.json({ message: "Logged out successfully" });
       });
     } else {
       // If no session exists, just clear cookies and respond
-      res.clearCookie('connect.sid');
-      res.clearCookie('auth_user_id');
-      res.clearCookie('auth_org_id');
-      res.clearCookie('auth_session_token');
+      res.clearCookie('connect.sid', {
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/'
+      });
+      res.clearCookie('auth_user_id', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/'
+      });
+      res.clearCookie('auth_org_id', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/'
+      });
+      res.clearCookie('auth_session_token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/'
+      });
       res.json({ message: "Logged out successfully" });
     }
   });

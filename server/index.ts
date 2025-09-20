@@ -30,10 +30,10 @@ app.use(session({
   name: 'connect.sid',
   proxy: true, // Trust proxy for Replit's TLS terminator
   cookie: {
-    secure: true, // Required for SameSite=None
+    secure: process.env.NODE_ENV === 'production', // Use secure only in production (HTTPS)
     httpOnly: true,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    sameSite: 'none' // Allow cookies in iframe/embedded context
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' // Allow iframe in production, lax for dev
   }
 }));
 
