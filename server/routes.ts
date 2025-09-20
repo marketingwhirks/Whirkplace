@@ -3653,6 +3653,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Theme Configuration Endpoints
+  
+  // Get organization theme configuration
+  app.get("/api/organizations/:id/theme", requireAuth(), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only access your own organization's theme" });
+      }
+      
+      const organization = await storage.getOrganization(req.params.id);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({
+        themeConfig: organization.themeConfig || null,
+        enableCustomTheme: organization.enableCustomTheme || false
+      });
+    } catch (error) {
+      console.error("GET /api/organizations/:id/theme - Error:", error);
+      res.status(500).json({ message: "Failed to fetch theme configuration" });
+    }
+  });
+
+  // Update organization theme configuration
+  app.put("/api/organizations/:id/theme", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only update your own organization's theme" });
+      }
+
+      const themeConfigSchema = z.object({
+        themeConfig: z.record(z.string()).optional(),
+        enableCustomTheme: z.boolean().optional()
+      });
+      
+      const themeData = themeConfigSchema.parse(req.body);
+      
+      const updateData: any = {};
+      if (themeData.themeConfig !== undefined) updateData.themeConfig = themeData.themeConfig;
+      if (themeData.enableCustomTheme !== undefined) updateData.enableCustomTheme = themeData.enableCustomTheme;
+      
+      const updatedOrganization = await storage.updateOrganization(req.params.id, updateData);
+      if (!updatedOrganization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({ 
+        message: "Theme configuration updated successfully",
+        themeConfig: updatedOrganization.themeConfig,
+        enableCustomTheme: updatedOrganization.enableCustomTheme
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid theme configuration", errors: error.errors });
+      }
+      console.error("PUT /api/organizations/:id/theme - Error:", error);
+      res.status(500).json({ message: "Failed to update theme configuration" });
+    }
+  });
+
   // Integration Management Endpoints for Multi-Tenant OAuth Configuration
   
   // Get organization integration status
