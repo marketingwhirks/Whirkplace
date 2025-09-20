@@ -15,6 +15,10 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
+localPort = 33987
+externalPort = 6800
+
+[[ports]]
 localPort = 36527
 externalPort = 3001
 
@@ -54,7 +58,7 @@ externalPort = 8000
 PORT = "5000"
 
 [agent]
-integrations = ["javascript_mem_db:1.0.0", "javascript_slack:1.0.0", "javascript_database:1.0.0"]
+integrations = ["javascript_mem_db:1.0.0", "javascript_slack:1.0.0", "javascript_database:1.0.0", "javascript_openai:1.0.0"]
 
 [workflows]
 runButton = "Project"

@@ -1220,6 +1220,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI Question Generation
+  app.post("/api/questions/generate", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { questionGenerator } = await import("./services/questionGenerator");
+      
+      const generateSchema = z.object({
+        count: z.number().min(1).max(10).default(3),
+        theme: z.string().min(1, "Theme is required"),
+        teamFocus: z.string().optional(),
+        excludeExisting: z.boolean().default(true)
+      });
+      
+      const { count, theme, teamFocus, excludeExisting } = generateSchema.parse(req.body);
+      
+      // Get existing questions if we should exclude them
+      let previousQuestions: string[] = [];
+      if (excludeExisting) {
+        const existingQuestions = await storage.getActiveQuestions(req.orgId);
+        previousQuestions = existingQuestions.map(q => q.text);
+      }
+      
+      const generatedQuestions = await questionGenerator.generateQuestions({
+        count,
+        theme,
+        teamFocus,
+        previousQuestions
+      });
+      
+      res.json({ questions: generatedQuestions });
+    } catch (error) {
+      console.error("AI question generation error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid generation parameters",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Failed to generate questions"
+      });
+    }
+  });
+
+  app.post("/api/questions/:id/improve", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { questionGenerator } = await import("./services/questionGenerator");
+      
+      // Get the question to improve
+      const questions = await storage.getActiveQuestions(req.orgId);
+      const question = questions.find(q => q.id === req.params.id);
+      
+      if (!question) {
+        return res.status(404).json({ message: "Question not found" });
+      }
+      
+      const suggestions = await questionGenerator.suggestQuestionImprovements(question.text);
+      
+      res.json({ suggestions });
+    } catch (error) {
+      console.error("Question improvement error:", error);
+      res.status(500).json({ 
+        message: error instanceof Error ? error.message : "Failed to analyze question"
+      });
+    }
+  });
+
   // Questions
   app.get("/api/questions", requireAuth(), async (req, res) => {
     try {

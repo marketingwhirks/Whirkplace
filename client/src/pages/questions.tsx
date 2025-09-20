@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { z } from "zod";
-import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff, Send, XCircle, Search, BookOpen, Users, Heart, Briefcase, TrendingUp, MessageCircle, Target } from "lucide-react";
+import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff, Send, XCircle, Search, BookOpen, Users, Heart, Briefcase, TrendingUp, MessageCircle, Target, Sparkles, Wand2, Lightbulb } from "lucide-react";
 
 import Header from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,11 @@ export default function Questions() {
   const [selectedTemplate, setSelectedTemplate] = useState<QuestionTemplate | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("mood-wellness");
+  const [showAIGenerator, setShowAIGenerator] = useState(false);
+  const [aiTheme, setAITheme] = useState("");
+  const [aiTeamFocus, setAITeamFocus] = useState("");
+  const [aiCount, setAICount] = useState(3);
+  const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
 
   // Fetch questions
   const { data: questions = [], isLoading } = useQuery<Question[]>({
@@ -151,6 +156,53 @@ export default function Questions() {
     },
   });
 
+  // AI Question Generation mutation
+  const generateQuestionsMutation = useMutation({
+    mutationFn: async (params: { count: number; theme: string; teamFocus?: string }) => {
+      return apiRequest("POST", "/api/questions/generate", params);
+    },
+    onSuccess: (data: any) => {
+      setGeneratedQuestions(data.questions || []);
+      toast({
+        title: "Questions generated!",
+        description: `Generated ${data.questions?.length || 0} AI-powered questions.`
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Generation failed",
+        description: error.message || "Failed to generate questions with AI.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Handle AI generation
+  const handleAIGenerate = () => {
+    if (!aiTheme.trim()) {
+      toast({
+        title: "Theme required",
+        description: "Please enter a theme for question generation.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    generateQuestionsMutation.mutate({
+      count: aiCount,
+      theme: aiTheme,
+      teamFocus: aiTeamFocus || undefined
+    });
+  };
+
+  // Handle adding AI-generated question
+  const handleAddAIQuestion = (generatedQuestion: any) => {
+    createQuestionMutation.mutate({
+      text: generatedQuestion.text,
+      order: questions.length
+    });
+  };
+
   // Handle form submission
   const handleSubmit = (data: CreateQuestionForm) => {
     if (editingQuestion) {
@@ -211,11 +263,16 @@ export default function Questions() {
   };
 
   // Handle switching creation modes
-  const handleCreationModeChange = (mode: "custom" | "template") => {
-    setCreationMode(mode);
+  const handleCreationModeChange = (mode: "custom" | "template" | "ai") => {
+    setCreationMode(mode as "custom" | "template");
     if (mode === "custom") {
       setSelectedTemplate(null);
       form.setValue("text", "");
+    } else if (mode === "ai") {
+      // Clear any existing form data when switching to AI mode
+      setSelectedTemplate(null);
+      form.setValue("text", "");
+      setGeneratedQuestions([]);
     }
   };
 
@@ -328,7 +385,7 @@ export default function Questions() {
               {/* Only show tabs when creating new questions (not editing) */}
               {!editingQuestion && (
                 <Tabs value={creationMode} onValueChange={(value) => handleCreationModeChange(value as "custom" | "template")} className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
+                  <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="template" data-testid="tab-question-bank">
                       <BookOpen className="w-4 h-4 mr-2" />
                       Choose from Bank
@@ -336,6 +393,10 @@ export default function Questions() {
                     <TabsTrigger value="custom" data-testid="tab-custom-question">
                       <Plus className="w-4 h-4 mr-2" />
                       Custom Question
+                    </TabsTrigger>
+                    <TabsTrigger value="ai" data-testid="tab-ai-generator">
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      AI Generator
                     </TabsTrigger>
                   </TabsList>
                   
@@ -444,6 +505,143 @@ export default function Questions() {
                     </div>
                   </TabsContent>
                   
+                  <TabsContent value="ai" className="mt-4">
+                    <div className="space-y-4">
+                      <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <div className="flex items-start gap-3">
+                          <Sparkles className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                          <div>
+                            <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-1">
+                              AI-Powered Question Generation
+                            </h4>
+                            <p className="text-sm text-blue-700 dark:text-blue-300">
+                              Let AI help you create thoughtful check-in questions tailored to your team's needs. 
+                              The questions will be unique and avoid duplicating your existing ones.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <label htmlFor="ai-theme" className="text-sm font-medium">
+                            Theme or Focus Area *
+                          </label>
+                          <Input
+                            id="ai-theme"
+                            placeholder="e.g., team collaboration, work-life balance, goal setting"
+                            value={aiTheme}
+                            onChange={(e) => setAITheme(e.target.value)}
+                            data-testid="input-ai-theme"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            What aspect of work/wellness should the questions focus on?
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          <label htmlFor="ai-team-focus" className="text-sm font-medium">
+                            Team/Role Focus (Optional)
+                          </label>
+                          <Input
+                            id="ai-team-focus"
+                            placeholder="e.g., engineering team, remote workers, managers"
+                            value={aiTeamFocus}
+                            onChange={(e) => setAITeamFocus(e.target.value)}
+                            data-testid="input-ai-team-focus"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Tailor questions for specific teams or roles
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <div className="space-y-2">
+                          <label htmlFor="ai-count" className="text-sm font-medium">
+                            Number of Questions
+                          </label>
+                          <select
+                            id="ai-count"
+                            value={aiCount}
+                            onChange={(e) => setAICount(Number(e.target.value))}
+                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            data-testid="select-ai-count"
+                          >
+                            {[1, 2, 3, 4, 5].map(num => (
+                              <option key={num} value={num}>{num}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div className="flex-1">
+                          <Button
+                            onClick={handleAIGenerate}
+                            disabled={generateQuestionsMutation.isPending || !aiTheme.trim()}
+                            className="w-full"
+                            data-testid="button-generate-ai-questions"
+                          >
+                            {generateQuestionsMutation.isPending ? (
+                              <>
+                                <Wand2 className="w-4 h-4 mr-2 animate-spin" />
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-4 h-4 mr-2" />
+                                Generate Questions
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+
+                      {/* Generated Questions Display */}
+                      {generatedQuestions.length > 0 && (
+                        <div className="space-y-3 border-t pt-4">
+                          <h4 className="font-medium flex items-center gap-2">
+                            <Lightbulb className="w-4 h-4" />
+                            Generated Questions
+                          </h4>
+                          <div className="space-y-2">
+                            {generatedQuestions.map((q, index) => (
+                              <div
+                                key={index}
+                                className="p-3 bg-muted rounded-lg border"
+                                data-testid={`generated-question-${index}`}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="flex-1">
+                                    <p className="font-medium">{q.text}</p>
+                                    {q.description && (
+                                      <p className="text-sm text-muted-foreground mt-1">
+                                        {q.description}
+                                      </p>
+                                    )}
+                                    <div className="mt-2">
+                                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary/10 text-primary">
+                                        {q.category}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleAddAIQuestion(q)}
+                                    disabled={createQuestionMutation.isPending}
+                                    data-testid={`button-add-question-${index}`}
+                                  >
+                                    <Plus className="w-4 h-4 mr-1" />
+                                    Add
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </TabsContent>
+
                   <TabsContent value="custom" className="mt-4">
                     <div className="text-center py-4 text-muted-foreground">
                       <Plus className="w-8 h-8 mx-auto mb-2 opacity-50" />
