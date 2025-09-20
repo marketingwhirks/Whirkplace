@@ -20,6 +20,7 @@ import LeadershipDashboard from "@/pages/leadership-dashboard";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import Admin from "@/pages/admin";
+import SuperAdminPage from "@/pages/SuperAdminPage";
 import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import Sidebar from "@/components/layout/sidebar";
@@ -43,6 +44,7 @@ function Router() {
           <Route path="/analytics" component={Analytics} />
           <Route path="/settings" component={Settings} />
           <Route path="/admin" component={Admin} />
+          <Route path="/super-admin" component={SuperAdminPage} />
           <Route component={NotFound} />
         </Switch>
       </div>

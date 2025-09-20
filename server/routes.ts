@@ -3979,6 +3979,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Super Admin Routes - Cross-organization management
+  // These routes allow a super admin to manage all organizations and users globally
+  
+  // Get all organizations for super admin
+  app.get("/api/super-admin/organizations", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is a super admin (Matthew Patrick with backdoor access)
+      const currentUser = req.currentUser!;
+      if (currentUser.username !== 'mpatrick' && !currentUser.username?.includes('backdoor')) {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const organizations = await storage.getAllOrganizations();
+      
+      // Get stats for each organization
+      const orgsWithStats = await Promise.all(
+        organizations.map(async (org) => {
+          const stats = await storage.getOrganizationStats(org.id);
+          return { ...org, ...stats };
+        })
+      );
+
+      res.json(orgsWithStats);
+    } catch (error) {
+      console.error("GET /api/super-admin/organizations - Error:", error);
+      res.status(500).json({ message: "Failed to fetch organizations" });
+    }
+  });
+
+  // Get all users globally for super admin
+  app.get("/api/super-admin/users", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is a super admin
+      const currentUser = req.currentUser!;
+      if (currentUser.username !== 'mpatrick' && !currentUser.username?.includes('backdoor')) {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const includeInactive = req.query.includeInactive === 'true';
+      const users = await storage.getAllUsersGlobal(includeInactive);
+      
+      // Get organization names for each user
+      const organizations = await storage.getAllOrganizations();
+      const orgMap = new Map(organizations.map(org => [org.id, org.name]));
+      
+      const usersWithOrgNames = users.map(user => ({
+        ...user,
+        organizationName: orgMap.get(user.organizationId) || 'Unknown'
+      }));
+
+      res.json(usersWithOrgNames);
+    } catch (error) {
+      console.error("GET /api/super-admin/users - Error:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // Update user globally
+  app.patch("/api/super-admin/users/:id", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is a super admin
+      const currentUser = req.currentUser!;
+      if (currentUser.username !== 'mpatrick' && !currentUser.username?.includes('backdoor')) {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const updates = insertUserSchema.partial().parse(req.body);
+      const updatedUser = await storage.updateUserGlobal(req.params.id, updates);
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({ message: "User updated successfully", user: updatedUser });
+    } catch (error) {
+      console.error("PATCH /api/super-admin/users/:id - Error:", error);
+      res.status(400).json({ message: "Invalid user data" });
+    }
+  });
+
+  // Deactivate organization
+  app.patch("/api/super-admin/organizations/:id/deactivate", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is a super admin
+      const currentUser = req.currentUser!;
+      if (currentUser.username !== 'mpatrick' && !currentUser.username?.includes('backdoor')) {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const success = await storage.deactivateOrganization(req.params.id);
+      
+      if (!success) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      res.json({ message: "Organization deactivated successfully" });
+    } catch (error) {
+      console.error("PATCH /api/super-admin/organizations/:id/deactivate - Error:", error);
+      res.status(500).json({ message: "Failed to deactivate organization" });
+    }
+  });
+
+  // Get system statistics
+  app.get("/api/super-admin/stats", requireAuth(), async (req, res) => {
+    try {
+      // Check if user is a super admin
+      const currentUser = req.currentUser!;
+      if (currentUser.username !== 'mpatrick' && !currentUser.username?.includes('backdoor')) {
+        return res.status(403).json({ message: "Super admin access required" });
+      }
+
+      const stats = await storage.getSystemStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("GET /api/super-admin/stats - Error:", error);
+      res.status(500).json({ message: "Failed to fetch system statistics" });
+    }
+  });
+
   // Register additional route modules
   registerMicrosoftTeamsRoutes(app);
   registerMicrosoftAuthRoutes(app);

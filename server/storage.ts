@@ -96,6 +96,14 @@ export interface IStorage {
   createOrganization(organization: InsertOrganization): Promise<Organization>;
   updateOrganization(id: string, organization: Partial<InsertOrganization>): Promise<Organization | undefined>;
   
+  // Super Admin Methods - Cross-organization access
+  getAllUsersGlobal(includeInactive?: boolean): Promise<User[]>;
+  getUserGlobal(userId: string): Promise<User | undefined>;
+  updateUserGlobal(userId: string, user: Partial<InsertUser>): Promise<User | undefined>;
+  deactivateOrganization(organizationId: string): Promise<boolean>;
+  getOrganizationStats(organizationId: string): Promise<{ userCount: number; teamCount: number; activeUsers: number }>;
+  getSystemStats(): Promise<{ totalOrganizations: number; totalUsers: number; activeOrganizations: number; activeUsers: number }>;
+  
   // Users
   getUser(organizationId: string, id: string): Promise<User | undefined>;
   getUserByUsername(organizationId: string, username: string): Promise<User | undefined>;
@@ -427,6 +435,142 @@ export class DatabaseStorage implements IStorage {
     }
     
     return await db.select().from(users).where(and(...conditions));
+  }
+
+  // Super Admin Methods - Cross-organization access
+  async getAllUsersGlobal(includeInactive = false): Promise<User[]> {
+    try {
+      const conditions = [];
+      
+      // Only filter active users if includeInactive is false
+      if (!includeInactive) {
+        conditions.push(eq(users.isActive, true));
+      }
+      
+      if (conditions.length > 0) {
+        return await db.select().from(users).where(and(...conditions));
+      } else {
+        return await db.select().from(users);
+      }
+    } catch (error) {
+      console.error("Failed to fetch all users globally:", error);
+      throw error;
+    }
+  }
+
+  async getUserGlobal(userId: string): Promise<User | undefined> {
+    try {
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      return user || undefined;
+    } catch (error) {
+      console.error("Failed to fetch user globally:", error);
+      throw error;
+    }
+  }
+
+  async updateUserGlobal(userId: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
+    try {
+      const updateData: Partial<typeof users.$inferInsert> = {};
+      
+      if (userUpdate.name !== undefined) updateData.name = userUpdate.name;
+      if (userUpdate.email !== undefined) updateData.email = userUpdate.email;
+      if (userUpdate.role !== undefined) updateData.role = userUpdate.role;
+      if (userUpdate.isActive !== undefined) updateData.isActive = userUpdate.isActive;
+      if (userUpdate.teamId !== undefined) updateData.teamId = userUpdate.teamId;
+      if (userUpdate.managerId !== undefined) updateData.managerId = userUpdate.managerId;
+
+      const [updatedUser] = await db
+        .update(users)
+        .set(updateData)
+        .where(eq(users.id, userId))
+        .returning();
+      
+      return updatedUser || undefined;
+    } catch (error) {
+      console.error("Failed to update user globally:", error);
+      return undefined;
+    }
+  }
+
+  async deactivateOrganization(organizationId: string): Promise<boolean> {
+    try {
+      const result = await db
+        .update(organizations)
+        .set({ isActive: false })
+        .where(eq(organizations.id, organizationId));
+      
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error("Failed to deactivate organization:", error);
+      return false;
+    }
+  }
+
+  async getOrganizationStats(organizationId: string): Promise<{ userCount: number; teamCount: number; activeUsers: number }> {
+    try {
+      // Get total user count
+      const [totalUsersResult] = await db
+        .select({ count: count() })
+        .from(users)
+        .where(eq(users.organizationId, organizationId));
+
+      // Get active user count
+      const [activeUsersResult] = await db
+        .select({ count: count() })
+        .from(users)
+        .where(and(eq(users.organizationId, organizationId), eq(users.isActive, true)));
+
+      // Get team count
+      const [teamStats] = await db
+        .select({ count: count() })
+        .from(teams)
+        .where(eq(teams.organizationId, organizationId));
+
+      return {
+        userCount: totalUsersResult?.count || 0,
+        teamCount: teamStats?.count || 0,
+        activeUsers: activeUsersResult?.count || 0
+      };
+    } catch (error) {
+      console.error("Failed to get organization stats:", error);
+      return { userCount: 0, teamCount: 0, activeUsers: 0 };
+    }
+  }
+
+  async getSystemStats(): Promise<{ totalOrganizations: number; totalUsers: number; activeOrganizations: number; activeUsers: number }> {
+    try {
+      // Get total organizations
+      const [totalOrgsResult] = await db
+        .select({ count: count() })
+        .from(organizations);
+
+      // Get active organizations
+      const [activeOrgsResult] = await db
+        .select({ count: count() })
+        .from(organizations)
+        .where(eq(organizations.isActive, true));
+
+      // Get total users
+      const [totalUsersResult] = await db
+        .select({ count: count() })
+        .from(users);
+
+      // Get active users
+      const [activeUsersResult] = await db
+        .select({ count: count() })
+        .from(users)
+        .where(eq(users.isActive, true));
+
+      return {
+        totalOrganizations: totalOrgsResult?.count || 0,
+        activeOrganizations: activeOrgsResult?.count || 0,
+        totalUsers: totalUsersResult?.count || 0,
+        activeUsers: activeUsersResult?.count || 0
+      };
+    } catch (error) {
+      console.error("Failed to get system stats:", error);
+      return { totalOrganizations: 0, activeOrganizations: 0, totalUsers: 0, activeUsers: 0 };
+    }
   }
 
   // Teams
