@@ -25,6 +25,9 @@ export default function LoginPage() {
   
   const handleBackdoorLogin = async () => {
     try {
+      console.log("🔄 Starting backdoor login with:", { username: backdoorUser, key: backdoorKey.substring(0, 3) + "***" });
+      console.log("🌐 Making request to:", `${window.location.origin}/auth/backdoor?org=default`);
+      
       const response = await fetch('/auth/backdoor?org=default', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -32,8 +35,15 @@ export default function LoginPage() {
         body: JSON.stringify({ username: backdoorUser, key: backdoorKey })
       });
       
+      console.log("📡 Response received:", { 
+        status: response.status, 
+        statusText: response.statusText,
+        ok: response.ok 
+      });
+      
       if (response.ok) {
         const data = await response.json();
+        console.log("✅ Login successful, data:", data);
         toast({ title: "Success", description: data.message });
         
         // Clear all cached data and force fresh authentication
@@ -48,7 +58,9 @@ export default function LoginPage() {
         // Immediate reload to ensure cookies are properly available
         window.location.href = "/?org=default";
       } else {
+        console.error("❌ Login failed with status:", response.status);
         const error = await response.json();
+        console.error("❌ Error details:", error);
         toast({ 
           title: "Login failed", 
           description: error.message,
@@ -56,9 +68,12 @@ export default function LoginPage() {
         });
       }
     } catch (error) {
+      console.error("🚨 Network/Fetch error:", error);
+      console.error("🚨 Error type:", error.name);
+      console.error("🚨 Error message:", error.message);
       toast({ 
         title: "Error", 
-        description: "Failed to connect to server",
+        description: `Network error: ${error.message}`,
         variant: "destructive" 
       });
     }
