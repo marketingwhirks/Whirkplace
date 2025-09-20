@@ -93,6 +93,9 @@ export const organizations = pgTable("organizations", {
   enableTeamsIntegration: boolean("enable_teams_integration").notNull().default(false),
   microsoftConnectionStatus: text("microsoft_connection_status").default("not_configured"), // not_configured, connected, error
   microsoftLastConnected: timestamp("microsoft_last_connected"),
+  // Theme Configuration - Custom branding for each organization
+  themeConfig: jsonb("theme_config"), // JSON object storing CSS custom properties
+  enableCustomTheme: boolean("enable_custom_theme").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });

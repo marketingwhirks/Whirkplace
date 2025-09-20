@@ -301,6 +301,8 @@ export class DatabaseStorage implements IStorage {
     if (organizationUpdate.plan !== undefined) updateData.plan = organizationUpdate.plan;
     if (organizationUpdate.slackWorkspaceId !== undefined) updateData.slackWorkspaceId = organizationUpdate.slackWorkspaceId;
     if (organizationUpdate.isActive !== undefined) updateData.isActive = organizationUpdate.isActive;
+    if (organizationUpdate.themeConfig !== undefined) updateData.themeConfig = organizationUpdate.themeConfig;
+    if (organizationUpdate.enableCustomTheme !== undefined) updateData.enableCustomTheme = organizationUpdate.enableCustomTheme;
 
     try {
       const [updatedOrganization] = await db
