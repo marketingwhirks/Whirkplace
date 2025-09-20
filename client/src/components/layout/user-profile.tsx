@@ -35,8 +35,11 @@ export function UserProfile() {
     onSuccess: () => {
       // Clear all cached data
       queryClient.clear();
-      // Specifically invalidate the current user query to trigger authentication check
-      queryClient.invalidateQueries({ queryKey: ['/api/users/current', { org: "default" }] });
+      
+      // Force redirect to login page instead of invalidating queries
+      // This prevents race conditions and runtime errors
+      window.location.href = "/login?org=default";
+      
       toast({
         title: "Logged out successfully",
         description: "You have been signed out of your account",
