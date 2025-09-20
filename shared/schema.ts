@@ -31,6 +31,31 @@ export const AuthProvider = {
 
 export type AuthProviderType = typeof AuthProvider[keyof typeof AuthProvider];
 
+// Plan Constants
+export const Plan = {
+  STARTER: "starter",
+  PROFESSIONAL: "professional", 
+  ENTERPRISE: "enterprise",
+} as const;
+
+export type PlanType = typeof Plan[keyof typeof Plan];
+
+// Feature access control based on plans
+export const PlanFeatures = {
+  [Plan.STARTER]: {
+    maxUsers: 10,
+    features: ["checkins", "wins", "shoutouts", "basic_analytics"],
+  },
+  [Plan.PROFESSIONAL]: {
+    maxUsers: 50,
+    features: ["checkins", "wins", "shoutouts", "analytics", "teams", "reviews"],
+  },
+  [Plan.ENTERPRISE]: {
+    maxUsers: -1, // unlimited
+    features: ["checkins", "wins", "shoutouts", "analytics", "teams", "reviews", "one_on_ones", "kra_management", "advanced_analytics"],
+  },
+} as const;
+
 // Organizations table for multi-tenancy
 export const organizations = pgTable("organizations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

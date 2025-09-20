@@ -27,6 +27,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
+import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format, parseISO } from "date-fns";
 import type { KraTemplate, UserKra, User as UserType } from "@shared/schema";
@@ -618,7 +620,32 @@ function UserKras() {
 
 export default function KraManagementPage() {
   const { data: currentUser } = useViewAsRole();
+  const { canAccessKraManagement, isLoading: featureLoading } = useFeatureAccess();
   const canManage = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+  
+  // Show loading while checking feature access
+  if (featureLoading) {
+    return (
+      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-96" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </div>
+    );
+  }
+  
+  // Show upgrade prompt if user doesn't have access to KRA Management
+  if (!canAccessKraManagement) {
+    return (
+      <UpgradePrompt
+        feature="kra_management"
+        title="KRA Management"
+        description="Unlock comprehensive Key Result Area management to set clear goals, track performance, and drive accountability across your organization."
+      />
+    );
+  }
   
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">

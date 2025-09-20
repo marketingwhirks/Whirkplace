@@ -3,11 +3,12 @@ import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu, Gift, 
-  ClipboardCheck, Shield, Crown, LogOut, Calendar, Target
+  ClipboardCheck, Shield, Crown, LogOut, Calendar, Target, Lock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -85,6 +86,7 @@ const baseNavigation = [
 function SidebarContent() {
   const [location] = useLocation();
   const { data: currentUser, isLoading: userLoading, canSwitchRoles } = useViewAsRole();
+  const { canAccessOneOnOnes, canAccessKraManagement, isLoading: featureLoading } = useFeatureAccess();
 
   // Fetch pending check-ins count for badge
   const { data: pendingCheckins = [], isLoading: pendingLoading } = useQuery<Checkin[]>({
@@ -93,26 +95,34 @@ function SidebarContent() {
     staleTime: 60 * 1000, // Cache for 1 minute
   });
 
-  // Filter navigation items based on user role
+  // Filter navigation items based on user role and feature access
   const visibleNavigation = useMemo(() => {
     if (!currentUser || !currentUser.role) {
       return [];
     }
     return baseNavigation.filter(item => {
       // Normal role-based filtering
-      if (item.roles.includes(currentUser.role)) {
-        return true;
+      if (!item.roles.includes(currentUser.role)) {
+        // Special exception: Allow Admin Panel access for users who can switch roles
+        // This ensures Matthew Patrick can always access the role switcher
+        if (item.name === "Admin Panel" && canSwitchRoles) {
+          return true;
+        }
+        return false;
       }
       
-      // Special exception: Allow Admin Panel access for users who can switch roles
-      // This ensures Matthew Patrick can always access the role switcher
-      if (item.name === "Admin Panel" && canSwitchRoles) {
-        return true;
+      // Plan-based feature filtering
+      if (item.name === "One-on-Ones" && !canAccessOneOnOnes) {
+        return false;
       }
       
-      return false;
+      if (item.name === "KRA Management" && !canAccessKraManagement) {
+        return false;
+      }
+      
+      return true;
     });
-  }, [currentUser, canSwitchRoles]);
+  }, [currentUser, canSwitchRoles, canAccessOneOnOnes, canAccessKraManagement]);
 
   // Get badge count for items with badges
   const getBadgeCount = (item: typeof baseNavigation[0]) => {

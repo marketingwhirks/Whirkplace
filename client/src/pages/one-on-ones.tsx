@@ -23,6 +23,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
+import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format, isToday, isThisWeek, parseISO } from "date-fns";
 import type { OneOnOne, User as UserType } from "@shared/schema";
@@ -352,6 +354,31 @@ function PastMeetings() {
 
 export default function OneOnOnesPage() {
   const { data: currentUser } = useViewAsRole();
+  const { canAccessOneOnOnes, isLoading: featureLoading } = useFeatureAccess();
+  
+  // Show loading while checking feature access
+  if (featureLoading) {
+    return (
+      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+        <div className="space-y-4">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-4 w-96" />
+          <Skeleton className="h-64 w-full" />
+        </div>
+      </div>
+    );
+  }
+  
+  // Show upgrade prompt if user doesn't have access to One-on-Ones
+  if (!canAccessOneOnOnes) {
+    return (
+      <UpgradePrompt
+        feature="one_on_ones"
+        title="One-on-One Meetings"
+        description="Unlock powerful 1:1 meeting management to build stronger relationships with your team members and track their professional development."
+      />
+    );
+  }
   
   return (
     <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">

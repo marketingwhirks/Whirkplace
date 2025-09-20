@@ -1,0 +1,111 @@
+import { useQuery } from "@tanstack/react-query";
+import { PlanType } from "@shared/schema";
+
+interface FeatureAvailability {
+  one_on_ones: boolean;
+  kra_management: boolean;
+  advanced_analytics: boolean;
+  teams: boolean;
+  reviews: boolean;
+  analytics: boolean;
+}
+
+interface UpgradeSuggestion {
+  plan: PlanType;
+  features: Array<keyof FeatureAvailability>;
+}
+
+interface FeatureResponse {
+  plan: PlanType;
+  features: FeatureAvailability;
+  upgradeSuggestions: UpgradeSuggestion[];
+}
+
+/**
+ * Hook to check feature availability based on organization plan
+ */
+export function useFeatureAccess() {
+  const { data, isLoading, error } = useQuery<FeatureResponse>({
+    queryKey: ["/api/features"],
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+  });
+
+  const features = data?.features || {
+    one_on_ones: false,
+    kra_management: false,
+    advanced_analytics: false,
+    teams: false,
+    reviews: false,
+    analytics: false,
+  };
+
+  const plan = data?.plan || "starter";
+  const upgradeSuggestions = data?.upgradeSuggestions || [];
+
+  /**
+   * Check if a specific feature is available
+   */
+  const hasFeature = (feature: keyof FeatureAvailability): boolean => {
+    return features[feature] || false;
+  };
+
+  /**
+   * Get required plan for a specific feature
+   */
+  const getRequiredPlan = (feature: keyof FeatureAvailability): PlanType => {
+    if (feature === "one_on_ones" || feature === "kra_management") {
+      return "enterprise";
+    }
+    if (feature === "teams" || feature === "reviews" || feature === "analytics") {
+      return "professional";
+    }
+    return "starter";
+  };
+
+  /**
+   * Get upgrade message for a feature
+   */
+  const getUpgradeMessage = (feature: keyof FeatureAvailability): string => {
+    const requiredPlan = getRequiredPlan(feature);
+    return `This feature requires the ${requiredPlan} plan. Upgrade to access ${feature.replace('_', ' ')}.`;
+  };
+
+  /**
+   * Check if user can access One-on-Ones
+   */
+  const canAccessOneOnOnes = hasFeature("one_on_ones");
+
+  /**
+   * Check if user can access KRA Management
+   */
+  const canAccessKraManagement = hasFeature("kra_management");
+
+  /**
+   * Check if user can access advanced analytics
+   */
+  const canAccessAdvancedAnalytics = hasFeature("advanced_analytics");
+
+  return {
+    // Feature availability
+    features,
+    hasFeature,
+    
+    // Specific feature checks
+    canAccessOneOnOnes,
+    canAccessKraManagement,
+    canAccessAdvancedAnalytics,
+    
+    // Plan information
+    plan,
+    upgradeSuggestions,
+    
+    // Utility functions
+    getRequiredPlan,
+    getUpgradeMessage,
+    
+    // Loading state
+    isLoading,
+    error,
+  };
+}

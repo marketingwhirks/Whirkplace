@@ -18,6 +18,7 @@ import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
 import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser } from "./middleware/auth";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
+import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } from "./middleware/plan-access";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Backdoor login endpoint (for development/testing when Slack is unavailable)
@@ -2712,7 +2713,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // One-on-One Meetings endpoints
-  app.get("/api/one-on-ones", requireAuth(), async (req, res) => {
+  app.get("/api/one-on-ones", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
       // Get all meetings in the organization, then filter by access permissions
       const allMeetings = await storage.getAllOneOnOnes(req.orgId);
@@ -2739,7 +2740,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/one-on-ones/upcoming", requireAuth(), async (req, res) => {
+  app.get("/api/one-on-ones/upcoming", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
       // Validate query parameters using Zod
       const querySchema = z.object({
@@ -2795,7 +2796,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/one-on-ones/past", requireAuth(), async (req, res) => {
+  app.get("/api/one-on-ones/past", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
       // Validate query parameters using Zod
       const querySchema = z.object({
@@ -2851,7 +2852,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/one-on-ones/:id", requireAuth(), async (req, res) => {
+  app.get("/api/one-on-ones/:id", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
       const oneOnOne = await storage.getOneOnOne(req.orgId, req.params.id);
       if (!oneOnOne) {
@@ -2878,7 +2879,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/one-on-ones", requireAuth(), async (req, res) => {
+  app.post("/api/one-on-ones", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
       // Validate request body using Zod schema
       const validationSchema = insertOneOnOneSchema.omit({ organizationId: true }).extend({
@@ -2923,7 +2924,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/one-on-ones/:id", requireAuth(), async (req, res) => {
+  app.put("/api/one-on-ones/:id", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
       // Validate request body using Zod schema
       const updateSchema = insertOneOnOneSchema.omit({ 
@@ -2972,7 +2973,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/one-on-ones/:id", requireAuth(), async (req, res) => {
+  app.delete("/api/one-on-ones/:id", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
       // Get existing meeting to verify permissions
       const existingMeeting = await storage.getOneOnOne(req.orgId, req.params.id);
@@ -3006,7 +3007,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Action Items endpoints
-  app.get("/api/one-on-ones/:id/action-items", requireAuth(), async (req, res) => {
+  app.get("/api/one-on-ones/:id/action-items", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
       // Verify user has access to this meeting
       const meeting = await storage.getOneOnOne(req.orgId, req.params.id);
@@ -3035,7 +3036,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/one-on-ones/:id/action-items", requireAuth(), async (req, res) => {
+  app.post("/api/one-on-ones/:id/action-items", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
       // Validate request body using Zod schema
       const validationSchema = insertActionItemSchema.omit({ organizationId: true, meetingId: true }).extend({
@@ -3171,7 +3172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // KRA Templates endpoints
-  app.get("/api/kra-templates", requireAuth(), async (req, res) => {
+  app.get("/api/kra-templates", requireAuth(), requireFeatureAccess('kra_management'), async (req, res) => {
     try {
       // Validate query parameters using Zod
       const querySchema = z.object({
@@ -3218,7 +3219,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/kra-templates/:id", requireAuth(), async (req, res) => {
+  app.get("/api/kra-templates/:id", requireAuth(), requireFeatureAccess('kra_management'), async (req, res) => {
     try {
       const template = await storage.getKraTemplate(req.orgId, req.params.id);
       if (!template) {
@@ -3232,7 +3233,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/kra-templates", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+  app.post("/api/kra-templates", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       // Validate request body using Zod schema
       const validationSchema = insertKraTemplateSchema.omit({ organizationId: true }).extend({
@@ -3261,7 +3262,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/kra-templates/:id", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+  app.put("/api/kra-templates/:id", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       // Validate request body using Zod schema
       const updateSchema = insertKraTemplateSchema.omit({ organizationId: true, createdBy: true }).partial().extend({
@@ -3289,7 +3290,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/kra-templates/:id", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+  app.delete("/api/kra-templates/:id", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       const deleted = await storage.deleteKraTemplate(req.orgId, req.params.id);
       if (!deleted) {
@@ -3304,7 +3305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // User KRAs endpoints
-  app.get("/api/user-kras", requireAuth(), async (req, res) => {
+  app.get("/api/user-kras", requireAuth(), requireFeatureAccess('kra_management'), async (req, res) => {
     try {
       const userId = req.query.userId as string || req.userId;
       const statusFilter = req.query.status as string;
@@ -3327,7 +3328,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/user-kras/my-team", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+  app.get("/api/user-kras/my-team", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       // Get KRAs for users assigned by this manager
       const teamKras = await storage.getUserKrasByAssigner(req.orgId, req.userId);
@@ -3338,7 +3339,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/user-kras/:id", requireAuth(), async (req, res) => {
+  app.get("/api/user-kras/:id", requireAuth(), requireFeatureAccess('kra_management'), async (req, res) => {
     try {
       const userKra = await storage.getUserKra(req.orgId, req.params.id);
       if (!userKra) {
@@ -3367,7 +3368,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/user-kras", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+  app.post("/api/user-kras", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       const { userId, templateId, name, description, goals, startDate, endDate } = req.body;
       
@@ -3398,7 +3399,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.put("/api/user-kras/:id", requireAuth(), async (req, res) => {
+  app.put("/api/user-kras/:id", requireAuth(), requireFeatureAccess('kra_management'), async (req, res) => {
     try {
       const { name, description, goals, progress, status, endDate } = req.body;
       
@@ -3443,7 +3444,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/user-kras/:id", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+  app.delete("/api/user-kras/:id", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       // Get existing KRA to verify permissions
       const existingKra = await storage.getUserKra(req.orgId, req.params.id);
@@ -3473,6 +3474,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("DELETE /api/user-kras/:id - Error:", error);
       res.status(500).json({ message: "Failed to delete user KRA" });
+    }
+  });
+
+  // Feature availability endpoint
+  app.get("/api/features", requireAuth(), async (req, res) => {
+    try {
+      // Get the organization from storage to ensure we have the latest plan info
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      const features = getFeatureAvailability(organization.plan);
+      res.json({
+        plan: organization.plan,
+        features,
+        upgradeSuggestions: getUpgradeSuggestions(organization.plan)
+      });
+    } catch (error) {
+      console.error("GET /api/features - Error:", error);
+      res.status(500).json({ message: "Failed to fetch feature availability" });
     }
   });
 
