@@ -11,9 +11,7 @@ if (!process.env.SLACK_CHANNEL_ID) {
   console.warn("SLACK_CHANNEL_ID environment variable not set. Public Slack notifications will be disabled for security.");
 }
 
-if (!process.env.SLACK_PRIVATE_CHANNEL_ID) {
-  console.warn("SLACK_PRIVATE_CHANNEL_ID environment variable not set. Sensitive notifications will be disabled for security.");
-}
+// Direct messaging is used instead of private channels for personalized notifications
 
 const slack = process.env.SLACK_BOT_TOKEN ? new WebClient(process.env.SLACK_BOT_TOKEN) : null;
 
@@ -728,6 +726,234 @@ export async function announceShoutout(
 /**
  * Send team health update to Slack
  */
+/**
+ * Send one-on-one meeting reminder via DM
+ */
+export async function sendOneOnOneMeetingReminder(
+  userId: string,
+  userName: string,
+  meetingDetails: {
+    participantName: string;
+    scheduledAt: Date;
+    agenda?: string;
+    meetingUrl?: string;
+  }
+) {
+  if (!slack) return;
+
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const meetingsUrl = `${appUrl}/#/one-on-ones`;
+  
+  const formatTime = (date: Date) => {
+    return date.toLocaleString('en-US', {
+      weekday: 'short',
+      month: 'short', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    });
+  };
+
+  const reminderBlocks = [
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `⏰ *One-on-One Meeting Reminder*`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `Hi ${userName}! 👋 You have a one-on-one meeting coming up with *${meetingDetails.participantName}*.`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `📅 *When:* ${formatTime(meetingDetails.scheduledAt)}`
+      }
+    }
+  ];
+
+  // Add agenda if provided
+  if (meetingDetails.agenda) {
+    reminderBlocks.push({
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `📋 *Agenda:*\n${meetingDetails.agenda}`
+      }
+    });
+  }
+
+  // Add action buttons
+  const actionElements = [
+    {
+      type: 'button' as const,
+      text: {
+        type: 'plain_text' as const,
+        text: '📝 View Details'
+      },
+      url: meetingsUrl,
+      style: 'primary' as const
+    }
+  ];
+
+  if (meetingDetails.meetingUrl) {
+    actionElements.push({
+      type: 'button' as const,
+      text: {
+        type: 'plain_text' as const,
+        text: '🎥 Join Meeting'
+      },
+      url: meetingDetails.meetingUrl
+    });
+  }
+
+  reminderBlocks.push({
+    type: 'actions' as const,
+    elements: actionElements
+  });
+
+  try {
+    // Send as DM to the user
+    const dmResult = await slack.conversations.open({
+      users: userId
+    });
+
+    if (dmResult.ok && dmResult.channel?.id) {
+      await sendSlackMessage({
+        channel: dmResult.channel.id,
+        blocks: reminderBlocks,
+        text: `One-on-one meeting reminder with ${meetingDetails.participantName}`
+      });
+
+      console.log(`One-on-one reminder sent to ${userName} (${userId})`);
+    } else {
+      console.warn(`Failed to send one-on-one reminder to ${userName}: ${dmResult.error}`);
+    }
+  } catch (error) {
+    console.error(`Error sending one-on-one reminder to ${userName}:`, error);
+  }
+}
+
+/**
+ * Send check-in review reminder to managers via DM
+ */
+export async function sendCheckinReviewReminder(
+  managerId: string,
+  managerName: string,
+  teamMemberCheckins: Array<{
+    memberName: string;
+    moodRating: number;
+    submittedAt: Date;
+    needsReview?: boolean;
+  }>
+) {
+  if (!slack) return;
+
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const analyticsUrl = `${appUrl}/#/analytics`;
+  
+  const pendingReviews = teamMemberCheckins.filter(c => c.needsReview).length;
+  const totalCheckins = teamMemberCheckins.length;
+
+  const reminderBlocks = [
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `📊 *Team Check-in Review Reminder*`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `Hi ${managerName}! 👋 Your team has submitted ${totalCheckins} check-ins this week.`
+      }
+    }
+  ];
+
+  if (pendingReviews > 0) {
+    reminderBlocks.push({
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `⚠️ *${pendingReviews} check-ins need your attention* - some team members might need extra support.`
+      }
+    });
+  }
+
+  // Add summary of mood ratings
+  const avgMood = teamMemberCheckins.reduce((sum, c) => sum + c.moodRating, 0) / totalCheckins;
+  const moodEmoji = avgMood >= 4 ? '😊' : avgMood >= 3 ? '😐' : '😔';
+  
+  reminderBlocks.push({
+    type: 'section' as const,
+    text: {
+      type: 'mrkdwn' as const,
+      text: `${moodEmoji} *Team Mood Average:* ${avgMood.toFixed(1)}/5`
+    }
+  });
+
+  // Add recent check-ins summary
+  if (teamMemberCheckins.length > 0) {
+    const recentCheckins = teamMemberCheckins
+      .slice(0, 3)
+      .map(c => `• *${c.memberName}*: ${c.moodRating}/5 ${c.needsReview ? '⚠️' : '✅'}`)
+      .join('\n');
+    
+    reminderBlocks.push({
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `*Recent Check-ins:*\n${recentCheckins}${totalCheckins > 3 ? `\n_...and ${totalCheckins - 3} more_` : ''}`
+      }
+    });
+  }
+
+  reminderBlocks.push({
+    type: 'actions' as const,
+    elements: [
+      {
+        type: 'button' as const,
+        text: {
+          type: 'plain_text' as const,
+          text: '📊 Review Team Analytics'
+        },
+        url: analyticsUrl,
+        style: 'primary' as const
+      }
+    ]
+  });
+
+  try {
+    // Send as DM to the manager
+    const dmResult = await slack.conversations.open({
+      users: managerId
+    });
+
+    if (dmResult.ok && dmResult.channel?.id) {
+      await sendSlackMessage({
+        channel: dmResult.channel.id,
+        blocks: reminderBlocks,
+        text: `Team check-in review reminder - ${totalCheckins} check-ins submitted`
+      });
+
+      console.log(`Check-in review reminder sent to ${managerName} (${managerId})`);
+    } else {
+      console.warn(`Failed to send review reminder to ${managerName}: ${dmResult.error}`);
+    }
+  } catch (error) {
+    console.error(`Error sending review reminder to ${managerName}:`, error);
+  }
+}
+
 /**
  * Send personalized welcome message to new users joining the Slack channel
  */
