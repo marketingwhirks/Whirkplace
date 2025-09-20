@@ -29,9 +29,9 @@ export function resolveOrganization() {
     // 3. Session data
     // 4. Database lookup based on authenticated user
     
-    // For now, use hardcoded default organization
+    // For now, use the actual default organization ID from the database
     // This establishes the security pattern while we implement proper routing
-    req.orgId = "default-org";
+    req.orgId = "6c070124-fae2-472a-a826-cd460dd6f6ea";
     
     // Future implementation example:
     // const host = req.get('Host');
