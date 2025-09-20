@@ -74,7 +74,16 @@ export const organizations = pgTable("organizations", {
   slug: text("slug").notNull().unique(), // for URL routing: company.whirkplace.com
   customValues: text("custom_values").array().notNull().default(defaultCompanyValuesArray),
   plan: text("plan").notNull().default("starter"), // starter, professional, enterprise
+  // Slack Integration
   slackWorkspaceId: text("slack_workspace_id"), // Slack workspace ID for validation
+  slackChannelId: text("slack_channel_id"), // Default Slack channel for notifications
+  slackBotToken: text("slack_bot_token"), // Slack bot token for API calls
+  enableSlackIntegration: boolean("enable_slack_integration").notNull().default(false),
+  // Microsoft Integration
+  microsoftTenantId: text("microsoft_tenant_id"), // Microsoft tenant ID for SSO
+  microsoftTeamsWebhookUrl: text("microsoft_teams_webhook_url"), // Teams webhook for notifications
+  enableMicrosoftAuth: boolean("enable_microsoft_auth").notNull().default(false),
+  enableTeamsIntegration: boolean("enable_teams_integration").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
@@ -97,7 +106,14 @@ export const users = pgTable("users", {
   slackEmail: text("slack_email"), // Slack-verified email
   slackAvatar: text("slack_avatar"), // Slack profile image URL
   slackWorkspaceId: text("slack_workspace_id"), // Slack workspace association
-  authProvider: text("auth_provider").notNull().default("local"), // local, slack
+  // Microsoft integration fields
+  microsoftUserId: text("microsoft_user_id"), // Microsoft user ID from Graph API
+  microsoftUserPrincipalName: text("microsoft_user_principal_name"), // Microsoft UPN
+  microsoftDisplayName: text("microsoft_display_name"), // Display name from Microsoft
+  microsoftEmail: text("microsoft_email"), // Microsoft-verified email
+  microsoftAvatar: text("microsoft_avatar"), // Microsoft profile image URL
+  microsoftTenantId: text("microsoft_tenant_id"), // Microsoft tenant association
+  authProvider: text("auth_provider").notNull().default("local"), // local, slack, microsoft
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 }, (table) => ({

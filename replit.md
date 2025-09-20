@@ -24,31 +24,41 @@ Built comprehensive recognition system for team engagement and culture building:
 - **Complete UI**: Intuitive interface with kudos feed, filtering, and responsive design
 
 ### Authentication & Security (September 2025)
-Enhanced authentication system for development and production use:
-- **Backdoor Authentication**: Developer-friendly backdoor login system for when Slack OAuth is unavailable
+Enhanced multi-provider authentication system for development and production use:
+- **Slack OAuth**: Full Slack workspace integration with OAuth 2.0 authentication
+- **Microsoft 365 SSO**: Single sign-on using Microsoft Azure AD/Entra ID with MSAL authentication
+- **Backdoor Authentication**: Developer-friendly backdoor login system for when OAuth providers are unavailable
 - **Multi-Factor Auth Options**: Header-based, session-based, and UI-based authentication methods
 - **Environment Variable Security**: Customizable backdoor credentials via BACKDOOR_USER and BACKDOOR_KEY
 - **Session Management**: Secure session handling with proper user context and organization isolation
+- **Provider Selection**: Organizations can enable/disable specific authentication providers
 
 ## Roadmap
 
 ### Immediate Priorities
-- **Login Issues Resolution**: Fix authentication flow and session management
-- **Feature Completeness Audit**: Identify and build out placeholder/non-functional areas
-- **Backend Integration**: Complete missing API endpoints and data persistence
-- **UI/UX Polish**: Address visual inconsistencies and improve user experience
+- **Microsoft 365 SSO**: Single sign-on integration with Microsoft 365 credentials alongside existing Slack authentication
+- **Microsoft Teams Integration**: Real-time notifications and workflow automation similar to Slack integration
+- **Admin Configuration**: Organization-level settings to enable/disable Microsoft integrations
+- **Outlook Calendar Sync**: Enhanced calendar integration for One-on-One meetings
 
 ### Short-term Enhancements (1-3 months)
 - **Enhanced Analytics**: Advanced reporting and data visualization
-- **Notification System**: Email and in-app notification preferences
-- **Advanced Team Management**: Hierarchical team structures and delegation
+- **Multi-Provider Authentication**: Seamless switching between Slack and Microsoft 365 authentication
+- **Teams Notification Center**: Configurable notification preferences for Microsoft Teams
+- **Advanced Team Management**: Hierarchical team structures with Microsoft organizational data sync
 - **Performance Optimization**: Caching, data loading, and response times
 
-### Long-term Vision (3-6 months)
+### Medium-term Vision (3-6 months)
+- **Microsoft Graph Integration**: Deep integration with Microsoft 365 ecosystem (SharePoint, OneDrive, etc.)
+- **Advanced Teams Workflows**: Automated workflows and smart notifications in Microsoft Teams
 - **iPhone App Development**: Convert to iOS app using Capacitor (estimated 1-2 weeks implementation)
-- **Advanced Slack Integration**: Deeper workflow automation and smart notifications
-- **Enterprise Features**: SSO integration, advanced security, audit logs
+- **Enterprise Features**: Advanced security, audit logs, and compliance features
+
+### Long-term Vision (6+ months)
+- **Microsoft Viva Integration**: Connect with Microsoft Viva suite for employee experience
 - **API Platform**: Public API for third-party integrations and custom workflows
+- **Advanced AI Features**: AI-powered insights using Microsoft Cognitive Services
+- **Global Expansion**: Multi-language support and regional compliance
 
 ## User Preferences
 
