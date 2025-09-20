@@ -196,7 +196,7 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
   // Get current Microsoft auth status
   app.get("/api/auth/microsoft/status", requireOrganization(), requireAuth(), async (req, res) => {
     try {
-      const user = await storage.getUser(req.userId!);
+      const user = await storage.getUser(req.orgId, req.userId!);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
@@ -218,7 +218,8 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
   // Disconnect Microsoft account
   app.post("/api/auth/microsoft/disconnect", requireOrganization(), requireAuth(), async (req, res) => {
     try {
-      await storage.clearUserMicrosoftTokens(req.userId!);
+      // Clear Microsoft tokens from session only (since we're not storing them in database)
+      req.session.microsoftAccessToken = undefined;
       
       res.json({ message: "Microsoft account disconnected successfully" });
     } catch (error) {

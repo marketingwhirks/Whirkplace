@@ -90,6 +90,17 @@ declare global {
   }
 }
 
+// Extend Express Request to include userId
+declare global {
+  namespace Express {
+    interface Request {
+      userId?: string;
+      orgId: string;
+      currentUser?: any;
+    }
+  }
+}
+
 // Extend Express Session to include userId and Microsoft auth fields
 declare module "express-session" {
   interface SessionData {
@@ -97,6 +108,7 @@ declare module "express-session" {
     microsoftAuthState?: string;
     authOrgId?: string;
     microsoftAccessToken?: string;
+    microsoftRedirectUri?: string;
   }
 }
 
