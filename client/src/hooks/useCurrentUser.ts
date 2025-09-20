@@ -9,13 +9,31 @@ export function useCurrentUser() {
   return useQuery<User>({
     queryKey: ["/api/users/current", { org: "default" }],
     queryFn: async () => {
+      // Check for backdoor auth in development
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      
+      // In development, check if we have backdoor credentials in localStorage
+      if (import.meta.env.DEV) {
+        const backdoorAuth = localStorage.getItem('backdoor_auth');
+        if (backdoorAuth) {
+          try {
+            const { user, key } = JSON.parse(backdoorAuth);
+            headers['X-Backdoor-User'] = user;
+            headers['X-Backdoor-Key'] = key;
+          } catch (e) {
+            // Invalid backdoor auth, remove it
+            localStorage.removeItem('backdoor_auth');
+          }
+        }
+      }
+      
       // Make actual API call to check current user authentication
       const response = await fetch('/api/users/current?org=default', {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers
       });
       
       if (!response.ok) {

