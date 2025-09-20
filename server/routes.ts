@@ -7,6 +7,8 @@ import {
   insertUserSchema, insertTeamSchema, insertCheckinSchema, 
   insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema,
   insertVacationSchema, reviewCheckinSchema, ReviewStatus,
+  insertOneOnOneSchema, insertKraTemplateSchema, insertUserKraSchema, insertActionItemSchema,
+  insertOrganizationSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType, type Checkin
 } from "@shared/schema";
@@ -2672,6 +2674,654 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Admin aggregation status error:", error);
       res.status(500).json({ message: "Failed to get aggregation status" });
+    }
+  });
+
+  // One-on-One Meetings endpoints
+  app.get("/api/one-on-ones", requireAuth(), async (req, res) => {
+    try {
+      const userId = req.userId;
+      const oneOnOnes = await storage.getOneOnOnesByUser(req.orgId, userId);
+      res.json(oneOnOnes);
+    } catch (error) {
+      console.error("GET /api/one-on-ones - Error:", error);
+      res.status(500).json({ message: "Failed to fetch one-on-ones" });
+    }
+  });
+
+  app.get("/api/one-on-ones/upcoming", requireAuth(), async (req, res) => {
+    try {
+      // Validate query parameters using Zod
+      const querySchema = z.object({
+        page: z.coerce.number().int().min(1).default(1),
+        limit: z.coerce.number().int().min(1).max(100).default(20)
+      });
+      
+      const queryResult = querySchema.safeParse(req.query);
+      if (!queryResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters", 
+          errors: queryResult.error.errors 
+        });
+      }
+      
+      const { page, limit } = queryResult.data;
+      const userId = req.userId;
+      
+      const allUpcomingMeetings = await storage.getUpcomingOneOnOnes(req.orgId, userId);
+      
+      // Apply pagination
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedMeetings = allUpcomingMeetings.slice(startIndex, endIndex);
+      
+      res.json({
+        meetings: paginatedMeetings,
+        pagination: {
+          page,
+          limit,
+          total: allUpcomingMeetings.length,
+          totalPages: Math.ceil(allUpcomingMeetings.length / limit)
+        }
+      });
+    } catch (error) {
+      console.error("GET /api/one-on-ones/upcoming - Error:", error);
+      res.status(500).json({ message: "Failed to fetch upcoming one-on-ones" });
+    }
+  });
+
+  app.get("/api/one-on-ones/past", requireAuth(), async (req, res) => {
+    try {
+      // Validate query parameters using Zod
+      const querySchema = z.object({
+        page: z.coerce.number().int().min(1).default(1),
+        limit: z.coerce.number().int().min(1).max(100).default(20)
+      });
+      
+      const queryResult = querySchema.safeParse(req.query);
+      if (!queryResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters", 
+          errors: queryResult.error.errors 
+        });
+      }
+      
+      const { page, limit } = queryResult.data;
+      const userId = req.userId;
+      
+      // Get more records than needed for pagination
+      const maxRecords = page * limit + limit;
+      const pastMeetings = await storage.getPastOneOnOnes(req.orgId, userId, maxRecords);
+      
+      // Apply pagination
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedMeetings = pastMeetings.slice(startIndex, endIndex);
+      
+      res.json({
+        meetings: paginatedMeetings,
+        pagination: {
+          page,
+          limit,
+          total: pastMeetings.length,
+          totalPages: Math.ceil(pastMeetings.length / limit),
+          hasMore: pastMeetings.length === maxRecords // Indicates there might be more records
+        }
+      });
+    } catch (error) {
+      console.error("GET /api/one-on-ones/past - Error:", error);
+      res.status(500).json({ message: "Failed to fetch past one-on-ones" });
+    }
+  });
+
+  app.get("/api/one-on-ones/:id", requireAuth(), async (req, res) => {
+    try {
+      const oneOnOne = await storage.getOneOnOne(req.orgId, req.params.id);
+      if (!oneOnOne) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      // Check if user is a participant in this meeting
+      if (oneOnOne.participantOneId !== req.userId && oneOnOne.participantTwoId !== req.userId) {
+        return res.status(403).json({ message: "You can only access meetings you participate in" });
+      }
+      
+      res.json(oneOnOne);
+    } catch (error) {
+      console.error("GET /api/one-on-ones/:id - Error:", error);
+      res.status(500).json({ message: "Failed to fetch one-on-one" });
+    }
+  });
+
+  app.post("/api/one-on-ones", requireAuth(), async (req, res) => {
+    try {
+      // Validate request body using Zod schema
+      const validationSchema = insertOneOnOneSchema.omit({ organizationId: true }).extend({
+        scheduledAt: z.coerce.date(),
+        duration: z.number().min(15).max(240).default(30),
+        status: z.enum(["scheduled", "completed", "cancelled", "rescheduled"]).default("scheduled")
+      });
+      
+      const validatedData = validationSchema.parse(req.body);
+      
+      // Verify the requesting user is one of the participants
+      if (validatedData.participantOneId !== req.userId && validatedData.participantTwoId !== req.userId) {
+        return res.status(403).json({ message: "You can only create meetings you participate in" });
+      }
+      
+      const oneOnOne = await storage.createOneOnOne(req.orgId, validatedData);
+      res.status(201).json(oneOnOne);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      console.error("POST /api/one-on-ones - Error:", error);
+      res.status(500).json({ message: "Failed to create one-on-one" });
+    }
+  });
+
+  app.put("/api/one-on-ones/:id", requireAuth(), async (req, res) => {
+    try {
+      // Validate request body using Zod schema
+      const updateSchema = insertOneOnOneSchema.omit({ 
+        organizationId: true, 
+        participantOneId: true, 
+        participantTwoId: true 
+      }).partial().extend({
+        scheduledAt: z.coerce.date().optional(),
+        duration: z.number().min(15).max(240).optional(),
+        status: z.enum(["scheduled", "completed", "cancelled", "rescheduled"]).optional()
+      });
+      
+      const validatedData = updateSchema.parse(req.body);
+      
+      // Get existing meeting to verify permissions
+      const existingMeeting = await storage.getOneOnOne(req.orgId, req.params.id);
+      if (!existingMeeting) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      // Check if user is a participant in this meeting
+      if (existingMeeting.participantOneId !== req.userId && existingMeeting.participantTwoId !== req.userId) {
+        return res.status(403).json({ message: "You can only update meetings you participate in" });
+      }
+      
+      const updatedOneOnOne = await storage.updateOneOnOne(req.orgId, req.params.id, validatedData);
+      if (!updatedOneOnOne) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      res.json(updatedOneOnOne);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      console.error("PUT /api/one-on-ones/:id - Error:", error);
+      res.status(500).json({ message: "Failed to update one-on-one" });
+    }
+  });
+
+  app.delete("/api/one-on-ones/:id", requireAuth(), async (req, res) => {
+    try {
+      // Get existing meeting to verify permissions
+      const existingMeeting = await storage.getOneOnOne(req.orgId, req.params.id);
+      if (!existingMeeting) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      // Check if user is a participant in this meeting
+      if (existingMeeting.participantOneId !== req.userId && existingMeeting.participantTwoId !== req.userId) {
+        return res.status(403).json({ message: "You can only delete meetings you participate in" });
+      }
+      
+      const deleted = await storage.deleteOneOnOne(req.orgId, req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("DELETE /api/one-on-ones/:id - Error:", error);
+      res.status(500).json({ message: "Failed to delete one-on-one" });
+    }
+  });
+
+  // Action Items endpoints
+  app.get("/api/one-on-ones/:id/action-items", requireAuth(), async (req, res) => {
+    try {
+      // Verify user has access to this meeting
+      const meeting = await storage.getOneOnOne(req.orgId, req.params.id);
+      if (!meeting) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      if (meeting.participantOneId !== req.userId && meeting.participantTwoId !== req.userId) {
+        return res.status(403).json({ message: "You can only access action items for meetings you participate in" });
+      }
+      
+      const actionItems = await storage.getActionItemsByMeeting(req.orgId, req.params.id);
+      res.json(actionItems);
+    } catch (error) {
+      console.error("GET /api/one-on-ones/:id/action-items - Error:", error);
+      res.status(500).json({ message: "Failed to fetch action items" });
+    }
+  });
+
+  app.post("/api/one-on-ones/:id/action-items", requireAuth(), async (req, res) => {
+    try {
+      // Validate request body using Zod schema
+      const validationSchema = insertActionItemSchema.omit({ organizationId: true, meetingId: true }).extend({
+        dueDate: z.coerce.date().optional(),
+        status: z.enum(["pending", "completed", "overdue", "cancelled"]).default("pending")
+      });
+      
+      const validatedData = validationSchema.parse(req.body);
+      
+      // Verify user has access to this meeting
+      const meeting = await storage.getOneOnOne(req.orgId, req.params.id);
+      if (!meeting) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      if (meeting.participantOneId !== req.userId && meeting.participantTwoId !== req.userId) {
+        return res.status(403).json({ message: "You can only create action items for meetings you participate in" });
+      }
+      
+      const actionItemData = {
+        ...validatedData,
+        meetingId: req.params.id
+      };
+      
+      const actionItem = await storage.createActionItem(req.orgId, actionItemData);
+      res.status(201).json(actionItem);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      console.error("POST /api/one-on-ones/:id/action-items - Error:", error);
+      res.status(500).json({ message: "Failed to create action item" });
+    }
+  });
+
+  app.put("/api/action-items/:id", requireAuth(), async (req, res) => {
+    try {
+      const { description, dueDate, status, notes } = req.body;
+      
+      // Get existing action item to verify permissions
+      const existingActionItem = await storage.getActionItem(req.orgId, req.params.id);
+      if (!existingActionItem) {
+        return res.status(404).json({ message: "Action item not found" });
+      }
+      
+      // Verify user has access to this action item (either assigned to them or part of the meeting)
+      const meeting = await storage.getOneOnOne(req.orgId, existingActionItem.meetingId);
+      if (!meeting) {
+        return res.status(404).json({ message: "Associated meeting not found" });
+      }
+      
+      const canUpdate = existingActionItem.assignedTo === req.userId || 
+                       meeting.participantOneId === req.userId || 
+                       meeting.participantTwoId === req.userId;
+      
+      if (!canUpdate) {
+        return res.status(403).json({ message: "You can only update action items you're assigned to or from meetings you participate in" });
+      }
+      
+      const updateData: any = {};
+      if (description !== undefined) updateData.description = description;
+      if (dueDate !== undefined) updateData.dueDate = dueDate ? new Date(dueDate) : null;
+      if (status !== undefined) updateData.status = status;
+      if (notes !== undefined) updateData.notes = notes;
+      
+      const updatedActionItem = await storage.updateActionItem(req.orgId, req.params.id, updateData);
+      if (!updatedActionItem) {
+        return res.status(404).json({ message: "Action item not found" });
+      }
+      
+      res.json(updatedActionItem);
+    } catch (error) {
+      console.error("PUT /api/action-items/:id - Error:", error);
+      res.status(500).json({ message: "Failed to update action item" });
+    }
+  });
+
+  app.delete("/api/action-items/:id", requireAuth(), async (req, res) => {
+    try {
+      // Get existing action item to verify permissions
+      const existingActionItem = await storage.getActionItem(req.orgId, req.params.id);
+      if (!existingActionItem) {
+        return res.status(404).json({ message: "Action item not found" });
+      }
+      
+      // Verify user has access to this action item (either assigned to them or part of the meeting)
+      const meeting = await storage.getOneOnOne(req.orgId, existingActionItem.meetingId);
+      if (!meeting) {
+        return res.status(404).json({ message: "Associated meeting not found" });
+      }
+      
+      const canDelete = existingActionItem.assignedTo === req.userId || 
+                       meeting.participantOneId === req.userId || 
+                       meeting.participantTwoId === req.userId;
+      
+      if (!canDelete) {
+        return res.status(403).json({ message: "You can only delete action items you're assigned to or from meetings you participate in" });
+      }
+      
+      const deleted = await storage.deleteActionItem(req.orgId, req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Action item not found" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("DELETE /api/action-items/:id - Error:", error);
+      res.status(500).json({ message: "Failed to delete action item" });
+    }
+  });
+
+  // KRA Templates endpoints
+  app.get("/api/kra-templates", requireAuth(), async (req, res) => {
+    try {
+      // Validate query parameters using Zod
+      const querySchema = z.object({
+        page: z.coerce.number().int().min(1).default(1),
+        limit: z.coerce.number().int().min(1).max(100).default(20),
+        activeOnly: z.coerce.boolean().default(true),
+        category: z.string().optional()
+      });
+      
+      const queryResult = querySchema.safeParse(req.query);
+      if (!queryResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid query parameters", 
+          errors: queryResult.error.errors 
+        });
+      }
+      
+      const { page, limit, activeOnly, category } = queryResult.data;
+      
+      let templates;
+      if (category) {
+        templates = await storage.getKraTemplatesByCategory(req.orgId, category);
+      } else {
+        templates = await storage.getAllKraTemplates(req.orgId, activeOnly);
+      }
+      
+      // Apply pagination
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedTemplates = templates.slice(startIndex, endIndex);
+      
+      res.json({
+        templates: paginatedTemplates,
+        pagination: {
+          page,
+          limit,
+          total: templates.length,
+          totalPages: Math.ceil(templates.length / limit)
+        }
+      });
+    } catch (error) {
+      console.error("GET /api/kra-templates - Error:", error);
+      res.status(500).json({ message: "Failed to fetch KRA templates" });
+    }
+  });
+
+  app.get("/api/kra-templates/:id", requireAuth(), async (req, res) => {
+    try {
+      const template = await storage.getKraTemplate(req.orgId, req.params.id);
+      if (!template) {
+        return res.status(404).json({ message: "KRA template not found" });
+      }
+      
+      res.json(template);
+    } catch (error) {
+      console.error("GET /api/kra-templates/:id - Error:", error);
+      res.status(500).json({ message: "Failed to fetch KRA template" });
+    }
+  });
+
+  app.post("/api/kra-templates", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      // Validate request body using Zod schema
+      const validationSchema = insertKraTemplateSchema.omit({ organizationId: true }).extend({
+        name: z.string().min(1).max(200),
+        description: z.string().max(1000).optional(),
+        goals: z.array(z.any()).default([]),
+        category: z.string().max(50).default("general"),
+        isActive: z.boolean().default(true)
+      });
+      
+      const validatedData = validationSchema.parse(req.body);
+      
+      const templateData = {
+        ...validatedData,
+        createdBy: req.userId
+      };
+      
+      const template = await storage.createKraTemplate(req.orgId, templateData);
+      res.status(201).json(template);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      console.error("POST /api/kra-templates - Error:", error);
+      res.status(500).json({ message: "Failed to create KRA template" });
+    }
+  });
+
+  app.put("/api/kra-templates/:id", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      // Validate request body using Zod schema
+      const updateSchema = insertKraTemplateSchema.omit({ organizationId: true, createdBy: true }).partial().extend({
+        name: z.string().min(1).max(200).optional(),
+        description: z.string().max(1000).optional(),
+        goals: z.array(z.any()).optional(),
+        category: z.string().max(50).optional(),
+        isActive: z.boolean().optional()
+      });
+      
+      const validatedData = updateSchema.parse(req.body);
+      
+      const updatedTemplate = await storage.updateKraTemplate(req.orgId, req.params.id, validatedData);
+      if (!updatedTemplate) {
+        return res.status(404).json({ message: "KRA template not found" });
+      }
+      
+      res.json(updatedTemplate);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid request data", errors: error.errors });
+      }
+      console.error("PUT /api/kra-templates/:id - Error:", error);
+      res.status(500).json({ message: "Failed to update KRA template" });
+    }
+  });
+
+  app.delete("/api/kra-templates/:id", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const deleted = await storage.deleteKraTemplate(req.orgId, req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "KRA template not found" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("DELETE /api/kra-templates/:id - Error:", error);
+      res.status(500).json({ message: "Failed to delete KRA template" });
+    }
+  });
+
+  // User KRAs endpoints
+  app.get("/api/user-kras", requireAuth(), async (req, res) => {
+    try {
+      const userId = req.query.userId as string || req.userId;
+      const statusFilter = req.query.status as string;
+      
+      // Non-managers can only see their own KRAs
+      const currentUser = await storage.getUser(req.orgId, req.userId);
+      if (!currentUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      if (userId !== req.userId && currentUser.role !== 'admin' && currentUser.role !== 'manager') {
+        return res.status(403).json({ message: "You can only view your own KRAs" });
+      }
+      
+      const userKras = await storage.getUserKrasByUser(req.orgId, userId, statusFilter);
+      res.json(userKras);
+    } catch (error) {
+      console.error("GET /api/user-kras - Error:", error);
+      res.status(500).json({ message: "Failed to fetch user KRAs" });
+    }
+  });
+
+  app.get("/api/user-kras/my-team", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      // Get KRAs for users assigned by this manager
+      const teamKras = await storage.getUserKrasByAssigner(req.orgId, req.userId);
+      res.json(teamKras);
+    } catch (error) {
+      console.error("GET /api/user-kras/my-team - Error:", error);
+      res.status(500).json({ message: "Failed to fetch team KRAs" });
+    }
+  });
+
+  app.get("/api/user-kras/:id", requireAuth(), async (req, res) => {
+    try {
+      const userKra = await storage.getUserKra(req.orgId, req.params.id);
+      if (!userKra) {
+        return res.status(404).json({ message: "User KRA not found" });
+      }
+      
+      // Check if user can access this KRA
+      const currentUser = await storage.getUser(req.orgId, req.userId);
+      if (!currentUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      const canAccess = userKra.userId === req.userId || 
+                       userKra.assignedBy === req.userId || 
+                       currentUser.role === 'admin' ||
+                       (currentUser.role === 'manager' && userKra.assignedBy === req.userId);
+      
+      if (!canAccess) {
+        return res.status(403).json({ message: "You can only access KRAs you own or have assigned" });
+      }
+      
+      res.json(userKra);
+    } catch (error) {
+      console.error("GET /api/user-kras/:id - Error:", error);
+      res.status(500).json({ message: "Failed to fetch user KRA" });
+    }
+  });
+
+  app.post("/api/user-kras", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { userId, templateId, name, description, goals, startDate, endDate } = req.body;
+      
+      // Verify the target user exists and is in the same organization
+      const targetUser = await storage.getUser(req.orgId, userId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "Target user not found" });
+      }
+      
+      const userKraData = {
+        userId,
+        templateId: templateId || null,
+        name,
+        description: description || null,
+        goals: goals || [],
+        assignedBy: req.userId,
+        startDate: new Date(startDate),
+        endDate: endDate ? new Date(endDate) : null,
+        status: "active" as const,
+        progress: 0
+      };
+      
+      const userKra = await storage.createUserKra(req.orgId, userKraData);
+      res.status(201).json(userKra);
+    } catch (error) {
+      console.error("POST /api/user-kras - Error:", error);
+      res.status(500).json({ message: "Failed to create user KRA" });
+    }
+  });
+
+  app.put("/api/user-kras/:id", requireAuth(), async (req, res) => {
+    try {
+      const { name, description, goals, progress, status, endDate } = req.body;
+      
+      // Get existing KRA to verify permissions
+      const existingKra = await storage.getUserKra(req.orgId, req.params.id);
+      if (!existingKra) {
+        return res.status(404).json({ message: "User KRA not found" });
+      }
+      
+      // Check if user can update this KRA
+      const currentUser = await storage.getUser(req.orgId, req.userId);
+      if (!currentUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      const canUpdate = existingKra.userId === req.userId || 
+                       existingKra.assignedBy === req.userId || 
+                       currentUser.role === 'admin' ||
+                       (currentUser.role === 'manager' && existingKra.assignedBy === req.userId);
+      
+      if (!canUpdate) {
+        return res.status(403).json({ message: "You can only update KRAs you own or have assigned" });
+      }
+      
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name;
+      if (description !== undefined) updateData.description = description;
+      if (goals !== undefined) updateData.goals = goals;
+      if (progress !== undefined) updateData.progress = Math.max(0, Math.min(100, progress));
+      if (status !== undefined) updateData.status = status;
+      if (endDate !== undefined) updateData.endDate = endDate ? new Date(endDate) : null;
+      
+      const updatedKra = await storage.updateUserKra(req.orgId, req.params.id, updateData);
+      if (!updatedKra) {
+        return res.status(404).json({ message: "User KRA not found" });
+      }
+      
+      res.json(updatedKra);
+    } catch (error) {
+      console.error("PUT /api/user-kras/:id - Error:", error);
+      res.status(500).json({ message: "Failed to update user KRA" });
+    }
+  });
+
+  app.delete("/api/user-kras/:id", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      // Get existing KRA to verify permissions
+      const existingKra = await storage.getUserKra(req.orgId, req.params.id);
+      if (!existingKra) {
+        return res.status(404).json({ message: "User KRA not found" });
+      }
+      
+      // Check if user can delete this KRA
+      const currentUser = await storage.getUser(req.orgId, req.userId);
+      if (!currentUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      const canDelete = existingKra.assignedBy === req.userId || 
+                       currentUser.role === 'admin';
+      
+      if (!canDelete) {
+        return res.status(403).json({ message: "You can only delete KRAs you have assigned" });
+      }
+      
+      const deleted = await storage.deleteUserKra(req.orgId, req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "User KRA not found" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("DELETE /api/user-kras/:id - Error:", error);
+      res.status(500).json({ message: "Failed to delete user KRA" });
     }
   });
 

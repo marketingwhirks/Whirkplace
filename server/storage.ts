@@ -8,6 +8,10 @@ import {
   type Shoutout, type InsertShoutout,
   type Vacation, type InsertVacation,
   type Organization, type InsertOrganization,
+  type OneOnOne, type InsertOneOnOne,
+  type KraTemplate, type InsertKraTemplate,
+  type UserKra, type InsertUserKra,
+  type ActionItem, type InsertActionItem,
   type ReviewCheckin, type ReviewStatusType,
   type PulseMetricsOptions, type PulseMetricsResult,
   type ShoutoutMetricsOptions, type ShoutoutMetricsResult,
@@ -15,6 +19,7 @@ import {
   type AnalyticsOverview, type AnalyticsPeriod,
   type ComplianceMetricsOptions, type ComplianceMetricsResult,
   users, teams, checkins, questions, wins, comments, shoutouts, vacations, organizations,
+  oneOnOnes, kraTemplates, userKras, actionItems,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   ReviewStatus
 } from "@shared/schema";
@@ -171,6 +176,42 @@ export interface IStorage {
   upsertVacationWeek(organizationId: string, userId: string, weekOf: Date, note?: string): Promise<Vacation>;
   deleteVacationWeek(organizationId: string, userId: string, weekOf: Date): Promise<boolean>;
   isUserOnVacation(organizationId: string, userId: string, weekOf: Date): Promise<boolean>;
+
+  // One-on-One Meetings
+  getOneOnOne(organizationId: string, id: string): Promise<OneOnOne | undefined>;
+  createOneOnOne(organizationId: string, oneOnOne: InsertOneOnOne): Promise<OneOnOne>;
+  updateOneOnOne(organizationId: string, id: string, oneOnOne: Partial<InsertOneOnOne>): Promise<OneOnOne | undefined>;
+  deleteOneOnOne(organizationId: string, id: string): Promise<boolean>;
+  getOneOnOnesByUser(organizationId: string, userId: string): Promise<OneOnOne[]>;
+  getOneOnOnesByParticipants(organizationId: string, participantOneId: string, participantTwoId: string): Promise<OneOnOne[]>;
+  getUpcomingOneOnOnes(organizationId: string, userId: string): Promise<OneOnOne[]>;
+  getPastOneOnOnes(organizationId: string, userId: string, limit?: number): Promise<OneOnOne[]>;
+
+  // KRA Templates
+  getKraTemplate(organizationId: string, id: string): Promise<KraTemplate | undefined>;
+  createKraTemplate(organizationId: string, template: InsertKraTemplate): Promise<KraTemplate>;
+  updateKraTemplate(organizationId: string, id: string, template: Partial<InsertKraTemplate>): Promise<KraTemplate | undefined>;
+  deleteKraTemplate(organizationId: string, id: string): Promise<boolean>;
+  getAllKraTemplates(organizationId: string, activeOnly?: boolean): Promise<KraTemplate[]>;
+  getKraTemplatesByCategory(organizationId: string, category: string): Promise<KraTemplate[]>;
+
+  // User KRAs
+  getUserKra(organizationId: string, id: string): Promise<UserKra | undefined>;
+  createUserKra(organizationId: string, userKra: InsertUserKra): Promise<UserKra>;
+  updateUserKra(organizationId: string, id: string, userKra: Partial<InsertUserKra>): Promise<UserKra | undefined>;
+  deleteUserKra(organizationId: string, id: string): Promise<boolean>;
+  getUserKrasByUser(organizationId: string, userId: string, statusFilter?: string): Promise<UserKra[]>;
+  getUserKrasByAssigner(organizationId: string, assignerId: string): Promise<UserKra[]>;
+  getActiveUserKras(organizationId: string): Promise<UserKra[]>;
+
+  // Action Items
+  getActionItem(organizationId: string, id: string): Promise<ActionItem | undefined>;
+  createActionItem(organizationId: string, actionItem: InsertActionItem): Promise<ActionItem>;
+  updateActionItem(organizationId: string, id: string, actionItem: Partial<InsertActionItem>): Promise<ActionItem | undefined>;
+  deleteActionItem(organizationId: string, id: string): Promise<boolean>;
+  getActionItemsByMeeting(organizationId: string, meetingId: string): Promise<ActionItem[]>;
+  getActionItemsByUser(organizationId: string, userId: string, statusFilter?: string): Promise<ActionItem[]>;
+  getOverdueActionItems(organizationId: string): Promise<ActionItem[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2055,6 +2096,422 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
 
     return !!vacation;
+  }
+
+  // One-on-One Meetings
+  async getOneOnOne(organizationId: string, id: string): Promise<OneOnOne | undefined> {
+    try {
+      const [oneOnOne] = await db
+        .select()
+        .from(oneOnOnes)
+        .where(and(eq(oneOnOnes.organizationId, organizationId), eq(oneOnOnes.id, id)));
+      return oneOnOne || undefined;
+    } catch (error) {
+      console.error("Failed to fetch one-on-one:", error);
+      throw error;
+    }
+  }
+
+  async createOneOnOne(organizationId: string, oneOnOneData: InsertOneOnOne): Promise<OneOnOne> {
+    try {
+      const [oneOnOne] = await db
+        .insert(oneOnOnes)
+        .values({ ...oneOnOneData, organizationId })
+        .returning();
+      return oneOnOne;
+    } catch (error) {
+      console.error("Failed to create one-on-one:", error);
+      throw error;
+    }
+  }
+
+  async updateOneOnOne(organizationId: string, id: string, oneOnOneUpdate: Partial<InsertOneOnOne>): Promise<OneOnOne | undefined> {
+    try {
+      const updateData = { ...oneOnOneUpdate, updatedAt: new Date() };
+      const [updatedOneOnOne] = await db
+        .update(oneOnOnes)
+        .set(updateData)
+        .where(and(eq(oneOnOnes.organizationId, organizationId), eq(oneOnOnes.id, id)))
+        .returning();
+      return updatedOneOnOne || undefined;
+    } catch (error) {
+      console.error("Failed to update one-on-one:", error);
+      throw error;
+    }
+  }
+
+  async deleteOneOnOne(organizationId: string, id: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(oneOnOnes)
+        .where(and(eq(oneOnOnes.organizationId, organizationId), eq(oneOnOnes.id, id)));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Failed to delete one-on-one:", error);
+      throw error;
+    }
+  }
+
+  async getOneOnOnesByUser(organizationId: string, userId: string): Promise<OneOnOne[]> {
+    try {
+      return await db
+        .select()
+        .from(oneOnOnes)
+        .where(and(
+          eq(oneOnOnes.organizationId, organizationId),
+          or(eq(oneOnOnes.participantOneId, userId), eq(oneOnOnes.participantTwoId, userId))
+        ))
+        .orderBy(desc(oneOnOnes.scheduledAt));
+    } catch (error) {
+      console.error("Failed to fetch one-on-ones by user:", error);
+      throw error;
+    }
+  }
+
+  async getOneOnOnesByParticipants(organizationId: string, participantOneId: string, participantTwoId: string): Promise<OneOnOne[]> {
+    try {
+      return await db
+        .select()
+        .from(oneOnOnes)
+        .where(and(
+          eq(oneOnOnes.organizationId, organizationId),
+          or(
+            and(eq(oneOnOnes.participantOneId, participantOneId), eq(oneOnOnes.participantTwoId, participantTwoId)),
+            and(eq(oneOnOnes.participantOneId, participantTwoId), eq(oneOnOnes.participantTwoId, participantOneId))
+          )
+        ))
+        .orderBy(desc(oneOnOnes.scheduledAt));
+    } catch (error) {
+      console.error("Failed to fetch one-on-ones by participants:", error);
+      throw error;
+    }
+  }
+
+  async getUpcomingOneOnOnes(organizationId: string, userId: string): Promise<OneOnOne[]> {
+    try {
+      const now = new Date();
+      return await db
+        .select()
+        .from(oneOnOnes)
+        .where(and(
+          eq(oneOnOnes.organizationId, organizationId),
+          or(eq(oneOnOnes.participantOneId, userId), eq(oneOnOnes.participantTwoId, userId)),
+          gte(oneOnOnes.scheduledAt, now),
+          eq(oneOnOnes.status, "scheduled")
+        ))
+        .orderBy(oneOnOnes.scheduledAt);
+    } catch (error) {
+      console.error("Failed to fetch upcoming one-on-ones:", error);
+      throw error;
+    }
+  }
+
+  async getPastOneOnOnes(organizationId: string, userId: string, limit: number = 10): Promise<OneOnOne[]> {
+    try {
+      const now = new Date();
+      return await db
+        .select()
+        .from(oneOnOnes)
+        .where(and(
+          eq(oneOnOnes.organizationId, organizationId),
+          or(eq(oneOnOnes.participantOneId, userId), eq(oneOnOnes.participantTwoId, userId)),
+          lt(oneOnOnes.scheduledAt, now)
+        ))
+        .orderBy(desc(oneOnOnes.scheduledAt))
+        .limit(limit);
+    } catch (error) {
+      console.error("Failed to fetch past one-on-ones:", error);
+      throw error;
+    }
+  }
+
+  // KRA Templates
+  async getKraTemplate(organizationId: string, id: string): Promise<KraTemplate | undefined> {
+    try {
+      const [template] = await db
+        .select()
+        .from(kraTemplates)
+        .where(and(eq(kraTemplates.organizationId, organizationId), eq(kraTemplates.id, id)));
+      return template || undefined;
+    } catch (error) {
+      console.error("Failed to fetch KRA template:", error);
+      throw error;
+    }
+  }
+
+  async createKraTemplate(organizationId: string, templateData: InsertKraTemplate): Promise<KraTemplate> {
+    try {
+      const [template] = await db
+        .insert(kraTemplates)
+        .values({ ...templateData, organizationId })
+        .returning();
+      return template;
+    } catch (error) {
+      console.error("Failed to create KRA template:", error);
+      throw error;
+    }
+  }
+
+  async updateKraTemplate(organizationId: string, id: string, templateUpdate: Partial<InsertKraTemplate>): Promise<KraTemplate | undefined> {
+    try {
+      const [updatedTemplate] = await db
+        .update(kraTemplates)
+        .set(templateUpdate)
+        .where(and(eq(kraTemplates.organizationId, organizationId), eq(kraTemplates.id, id)))
+        .returning();
+      return updatedTemplate || undefined;
+    } catch (error) {
+      console.error("Failed to update KRA template:", error);
+      throw error;
+    }
+  }
+
+  async deleteKraTemplate(organizationId: string, id: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(kraTemplates)
+        .where(and(eq(kraTemplates.organizationId, organizationId), eq(kraTemplates.id, id)));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Failed to delete KRA template:", error);
+      throw error;
+    }
+  }
+
+  async getAllKraTemplates(organizationId: string, activeOnly: boolean = true): Promise<KraTemplate[]> {
+    try {
+      const conditions = [eq(kraTemplates.organizationId, organizationId)];
+      if (activeOnly) {
+        conditions.push(eq(kraTemplates.isActive, true));
+      }
+      return await db
+        .select()
+        .from(kraTemplates)
+        .where(and(...conditions))
+        .orderBy(kraTemplates.name);
+    } catch (error) {
+      console.error("Failed to fetch KRA templates:", error);
+      throw error;
+    }
+  }
+
+  async getKraTemplatesByCategory(organizationId: string, category: string): Promise<KraTemplate[]> {
+    try {
+      return await db
+        .select()
+        .from(kraTemplates)
+        .where(and(
+          eq(kraTemplates.organizationId, organizationId),
+          eq(kraTemplates.category, category),
+          eq(kraTemplates.isActive, true)
+        ))
+        .orderBy(kraTemplates.name);
+    } catch (error) {
+      console.error("Failed to fetch KRA templates by category:", error);
+      throw error;
+    }
+  }
+
+  // User KRAs
+  async getUserKra(organizationId: string, id: string): Promise<UserKra | undefined> {
+    try {
+      const [userKra] = await db
+        .select()
+        .from(userKras)
+        .where(and(eq(userKras.organizationId, organizationId), eq(userKras.id, id)));
+      return userKra || undefined;
+    } catch (error) {
+      console.error("Failed to fetch user KRA:", error);
+      throw error;
+    }
+  }
+
+  async createUserKra(organizationId: string, userKraData: InsertUserKra): Promise<UserKra> {
+    try {
+      const [userKra] = await db
+        .insert(userKras)
+        .values({ ...userKraData, organizationId })
+        .returning();
+      return userKra;
+    } catch (error) {
+      console.error("Failed to create user KRA:", error);
+      throw error;
+    }
+  }
+
+  async updateUserKra(organizationId: string, id: string, userKraUpdate: Partial<InsertUserKra>): Promise<UserKra | undefined> {
+    try {
+      const updateData = { ...userKraUpdate, lastUpdated: new Date() };
+      const [updatedUserKra] = await db
+        .update(userKras)
+        .set(updateData)
+        .where(and(eq(userKras.organizationId, organizationId), eq(userKras.id, id)))
+        .returning();
+      return updatedUserKra || undefined;
+    } catch (error) {
+      console.error("Failed to update user KRA:", error);
+      throw error;
+    }
+  }
+
+  async deleteUserKra(organizationId: string, id: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(userKras)
+        .where(and(eq(userKras.organizationId, organizationId), eq(userKras.id, id)));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Failed to delete user KRA:", error);
+      throw error;
+    }
+  }
+
+  async getUserKrasByUser(organizationId: string, userId: string, statusFilter?: string): Promise<UserKra[]> {
+    try {
+      const conditions = [eq(userKras.organizationId, organizationId), eq(userKras.userId, userId)];
+      if (statusFilter) {
+        conditions.push(eq(userKras.status, statusFilter));
+      }
+      return await db
+        .select()
+        .from(userKras)
+        .where(and(...conditions))
+        .orderBy(desc(userKras.lastUpdated));
+    } catch (error) {
+      console.error("Failed to fetch user KRAs by user:", error);
+      throw error;
+    }
+  }
+
+  async getUserKrasByAssigner(organizationId: string, assignerId: string): Promise<UserKra[]> {
+    try {
+      return await db
+        .select()
+        .from(userKras)
+        .where(and(eq(userKras.organizationId, organizationId), eq(userKras.assignedBy, assignerId)))
+        .orderBy(desc(userKras.lastUpdated));
+    } catch (error) {
+      console.error("Failed to fetch user KRAs by assigner:", error);
+      throw error;
+    }
+  }
+
+  async getActiveUserKras(organizationId: string): Promise<UserKra[]> {
+    try {
+      return await db
+        .select()
+        .from(userKras)
+        .where(and(eq(userKras.organizationId, organizationId), eq(userKras.status, "active")))
+        .orderBy(desc(userKras.lastUpdated));
+    } catch (error) {
+      console.error("Failed to fetch active user KRAs:", error);
+      throw error;
+    }
+  }
+
+  // Action Items
+  async getActionItem(organizationId: string, id: string): Promise<ActionItem | undefined> {
+    try {
+      const [actionItem] = await db
+        .select()
+        .from(actionItems)
+        .where(and(eq(actionItems.organizationId, organizationId), eq(actionItems.id, id)));
+      return actionItem || undefined;
+    } catch (error) {
+      console.error("Failed to fetch action item:", error);
+      throw error;
+    }
+  }
+
+  async createActionItem(organizationId: string, actionItemData: InsertActionItem): Promise<ActionItem> {
+    try {
+      const [actionItem] = await db
+        .insert(actionItems)
+        .values({ ...actionItemData, organizationId })
+        .returning();
+      return actionItem;
+    } catch (error) {
+      console.error("Failed to create action item:", error);
+      throw error;
+    }
+  }
+
+  async updateActionItem(organizationId: string, id: string, actionItemUpdate: Partial<InsertActionItem>): Promise<ActionItem | undefined> {
+    try {
+      const updateData = { ...actionItemUpdate };
+      if (actionItemUpdate.status === "completed" && !actionItemUpdate.completedAt) {
+        updateData.completedAt = new Date();
+      }
+      const [updatedActionItem] = await db
+        .update(actionItems)
+        .set(updateData)
+        .where(and(eq(actionItems.organizationId, organizationId), eq(actionItems.id, id)))
+        .returning();
+      return updatedActionItem || undefined;
+    } catch (error) {
+      console.error("Failed to update action item:", error);
+      throw error;
+    }
+  }
+
+  async deleteActionItem(organizationId: string, id: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(actionItems)
+        .where(and(eq(actionItems.organizationId, organizationId), eq(actionItems.id, id)));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Failed to delete action item:", error);
+      throw error;
+    }
+  }
+
+  async getActionItemsByMeeting(organizationId: string, meetingId: string): Promise<ActionItem[]> {
+    try {
+      return await db
+        .select()
+        .from(actionItems)
+        .where(and(eq(actionItems.organizationId, organizationId), eq(actionItems.meetingId, meetingId)))
+        .orderBy(actionItems.createdAt);
+    } catch (error) {
+      console.error("Failed to fetch action items by meeting:", error);
+      throw error;
+    }
+  }
+
+  async getActionItemsByUser(organizationId: string, userId: string, statusFilter?: string): Promise<ActionItem[]> {
+    try {
+      const conditions = [eq(actionItems.organizationId, organizationId), eq(actionItems.assignedTo, userId)];
+      if (statusFilter) {
+        conditions.push(eq(actionItems.status, statusFilter));
+      }
+      return await db
+        .select()
+        .from(actionItems)
+        .where(and(...conditions))
+        .orderBy(actionItems.dueDate, actionItems.createdAt);
+    } catch (error) {
+      console.error("Failed to fetch action items by user:", error);
+      throw error;
+    }
+  }
+
+  async getOverdueActionItems(organizationId: string): Promise<ActionItem[]> {
+    try {
+      const now = new Date();
+      return await db
+        .select()
+        .from(actionItems)
+        .where(and(
+          eq(actionItems.organizationId, organizationId),
+          eq(actionItems.status, "pending"),
+          lt(actionItems.dueDate, now)
+        ))
+        .orderBy(actionItems.dueDate);
+    } catch (error) {
+      console.error("Failed to fetch overdue action items:", error);
+      throw error;
+    }
   }
 
   // Helper method for date truncation based on period
