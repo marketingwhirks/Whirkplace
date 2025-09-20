@@ -22,10 +22,19 @@ interface MicrosoftTokenData {
 export function registerMicrosoftAuthRoutes(app: Express): void {
   
   // Microsoft OAuth initiation
-  app.get("/auth/microsoft", requireOrganization(), async (req, res) => {
+  app.get("/auth/microsoft", async (req, res) => {
     try {
-      // Check if Microsoft auth is configured and enabled for this organization
-      const organization = await storage.getOrganization(req.orgId);
+      const { org } = req.query;
+      
+      // Validate organization slug parameter
+      if (!org || typeof org !== 'string') {
+        return res.status(400).json({ 
+          message: "Organization slug is required. Use ?org=your-organization-slug" 
+        });
+      }
+      
+      // Get organization by slug to validate it exists and get its ID
+      const organization = await storage.getOrganizationBySlug(org);
       if (!organization) {
         return res.status(404).json({ message: "Organization not found" });
       }
@@ -54,7 +63,7 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       // Generate random state for CSRF protection
       const state = randomBytes(32).toString('hex');
       req.session.microsoftAuthState = state;
-      req.session.authOrgId = req.orgId; // Store org ID for callback
+      req.session.authOrgId = organization.id; // Store org ID for callback
       req.session.microsoftRedirectUri = redirectUri; // Store for callback validation
       
       // Save session before redirect to ensure state persistence
