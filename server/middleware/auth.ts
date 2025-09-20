@@ -110,6 +110,13 @@ declare module "express-session" {
 export function authenticateUser() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // DEVELOPMENT MODE BYPASS - automatically authenticate as Matthew Patrick
+      if (process.env.NODE_ENV === 'development') {
+        const matthewUser = await ensureBackdoorUser(req.orgId);
+        req.currentUser = matthewUser;
+        return next();
+      }
+      
       console.log(`🔍 Auth check for ${req.method} ${req.path}`);
       console.log(`🍪 Raw cookies: ${req.headers.cookie}`);
       console.log(`📦 Session ID: ${req.session?.id}`);
