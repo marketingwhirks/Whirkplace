@@ -5,6 +5,8 @@ interface FeatureAvailability {
   one_on_ones: boolean;
   kra_management: boolean;
   advanced_analytics: boolean;
+  slack_integration: boolean;
+  teams_integration: boolean;
   teams: boolean;
   reviews: boolean;
   analytics: boolean;
@@ -35,6 +37,8 @@ export function useFeatureAccess() {
     one_on_ones: false,
     kra_management: false,
     advanced_analytics: false,
+    slack_integration: false,
+    teams_integration: false,
     teams: false,
     reviews: false,
     analytics: false,
@@ -54,7 +58,7 @@ export function useFeatureAccess() {
    * Get required plan for a specific feature
    */
   const getRequiredPlan = (feature: keyof FeatureAvailability): PlanType => {
-    if (feature === "one_on_ones" || feature === "kra_management") {
+    if (feature === "one_on_ones" || feature === "kra_management" || feature === "advanced_analytics" || feature === "slack_integration" || feature === "teams_integration") {
       return "enterprise";
     }
     if (feature === "teams" || feature === "reviews" || feature === "analytics") {
@@ -86,6 +90,16 @@ export function useFeatureAccess() {
    */
   const canAccessAdvancedAnalytics = hasFeature("advanced_analytics");
 
+  /**
+   * Check if user can access Slack integration
+   */
+  const canAccessSlackIntegration = hasFeature("slack_integration");
+
+  /**
+   * Check if user can access Teams integration
+   */
+  const canAccessTeamsIntegration = hasFeature("teams_integration");
+
   return {
     // Feature availability
     features,
@@ -95,6 +109,8 @@ export function useFeatureAccess() {
     canAccessOneOnOnes,
     canAccessKraManagement,
     canAccessAdvancedAnalytics,
+    canAccessSlackIntegration,
+    canAccessTeamsIntegration,
     
     // Plan information
     plan,

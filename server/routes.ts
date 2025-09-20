@@ -19,6 +19,8 @@ import { requireOrganization, sanitizeForOrganization } from "./middleware/organ
 import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser } from "./middleware/auth";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
 import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } from "./middleware/plan-access";
+import { registerMicrosoftTeamsRoutes } from "./routes/microsoft-teams";
+import { registerMicrosoftAuthRoutes } from "./routes/microsoft-auth";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Backdoor login endpoint (for development/testing when Slack is unavailable)
@@ -332,6 +334,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+  
+  // Register Microsoft integration routes
+  registerMicrosoftAuthRoutes(app);
+  registerMicrosoftTeamsRoutes(app);
   
   // Apply organization middleware to all API routes
   app.use("/api", requireOrganization());
@@ -2181,7 +2187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Slack Integration
-  app.post("/api/slack/send-checkin-reminder", async (req, res) => {
+  app.post("/api/slack/send-checkin-reminder", requireOrganization(), requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       const users = await storage.getAllUsers(req.orgId);
       const activeUsers = users.filter(user => user.isActive);
@@ -2216,7 +2222,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/slack/send-team-health-update", async (req, res) => {
+  app.post("/api/slack/send-team-health-update", requireOrganization(), requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       const recentCheckins = await storage.getRecentCheckins(req.orgId, 50);
       const recentWins = await storage.getRecentWins(req.orgId, 20);
@@ -2249,7 +2255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Manual Weekly Reminder Trigger (for testing or scheduled execution)
-  app.post("/api/slack/send-weekly-reminders", requireOrganization(), requireAuth(), requireRole('admin'), async (req, res) => {
+  app.post("/api/slack/send-weekly-reminders", requireOrganization(), requireAuth(), requireRole('admin'), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       const { scheduleWeeklyReminders } = await import("./services/slack");
       const result = await scheduleWeeklyReminders(req.orgId, storage);
@@ -2265,7 +2271,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Personalized Check-in Reminder (for individual users)
-  app.post("/api/slack/send-personal-reminder", requireOrganization(), requireAuth(), requireRole('admin'), async (req, res) => {
+  app.post("/api/slack/send-personal-reminder", requireOrganization(), requireAuth(), requireRole('admin'), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       const { userId, isWeeklyScheduled = false } = req.body;
       
@@ -2299,7 +2305,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Get Weekly Reminder Statistics
-  app.get("/api/slack/reminder-stats", requireOrganization(), requireAuth(), async (req, res) => {
+  app.get("/api/slack/reminder-stats", requireOrganization(), requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       const { getWeeklyReminderStats } = await import("./services/slack");
       const stats = await getWeeklyReminderStats(req.orgId, storage);
@@ -2312,7 +2318,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Test Weekly Reminders (for development/testing)
-  app.post("/api/slack/test-weekly-reminders", requireOrganization(), requireAuth(), requireRole('admin'), async (req, res) => {
+  app.post("/api/slack/test-weekly-reminders", requireOrganization(), requireAuth(), requireRole('admin'), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       const { triggerTestWeeklyReminders } = await import("./services/slack");
       const result = await triggerTestWeeklyReminders(req.orgId, storage);
@@ -2463,7 +2469,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication endpoints section moved earlier
 
   // User Sync Endpoints
-  app.post("/api/admin/sync-users", requireAuth(), async (req, res) => {
+  app.post("/api/admin/sync-users", requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       // Check if user is admin
       if (!req.currentUser || req.currentUser.role !== 'admin') {
@@ -2483,7 +2489,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/admin/channel-members", requireAuth(), async (req, res) => {
+  app.get("/api/admin/channel-members", requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       // Check if user is admin
       if (!req.currentUser || req.currentUser.role !== 'admin') {
@@ -2505,7 +2511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Debug endpoint to list all Slack channels the bot can see
-  app.get("/api/admin/slack-channels", requireAuth(), async (req, res) => {
+  app.get("/api/admin/slack-channels", requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       // Check if user is admin
       if (!req.currentUser || req.currentUser.role !== 'admin') {

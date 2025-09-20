@@ -6,6 +6,8 @@ const FEATURE_PLAN_REQUIREMENTS = {
   one_on_ones: Plan.ENTERPRISE,
   kra_management: Plan.ENTERPRISE,
   advanced_analytics: Plan.ENTERPRISE,
+  slack_integration: Plan.ENTERPRISE,
+  teams_integration: Plan.ENTERPRISE,
   teams: Plan.PROFESSIONAL,
   reviews: Plan.PROFESSIONAL,
   analytics: Plan.PROFESSIONAL,

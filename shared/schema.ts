@@ -63,7 +63,7 @@ export const PlanFeatures = {
   },
   [Plan.ENTERPRISE]: {
     maxUsers: -1, // unlimited
-    features: ["checkins", "wins", "shoutouts", "analytics", "teams", "reviews", "one_on_ones", "kra_management", "advanced_analytics"],
+    features: ["checkins", "wins", "shoutouts", "analytics", "teams", "reviews", "one_on_ones", "kra_management", "advanced_analytics", "slack_integration", "teams_integration"],
   },
 } as const;
 
