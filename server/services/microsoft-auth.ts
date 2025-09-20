@@ -18,7 +18,6 @@ interface AuthConfig {
   clientId: string;
   clientSecret: string;
   tenantId: string;
-  redirectUri: string;
   scopes: string[];
 }
 
@@ -46,7 +45,6 @@ export class MicrosoftAuthService {
       clientId,
       clientSecret,
       tenantId,
-      redirectUri: process.env.MICROSOFT_REDIRECT_URI || `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co/auth/microsoft/callback`,
       scopes: ['openid', 'profile', 'User.Read', 'email']
     };
 
@@ -75,7 +73,7 @@ export class MicrosoftAuthService {
   /**
    * Generate Microsoft OAuth authorization URL
    */
-  async getAuthUrl(state?: string): Promise<string> {
+  async getAuthUrl(redirectUri: string, state?: string): Promise<string> {
     if (!this.isConfigured()) {
       throw new Error('Microsoft authentication is not configured');
     }
@@ -83,7 +81,7 @@ export class MicrosoftAuthService {
     try {
       const authCodeUrlParameters = {
         scopes: this.config!.scopes,
-        redirectUri: this.config!.redirectUri,
+        redirectUri,
         state: state || undefined,
       };
 
@@ -98,7 +96,7 @@ export class MicrosoftAuthService {
   /**
    * Exchange authorization code for access token
    */
-  async exchangeCodeForToken(code: string, state?: string): Promise<AuthenticationResult> {
+  async exchangeCodeForToken(code: string, redirectUri: string, state?: string): Promise<AuthenticationResult> {
     if (!this.isConfigured()) {
       throw new Error('Microsoft authentication is not configured');
     }
@@ -107,7 +105,7 @@ export class MicrosoftAuthService {
       const tokenRequest = {
         code,
         scopes: this.config!.scopes,
-        redirectUri: this.config!.redirectUri,
+        redirectUri,
       };
 
       const response = await this.msalApp!.acquireTokenByCode(tokenRequest);
@@ -181,9 +179,9 @@ export class MicrosoftAuthService {
   /**
    * Get logout URL
    */
-  getLogoutUrl(postLogoutRedirectUri?: string): string {
-    const redirectUri = postLogoutRedirectUri || `${process.env.REPL_URL || 'http://localhost:5000'}/`;
-    return `https://login.microsoftonline.com/${this.config.tenantId}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(redirectUri)}`;
+  getLogoutUrl(baseUrl: string, postLogoutRedirectUri?: string): string {
+    const redirectUri = postLogoutRedirectUri || `${baseUrl}/`;
+    return `https://login.microsoftonline.com/${this.config!.tenantId}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(redirectUri)}`;
   }
 
   /**

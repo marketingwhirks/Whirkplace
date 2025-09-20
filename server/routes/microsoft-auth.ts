@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { microsoftAuthService } from "../services/microsoft-auth";
 import { requireOrganization } from "../middleware/organization";
 import { requireAuth, requireRole } from "../middleware/auth";
+import { resolveRedirectUri, isAllowedHost } from "../utils/redirect-uri";
 import type { InsertUser } from "@shared/schema";
 
 interface MicrosoftTokenData {
@@ -41,12 +42,22 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         });
       }
       
+      // Resolve redirect URI for current environment
+      const redirectUri = resolveRedirectUri(req);
+      
+      // Optional: Validate host for security
+      const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
+      if (!isAllowedHost(host)) {
+        return res.status(400).json({ message: "Unauthorized host" });
+      }
+      
       // Generate random state for CSRF protection
       const state = randomBytes(32).toString('hex');
       req.session.microsoftAuthState = state;
       req.session.authOrgId = req.orgId; // Store org ID for callback
+      req.session.microsoftRedirectUri = redirectUri; // Store for callback validation
       
-      const authUrl = await microsoftAuthService.getAuthUrl(state);
+      const authUrl = await microsoftAuthService.getAuthUrl(redirectUri, state);
       res.redirect(authUrl);
     } catch (error) {
       console.error("Microsoft auth initiation error:", error);
@@ -75,14 +86,15 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         return res.status(400).json({ message: "Invalid or expired OAuth state" });
       }
       
-      // Get organization ID from session
+      // Get organization ID and redirect URI from session
       const orgId = req.session.authOrgId;
-      if (!orgId) {
-        return res.status(400).json({ message: "Organization context lost" });
+      const storedRedirectUri = req.session.microsoftRedirectUri;
+      if (!orgId || !storedRedirectUri) {
+        return res.status(400).json({ message: "Organization context or redirect URI lost" });
       }
       
-      // Exchange authorization code for access token
-      const tokenData = await microsoftAuthService.exchangeCodeForToken(code);
+      // Exchange authorization code for access token using stored redirect URI
+      const tokenData = await microsoftAuthService.exchangeCodeForToken(code, storedRedirectUri);
       if (!tokenData) {
         return res.status(400).json({ message: "Failed to exchange authorization code" });
       }
@@ -138,6 +150,7 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       req.session.microsoftAccessToken = tokenData.accessToken; // Store token in session only
       req.session.microsoftAuthState = undefined; // Clear state
       req.session.authOrgId = undefined; // Clear temp org ID
+      req.session.microsoftRedirectUri = undefined; // Clear stored redirect URI
       
       // Set authentication cookies
       const sessionToken = randomBytes(32).toString('hex');
@@ -166,10 +179,12 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
       });
       
-      // Redirect to dashboard
+      // Redirect to dashboard using current request's base URL
       const organization = await storage.getOrganization(orgId);
-      const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
-      const dashboardUrl = `${appUrl}/#/dashboard?org=${organization?.slug}`;
+      const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
+      const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
+      const baseUrl = `${protocol}://${host}`;
+      const dashboardUrl = `${baseUrl}/#/dashboard?org=${organization?.slug}`;
       
       res.redirect(dashboardUrl);
     } catch (error) {

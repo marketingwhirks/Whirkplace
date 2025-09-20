@@ -8,6 +8,10 @@ import { resolveOrganization } from "./middleware/organization";
 import { runDevelopmentSeeding } from "./seeding";
 
 const app = express();
+
+// Enable trust proxy for proper header handling in production
+app.set('trust proxy', true);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
