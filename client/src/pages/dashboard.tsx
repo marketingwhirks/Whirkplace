@@ -123,19 +123,11 @@ export default function Dashboard() {
   });
 
   const { data: recentCheckins = [], isLoading: checkinsLoading, error: checkinsError } = useQuery<Checkin[]>({
-    queryKey: ["/api/checkins"],
-    queryFn: () => fetch("/api/checkins?limit=5").then(res => {
-      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-      return res.json();
-    }),
+    queryKey: ["/api/checkins", { limit: 5 }],
   });
 
   const { data: recentWins = [], isLoading: winsLoading, error: winsError } = useQuery<Win[]>({
-    queryKey: ["/api/wins", "recent"],
-    queryFn: () => fetch("/api/wins?limit=5").then(res => {
-      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-      return res.json();
-    }),
+    queryKey: ["/api/wins", { limit: 5 }],
   });
 
   const { data: users = [], isLoading: usersLoading } = useQuery<User[]>({
