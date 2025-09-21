@@ -146,6 +146,14 @@ export default function Dashboard() {
   // Get current user's team info for compliance data (if manager)
   const currentUserProfile = currentUser;
 
+  // Build date range for compliance queries  
+  const { thirtyDaysAgo, today } = useMemo(() => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const today = new Date();
+    return { thirtyDaysAgo, today };
+  }, []);
+
   // Build compliance query parameters for team-level data
   const complianceQueryParams = useMemo(() => {
     if (!currentUserProfile?.teamId) return null;
@@ -153,33 +161,32 @@ export default function Dashboard() {
     const params = new URLSearchParams();
     params.append("scope", "team");
     params.append("id", currentUserProfile.teamId);
-    // Default to last 30 days for team dashboard
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     params.append("from", thirtyDaysAgo.toISOString());
-    params.append("to", new Date().toISOString());
+    params.append("to", today.toISOString());
     return params.toString();
-  }, [currentUserProfile?.teamId]);
+  }, [currentUserProfile?.teamId, thirtyDaysAgo, today]);
 
   // Fetch team check-in compliance metrics (for managers)
   const { data: teamCheckinComplianceArray, isLoading: teamCheckinComplianceLoading } = useQuery<ComplianceMetricsResult[]>({
-    queryKey: ["/api/analytics/checkin-compliance", complianceQueryParams],
-    queryFn: () => fetch(`/api/analytics/checkin-compliance?${complianceQueryParams}`).then(res => {
-      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-      return res.json();
-    }),
-    enabled: currentUser.role === "manager" && !!complianceQueryParams,
+    queryKey: ["/api/analytics/checkin-compliance", { 
+      scope: "team",
+      id: currentUserProfile?.teamId,
+      from: thirtyDaysAgo.toISOString(),
+      to: today.toISOString()
+    }],
+    enabled: currentUser.role === "manager" && !!currentUserProfile?.teamId,
     staleTime: 2 * 60 * 1000, // Cache for 2 minutes
   });
 
   // Fetch team review compliance metrics (for managers)
   const { data: teamReviewComplianceArray, isLoading: teamReviewComplianceLoading } = useQuery<ComplianceMetricsResult[]>({
-    queryKey: ["/api/analytics/review-compliance", complianceQueryParams],
-    queryFn: () => fetch(`/api/analytics/review-compliance?${complianceQueryParams}`).then(res => {
-      if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
-      return res.json();
-    }),
-    enabled: currentUser.role === "manager" && !!complianceQueryParams,
+    queryKey: ["/api/analytics/review-compliance", { 
+      scope: "team",
+      id: currentUserProfile?.teamId,
+      from: thirtyDaysAgo.toISOString(),
+      to: today.toISOString()
+    }],
+    enabled: currentUser.role === "manager" && !!currentUserProfile?.teamId,
     staleTime: 2 * 60 * 1000, // Cache for 2 minutes
   });
 
