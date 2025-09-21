@@ -22,7 +22,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { CalendarIntegration } from "@/components/CalendarIntegration";
+import { IntegrationsDashboard } from "@/components/IntegrationsDashboard";
 
 import type { User as UserType, Team } from "@shared/schema";
 import { DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
@@ -1233,7 +1233,7 @@ export default function Settings() {
 
             {/* Integrations Settings */}
             <TabsContent value="integrations" className="space-y-6">
-              <CalendarIntegration />
+              <IntegrationsDashboard />
             </TabsContent>
           </Tabs>
         </div>

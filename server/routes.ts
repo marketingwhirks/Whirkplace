@@ -4340,6 +4340,279 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Integration Management Endpoints
+  
+  // Get organization integrations data
+  app.get("/api/organizations/:id/integrations", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only access your own organization's integrations" });
+      }
+      
+      const organization = await storage.getOrganization(req.params.id);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Return integration-specific fields only
+      const integrationData = {
+        id: organization.id,
+        name: organization.name,
+        slackWorkspaceId: organization.slackWorkspaceId,
+        slackChannelId: organization.slackChannelId,
+        slackBotToken: organization.slackBotToken ? "***HIDDEN***" : undefined, // Hide actual token
+        enableSlackIntegration: organization.enableSlackIntegration,
+        slackConnectionStatus: organization.slackConnectionStatus,
+        slackLastConnected: organization.slackLastConnected,
+        microsoftTenantId: organization.microsoftTenantId,
+        microsoftClientId: organization.microsoftClientId,
+        enableMicrosoftAuth: organization.enableMicrosoftAuth,
+        enableTeamsIntegration: organization.enableTeamsIntegration,
+        microsoftConnectionStatus: organization.microsoftConnectionStatus,
+        microsoftLastConnected: organization.microsoftLastConnected,
+      };
+      
+      res.json(integrationData);
+    } catch (error) {
+      console.error("GET /api/organizations/:id/integrations - Error:", error);
+      res.status(500).json({ message: "Failed to fetch organization integrations" });
+    }
+  });
+
+  // Test Slack connection
+  app.post("/api/integrations/slack/test", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { botToken } = req.body;
+      
+      if (!botToken) {
+        return res.status(400).json({ success: false, message: "Bot token is required" });
+      }
+      
+      // Test the Slack bot token by calling the auth.test API
+      const response = await fetch("https://slack.com/api/auth.test", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${botToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      const data = await response.json();
+      
+      if (data.ok) {
+        res.json({
+          success: true,
+          message: "Slack connection successful",
+          workspaceName: data.team,
+          userId: data.user_id,
+        });
+      } else {
+        res.json({
+          success: false,
+          message: data.error || "Failed to connect to Slack",
+        });
+      }
+    } catch (error) {
+      console.error("POST /api/integrations/slack/test - Error:", error);
+      res.json({
+        success: false,
+        message: "Network error testing Slack connection",
+      });
+    }
+  });
+
+  // Test Microsoft connection
+  app.post("/api/integrations/microsoft/test", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { tenantId, clientId, clientSecret } = req.body;
+      
+      if (!tenantId || !clientId || !clientSecret) {
+        return res.status(400).json({ 
+          success: false, 
+          message: "Tenant ID, Client ID, and Client Secret are required" 
+        });
+      }
+      
+      // Test the Microsoft Graph API connection by getting a token
+      const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+      const tokenData = new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: "https://graph.microsoft.com/.default",
+      });
+      
+      const tokenResponse = await fetch(tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: tokenData,
+      });
+      
+      const tokenResult = await tokenResponse.json();
+      
+      if (tokenResult.access_token) {
+        // Test the token by getting organization info
+        const orgResponse = await fetch("https://graph.microsoft.com/v1.0/organization", {
+          headers: {
+            "Authorization": `Bearer ${tokenResult.access_token}`,
+          },
+        });
+        
+        const orgData = await orgResponse.json();
+        
+        if (orgData.value && orgData.value.length > 0) {
+          const org = orgData.value[0];
+          res.json({
+            success: true,
+            message: "Microsoft connection successful",
+            tenantName: org.displayName,
+            domain: org.verifiedDomains?.find((d: any) => d.isDefault)?.name,
+          });
+        } else {
+          res.json({
+            success: false,
+            message: "Unable to fetch organization details",
+          });
+        }
+      } else {
+        res.json({
+          success: false,
+          message: tokenResult.error_description || "Failed to authenticate with Microsoft",
+        });
+      }
+    } catch (error) {
+      console.error("POST /api/integrations/microsoft/test - Error:", error);
+      res.json({
+        success: false,
+        message: "Network error testing Microsoft connection",
+      });
+    }
+  });
+
+  // Save Slack integration
+  app.put("/api/organizations/:id/integrations/slack", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only update your own organization's integrations" });
+      }
+      
+      const { botToken, channelId, enable } = req.body;
+      
+      if (!botToken) {
+        return res.status(400).json({ message: "Bot token is required" });
+      }
+      
+      // Test the token first
+      const testResponse = await fetch("https://slack.com/api/auth.test", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${botToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      const testData = await testResponse.json();
+      
+      if (!testData.ok) {
+        return res.status(400).json({ message: `Invalid Slack token: ${testData.error}` });
+      }
+      
+      // Update organization with Slack integration data
+      const updateData = {
+        slackBotToken: botToken,
+        slackChannelId: channelId || null,
+        slackWorkspaceId: testData.team_id,
+        enableSlackIntegration: enable,
+        slackConnectionStatus: "connected",
+        slackLastConnected: new Date(),
+      };
+      
+      const updatedOrganization = await storage.updateOrganization(req.params.id, updateData);
+      if (!updatedOrganization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({ 
+        message: "Slack integration saved successfully", 
+        workspaceName: testData.team 
+      });
+    } catch (error) {
+      console.error("PUT /api/organizations/:id/integrations/slack - Error:", error);
+      res.status(500).json({ message: "Failed to save Slack integration" });
+    }
+  });
+
+  // Save Microsoft integration
+  app.put("/api/organizations/:id/integrations/microsoft", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only update your own organization's integrations" });
+      }
+      
+      const { tenantId, clientId, clientSecret, enableAuth, enableTeams } = req.body;
+      
+      if (!tenantId || !clientId || !clientSecret) {
+        return res.status(400).json({ 
+          message: "Tenant ID, Client ID, and Client Secret are required" 
+        });
+      }
+      
+      // Test the credentials first
+      const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+      const tokenData = new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
+        scope: "https://graph.microsoft.com/.default",
+      });
+      
+      const tokenResponse = await fetch(tokenUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: tokenData,
+      });
+      
+      const tokenResult = await tokenResponse.json();
+      
+      if (!tokenResult.access_token) {
+        return res.status(400).json({ 
+          message: `Invalid Microsoft credentials: ${tokenResult.error_description}` 
+        });
+      }
+      
+      // Update organization with Microsoft integration data
+      const updateData = {
+        microsoftTenantId: tenantId,
+        microsoftClientId: clientId,
+        microsoftClientSecret: clientSecret,
+        enableMicrosoftAuth: enableAuth,
+        enableTeamsIntegration: enableTeams,
+        microsoftConnectionStatus: "connected",
+        microsoftLastConnected: new Date(),
+      };
+      
+      const updatedOrganization = await storage.updateOrganization(req.params.id, updateData);
+      if (!updatedOrganization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({ 
+        message: "Microsoft integration saved successfully",
+        tenantId: tenantId 
+      });
+    } catch (error) {
+      console.error("PUT /api/organizations/:id/integrations/microsoft - Error:", error);
+      res.status(500).json({ message: "Failed to save Microsoft integration" });
+    }
+  });
+
   // Theme Configuration Endpoints
   
   // Get organization theme configuration
