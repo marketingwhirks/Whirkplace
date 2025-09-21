@@ -65,8 +65,17 @@ interface PastMeetingsResponse {
 // Meeting scheduling form schema
 const scheduleMeetingSchema = z.object({
   participantId: z.string().min(1, "Please select a participant"),
-  scheduledAt: z.string().min(1, "Please select a date and time"),
-  duration: z.number().min(15, "Duration must be at least 15 minutes").max(240, "Duration cannot exceed 4 hours"),
+  scheduledAt: z.string()
+    .min(1, "Please select a date and time")
+    .refine((date) => {
+      const selectedDate = new Date(date);
+      const now = new Date();
+      return selectedDate > now;
+    }, "Meeting must be scheduled for a future date and time"),
+  duration: z.preprocess(
+    (val) => parseInt(val as string, 10),
+    z.number().min(15, "Duration must be at least 15 minutes").max(240, "Duration cannot exceed 4 hours")
+  ),
   agenda: z.string().optional(),
   notes: z.string().optional(),
   location: z.string().optional(),
@@ -88,7 +97,7 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
   });
 
   // Check calendar connection status
-  const { data: calendarStatus } = useQuery({
+  const { data: calendarStatus } = useQuery<{connected: boolean; provider?: string}>({
     queryKey: ["/api/calendar/status"],
     enabled: open,
   });
@@ -109,9 +118,20 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
 
   const scheduleMeetingMutation = useMutation({
     mutationFn: async (data: ScheduleMeetingForm) => {
+      // Validate currentUser is available
+      if (!currentUser?.id) {
+        throw new Error("User authentication required. Please refresh the page and try again.");
+      }
+
+      // Get participant details for calendar event
+      const participant = users.find(user => user.id === data.participantId);
+      if (!participant) {
+        throw new Error("Selected participant not found. Please refresh and try again.");
+      }
+      
       // Create meeting data with current user as one participant
       const meetingData = {
-        participantOneId: currentUser?.id, // Current user (usually manager)
+        participantOneId: currentUser.id, // Current user (usually manager)
         participantTwoId: data.participantId, // Selected participant
         scheduledAt: data.scheduledAt,
         duration: data.duration,
@@ -123,12 +143,62 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
         status: "scheduled",
       };
 
-      return apiRequest("POST", "/api/one-on-ones", meetingData);
+      // Create the one-on-one meeting first
+      const createdMeeting = await apiRequest("POST", "/api/one-on-ones", meetingData);
+
+      // If Outlook sync is enabled and calendar is connected, create calendar event
+      if (data.syncWithOutlook && calendarStatus?.connected && participant) {
+        try {
+          const startTime = new Date(data.scheduledAt);
+          const endTime = addMinutes(startTime, data.duration);
+          
+          const calendarEventData = {
+            title: `One-on-One: ${currentUser.name} & ${participant.name}`,
+            description: data.agenda ? `Agenda: ${data.agenda}` : "One-on-one meeting",
+            startTime: startTime.toISOString(),
+            endTime: endTime.toISOString(),
+            location: data.location || "To be determined",
+            isOnlineMeeting: data.isOnlineMeeting,
+            attendees: [
+              {
+                email: participant.email,
+                name: participant.name,
+                type: "required"
+              }
+            ]
+          };
+
+          // Create calendar event
+          const calendarEvent = await apiRequest("POST", "/api/calendar/events", calendarEventData);
+          
+          // Update meeting with calendar event details
+          if (calendarEvent?.id) {
+            await apiRequest("PUT", `/api/one-on-ones/${createdMeeting.id}`, {
+              outlookEventId: calendarEvent.id,
+              meetingUrl: calendarEvent.meetingUrl || null
+            });
+          }
+        } catch (calendarError) {
+          console.warn("Failed to create calendar event:", calendarError);
+          // Show user-friendly warning but don't fail the meeting creation
+          toast({
+            title: "Meeting Scheduled with Calendar Sync Issue",
+            description: "Your meeting was created successfully, but we couldn't sync it to your calendar. You can manually add it to your calendar.",
+            variant: "default",
+          });
+        }
+      }
+
+      return createdMeeting;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      const successMessage = data?.syncWithOutlook && calendarStatus?.connected
+        ? "Your one-on-one meeting has been successfully scheduled and added to your calendar!"
+        : "Your one-on-one meeting has been successfully scheduled.";
+        
       toast({
         title: "Meeting Scheduled! 🎉",
-        description: "Your one-on-one meeting has been successfully scheduled.",
+        description: successMessage,
       });
       
       // Reset form and close dialog
@@ -140,9 +210,10 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
       queryClient.invalidateQueries({ queryKey: ["/api/one-on-ones"] });
     },
     onError: (error: any) => {
+      console.error("Meeting scheduling error:", error);
       toast({
         title: "Failed to Schedule Meeting",
-        description: error.message || "Please try again.",
+        description: error.message || "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
     },
@@ -333,7 +404,7 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
               </Button>
               <Button 
                 type="submit" 
-                disabled={scheduleMeetingMutation.isPending}
+                disabled={scheduleMeetingMutation.isPending || !currentUser?.id}
                 data-testid="button-schedule-meeting"
               >
                 {scheduleMeetingMutation.isPending ? "Scheduling..." : "Schedule Meeting"}

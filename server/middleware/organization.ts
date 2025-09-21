@@ -22,33 +22,50 @@ declare global {
  * - Session data (future: when session-based auth is implemented)
  */
 export function resolveOrganization() {
-  return (req: Request, res: Response, next: NextFunction) => {
-    // TODO: In production, derive organizationId from:
-    // 1. Subdomain extraction from req.get('Host')
-    // 2. JWT token claims
-    // 3. Session data
-    // 4. Database lookup based on authenticated user
-    
-    // For now, use the actual default organization ID from the database
-    // This establishes the security pattern while we implement proper routing
-    req.orgId = "6c070124-fae2-472a-a826-cd460dd6f6ea";
-    
-    // Future implementation example:
-    // const host = req.get('Host');
-    // if (host) {
-    //   const subdomain = host.split('.')[0];
-    //   if (subdomain && subdomain !== 'www') {
-    //     // Validate subdomain exists in organizations table
-    //     const org = await storage.getOrganizationBySlug(subdomain);
-    //     if (org && org.isActive) {
-    //       req.orgId = org.id;
-    //     } else {
-    //       return res.status(404).json({ message: "Organization not found" });
-    //     }
-    //   }
-    // }
-    
-    next();
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      // TODO: In production, derive organizationId from:
+      // 1. Subdomain extraction from req.get('Host')
+      // 2. JWT token claims
+      // 3. Session data
+      // 4. Database lookup based on authenticated user
+      
+      // For now, use the actual default organization ID from the database
+      // This establishes the security pattern while we implement proper routing
+      const orgId = "6c070124-fae2-472a-a826-cd460dd6f6ea";
+      req.orgId = orgId;
+      
+      // Fetch the full organization object for plan access checks
+      const { storage } = await import('../storage');
+      const organization = await storage.getOrganization(orgId);
+      
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      (req as any).organization = organization;
+      
+      // Future implementation example:
+      // const host = req.get('Host');
+      // if (host) {
+      //   const subdomain = host.split('.')[0];
+      //   if (subdomain && subdomain !== 'www') {
+      //     // Validate subdomain exists in organizations table
+      //     const org = await storage.getOrganizationBySlug(subdomain);
+      //     if (org && org.isActive) {
+      //       req.orgId = org.id;
+      //       (req as any).organization = org;
+      //     } else {
+      //       return res.status(404).json({ message: "Organization not found" });
+      //     }
+      //   }
+      // }
+      
+      next();
+    } catch (error) {
+      console.error("Error resolving organization:", error);
+      res.status(500).json({ message: "Failed to resolve organization context" });
+    }
   };
 }
 
