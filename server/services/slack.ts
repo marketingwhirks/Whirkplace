@@ -104,26 +104,67 @@ export function generateOAuthURL(organizationSlug: string, session: any): string
  * Validate OAuth state parameter and return organization slug
  */
 export function validateOAuthState(state: string, session: any): string | null {
+  console.log('🔍 validateOAuthState called with state prefix:', state.substring(0, 8) + '...');
+  
+  // Check if session has stored state
+  if (!session.slackOAuthState) {
+    console.error('❌ State validation failed: No stored state in session');
+    return null;
+  }
+  
   // Check if state matches session
-  if (!session.slackOAuthState || session.slackOAuthState !== state) {
-    return null; // Invalid state
+  if (session.slackOAuthState !== state) {
+    console.error('❌ State validation failed: State mismatch');
+    console.error('   Expected prefix:', session.slackOAuthState.substring(0, 8) + '...');
+    console.error('   Received prefix:', state.substring(0, 8) + '...');
+    return null;
+  }
+  
+  // Check if expires field exists
+  if (!session.slackOAuthExpires) {
+    console.error('❌ State validation failed: No expiration time stored');
+    // Clean up incomplete session data
+    delete session.slackOAuthState;
+    delete session.slackOAuthOrganizationSlug;
+    delete session.slackOAuthExpires;
+    return null;
   }
   
   // Check if state has expired
-  if (!session.slackOAuthExpires || Date.now() > session.slackOAuthExpires) {
+  const now = Date.now();
+  if (now > session.slackOAuthExpires) {
+    console.error('❌ State validation failed: State expired');
+    console.error('   Now:', new Date(now).toISOString());
+    console.error('   Expires:', new Date(session.slackOAuthExpires).toISOString());
+    console.error('   Expired by (ms):', now - session.slackOAuthExpires);
     // Clean up expired session data
     delete session.slackOAuthState;
     delete session.slackOAuthOrganizationSlug;
     delete session.slackOAuthExpires;
-    return null; // Expired state
+    return null;
   }
   
+  // Check if organization slug exists
   const organizationSlug = session.slackOAuthOrganizationSlug;
+  if (!organizationSlug) {
+    console.error('❌ State validation failed: No organization slug stored');
+    // Clean up incomplete session data
+    delete session.slackOAuthState;
+    delete session.slackOAuthOrganizationSlug;
+    delete session.slackOAuthExpires;
+    return null;
+  }
+  
+  console.log('✅ State validation successful');
+  console.log('   Organization slug:', organizationSlug);
+  console.log('   Time remaining (ms):', session.slackOAuthExpires - now);
   
   // Clean up used state from session
   delete session.slackOAuthState;
   delete session.slackOAuthOrganizationSlug;
   delete session.slackOAuthExpires;
+  
+  console.log('🧹 Session state cleaned up after successful validation');
   
   return organizationSlug;
 }

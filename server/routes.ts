@@ -297,6 +297,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { code, state, error: oauthError } = req.query;
       
+      console.log('🔍 Slack OAuth callback received');
+      console.log('📦 Callback Session ID:', req.sessionID);
+      console.log('🍪 Cookie header present:', !!req.headers.cookie);
+      console.log('🍪 Cookie header length:', req.headers.cookie?.length || 0);
+      console.log('🆕 Session is new:', req.session.isNew);
+      console.log('🔗 Request origin:', req.headers.origin);
+      console.log('🔗 Request referrer:', req.headers.referer);
+      console.log('🔒 Protocol:', req.protocol);
+      
       // Check for OAuth errors from Slack
       if (oauthError) {
         console.error("Slack OAuth error:", oauthError);
@@ -307,18 +316,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Validate required parameters
       if (!code || !state || typeof code !== 'string' || typeof state !== 'string') {
+        console.error('❌ Invalid callback parameters:', { hasCode: !!code, hasState: !!state });
         return res.status(400).json({ 
           message: "Invalid OAuth callback parameters" 
         });
       }
       
+      console.log('📋 Session data before validation:', {
+        hasOAuthState: !!(req.session as any).slackOAuthState,
+        storedOrgSlug: (req.session as any).slackOAuthOrganizationSlug,
+        expires: (req.session as any).slackOAuthExpires,
+        expiresISO: (req.session as any).slackOAuthExpires ? new Date((req.session as any).slackOAuthExpires).toISOString() : null,
+        nowVsExpiresMs: (req.session as any).slackOAuthExpires ? ((req.session as any).slackOAuthExpires - Date.now()) : null
+      });
+      console.log('🔑 Received state prefix:', state.substring(0, 8) + '...');
+      console.log('🔑 Stored state prefix:', ((req.session as any).slackOAuthState || '').substring(0, 8) + '...');
+      
       // Validate state parameter using the unified service function
       const organizationSlug = validateOAuthState(state, req.session);
       if (!organizationSlug) {
+        console.error('❌ OAuth state validation failed');
         return res.status(400).json({ 
           message: "Invalid or expired OAuth state. Please try again." 
         });
       }
+      
+      console.log('✅ OAuth state validation successful, org:', organizationSlug);
       
       // Exchange code for OpenID Connect tokens
       const tokenResponse = await exchangeOIDCCode(code);
