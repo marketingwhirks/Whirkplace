@@ -1848,49 +1848,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/shoutouts", requireAuth(), async (req, res) => {
     try {
-      const shoutoutData = insertShoutoutSchema.parse(req.body);
+      // Custom schema for multi-recipient shoutouts - omit server-side fields
+      const multiShoutoutSchema = insertShoutoutSchema.omit({
+        toUserId: true,
+        fromUserId: true,
+        organizationId: true,
+        slackMessageId: true
+      }).extend({
+        toUserIds: z.array(z.string()).min(1, "At least one recipient is required")
+      });
       
-      // TODO: Replace with actual authenticated user ID when auth is implemented
-      const currentUserId = "current-user-id";
+      const shoutoutData = multiShoutoutSchema.parse(req.body);
       
-      // SECURITY: Never accept fromUserId from client - set server-side
-      const shoutoutWithSender = {
-        ...shoutoutData,
-        fromUserId: currentUserId
-      };
+      // Enforce authentication
+      if (!req.currentUser?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      const currentUserId = req.currentUser.id;
       
-      const sanitizedData = sanitizeForOrganization(shoutoutWithSender, req.orgId);
-      const shoutout = await storage.createShoutout(req.orgId, sanitizedData);
+      // Validate and deduplicate recipients
+      const uniqueRecipientIds = [...new Set(shoutoutData.toUserIds)];
       
-      // Send Slack notification if public
-      if (shoutout.isPublic) {
-        const fromUser = await storage.getUser(req.orgId, shoutout.fromUserId);
-        const toUser = await storage.getUser(req.orgId, shoutout.toUserId);
+      // Validate all recipients exist in the organization
+      for (const recipientId of uniqueRecipientIds) {
+        const recipientUser = await storage.getUser(req.orgId, recipientId);
+        if (!recipientUser) {
+          return res.status(400).json({ 
+            message: "Invalid recipient", 
+            details: `User ${recipientId} not found in organization` 
+          });
+        }
+      }
+      
+      // Create individual shoutouts for each recipient
+      const createdShoutouts = [];
+      
+      for (const toUserId of uniqueRecipientIds) {
+        // SECURITY: Never accept fromUserId from client - set server-side
+        const individualShoutout = {
+          ...shoutoutData,
+          toUserId, // Set individual recipient
+          fromUserId: currentUserId
+        };
         
-        if (fromUser && toUser) {
-          try {
-            const slackMessageId = await announceShoutout(
-              shoutout.message,
-              fromUser.name,
-              toUser.name,
-              shoutout.values
-            );
-            
-            if (slackMessageId) {
-              await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
+        // Remove toUserIds from the data that goes to the database
+        const { toUserIds, ...dbData } = individualShoutout;
+        
+        const sanitizedData = sanitizeForOrganization(dbData, req.orgId);
+        const shoutout = await storage.createShoutout(req.orgId, sanitizedData);
+        createdShoutouts.push(shoutout);
+        
+        // Send Slack notification if public
+        if (shoutout.isPublic) {
+          const fromUser = await storage.getUser(req.orgId, shoutout.fromUserId);
+          const toUser = await storage.getUser(req.orgId, shoutout.toUserId);
+          
+          if (fromUser && toUser) {
+            try {
+              const slackMessageId = await announceShoutout(
+                shoutout.message,
+                fromUser.name,
+                toUser.name,
+                shoutout.values
+              );
+              
+              if (slackMessageId) {
+                await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
+              }
+            } catch (slackError) {
+              console.warn("Failed to send Slack notification for shoutout:", slackError);
             }
-          } catch (slackError) {
-            console.warn("Failed to send Slack notification for shoutout:", slackError);
           }
         }
       }
       
-      res.status(201).json(shoutout);
+      res.status(201).json(createdShoutouts);
     } catch (error) {
-      console.error("Shoutout creation validation error:", error);
-      res.status(400).json({ 
-        message: "Invalid shoutout data",
-        details: error instanceof Error ? error.message : "Unknown validation error"
+      console.error("Shoutout creation error:", error);
+      
+      // Return 400 for validation errors, 500 for server errors
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid shoutout data",
+          details: error.message
+        });
+      }
+      
+      res.status(500).json({ 
+        message: "Failed to create shoutouts",
+        details: error instanceof Error ? error.message : "Unknown server error"
       });
     }
   });
