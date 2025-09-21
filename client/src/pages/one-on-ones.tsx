@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare } from "lucide-react";
+import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare, CalendarDays, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -20,13 +23,17 @@ import {
   DialogTitle, 
   DialogTrigger 
 } from "@/components/ui/dialog";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { format, isToday, isThisWeek, parseISO } from "date-fns";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { format, isToday, isThisWeek, parseISO, addMinutes } from "date-fns";
 import type { OneOnOne, User as UserType } from "@shared/schema";
 
 interface OneOnOneMeeting extends OneOnOne {
@@ -55,45 +62,285 @@ interface PastMeetingsResponse {
   };
 }
 
+// Meeting scheduling form schema
+const scheduleMeetingSchema = z.object({
+  participantId: z.string().min(1, "Please select a participant"),
+  scheduledAt: z.string().min(1, "Please select a date and time"),
+  duration: z.number().min(15, "Duration must be at least 15 minutes").max(240, "Duration cannot exceed 4 hours"),
+  agenda: z.string().optional(),
+  notes: z.string().optional(),
+  location: z.string().optional(),
+  isOnlineMeeting: z.boolean().default(false),
+  syncWithOutlook: z.boolean().default(false),
+});
+
+type ScheduleMeetingForm = z.infer<typeof scheduleMeetingSchema>;
+
 function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
+  const { data: currentUser } = useViewAsRole();
   
-  const handleSchedule = () => {
-    toast({
-      title: "Coming Soon",
-      description: "Meeting scheduling will be available soon!",
-    });
-    setOpen(false);
+  // Fetch team members for participant selection
+  const { data: users = [], isLoading: usersLoading } = useQuery<UserType[]>({
+    queryKey: ["/api/users"],
+    enabled: open, // Only fetch when dialog is open
+  });
+
+  // Check calendar connection status
+  const { data: calendarStatus } = useQuery({
+    queryKey: ["/api/calendar/status"],
+    enabled: open,
+  });
+
+  const form = useForm<ScheduleMeetingForm>({
+    resolver: zodResolver(scheduleMeetingSchema),
+    defaultValues: {
+      participantId: "",
+      scheduledAt: "",
+      duration: 30,
+      agenda: "",
+      notes: "",
+      location: "",
+      isOnlineMeeting: false,
+      syncWithOutlook: false,
+    },
+  });
+
+  const scheduleMeetingMutation = useMutation({
+    mutationFn: async (data: ScheduleMeetingForm) => {
+      // Create meeting data with current user as one participant
+      const meetingData = {
+        participantOneId: currentUser?.id, // Current user (usually manager)
+        participantTwoId: data.participantId, // Selected participant
+        scheduledAt: data.scheduledAt,
+        duration: data.duration,
+        agenda: data.agenda || null,
+        notes: data.notes || null,
+        location: data.location || null,
+        isOnlineMeeting: data.isOnlineMeeting,
+        syncWithOutlook: data.syncWithOutlook,
+        status: "scheduled",
+      };
+
+      return apiRequest("POST", "/api/one-on-ones", meetingData);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Meeting Scheduled! 🎉",
+        description: "Your one-on-one meeting has been successfully scheduled.",
+      });
+      
+      // Reset form and close dialog
+      form.reset();
+      setOpen(false);
+      
+      // Invalidate relevant queries to refresh the data
+      queryClient.invalidateQueries({ queryKey: ["/api/one-on-ones/upcoming"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/one-on-ones"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to Schedule Meeting",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSchedule = (data: ScheduleMeetingForm) => {
+    scheduleMeetingMutation.mutate(data);
   };
+
+  // Filter users to exclude current user and show only active team members
+  const availableParticipants = users.filter(user => 
+    user.id !== currentUser?.id && 
+    user.isActive && 
+    user.id
+  );
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Schedule New One-on-One</DialogTitle>
           <DialogDescription>
             Schedule a one-on-one meeting with a team member.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="text-center py-8">
-            <Calendar className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">
-              Meeting scheduling interface coming soon...
-            </p>
-            <Button 
-              className="mt-4" 
-              onClick={handleSchedule}
-              data-testid="button-schedule-placeholder"
-            >
-              Schedule Meeting
-            </Button>
-          </div>
-        </div>
+        
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSchedule)} className="space-y-4">
+            {/* Participant Selection */}
+            <FormField
+              control={form.control}
+              name="participantId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Participant</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-participant">
+                        <SelectValue placeholder="Select team member" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {usersLoading ? (
+                        <SelectItem value="loading" disabled>Loading team members...</SelectItem>
+                      ) : availableParticipants.length === 0 ? (
+                        <SelectItem value="none" disabled>No team members available</SelectItem>
+                      ) : (
+                        availableParticipants.map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.name} ({user.role})
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Date and Time */}
+            <FormField
+              control={form.control}
+              name="scheduledAt"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Date & Time</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="datetime-local"
+                      {...field}
+                      min={new Date().toISOString().slice(0, 16)}
+                      data-testid="input-scheduled-at"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Duration */}
+            <FormField
+              control={form.control}
+              name="duration"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Duration (minutes)</FormLabel>
+                  <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={String(field.value)}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-duration">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="15">15 minutes</SelectItem>
+                      <SelectItem value="30">30 minutes</SelectItem>
+                      <SelectItem value="45">45 minutes</SelectItem>
+                      <SelectItem value="60">1 hour</SelectItem>
+                      <SelectItem value="90">1.5 hours</SelectItem>
+                      <SelectItem value="120">2 hours</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Location */}
+            <FormField
+              control={form.control}
+              name="location"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Location (Optional)</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="Conference Room A, Virtual, etc."
+                      {...field}
+                      data-testid="input-location"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Agenda */}
+            <FormField
+              control={form.control}
+              name="agenda"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Agenda (Optional)</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Meeting agenda or topics to discuss..."
+                      {...field}
+                      rows={3}
+                      data-testid="textarea-agenda"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Microsoft Calendar Integration */}
+            {calendarStatus?.connected && (
+              <FormField
+                control={form.control}
+                name="syncWithOutlook"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm font-medium">
+                        Add to Outlook Calendar
+                      </FormLabel>
+                      <FormDescription className="text-xs">
+                        Automatically create a calendar event
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={field.onChange}
+                        className="data-[state=checked]:bg-primary"
+                        data-testid="checkbox-sync-outlook"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {/* Submit Button */}
+            <div className="flex justify-end space-x-3 pt-4">
+              <Button 
+                variant="secondary" 
+                type="button" 
+                onClick={() => setOpen(false)}
+                disabled={scheduleMeetingMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={scheduleMeetingMutation.isPending}
+                data-testid="button-schedule-meeting"
+              >
+                {scheduleMeetingMutation.isPending ? "Scheduling..." : "Schedule Meeting"}
+              </Button>
+            </div>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
