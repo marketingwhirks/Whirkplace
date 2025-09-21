@@ -34,9 +34,9 @@ export type AuthProviderType = typeof AuthProvider[keyof typeof AuthProvider];
 
 // Team Type Constants
 export const TeamType = {
-  DEPARTMENT: "department",
-  TEAM: "team", 
-  POD: "pod",
+  TEAM: "team", // Top level - everyone is on a team
+  DEPARTMENT: "department", // Optional sub-structure within teams
+  POD: "pod", // Optional sub-structure within teams
 } as const;
 
 export type TeamTypeValue = typeof TeamType[keyof typeof TeamType];
@@ -147,8 +147,8 @@ export const teams = pgTable("teams", {
   description: text("description"),
   organizationId: varchar("organization_id").notNull(),
   leaderId: varchar("leader_id").notNull(),
-  parentTeamId: varchar("parent_team_id"), // For hierarchical team structure (Teams/Pods under departments)
-  teamType: text("team_type").notNull().default("department"), // department, team, pod
+  parentTeamId: varchar("parent_team_id"), // For hierarchical team structure (Departments/Pods under teams)
+  teamType: text("team_type").notNull().default("team"), // team (top level), department, pod
   depth: integer("depth").notNull().default(0), // 0 = top level, 1 = sub-team, 2 = sub-sub-team, etc.
   path: text("path"), // Materialized path for efficient hierarchy queries (e.g., "leadership/accounting/team1")
   isActive: boolean("is_active").notNull().default(true),
@@ -364,7 +364,7 @@ export const insertTeamSchema = createInsertSchema(teams).omit({
   depth: true, // Auto-calculated based on parent
   path: true, // Auto-calculated based on parent
 }).extend({
-  teamType: z.enum([TeamType.DEPARTMENT, TeamType.TEAM, TeamType.POD]),
+  teamType: z.enum([TeamType.TEAM, TeamType.DEPARTMENT, TeamType.POD]),
 });
 
 export const insertCheckinSchema = createInsertSchema(checkins).omit({

@@ -84,7 +84,7 @@ export default function Team() {
       description: "",
       leaderId: "no-leader",
       parentTeamId: "no-parent",
-      teamType: "department",
+      teamType: "team",
     },
   });
 
@@ -383,13 +383,13 @@ export default function Team() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="department">Department</SelectItem>
                               <SelectItem value="team">Team</SelectItem>
+                              <SelectItem value="department">Department</SelectItem>
                               <SelectItem value="pod">Pod</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormDescription>
-                            Department → Team → Pod hierarchy levels
+                            Team (top level) → Department/Pod (optional sub-structures)
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
