@@ -1850,11 +1850,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   // Shoutouts
-  app.get("/api/shoutouts", async (req, res) => {
+  app.get("/api/shoutouts", requireAuth(), async (req, res) => {
     try {
       const { public: isPublic, userId, type, limit } = req.query;
-      // TODO: Replace with actual authenticated user ID when auth is implemented
-      const currentUserId = "current-user-id";
+      const currentUserId = req.userId!;
       let shoutouts;
       
       if (userId) {
@@ -1874,15 +1873,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/shoutouts/:id", async (req, res) => {
+  app.get("/api/shoutouts/:id", requireAuth(), async (req, res) => {
     try {
       const shoutout = await storage.getShoutout(req.orgId, req.params.id);
       if (!shoutout) {
         return res.status(404).json({ message: "Shoutout not found" });
       }
       
-      // TODO: Replace with actual authenticated user ID when auth is implemented
-      const currentUserId = "current-user-id";
+      const currentUserId = req.userId!;
       
       // Check if user can access this shoutout (privacy enforcement)
       if (!canAccessShoutouts(shoutout, currentUserId)) {

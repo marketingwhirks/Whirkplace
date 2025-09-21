@@ -84,7 +84,7 @@ export default function Wins() {
   const editFormSchema = z.object({
     title: z.string().min(1, "Title is required").max(100, "Title too long"),
     description: z.string().min(1, "Description is required").max(500, "Description too long"),
-    isPublic: z.boolean().default(true),
+    isPublic: z.boolean().default(false),
     nominatedBy: z.string().optional().nullable(),
     values: z.array(z.string()).min(1, "At least one company value must be selected"),
   });

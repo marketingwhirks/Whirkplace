@@ -85,7 +85,7 @@ export default function ShoutoutsPage() {
   // Edit shoutout form
   const editFormSchema = z.object({
     message: z.string().min(1, "Message is required").max(500, "Message too long"),
-    isPublic: z.boolean().default(true),
+    isPublic: z.boolean().default(false),
     values: z.array(z.string()).min(1, "At least one company value must be selected"),
   });
 
