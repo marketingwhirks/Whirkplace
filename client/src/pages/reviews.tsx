@@ -54,7 +54,6 @@ export default function Reviews() {
   // Fetch recently reviewed check-ins
   const { data: reviewedCheckins = [], isLoading: reviewedLoading } = useQuery<EnhancedCheckin[]>({
     queryKey: ["/api/checkins/review-status", "reviewed"],
-    queryFn: () => fetch("/api/checkins/review-status/reviewed").then(res => res.json()),
     enabled: !userLoading && !!currentUser && (currentUser.role === "manager" || currentUser.role === "admin"),
   });
 
@@ -65,8 +64,7 @@ export default function Reviews() {
 
   // Fetch team members for filtering
   const { data: teamMembers = [] } = useQuery<UserType[]>({
-    queryKey: ["/api/users", currentUser?.id, "reports"],
-    queryFn: () => currentUser ? fetch(`/api/users/${currentUser.id}/reports`).then(res => res.json()) : [],
+    queryKey: ["/api/users"],
     enabled: !!currentUser,
   });
 
