@@ -24,6 +24,7 @@ import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } f
 import { registerMicrosoftTeamsRoutes } from "./routes/microsoft-teams";
 import { registerMicrosoftAuthRoutes } from "./routes/microsoft-auth";
 import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
+import { resolveRedirectUri } from "./utils/redirect-uri";
 
 // Initialize Stripe if available
 let stripe: Stripe | null = null;
@@ -257,7 +258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('📦 Session ID before OAuth:', req.sessionID);
         
         // Generate OAuth URL using the unified service function (this sets session state)
-        const oauthUrl = generateOAuthURL(org, req.session);
+        const oauthUrl = generateOAuthURL(org, req.session, req);
         
         console.log('🔐 OAuth state generated and stored in session');
         console.log('📋 Session data after state generation:', {
@@ -343,8 +344,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log('✅ OAuth state validation successful, org:', organizationSlug);
       
-      // Exchange code for OpenID Connect tokens
-      const tokenResponse = await exchangeOIDCCode(code);
+      // Exchange code for OpenID Connect tokens (use dynamic redirect URI)
+      const dynamicRedirectUri = resolveRedirectUri(req, '/auth/slack/callback');
+      const tokenResponse = await exchangeOIDCCode(code, dynamicRedirectUri);
       if (!tokenResponse.ok || !tokenResponse.id_token) {
         console.error("OIDC token exchange failed:", tokenResponse.error);
         return res.status(400).json({ 

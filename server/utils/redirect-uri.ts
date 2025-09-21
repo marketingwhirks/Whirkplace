@@ -5,8 +5,11 @@ import type { Request } from 'express';
  * Supports development, Replit dev, and production (whirkplace.com) environments
  */
 export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft/callback'): string {
-  // If explicit redirect URI is set in environment, use it
-  if (process.env.MICROSOFT_REDIRECT_URI) {
+  // Check for explicit redirect URIs based on the path
+  if (path.includes('slack') && process.env.SLACK_REDIRECT_URI_OVERRIDE) {
+    return process.env.SLACK_REDIRECT_URI_OVERRIDE;
+  }
+  if (path.includes('microsoft') && process.env.MICROSOFT_REDIRECT_URI) {
     return process.env.MICROSOFT_REDIRECT_URI;
   }
 

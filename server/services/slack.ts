@@ -3,6 +3,8 @@ import { randomBytes } from "crypto";
 import jwt from "jsonwebtoken";
 import jwksClient from 'jwks-client';
 import * as cron from "node-cron";
+import type { Request } from 'express';
+import { resolveRedirectUri } from '../utils/redirect-uri';
 
 if (!process.env.SLACK_BOT_TOKEN) {
   console.warn("SLACK_BOT_TOKEN environment variable not set. Slack integration will be disabled.");
@@ -66,13 +68,19 @@ interface SlackOIDCUserInfo {
 /**
  * Generate OAuth authorization URL for Slack login
  */
-export function generateOAuthURL(organizationSlug: string, session: any): string {
+export function generateOAuthURL(organizationSlug: string, session: any, req?: Request): string {
   const clientId = process.env.SLACK_CLIENT_ID;
-  const redirectUri = process.env.SLACK_REDIRECT_URI;
+  
+  // Use dynamic redirect URI if request object is provided, otherwise fallback to env var
+  const redirectUri = req 
+    ? resolveRedirectUri(req, '/auth/slack/callback')
+    : process.env.SLACK_REDIRECT_URI;
   
   if (!clientId || !redirectUri) {
-    throw new Error("Slack OAuth not configured. Missing SLACK_CLIENT_ID or SLACK_REDIRECT_URI");
+    throw new Error("Slack OAuth not configured. Missing SLACK_CLIENT_ID or redirect URI");
   }
+  
+  console.log('🔗 Using Slack redirect URI:', redirectUri);
   
   // Generate cryptographically secure state parameter
   const state = randomBytes(32).toString('hex');
@@ -172,20 +180,22 @@ export function validateOAuthState(state: string, session: any): string | null {
 /**
  * Exchange OAuth code for OpenID Connect tokens
  */
-export async function exchangeOIDCCode(code: string): Promise<SlackOIDCTokenResponse> {
+export async function exchangeOIDCCode(code: string, redirectUri?: string): Promise<SlackOIDCTokenResponse> {
   const clientId = process.env.SLACK_CLIENT_ID;
   const clientSecret = process.env.SLACK_CLIENT_SECRET;
-  const redirectUri = process.env.SLACK_REDIRECT_URI;
+  const finalRedirectUri = redirectUri || process.env.SLACK_REDIRECT_URI;
   
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !clientSecret || !finalRedirectUri) {
     throw new Error("Slack OAuth not configured. Missing required environment variables");
   }
+  
+  console.log('🔄 Exchanging code with redirect URI:', finalRedirectUri);
   
   const params = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
     code,
-    redirect_uri: redirectUri,
+    redirect_uri: finalRedirectUri,
     grant_type: 'authorization_code'
   });
   
