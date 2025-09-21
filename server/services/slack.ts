@@ -261,28 +261,57 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
       issuer: 'https://slack.com', // Verify issuer is Slack
       algorithms: ['RS256'], // Only allow RS256 algorithm
       clockTolerance: 300 // Allow 5 minutes clock skew
-    }) as SlackOIDCUserInfo;
+    }) as any; // Use 'any' temporarily to debug the structure
     
     if (!payload || !payload.sub) {
       throw new Error('Invalid token payload - missing subject');
     }
 
+    // Log payload structure in development for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔍 OIDC Token Payload Structure:', {
+        hasAud: !!payload.aud,
+        hasIss: !!payload.iss,
+        hasExp: !!payload.exp,
+        hasIat: !!payload.iat,
+        hasSub: !!payload.sub,
+        actualIssuer: payload.iss,
+        actualAudience: payload.aud,
+        expectedAudience: process.env.SLACK_CLIENT_ID,
+        allKeys: Object.keys(payload)
+      });
+    }
+    
     // SECURITY: Additional validation checks
     const now = Math.floor(Date.now() / 1000);
     
     // Ensure token has required claims
     if (!payload.aud || !payload.iss || !payload.exp || !payload.iat) {
+      console.error('Token missing claims:', {
+        hasAud: !!payload.aud,
+        hasIss: !!payload.iss,
+        hasExp: !!payload.exp,
+        hasIat: !!payload.iat
+      });
       throw new Error('Token missing required claims');
     }
 
     // Validate audience matches our application
     if (payload.aud !== process.env.SLACK_CLIENT_ID) {
-      throw new Error('Token audience mismatch');
+      console.error('Token audience mismatch:', {
+        expected: process.env.SLACK_CLIENT_ID,
+        received: payload.aud
+      });
+      throw new Error(`Token audience mismatch - expected ${process.env.SLACK_CLIENT_ID}, got ${payload.aud}`);
     }
 
     // Validate issuer is Slack
     if (payload.iss !== 'https://slack.com') {
-      throw new Error('Token issuer mismatch');
+      console.error('Token issuer mismatch:', {
+        expected: 'https://slack.com',
+        received: payload.iss
+      });
+      throw new Error(`Token issuer mismatch - expected https://slack.com, got ${payload.iss}`);
     }
 
     // Additional time validations
@@ -305,10 +334,14 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
     
     // SECURITY: Enhanced error logging for debugging
     if (process.env.NODE_ENV === 'development') {
-      console.error('Token details (development only):', {
+      const decodedToken = jwt.decode(idToken, { complete: true });
+      console.error('Token validation error details:', {
         tokenLength: idToken?.length,
-        decodedHeader: jwt.decode(idToken, { complete: true })?.header,
-        error: error instanceof Error ? error.message : 'Unknown error'
+        decodedHeader: decodedToken?.header,
+        decodedPayload: decodedToken?.payload,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined,
+        clientId: process.env.SLACK_CLIENT_ID?.substring(0, 5) + '...'
       });
     }
     
