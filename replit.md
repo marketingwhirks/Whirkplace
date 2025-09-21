@@ -32,6 +32,7 @@ Enhanced multi-provider authentication system for development and production use
 - **Environment Variable Security**: Customizable backdoor credentials via BACKDOOR_USER and BACKDOOR_KEY
 - **Session Management**: Secure session handling with proper user context and organization isolation
 - **Provider Selection**: Organizations can enable/disable specific authentication providers
+- **Production OAuth Security**: Fixed critical security vulnerability where Slack OAuth was redirecting to localhost instead of https://whirkplace.com in production
 
 ## Roadmap
 
