@@ -101,7 +101,7 @@ export const organizations = pgTable("organizations", {
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
+  username: text("username").notNull(),
   password: text("password").notNull(),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
@@ -131,6 +131,8 @@ export const users = pgTable("users", {
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 }, (table) => ({
+  // Unique username per organization
+  usernameOrgIdx: unique("users_username_org_unique").on(table.organizationId, table.username),
   // Unique index on Slack user ID for fast lookups
   slackUserIdIdx: unique("users_slack_user_id_unique").on(table.slackUserId),
   // Index on Slack username for tagging functionality
