@@ -9,6 +9,7 @@ import {
   insertVacationSchema, reviewCheckinSchema, ReviewStatus,
   insertOneOnOneSchema, insertKraTemplateSchema, insertUserKraSchema, insertActionItemSchema,
   insertOrganizationSchema, insertBusinessPlanSchema, insertOrganizationOnboardingSchema, insertUserInvitationSchema,
+  insertDashboardConfigSchema, insertDashboardWidgetTemplateSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType, type Checkin
 } from "@shared/schema";
@@ -5506,6 +5507,143 @@ Return the response as a JSON object with this structure:
     } catch (error) {
       console.error("Failed to fetch users:", error);
       res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  // Dashboard Configuration Routes
+  app.get("/api/dashboard/config", requireOrganization(), requireAuth(), async (req, res) => {
+    try {
+      const config = await storage.getDashboardConfig(req.orgId, req.currentUser!.id);
+      if (!config) {
+        return res.status(404).json({ message: "Dashboard configuration not found" });
+      }
+      res.json(config);
+    } catch (error) {
+      console.error("Failed to get dashboard config:", error);
+      res.status(500).json({ message: "Failed to get dashboard configuration" });
+    }
+  });
+
+  app.put("/api/dashboard/config", requireOrganization(), requireAuth(), async (req, res) => {
+    try {
+      // SECURITY: Only allow updating layout and widgets, prevent ownership changes
+      const updateSchema = insertDashboardConfigSchema
+        .partial()
+        .omit({ userId: true, organizationId: true, id: true });
+      
+      const data = updateSchema.parse(req.body);
+      
+      // Try update first, if not found, create (upsert behavior)
+      let config = await storage.updateDashboardConfig(req.orgId, req.currentUser!.id, data);
+      
+      if (!config) {
+        // Create new config if not found
+        const createData = insertDashboardConfigSchema.parse({
+          ...data,
+          userId: req.currentUser!.id,
+        });
+        config = await storage.createDashboardConfig(req.orgId, createData);
+      }
+      
+      res.json(config);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Failed to update dashboard config:", error);
+      res.status(500).json({ message: "Failed to update dashboard configuration" });
+    }
+  });
+
+  app.delete("/api/dashboard/config", requireOrganization(), requireAuth(), async (req, res) => {
+    try {
+      const success = await storage.resetDashboardConfig(req.orgId, req.currentUser!.id);
+      res.json({ success });
+    } catch (error) {
+      console.error("Failed to reset dashboard config:", error);
+      res.status(500).json({ message: "Failed to reset dashboard configuration" });
+    }
+  });
+
+  // Dashboard Widget Templates Routes
+  app.get("/api/dashboard/widget-templates", requireOrganization(), requireAuth(), async (req, res) => {
+    try {
+      const { category } = req.query;
+      const templates = await storage.getAllDashboardWidgetTemplates(
+        req.orgId, 
+        category as string | undefined
+      );
+      res.json(templates);
+    } catch (error) {
+      console.error("Failed to get widget templates:", error);
+      res.status(500).json({ message: "Failed to get widget templates" });
+    }
+  });
+
+  app.get("/api/dashboard/widget-templates/:id", requireOrganization(), requireAuth(), async (req, res) => {
+    try {
+      const template = await storage.getDashboardWidgetTemplate(req.orgId, req.params.id);
+      if (!template) {
+        return res.status(404).json({ message: "Widget template not found" });
+      }
+      res.json(template);
+    } catch (error) {
+      console.error("Failed to get widget template:", error);
+      res.status(500).json({ message: "Failed to get widget template" });
+    }
+  });
+
+  app.post("/api/dashboard/widget-templates", requireOrganization(), requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // SECURITY: Prevent organizationId manipulation
+      const createSchema = insertDashboardWidgetTemplateSchema.omit({ organizationId: true });
+      const data = createSchema.parse(req.body);
+      
+      const template = await storage.createDashboardWidgetTemplate(req.orgId, data);
+      res.status(201).json(template);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Failed to create widget template:", error);
+      res.status(500).json({ message: "Failed to create widget template" });
+    }
+  });
+
+  app.put("/api/dashboard/widget-templates/:id", requireOrganization(), requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // SECURITY: Only allow updating content fields, prevent ownership changes
+      const updateSchema = insertDashboardWidgetTemplateSchema
+        .partial()
+        .omit({ id: true, organizationId: true });
+      
+      const data = updateSchema.parse(req.body);
+      const template = await storage.updateDashboardWidgetTemplate(req.orgId, req.params.id, data);
+      
+      if (!template) {
+        return res.status(404).json({ message: "Widget template not found" });
+      }
+      
+      res.json(template);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      console.error("Failed to update widget template:", error);
+      res.status(500).json({ message: "Failed to update widget template" });
+    }
+  });
+
+  app.delete("/api/dashboard/widget-templates/:id", requireOrganization(), requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const success = await storage.deleteDashboardWidgetTemplate(req.orgId, req.params.id);
+      if (!success) {
+        return res.status(404).json({ message: "Widget template not found" });
+      }
+      res.json({ success });
+    } catch (error) {
+      console.error("Failed to delete widget template:", error);
+      res.status(500).json({ message: "Failed to delete widget template" });
     }
   });
 

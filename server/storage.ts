@@ -272,6 +272,19 @@ export interface IStorage {
   validateDiscountCode(code: string, planId?: string, orderAmount?: number): Promise<{ valid: boolean; discountCode?: DiscountCode; reason?: string }>;
   applyDiscountCode(usage: InsertDiscountCodeUsage): Promise<DiscountCodeUsage>;
   getDiscountCodeUsage(discountCodeId: string): Promise<DiscountCodeUsage[]>;
+
+  // Dashboard Configurations
+  getDashboardConfig(organizationId: string, userId: string): Promise<DashboardConfig | undefined>;
+  createDashboardConfig(organizationId: string, config: InsertDashboardConfig): Promise<DashboardConfig>;
+  updateDashboardConfig(organizationId: string, userId: string, config: Partial<InsertDashboardConfig>): Promise<DashboardConfig | undefined>;
+  resetDashboardConfig(organizationId: string, userId: string): Promise<boolean>;
+
+  // Dashboard Widget Templates
+  getDashboardWidgetTemplate(organizationId: string, id: string): Promise<DashboardWidgetTemplate | undefined>;
+  getAllDashboardWidgetTemplates(organizationId: string, category?: string): Promise<DashboardWidgetTemplate[]>;
+  createDashboardWidgetTemplate(organizationId: string, template: InsertDashboardWidgetTemplate): Promise<DashboardWidgetTemplate>;
+  updateDashboardWidgetTemplate(organizationId: string, id: string, template: Partial<InsertDashboardWidgetTemplate>): Promise<DashboardWidgetTemplate | undefined>;
+  deleteDashboardWidgetTemplate(organizationId: string, id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3296,6 +3309,177 @@ export class DatabaseStorage implements IStorage {
         return d;
     }
   }
+
+  // Dashboard Configurations
+  async getDashboardConfig(organizationId: string, userId: string): Promise<DashboardConfig | undefined> {
+    try {
+      const [config] = await db
+        .select()
+        .from(dashboardConfigs)
+        .where(
+          and(
+            eq(dashboardConfigs.organizationId, organizationId),
+            eq(dashboardConfigs.userId, userId)
+          )
+        );
+      return config || undefined;
+    } catch (error) {
+      console.error("Failed to get dashboard config:", error);
+      throw error;
+    }
+  }
+
+  async createDashboardConfig(organizationId: string, config: InsertDashboardConfig): Promise<DashboardConfig> {
+    try {
+      const [created] = await db
+        .insert(dashboardConfigs)
+        .values({
+          ...config,
+          organizationId,
+        })
+        .returning();
+      return created;
+    } catch (error) {
+      console.error("Failed to create dashboard config:", error);
+      throw error;
+    }
+  }
+
+  async updateDashboardConfig(organizationId: string, userId: string, config: Partial<InsertDashboardConfig>): Promise<DashboardConfig | undefined> {
+    try {
+      // SECURITY: Double-guard against immutable field changes at storage level
+      const sanitizedConfig = { ...config };
+      delete sanitizedConfig.id;
+      delete sanitizedConfig.userId;
+      delete sanitizedConfig.organizationId;
+
+      const [updated] = await db
+        .update(dashboardConfigs)
+        .set(sanitizedConfig)
+        .where(
+          and(
+            eq(dashboardConfigs.organizationId, organizationId),
+            eq(dashboardConfigs.userId, userId)
+          )
+        )
+        .returning();
+      return updated || undefined;
+    } catch (error) {
+      console.error("Failed to update dashboard config:", error);
+      throw error;
+    }
+  }
+
+  async resetDashboardConfig(organizationId: string, userId: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(dashboardConfigs)
+        .where(
+          and(
+            eq(dashboardConfigs.organizationId, organizationId),
+            eq(dashboardConfigs.userId, userId)
+          )
+        );
+      return true;
+    } catch (error) {
+      console.error("Failed to reset dashboard config:", error);
+      throw error;
+    }
+  }
+
+  // Dashboard Widget Templates
+  async getDashboardWidgetTemplate(organizationId: string, id: string): Promise<DashboardWidgetTemplate | undefined> {
+    try {
+      const [template] = await db
+        .select()
+        .from(dashboardWidgetTemplates)
+        .where(
+          and(
+            eq(dashboardWidgetTemplates.organizationId, organizationId),
+            eq(dashboardWidgetTemplates.id, id)
+          )
+        );
+      return template || undefined;
+    } catch (error) {
+      console.error("Failed to get dashboard widget template:", error);
+      throw error;
+    }
+  }
+
+  async getAllDashboardWidgetTemplates(organizationId: string, category?: string): Promise<DashboardWidgetTemplate[]> {
+    try {
+      const conditions = [eq(dashboardWidgetTemplates.organizationId, organizationId)];
+      if (category) {
+        conditions.push(eq(dashboardWidgetTemplates.category, category));
+      }
+
+      return await db
+        .select()
+        .from(dashboardWidgetTemplates)
+        .where(and(...conditions))
+        .orderBy(dashboardWidgetTemplates.category, dashboardWidgetTemplates.name);
+    } catch (error) {
+      console.error("Failed to get dashboard widget templates:", error);
+      throw error;
+    }
+  }
+
+  async createDashboardWidgetTemplate(organizationId: string, template: InsertDashboardWidgetTemplate): Promise<DashboardWidgetTemplate> {
+    try {
+      const [created] = await db
+        .insert(dashboardWidgetTemplates)
+        .values({
+          ...template,
+          organizationId,
+        })
+        .returning();
+      return created;
+    } catch (error) {
+      console.error("Failed to create dashboard widget template:", error);
+      throw error;
+    }
+  }
+
+  async updateDashboardWidgetTemplate(organizationId: string, id: string, template: Partial<InsertDashboardWidgetTemplate>): Promise<DashboardWidgetTemplate | undefined> {
+    try {
+      // SECURITY: Double-guard against immutable field changes at storage level
+      const sanitizedTemplate = { ...template };
+      delete sanitizedTemplate.id;
+      delete sanitizedTemplate.organizationId;
+
+      const [updated] = await db
+        .update(dashboardWidgetTemplates)
+        .set(sanitizedTemplate)
+        .where(
+          and(
+            eq(dashboardWidgetTemplates.organizationId, organizationId),
+            eq(dashboardWidgetTemplates.id, id)
+          )
+        )
+        .returning();
+      return updated || undefined;
+    } catch (error) {
+      console.error("Failed to update dashboard widget template:", error);
+      throw error;
+    }
+  }
+
+  async deleteDashboardWidgetTemplate(organizationId: string, id: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(dashboardWidgetTemplates)
+        .where(
+          and(
+            eq(dashboardWidgetTemplates.organizationId, organizationId),
+            eq(dashboardWidgetTemplates.id, id)
+          )
+        );
+      return true;
+    } catch (error) {
+      console.error("Failed to delete dashboard widget template:", error);
+      throw error;
+    }
+  }
 }
 
 export class MemStorage implements IStorage {
@@ -3308,6 +3492,8 @@ export class MemStorage implements IStorage {
   private shoutoutsMap: Map<string, Shoutout> = new Map();
   private vacations: Map<string, Vacation> = new Map();
   private organizations: Map<string, Organization> = new Map();
+  private dashboardConfigs: Map<string, DashboardConfig> = new Map();
+  private dashboardWidgetTemplates: Map<string, DashboardWidgetTemplate> = new Map();
   private analyticsCache = new AnalyticsCache();
 
   // Organizations
@@ -4925,6 +5111,123 @@ export class MemStorage implements IStorage {
 
   async getDiscountCodeUsage(discountCodeId: string): Promise<DiscountCodeUsage[]> {
     return [];
+  }
+
+  // Dashboard Configurations (MemStorage implementation)
+  async getDashboardConfig(organizationId: string, userId: string): Promise<DashboardConfig | undefined> {
+    const key = `${organizationId}:${userId}`;
+    return this.dashboardConfigs.get(key);
+  }
+
+  async createDashboardConfig(organizationId: string, config: InsertDashboardConfig): Promise<DashboardConfig> {
+    const dashboardConfig: DashboardConfig = {
+      id: config.id || randomUUID(),
+      organizationId,
+      userId: config.userId,
+      layout: config.layout,
+      widgets: config.widgets,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    const key = `${organizationId}:${config.userId}`;
+    this.dashboardConfigs.set(key, dashboardConfig);
+    return dashboardConfig;
+  }
+
+  async updateDashboardConfig(organizationId: string, userId: string, config: Partial<InsertDashboardConfig>): Promise<DashboardConfig | undefined> {
+    const key = `${organizationId}:${userId}`;
+    const existing = this.dashboardConfigs.get(key);
+    if (!existing) return undefined;
+
+    // SECURITY: Double-guard against immutable field changes at storage level
+    const sanitizedConfig = { ...config };
+    delete sanitizedConfig.id;
+    delete sanitizedConfig.userId;
+    delete sanitizedConfig.organizationId;
+
+    const updated: DashboardConfig = {
+      ...existing,
+      ...(sanitizedConfig.layout !== undefined && { layout: sanitizedConfig.layout }),
+      ...(sanitizedConfig.widgets !== undefined && { widgets: sanitizedConfig.widgets }),
+      updatedAt: new Date(),
+    };
+
+    this.dashboardConfigs.set(key, updated);
+    return updated;
+  }
+
+  async resetDashboardConfig(organizationId: string, userId: string): Promise<boolean> {
+    const key = `${organizationId}:${userId}`;
+    return this.dashboardConfigs.delete(key);
+  }
+
+  // Dashboard Widget Templates (MemStorage implementation)
+  async getDashboardWidgetTemplate(organizationId: string, id: string): Promise<DashboardWidgetTemplate | undefined> {
+    return Array.from(this.dashboardWidgetTemplates.values())
+      .find(template => template.organizationId === organizationId && template.id === id);
+  }
+
+  async getAllDashboardWidgetTemplates(organizationId: string, category?: string): Promise<DashboardWidgetTemplate[]> {
+    return Array.from(this.dashboardWidgetTemplates.values())
+      .filter(template => {
+        if (template.organizationId !== organizationId) return false;
+        if (category && template.category !== category) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        if (a.category !== b.category) return a.category.localeCompare(b.category);
+        return a.name.localeCompare(b.name);
+      });
+  }
+
+  async createDashboardWidgetTemplate(organizationId: string, template: InsertDashboardWidgetTemplate): Promise<DashboardWidgetTemplate> {
+    const widgetTemplate: DashboardWidgetTemplate = {
+      id: template.id || randomUUID(),
+      organizationId,
+      name: template.name,
+      description: template.description || null,
+      category: template.category,
+      component: template.component,
+      config: template.config,
+      isActive: template.isActive ?? true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    this.dashboardWidgetTemplates.set(widgetTemplate.id, widgetTemplate);
+    return widgetTemplate;
+  }
+
+  async updateDashboardWidgetTemplate(organizationId: string, id: string, template: Partial<InsertDashboardWidgetTemplate>): Promise<DashboardWidgetTemplate | undefined> {
+    const existing = this.dashboardWidgetTemplates.get(id);
+    if (!existing || existing.organizationId !== organizationId) return undefined;
+
+    // SECURITY: Double-guard against immutable field changes at storage level
+    const sanitizedTemplate = { ...template };
+    delete sanitizedTemplate.id;
+    delete sanitizedTemplate.organizationId;
+
+    const updated: DashboardWidgetTemplate = {
+      ...existing,
+      ...(sanitizedTemplate.name !== undefined && { name: sanitizedTemplate.name }),
+      ...(sanitizedTemplate.description !== undefined && { description: sanitizedTemplate.description }),
+      ...(sanitizedTemplate.category !== undefined && { category: sanitizedTemplate.category }),
+      ...(sanitizedTemplate.component !== undefined && { component: sanitizedTemplate.component }),
+      ...(sanitizedTemplate.config !== undefined && { config: sanitizedTemplate.config }),
+      ...(sanitizedTemplate.isActive !== undefined && { isActive: sanitizedTemplate.isActive }),
+      updatedAt: new Date(),
+    };
+
+    this.dashboardWidgetTemplates.set(id, updated);
+    return updated;
+  }
+
+  async deleteDashboardWidgetTemplate(organizationId: string, id: string): Promise<boolean> {
+    const existing = this.dashboardWidgetTemplates.get(id);
+    if (!existing || existing.organizationId !== organizationId) return false;
+    
+    return this.dashboardWidgetTemplates.delete(id);
   }
 }
 
