@@ -79,14 +79,14 @@ app.use(session({
   store: sessionStore,
   secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true, // Allow creating sessions for OAuth state storage
   name: 'connect.sid',
   proxy: true, // Trust proxy for Replit's TLS terminator
   cookie: {
     secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG, // Use secure for production or Replit environment
     httpOnly: true,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax', // Allow iframe for Replit/production
+    sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'lax' : 'lax', // Use 'lax' for better OAuth compatibility
     domain: undefined // Let browser set domain automatically
   }
 }));
