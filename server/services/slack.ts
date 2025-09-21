@@ -239,7 +239,7 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
       timeout: 30000,
       cache: true,
       cacheMaxEntries: 5,
-      cacheMaxAge: 60000 * 60 // Cache for 1 hour
+      cacheMaxAge: 3600000 // Cache for 1 hour (60 * 60 * 1000 ms)
     });
 
     // Get the signing key
@@ -260,7 +260,8 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
       audience: process.env.SLACK_CLIENT_ID, // Verify audience matches our client ID
       issuer: 'https://slack.com', // Verify issuer is Slack
       algorithms: ['RS256'], // Only allow RS256 algorithm
-      clockTolerance: 300 // Allow 5 minutes clock skew
+      clockTolerance: Number(300), // Allow 5 minutes clock skew (explicitly convert to number)
+      maxAge: undefined // Don't set maxAge, let JWT library handle expiration
     }) as any; // Use 'any' temporarily to debug the structure
     
     if (!payload || !payload.sub) {
