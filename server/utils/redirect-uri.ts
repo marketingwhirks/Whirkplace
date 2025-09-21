@@ -10,6 +10,10 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
     return process.env.SLACK_REDIRECT_URI_OVERRIDE;
   }
   if (path.includes('microsoft') && process.env.MICROSOFT_REDIRECT_URI) {
+    // For production, always use the correct domain regardless of env var
+    if (process.env.NODE_ENV === 'production') {
+      return 'https://whirkplace.com/auth/microsoft/callback';
+    }
     return process.env.MICROSOFT_REDIRECT_URI;
   }
 
