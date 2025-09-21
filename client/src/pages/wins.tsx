@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 import type { Win, User, InsertWin, CompanyValue } from "@shared/schema";
 import { insertWinSchema, DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
@@ -55,9 +56,7 @@ export default function Wins() {
   });
 
   // Fetch current user for defaults
-  const { data: currentUser } = useQuery<User>({
-    queryKey: ["/api/users/current"],
-  });
+  const { data: currentUser } = useCurrentUser();
 
   // Create win form
   const createForm = useForm<WinForm>({
@@ -502,25 +501,28 @@ export default function Wins() {
                           </div>
                         </div>
                       </div>
-                      <div className="flex items-center space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleEditWin(win)}
-                          data-testid={`button-edit-win-${win.id}`}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteWin(win)}
-                          data-testid={`button-delete-win-${win.id}`}
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
+                      {/* Admin-only edit and delete buttons */}
+                      {(currentUser?.role === "admin" || currentUser?.isSuperAdmin) && (
+                        <div className="flex items-center space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleEditWin(win)}
+                            data-testid={`button-edit-win-${win.id}`}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleDeleteWin(win)}
+                            data-testid={`button-delete-win-${win.id}`}
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent className="pt-0">
