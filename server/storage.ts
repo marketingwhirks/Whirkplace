@@ -988,6 +988,7 @@ export class DatabaseStorage implements IStorage {
         reviewedAt,
         reviewedOnTime,
         reviewComments: reviewData.reviewComments || null,
+        responseComments: reviewData.responseComments || {},
         addToOneOnOne: reviewData.addToOneOnOne || false,
         flagForFollowUp: reviewData.flagForFollowUp || false,
       })
@@ -3592,6 +3593,7 @@ export class MemStorage implements IStorage {
       reviewedAt,
       reviewedOnTime,
       reviewComments: reviewData.reviewComments || null,
+      responseComments: reviewData.responseComments || {},
       addToOneOnOne: reviewData.addToOneOnOne || false,
       flagForFollowUp: reviewData.flagForFollowUp || false,
     };

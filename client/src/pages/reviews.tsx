@@ -42,6 +42,7 @@ export default function Reviews() {
   const [selectedUser, setSelectedUser] = useState<string>("all");
   const [reviewModal, setReviewModal] = useState<ReviewModalData | null>(null);
   const [reviewComment, setReviewComment] = useState("");
+  const [responseComments, setResponseComments] = useState<Record<string, string>>({});
   const [addToOneOnOne, setAddToOneOnOne] = useState(false);
   const [flagForFollowUp, setFlagForFollowUp] = useState(false);
 
@@ -82,6 +83,7 @@ export default function Reviews() {
       });
       setReviewModal(null);
       setReviewComment("");
+      setResponseComments({});
       setAddToOneOnOne(false);
       setFlagForFollowUp(false);
     },
@@ -98,9 +100,15 @@ export default function Reviews() {
   const handleReview = async () => {
     if (!reviewModal) return;
 
+    // Filter out empty response comments
+    const filteredResponseComments = Object.fromEntries(
+      Object.entries(responseComments).filter(([_, comment]) => comment.trim() !== "")
+    );
+
     const reviewData: ReviewCheckin = {
       reviewStatus: "reviewed",
       reviewComments: reviewComment.trim() || undefined,
+      responseComments: Object.keys(filteredResponseComments).length > 0 ? filteredResponseComments : undefined,
       addToOneOnOne: addToOneOnOne,
       flagForFollowUp: flagForFollowUp,
     };
@@ -374,16 +382,38 @@ export default function Reviews() {
                   <RatingStars rating={reviewModal.checkin.overallMood} readonly size="sm" />
                 </div>
                 
-                <div className="space-y-3">
-                  <span className="text-sm font-medium">Responses:</span>
+                <div className="space-y-4">
+                  <span className="text-sm font-medium">Responses & Feedback:</span>
                   {Object.entries(reviewModal.checkin.responses as Record<string, string>).map(([questionId, response]) => {
                     const question = questions.find(q => q.id === questionId);
                     return (
-                      <div key={questionId} className="bg-muted p-3 rounded-lg">
-                        <p className="text-sm font-medium mb-1">
-                          {question?.text || "Question"}
-                        </p>
-                        <p className="text-sm text-muted-foreground">{response}</p>
+                      <div key={questionId} className="border border-muted rounded-lg p-4 space-y-3">
+                        <div>
+                          <p className="text-sm font-medium mb-2 text-blue-600">
+                            {question?.text || "Question"}
+                          </p>
+                          <div className="bg-muted p-3 rounded-md">
+                            <p className="text-sm">{response}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-medium text-muted-foreground">
+                            Your feedback on this response:
+                          </label>
+                          <textarea
+                            value={responseComments[questionId] || ""}
+                            onChange={(e) => setResponseComments(prev => ({
+                              ...prev,
+                              [questionId]: e.target.value
+                            }))}
+                            placeholder="Add feedback, ask follow-up questions, or provide guidance..."
+                            className="w-full min-h-[60px] p-2 text-sm border border-input rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                            data-testid={`textarea-response-comment-${questionId}`}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            {500 - (responseComments[questionId]?.length || 0)} characters remaining
+                          </p>
+                        </div>
                       </div>
                     );
                   })}
@@ -422,16 +452,19 @@ export default function Reviews() {
                   </div>
                 </div>
                 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Review Comments</label>
+                <div className="space-y-2 border-t pt-4">
+                  <label className="text-sm font-medium">Overall Review Comments</label>
                   <textarea
                     className="w-full p-3 border rounded-lg resize-none"
-                    rows={4}
-                    placeholder="Add your review comments..."
+                    rows={3}
+                    placeholder="Add general feedback, overall observations, or team-level notes..."
                     value={reviewComment}
                     onChange={(e) => setReviewComment(e.target.value)}
                     data-testid="textarea-review-comment"
                   />
+                  <p className="text-xs text-muted-foreground">
+                    Optional: Use this for overall feedback that applies to the entire check-in
+                  </p>
                 </div>
               </div>
 
@@ -442,6 +475,7 @@ export default function Reviews() {
                   onClick={() => {
                     setReviewModal(null);
                     setReviewComment("");
+                    setResponseComments({});
                     setAddToOneOnOne(false);
                     setFlagForFollowUp(false);
                   }}

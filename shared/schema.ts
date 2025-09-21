@@ -182,6 +182,7 @@ export const checkins = pgTable("checkins", {
   reviewDueDate: timestamp("review_due_date").notNull(), // When review is due (Monday 9am Central)
   reviewedOnTime: boolean("reviewed_on_time").notNull().default(false), // If review completed on time
   reviewComments: text("review_comments"), // Optional feedback (nullable)
+  responseComments: jsonb("response_comments").notNull().default({}), // question_id -> comment for individual responses
   addToOneOnOne: boolean("add_to_one_on_one").notNull().default(false), // Flag for 1-on-1 agenda
   flagForFollowUp: boolean("flag_for_follow_up").notNull().default(false), // Flag for future attention
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
@@ -463,6 +464,7 @@ export const updateShoutoutSchema = z.object({
 export const reviewCheckinSchema = z.object({
   reviewStatus: z.enum([ReviewStatus.PENDING, ReviewStatus.REVIEWED]),
   reviewComments: z.string().max(1000, "Review comments too long").optional(),
+  responseComments: z.record(z.string(), z.string().max(500, "Response comment too long")).optional(), // question_id -> comment
   addToOneOnOne: z.boolean().optional(),
   flagForFollowUp: z.boolean().optional(),
   // reviewedBy and reviewedAt are set automatically server-side
