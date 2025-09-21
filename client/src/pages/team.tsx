@@ -35,7 +35,7 @@ const createTeamSchema = z.object({
   description: z.string().optional(),
   leaderId: z.string().refine(val => val !== "no-leader", "Please select a team leader"),
   parentTeamId: z.string().optional(),
-  teamType: z.enum(["department", "squad", "pod"]),
+  teamType: z.enum(["department", "team", "pod"]),
 });
 
 type CreateUserForm = z.infer<typeof createUserSchema>;
@@ -102,7 +102,7 @@ export default function Team() {
   const getTeamTypeIcon = (teamType: string) => {
     switch (teamType) {
       case "department": return <Building className="w-4 h-4" />;
-      case "squad": return <Network className="w-4 h-4" />;
+      case "team": return <Users className="w-4 h-4" />;
       case "pod": return <Target className="w-4 h-4" />;
       default: return <Users className="w-4 h-4" />;
     }
@@ -111,7 +111,7 @@ export default function Team() {
   const getTeamTypeColor = (teamType: string) => {
     switch (teamType) {
       case "department": return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200";
-      case "squad": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+      case "team": return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
       case "pod": return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200";
       default: return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200";
     }
@@ -384,12 +384,12 @@ export default function Team() {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="department">Department</SelectItem>
-                              <SelectItem value="squad">Squad</SelectItem>
+                              <SelectItem value="team">Team</SelectItem>
                               <SelectItem value="pod">Pod</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormDescription>
-                            Department → Squad → Pod hierarchy levels
+                            Department → Team → Pod hierarchy levels
                           </FormDescription>
                           <FormMessage />
                         </FormItem>
@@ -728,10 +728,10 @@ export default function Team() {
           <Card>
             <CardContent className="p-4">
               <div className="text-center">
-                <p className="text-2xl font-bold text-foreground" data-testid="text-squads">
-                  {teams.filter(t => t.teamType === "squad").length}
+                <p className="text-2xl font-bold text-foreground" data-testid="text-teams">
+                  {teams.filter(t => t.teamType === "team").length}
                 </p>
-                <p className="text-sm text-muted-foreground">Squads</p>
+                <p className="text-sm text-muted-foreground">Teams</p>
               </div>
             </CardContent>
           </Card>

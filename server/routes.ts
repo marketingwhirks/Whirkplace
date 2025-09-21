@@ -4652,7 +4652,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         teams: z.array(z.object({
           name: z.string().min(2),
           description: z.string().optional(),
-          type: z.enum(["department", "squad", "pod"]),
+          type: z.enum(["department", "team", "pod"]),
         })),
         userInvites: z.array(z.object({
           email: z.string().email(),

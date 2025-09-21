@@ -35,7 +35,7 @@ export type AuthProviderType = typeof AuthProvider[keyof typeof AuthProvider];
 // Team Type Constants
 export const TeamType = {
   DEPARTMENT: "department",
-  SQUAD: "squad", 
+  TEAM: "team", 
   POD: "pod",
   DIVISION: "division",
   PROJECT_TEAM: "project_team",
@@ -149,10 +149,10 @@ export const teams = pgTable("teams", {
   description: text("description"),
   organizationId: varchar("organization_id").notNull(),
   leaderId: varchar("leader_id").notNull(),
-  parentTeamId: varchar("parent_team_id"), // For hierarchical team structure (Squads/Pods under departments)
-  teamType: text("team_type").notNull().default("department"), // department, squad, pod, division
+  parentTeamId: varchar("parent_team_id"), // For hierarchical team structure (Teams/Pods under departments)
+  teamType: text("team_type").notNull().default("department"), // department, team, pod, division
   depth: integer("depth").notNull().default(0), // 0 = top level, 1 = sub-team, 2 = sub-sub-team, etc.
-  path: text("path"), // Materialized path for efficient hierarchy queries (e.g., "leadership/accounting/squad1")
+  path: text("path"), // Materialized path for efficient hierarchy queries (e.g., "leadership/accounting/team1")
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 }, (table) => ({
