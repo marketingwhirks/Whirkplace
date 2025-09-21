@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -54,6 +54,11 @@ export default function Wins() {
     queryKey: ["/api/users"],
   });
 
+  // Fetch current user for defaults
+  const { data: currentUser } = useQuery<User>({
+    queryKey: ["/api/users/current"],
+  });
+
   // Create win form
   const createForm = useForm<WinForm>({
     resolver: zodResolver(winFormSchema),
@@ -64,8 +69,17 @@ export default function Wins() {
       userId: "",
       nominatedBy: "",
       values: [],
+      organizationId: "",
     },
   });
+
+  // Update form defaults when current user loads  
+  useEffect(() => {
+    if (currentUser) {
+      createForm.setValue('organizationId', currentUser.organizationId, { shouldDirty: false });
+      createForm.setValue('nominatedBy', currentUser.id, { shouldDirty: false });
+    }
+  }, [currentUser, createForm]);
 
   // Edit win form  
   const editFormSchema = z.object({
@@ -97,7 +111,15 @@ export default function Wins() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/wins"] });
-      createForm.reset();
+      createForm.reset({
+        title: "",
+        description: "",
+        isPublic: true,
+        userId: "",
+        nominatedBy: currentUser?.id || "",
+        values: [],
+        organizationId: currentUser?.organizationId || "",
+      });
       setShowCreateDialog(false);
       toast({
         title: "Success",
@@ -172,8 +194,6 @@ export default function Wins() {
 
   // Handle create form submission
   const handleCreateSubmit = (data: WinForm) => {
-    console.log("Attempting to create win with data:", data);
-    console.log("Form errors:", createForm.formState.errors);
     createWinMutation.mutate(data);
   };
 
@@ -248,14 +268,7 @@ export default function Wins() {
                   </DialogDescription>
                 </DialogHeader>
                 <Form {...createForm}>
-                  <form onSubmit={createForm.handleSubmit(handleCreateSubmit, (errors) => {
-                    console.log("Form validation failed:", errors);
-                    toast({
-                      title: "Validation Error",
-                      description: "Please fill in all required fields",
-                      variant: "destructive",
-                    });
-                  })} className="space-y-4 pb-4">
+                  <form onSubmit={createForm.handleSubmit(handleCreateSubmit)} className="space-y-4 pb-4">
                     <FormField
                       control={createForm.control}
                       name="title"
@@ -321,7 +334,7 @@ export default function Wins() {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Nominated By (Optional)</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <Select onValueChange={field.onChange} value={field.value || currentUser?.id || ""}>
                             <FormControl>
                               <SelectTrigger data-testid="select-win-nominator">
                                 <SelectValue placeholder="Select nominator..." />
@@ -331,7 +344,7 @@ export default function Wins() {
                               <SelectItem value="none">None</SelectItem>
                               {users.map((user) => (
                                 <SelectItem key={user.id} value={user.id}>
-                                  {user.name}
+                                  {user.name} {user.id === currentUser?.id ? "(You)" : ""}
                                 </SelectItem>
                               ))}
                             </SelectContent>
