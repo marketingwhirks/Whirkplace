@@ -147,7 +147,7 @@ export default function BusinessSignupPage() {
     onSuccess: (data) => {
       setCurrentStep("complete");
       toast({
-        title: "Welcome to TeamPulse!",
+        title: "Welcome to WhirkPlace!",
         description: "Your organization has been set up successfully.",
       });
 
@@ -308,7 +308,7 @@ export default function BusinessSignupPage() {
               <CheckCircle className="h-10 w-10 text-green-600" />
             </div>
             <div>
-              <h2 className="text-3xl font-bold text-green-600">Welcome to TeamPulse!</h2>
+              <h2 className="text-3xl font-bold text-green-600">Welcome to WhirkPlace!</h2>
               <p className="text-muted-foreground text-lg mt-2">
                 Your organization has been successfully set up.
               </p>
@@ -352,7 +352,7 @@ export default function BusinessSignupPage() {
         {currentStep !== "complete" && (
           <div className="max-w-4xl mx-auto mb-8">
             <div className="text-center mb-6">
-              <h1 className="text-4xl font-bold">Get Started with TeamPulse</h1>
+              <h1 className="text-4xl font-bold">Get Started with WhirkPlace</h1>
               <p className="text-muted-foreground text-lg mt-2">
                 Transform your team management in just a few steps
               </p>

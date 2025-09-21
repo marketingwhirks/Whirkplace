@@ -88,7 +88,7 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
           <div>
             <CardTitle className="text-2xl">Create Your Business Account</CardTitle>
             <CardDescription className="text-base mt-2">
-              Get started with TeamPulse and transform your team management
+              Get started with WhirkPlace and transform your team management
             </CardDescription>
           </div>
         </CardHeader>
