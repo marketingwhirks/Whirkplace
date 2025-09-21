@@ -202,6 +202,68 @@ export default function BusinessSignupPage() {
     onboardingMutation.mutate(onboardingData);
   };
 
+  // Navigation functions
+  const canGoBack = () => {
+    return currentStep !== "signup";
+  };
+
+  const canGoNext = () => {
+    switch (currentStep) {
+      case "signup":
+        return !!signupData.businessInfo;
+      case "plan-selection":
+        return !!signupData.selectedPlan;
+      case "theme":
+        return true; // Theme can be skipped
+      case "onboarding":
+        return false; // Must complete onboarding
+      default:
+        return false;
+    }
+  };
+
+  const handleGoBack = () => {
+    const stepIndex = getCurrentStepIndex();
+    if (stepIndex > 0) {
+      const previousStep = signupSteps[stepIndex - 1];
+      setCurrentStep(previousStep.id as SignupStep);
+    }
+  };
+
+  const handleGoNext = () => {
+    switch (currentStep) {
+      case "signup":
+        if (signupData.businessInfo) {
+          setCurrentStep("plan-selection");
+        }
+        break;
+      case "plan-selection":
+        if (signupData.selectedPlan) {
+          setCurrentStep("theme");
+        }
+        break;
+      case "theme":
+        setCurrentStep("onboarding");
+        break;
+      default:
+        break;
+    }
+  };
+
+  const handleStepClick = (stepId: string, stepIndex: number) => {
+    const currentStepIndex = getCurrentStepIndex();
+    
+    // Only allow navigation to completed steps or the current step
+    if (stepIndex <= currentStepIndex) {
+      setCurrentStep(stepId as SignupStep);
+    }
+  };
+
+  const isStepAccessible = (stepIndex: number) => {
+    const currentStepIndex = getCurrentStepIndex();
+    return stepIndex <= currentStepIndex;
+  };
+
   const renderCurrentStep = () => {
     switch (currentStep) {
       case "signup":
@@ -308,11 +370,14 @@ export default function BusinessSignupPage() {
                   return (
                     <div 
                       key={step.id}
+                      onClick={() => handleStepClick(step.id, index)}
                       className={`flex items-center space-x-2 ${
                         isCompleted || isCurrent ? 'text-primary' : 'text-muted-foreground'
+                      } ${
+                        isStepAccessible(index) ? 'cursor-pointer hover:opacity-80' : 'cursor-not-allowed'
                       }`}
                     >
-                      <div className={`p-2 rounded-full ${
+                      <div className={`p-2 rounded-full transition-colors ${
                         isCompleted ? 'bg-primary text-primary-foreground' :
                         isCurrent ? 'bg-primary/10 border-2 border-primary' : 'bg-muted'
                       }`}>
@@ -335,7 +400,37 @@ export default function BusinessSignupPage() {
 
         {/* Current Step Content */}
         <div className="max-w-6xl mx-auto">
-          {renderCurrentStep()}
+          <div className="space-y-6">
+            {renderCurrentStep()}
+            
+            {/* Navigation Buttons */}
+            {currentStep !== "complete" && currentStep !== "onboarding" && (
+              <div className="flex justify-between items-center pt-6 border-t">
+                <div>
+                  {canGoBack() && (
+                    <button
+                      onClick={handleGoBack}
+                      className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      data-testid="button-previous"
+                    >
+                      ← Previous
+                    </button>
+                  )}
+                </div>
+                <div>
+                  {canGoNext() && currentStep !== "signup" && currentStep !== "plan-selection" && (
+                    <button
+                      onClick={handleGoNext}
+                      className="px-6 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+                      data-testid="button-next"
+                    >
+                      Next →
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
         </div>
       </div>
