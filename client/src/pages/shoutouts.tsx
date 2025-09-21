@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 import type { Shoutout, User, InsertShoutout } from "@shared/schema";
 import { insertShoutoutSchema, defaultCompanyValuesArray } from "@shared/schema";
@@ -60,9 +61,7 @@ export default function ShoutoutsPage() {
   });
 
   // Fetch current user for defaults
-  const { data: currentUser } = useQuery<User>({
-    queryKey: ["/api/users/current"],
-  });
+  const { data: currentUser } = useCurrentUser();
 
   // Create shoutout form
   const createForm = useForm<ShoutoutForm>({
@@ -565,6 +564,18 @@ export default function ShoutoutsPage() {
                                 Private
                               </Badge>
                             )}
+                            {/* Admin-only delete button */}
+                            {(currentUser?.role === "admin" || currentUser?.isSuperAdmin) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setDeleteShoutout(shoutoutItem)}
+                                data-testid={`button-delete-shoutout-${shoutoutItem.id}`}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </CardHeader>
@@ -595,6 +606,34 @@ export default function ShoutoutsPage() {
             </div>
           </Tabs>
         </div>
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={!!deleteShoutout} onOpenChange={(open) => !open && setDeleteShoutout(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Shoutout</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this shoutout? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (deleteShoutout) {
+                    deleteShoutoutMutation.mutate(deleteShoutout.id);
+                    setDeleteShoutout(null);
+                  }
+                }}
+                disabled={deleteShoutoutMutation.isPending}
+                data-testid="button-confirm-delete-shoutout"
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete Shoutout
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
