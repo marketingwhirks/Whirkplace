@@ -23,9 +23,11 @@ import {
   type PricingPlan, type InsertPricingPlan,
   type DiscountCode, type InsertDiscountCode,
   type DiscountCodeUsage, type InsertDiscountCodeUsage,
+  type DashboardConfig, type InsertDashboardConfig,
+  type DashboardWidgetTemplate, type InsertDashboardWidgetTemplate,
   users, teams, checkins, questions, wins, comments, shoutouts, vacations, organizations,
   oneOnOnes, kraTemplates, userKras, actionItems, bugReports,
-  systemSettings, pricingPlans, discountCodes, discountCodeUsage,
+  systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   ReviewStatus
 } from "@shared/schema";

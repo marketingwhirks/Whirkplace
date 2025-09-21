@@ -910,6 +910,40 @@ export const discountCodeUsage = pgTable("discount_code_usage", {
   orgIdx: index("discount_usage_org_idx").on(table.organizationId),
 }));
 
+// Dashboard Configuration - User customizable dashboard layouts and widgets
+export const dashboardConfigs = pgTable("dashboard_configs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  organizationId: varchar("organization_id").notNull(),
+  name: text("name").notNull().default("My Dashboard"), // User-defined dashboard name
+  isDefault: boolean("is_default").notNull().default(false), // Primary dashboard for user
+  layout: jsonb("layout").notNull().default('{"type": "grid", "columns": 12, "rows": []}'), // Layout configuration
+  widgets: jsonb("widgets").notNull().default('[]'), // Array of widget configurations
+  themePreferences: jsonb("theme_preferences").default('{"colorScheme": "system", "compactMode": false}'),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for fast user dashboard lookups
+  userIdx: index("dashboard_configs_user_idx").on(table.userId),
+  orgIdx: index("dashboard_configs_org_idx").on(table.organizationId),
+}));
+
+// Dashboard Widget Templates - Predefined widget configurations for easy setup
+export const dashboardWidgetTemplates = pgTable("dashboard_widget_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // e.g., "Check-ins Summary", "Team Health Meter"
+  description: text("description"),
+  category: text("category").notNull(), // "analytics", "team", "personal", "quick-actions"
+  widgetType: text("widget_type").notNull(), // "checkins-summary", "health-meter", "recent-wins", etc.
+  defaultConfig: jsonb("default_config").notNull(), // Default widget configuration
+  requiredRole: text("required_role").default("member"), // Minimum role required to use this widget
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  categoryIdx: index("widget_templates_category_idx").on(table.category),
+  typeIdx: index("widget_templates_type_idx").on(table.widgetType),
+}));
+
 // Super Admin Zod schemas
 export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit({
   id: true,
@@ -942,6 +976,41 @@ export const insertDiscountCodeUsageSchema = createInsertSchema(discountCodeUsag
 });
 export type InsertDiscountCodeUsage = z.infer<typeof insertDiscountCodeUsageSchema>;
 export type DiscountCodeUsage = typeof discountCodeUsage.$inferSelect;
+
+// Dashboard Configuration Zod schemas
+export const insertDashboardConfigSchema = createInsertSchema(dashboardConfigs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDashboardConfig = z.infer<typeof insertDashboardConfigSchema>;
+export type DashboardConfig = typeof dashboardConfigs.$inferSelect;
+
+export const insertDashboardWidgetTemplateSchema = createInsertSchema(dashboardWidgetTemplates).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertDashboardWidgetTemplate = z.infer<typeof insertDashboardWidgetTemplateSchema>;
+export type DashboardWidgetTemplate = typeof dashboardWidgetTemplates.$inferSelect;
+
+// Widget Configuration Types
+export interface WidgetConfig {
+  id: string;
+  type: string;
+  title: string;
+  position: { x: number; y: number; w: number; h: number };
+  config: Record<string, any>;
+  isVisible: boolean;
+}
+
+export interface DashboardLayout {
+  type: "grid" | "flex";
+  columns: number;
+  rows: Array<{
+    height: string;
+    widgets: string[];
+  }>;
+}
 
 // Calendar Event Types for Microsoft Calendar Integration
 export interface CalendarEvent {
