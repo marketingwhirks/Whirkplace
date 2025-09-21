@@ -75,6 +75,11 @@ const sessionStore = new PgSession({
   }
 });
 
+// Session configuration with proper Replit support
+const isReplit = !!process.env.REPL_SLUG;
+const isProduction = process.env.NODE_ENV === 'production';
+const isSecureEnvironment = isProduction || isReplit;
+
 app.use(session({
   store: sessionStore,
   secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
@@ -83,13 +88,21 @@ app.use(session({
   name: 'connect.sid',
   proxy: true, // Trust proxy for Replit's TLS terminator
   cookie: {
-    secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG, // Use secure for production or Replit environment
+    secure: isSecureEnvironment, // Use secure for production or Replit environment
     httpOnly: true,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'lax' : 'lax', // Use 'lax' for better OAuth compatibility
+    sameSite: isReplit ? 'none' : 'lax', // Use 'none' for Replit cross-site OAuth, 'lax' for local dev
     domain: undefined // Let browser set domain automatically
   }
 }));
+
+// Log session configuration on startup
+console.log('🔐 Session configuration:', {
+  environment: isProduction ? 'production' : (isReplit ? 'replit' : 'development'),
+  secure: isSecureEnvironment,
+  sameSite: isReplit ? 'none' : 'lax',
+  trustProxy: true
+});
 
 // Organization resolution middleware - must be before API routes
 app.use(resolveOrganization());
