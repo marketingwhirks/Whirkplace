@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Edit, Trash2, Users, Lock, Unlock, Heart, Star, MessageCircle, Send, Gift } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Lock, Unlock, Heart, Star, MessageCircle, Send, Gift, Check, ChevronsUpDown, X } from "lucide-react";
 
 import Header from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
@@ -31,6 +32,7 @@ const shoutoutFormSchema = insertShoutoutSchema.omit({
 }).extend({
   message: z.string().min(1, "Message is required").max(500, "Message too long"),
   toUserIds: z.array(z.string()).min(1, "Please select at least one recipient"),
+  values: z.array(z.string()).min(1, "At least one company value must be selected"),
 });
 
 type ShoutoutForm = z.infer<typeof shoutoutFormSchema>;
@@ -41,6 +43,7 @@ export default function ShoutoutsPage() {
   const [editingShoutout, setEditingShoutout] = useState<Shoutout | null>(null);
   const [filter, setFilter] = useState<"all" | "received" | "given" | "public">("all");
   const [deleteShoutout, setDeleteShoutout] = useState<Shoutout | null>(null);
+  const [recipientSelectorOpen, setRecipientSelectorOpen] = useState(false);
 
   // Fetch shoutouts with proper filter parameters
   const { data: shoutouts = [], isLoading: shoutoutsLoading } = useQuery<Shoutout[]>({
@@ -252,48 +255,113 @@ export default function ShoutoutsPage() {
                     <FormField
                       control={createForm.control}
                       name="toUserIds"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Recipients *</FormLabel>
-                          <FormDescription className="text-sm text-muted-foreground">
-                            Select one or more people to recognize
-                          </FormDescription>
-                          <div className="space-y-2">
-                            {users.map((user) => (
-                              <FormItem
-                                key={user.id}
-                                className="flex flex-row items-center space-x-3 space-y-0"
-                              >
-                                <FormControl>
-                                  <Checkbox
-                                    checked={field.value?.includes(user.id)}
-                                    onCheckedChange={(checked) => {
-                                      const currentIds = field.value || [];
-                                      return checked
-                                        ? field.onChange([...currentIds, user.id])
-                                        : field.onChange(
-                                            currentIds.filter((id) => id !== user.id)
-                                          );
-                                    }}
-                                    data-testid={`checkbox-recipient-${user.id}`}
-                                  />
-                                </FormControl>
-                                <div className="flex items-center gap-2">
-                                  <Avatar className="h-6 w-6">
-                                    <AvatarFallback className="text-xs">
-                                      {getUserInitials(user.id)}
-                                    </AvatarFallback>
-                                  </Avatar>
-                                  <FormLabel className="text-sm font-normal">
+                      render={({ field }) => {
+                        const selectedUsers = (field.value || [])
+                          .map(id => users.find(u => u.id === id))
+                          .filter((user): user is User => user !== undefined);
+                        
+                        return (
+                          <FormItem>
+                            <FormLabel>Recipients *</FormLabel>
+                            <FormDescription className="text-sm text-muted-foreground">
+                              Select one or more people to recognize
+                            </FormDescription>
+                            
+                            {/* Selected recipients display */}
+                            {selectedUsers.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mb-2">
+                                {selectedUsers.map((user) => (
+                                  <Badge 
+                                    key={user.id} 
+                                    variant="secondary" 
+                                    className="text-xs"
+                                    data-testid={`badge-selected-${user.id}`}
+                                  >
+                                    <Avatar className="h-4 w-4 mr-1">
+                                      <AvatarFallback className="text-xs">
+                                        {getUserInitials(user.id)}
+                                      </AvatarFallback>
+                                    </Avatar>
                                     {user.name}
-                                  </FormLabel>
-                                </div>
-                              </FormItem>
-                            ))}
-                          </div>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                                    <span
+                                      className="ml-1 hover:bg-destructive/20 rounded-full cursor-pointer"
+                                      onClick={() => {
+                                        field.onChange(field.value?.filter(id => id !== user.id) || []);
+                                      }}
+                                      data-testid={`button-remove-${user.id}`}
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </span>
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+                            
+                            <FormControl>
+                              <Popover open={recipientSelectorOpen} onOpenChange={setRecipientSelectorOpen}>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    aria-expanded={recipientSelectorOpen}
+                                    aria-label="Select recipients"
+                                    aria-controls="recipients-popover"
+                                    className="w-full justify-between"
+                                    data-testid="button-select-recipients"
+                                  >
+                                    {selectedUsers.length === 0 
+                                      ? "Choose recipients..." 
+                                      : `${selectedUsers.length} recipient${selectedUsers.length === 1 ? '' : 's'} selected`
+                                    }
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-full p-0" id="recipients-popover">
+                                  <Command>
+                                    <CommandInput placeholder="Search people..." />
+                                    <CommandEmpty>No users found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {users.map((user) => {
+                                        const isSelected = field.value?.includes(user.id) || false;
+                                        return (
+                                          <CommandItem
+                                            key={user.id}
+                                            value={user.name}
+                                            onSelect={() => {
+                                              const currentIds = field.value || [];
+                                              if (isSelected) {
+                                                field.onChange(currentIds.filter(id => id !== user.id));
+                                              } else {
+                                                field.onChange([...currentIds, user.id]);
+                                              }
+                                            }}
+                                            data-testid={`option-recipient-${user.id}`}
+                                          >
+                                            <div className="flex items-center gap-2 flex-1">
+                                              <Avatar className="h-6 w-6">
+                                                <AvatarFallback className="text-xs">
+                                                  {getUserInitials(user.id)}
+                                                </AvatarFallback>
+                                              </Avatar>
+                                              {user.name}
+                                            </div>
+                                            <Check
+                                              className={`ml-auto h-4 w-4 ${
+                                                isSelected ? "opacity-100" : "opacity-0"
+                                              }`}
+                                            />
+                                          </CommandItem>
+                                        );
+                                      })}
+                                    </CommandGroup>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
 
                     {/* Message */}
@@ -337,11 +405,11 @@ export default function ShoutoutsPage() {
                                     <FormControl>
                                       <Checkbox
                                         checked={field.value?.includes(value)}
-                                        onCheckedChange={(checked) => {
+                                        onCheckedChange={(checked: boolean) => {
                                           return checked
-                                            ? field.onChange([...field.value, value])
+                                            ? field.onChange([...(field.value || []), value])
                                             : field.onChange(
-                                                field.value?.filter(
+                                                (field.value || []).filter(
                                                   (val) => val !== value
                                                 )
                                               );
