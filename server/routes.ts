@@ -1709,20 +1709,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Wins
-  app.get("/api/wins", async (req, res) => {
+  app.get("/api/wins", requireAuth(), async (req, res) => {
     try {
-      const { public: isPublic, limit } = req.query;
-      let wins;
+      const { limit } = req.query;
+      const requestedLimit = limit ? parseInt(limit as string) : 10;
       
-      if (isPublic === "true") {
-        wins = await storage.getPublicWins(req.orgId, limit ? parseInt(limit as string) : undefined);
-      } else {
-        wins = await storage.getRecentWins(req.orgId, limit ? parseInt(limit as string) : undefined);
+      // Overfetch to account for filtering
+      const overfetchLimit = requestedLimit * 5;
+      const allWins = await storage.getRecentWins(req.orgId, overfetchLimit);
+      
+      // Get current user
+      const viewer = await storage.getUser(req.orgId, req.userId!);
+      if (!viewer) {
+        return res.status(401).json({ message: "User not found" });
       }
       
-      res.json(wins);
+      // Get direct reports if user is a manager
+      let directReportsSet = new Set<string>();
+      if (viewer.role === 'manager' || viewer.role === 'admin') {
+        directReportsSet = await getDirectReportsSet(req.orgId, viewer.id);
+      }
+      
+      // Filter wins based on access permissions
+      const filteredWins = allWins.filter(win => canViewWin(win, viewer, directReportsSet));
+      
+      // Return only the requested number of wins
+      const limitedWins = filteredWins.slice(0, requestedLimit);
+      
+      res.json(limitedWins);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch wins" });
+    }
+  });
+
+  // Public wins endpoint (no authentication required)
+  app.get("/api/wins/public", async (req, res) => {
+    try {
+      const { limit } = req.query;
+      const wins = await storage.getPublicWins(req.orgId, limit ? parseInt(limit as string) : undefined);
+      res.json(wins);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch public wins" });
     }
   });
 
@@ -1787,6 +1814,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to delete win" });
     }
   });
+
+  // Helper function to get direct reports as a Set for efficient lookup
+  const getDirectReportsSet = async (orgId: string, managerId: string): Promise<Set<string>> => {
+    const directReports = await storage.getUsersByManager(orgId, managerId);
+    return new Set(directReports.map(user => user.id));
+  };
+
+  // Helper function to check if user can view a win
+  const canViewWin = (win: any, viewer: any, directReportsSet: Set<string>): boolean => {
+    // Public wins are always accessible
+    if (win.isPublic) return true;
+    
+    // Private wins are accessible to:
+    // 1. The win owner (userId)
+    // 2. Their manager (if viewer is a manager and win owner is their direct report)
+    // 3. Admins (full access)
+    if (win.userId === viewer.id) return true;
+    if (viewer.role === 'admin' || viewer.role === 'super admin') return true;
+    if ((viewer.role === 'manager' || viewer.role === 'admin') && directReportsSet.has(win.userId)) return true;
+    
+    return false;
+  };
 
   // Helper function to check if user can access private shoutouts
   const canAccessShoutouts = (shoutout: any, currentUserId: string, user?: any): boolean => {
