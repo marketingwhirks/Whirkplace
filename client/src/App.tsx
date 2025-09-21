@@ -7,6 +7,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { RoleSwitchProvider } from "@/hooks/useViewAsRole";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DynamicThemeProvider } from "@/components/theme/DynamicThemeProvider";
+import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Checkins from "@/pages/checkins";
@@ -89,16 +90,18 @@ function AuthenticatedApp() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <RoleSwitchProvider>
-          <Toaster />
-          <Switch>
-            <Route path="/signup" component={BusinessSignupPage} />
-            <Route path="/login" component={LoginPage} />
-            <Route component={AuthenticatedApp} />
-          </Switch>
-        </RoleSwitchProvider>
-      </TooltipProvider>
+      <ThemeProvider defaultTheme="system" storageKey="whirkplace-ui-theme">
+        <TooltipProvider>
+          <RoleSwitchProvider>
+            <Toaster />
+            <Switch>
+              <Route path="/signup" component={BusinessSignupPage} />
+              <Route path="/login" component={LoginPage} />
+              <Route component={AuthenticatedApp} />
+            </Switch>
+          </RoleSwitchProvider>
+        </TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

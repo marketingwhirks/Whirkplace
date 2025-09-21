@@ -2,6 +2,7 @@ import { Bell, Slack } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MobileSidebarTrigger } from "./sidebar";
 import { UserProfile } from "./user-profile";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 interface HeaderProps {
   title: string;
@@ -43,6 +44,8 @@ export default function Header({ title, description }: HeaderProps) {
               3
             </span>
           </Button>
+          {/* Theme Toggle */}
+          <ThemeToggle />
           {/* User Profile */}
           <UserProfile />
         </div>
