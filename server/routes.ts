@@ -1776,7 +1776,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/wins/:id", requireAuth(), async (req, res) => {
+  app.delete("/api/wins/:id", requireAuth(), requireRole(["admin"]), async (req, res) => {
     try {
       const deleted = await storage.deleteWin(req.orgId, req.params.id);
       if (!deleted) {
@@ -1975,7 +1975,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/shoutouts/:id", requireAuth(), async (req, res) => {
+  app.delete("/api/shoutouts/:id", requireAuth(), requireRole(["admin"]), async (req, res) => {
     try {
       const deleted = await storage.deleteShoutout(req.orgId, req.params.id);
       if (!deleted) {
