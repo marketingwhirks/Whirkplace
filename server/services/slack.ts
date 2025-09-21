@@ -70,10 +70,21 @@ interface SlackOIDCUserInfo {
 export function generateOAuthURL(organizationSlug: string, session: any, req?: Request): string {
   const clientId = process.env.SLACK_CLIENT_ID;
   
-  // Use dynamic redirect URI if request object is provided, otherwise fallback to env var
-  const redirectUri = req 
-    ? resolveRedirectUri(req, '/auth/slack/callback')
-    : process.env.SLACK_REDIRECT_URI;
+  // Always use dynamic redirect URI for Replit environments to avoid stale environment variables
+  // Only use env var for production or when no request object is available
+  let redirectUri: string;
+  if (req) {
+    redirectUri = resolveRedirectUri(req, '/auth/slack/callback');
+  } else {
+    // Check if env var points to a stale domain and ignore it
+    const envRedirectUri = process.env.SLACK_REDIRECT_URI;
+    if (envRedirectUri && envRedirectUri.includes('whirkplace.replit.app')) {
+      console.warn('🔧 Ignoring stale SLACK_REDIRECT_URI environment variable:', envRedirectUri);
+      redirectUri = process.env.SLACK_REDIRECT_URI_OVERRIDE || 'https://localhost:5000/auth/slack/callback';
+    } else {
+      redirectUri = envRedirectUri || 'https://localhost:5000/auth/slack/callback';
+    }
+  }
   
   if (!clientId || !redirectUri) {
     throw new Error("Slack OAuth not configured. Missing SLACK_CLIENT_ID or redirect URI");
