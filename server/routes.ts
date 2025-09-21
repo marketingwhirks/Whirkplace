@@ -253,8 +253,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       try {
+        console.log('🚀 Slack OAuth login initiated for org:', org);
+        console.log('📦 Session ID before OAuth:', req.sessionID);
+        
         // Generate OAuth URL using the unified service function (this sets session state)
         const oauthUrl = generateOAuthURL(org, req.session);
+        
+        console.log('🔐 OAuth state generated and stored in session');
+        console.log('📋 Session data after state generation:', {
+          hasOAuthState: !!(req.session as any).slackOAuthState,
+          organizationSlug: (req.session as any).slackOAuthOrganizationSlug,
+          expires: (req.session as any).slackOAuthExpires
+        });
         
         // Save session AFTER setting the state to ensure persistence
         req.session.save((err) => {
@@ -263,7 +273,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             return res.status(500).json({ message: "Session error during authentication" });
           }
           
-          console.log('Slack OAuth session state saved, redirecting to:', oauthUrl.substring(0, 100) + '...');
+          console.log('✅ Slack OAuth session state saved, redirecting to:', oauthUrl.substring(0, 100) + '...');
           
           // Redirect to Slack OAuth
           res.redirect(oauthUrl);
