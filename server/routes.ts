@@ -257,6 +257,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         console.log('🚀 Slack OAuth login initiated for org:', org);
         console.log('📦 Session ID before OAuth:', req.sessionID);
+        console.log('🌐 Request host headers:', {
+          host: req.get('host'),
+          forwardedHost: req.get('X-Forwarded-Host'),
+          forwardedProto: req.get('X-Forwarded-Proto'),
+          origin: req.get('origin')
+        });
         
         // Generate OAuth URL using the unified service function (this sets session state)
         const oauthUrl = generateOAuthURL(org, req.session, req);

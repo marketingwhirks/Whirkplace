@@ -25,6 +25,7 @@ import Admin from "@/pages/admin";
 import SuperAdminPage from "@/pages/super-admin";
 import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
+import LandingPage from "@/pages/LandingPage";
 import Sidebar from "@/components/layout/sidebar";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
 import { ThemeCustomizer } from "@/components/ThemeCustomizer";
@@ -74,9 +75,9 @@ function AuthenticatedApp() {
     );
   }
 
-  // If authentication failed or no user, redirect to login
+  // If authentication failed or no user, show landing page
   if (error || !currentUser) {
-    return <LoginPage />;
+    return <LandingPage />;
   }
 
   // Show main app if authenticated
