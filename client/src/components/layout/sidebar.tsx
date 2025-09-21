@@ -17,14 +17,17 @@ import type { Checkin } from "@shared/schema";
 
 // Helper function to determine if a navigation item is active
 function getIsActive(currentLocation: string, itemHref: string): boolean {
-  // Handle root path specially
-  if (itemHref === "/") {
-    return currentLocation === "/";
+  // Normalize paths by removing trailing slashes
+  const normalizedLocation = currentLocation.replace(/\/+$/, '') || '/';
+  const normalizedHref = itemHref.replace(/\/+$/, '') || '/';
+  
+  // Handle root path specially - only exact match
+  if (normalizedHref === "/") {
+    return normalizedLocation === "/";
   }
   
-  // For other paths, check if current location starts with the item href
-  // This handles nested routes properly
-  return currentLocation === itemHref || currentLocation.startsWith(itemHref + "/");
+  // For all other paths, only match exact paths to prevent multiple highlights
+  return normalizedLocation === normalizedHref;
 }
 
 // Base navigation items available to all users
@@ -126,7 +129,7 @@ function SidebarContent() {
           </div>
         ) : (
           (visibleNavigation || []).map((item) => {
-            // More robust active state detection
+            // More robust active state detection with exact matching
             const isActive = getIsActive(location, item.href);
             const badgeCount = getBadgeCount(item);
             const showBadge = badgeCount !== undefined && badgeCount > 0;
