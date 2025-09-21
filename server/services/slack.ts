@@ -226,7 +226,16 @@ export async function exchangeOIDCCode(code: string, redirectUri?: string): Prom
 export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean; user?: SlackOIDCUserInfo; error?: string }> {
   try {
     // SECURITY: Enhanced OIDC token validation with proper JWT signature verification
-    const decoded = jwt.decode(idToken, { complete: true });
+    const decoded = jwt.decode(idToken, { complete: true }) as any;
+    
+    // Debug: Log the decoded token to check for maxAge claim
+    console.log('Decoded JWT token:', {
+      hasHeader: !!decoded?.header,
+      hasPayload: !!decoded?.payload,
+      payloadKeys: decoded?.payload ? Object.keys(decoded.payload) : [],
+      hasMaxAge: decoded?.payload && 'maxAge' in decoded.payload,
+      maxAgeValue: decoded?.payload?.maxAge
+    });
     if (!decoded || typeof decoded === 'string') {
       throw new Error('Invalid JWT token format');
     }
@@ -266,10 +275,42 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
     
     // Ensure no maxAge property exists in options (this was causing the error)
     if ('maxAge' in verifyOptions) {
+      console.error('WARNING: maxAge found in verifyOptions, removing it');
       delete (verifyOptions as any).maxAge;
     }
     
-    const payload = jwt.verify(idToken, key, verifyOptions) as any;
+    // Debug: Log what we're about to pass to jwt.verify
+    console.log('JWT Verify Inputs:', {
+      hasIdToken: !!idToken,
+      hasKey: !!key,
+      verifyOptionsKeys: Object.keys(verifyOptions),
+      verifyOptionsStringified: JSON.stringify(verifyOptions)
+    });
+    
+    let payload: any;
+    try {
+      payload = jwt.verify(idToken, key, verifyOptions) as any;
+    } catch (verifyError: any) {
+      // If we get the maxAge error, try without any options at all
+      if (verifyError?.message?.includes('maxAge must be a number')) {
+        console.warn('Got maxAge error, retrying with minimal options');
+        // Try with absolutely minimal options - just algorithms
+        const minimalOptions: jwt.VerifyOptions = {
+          algorithms: ['RS256']
+        };
+        payload = jwt.verify(idToken, key, minimalOptions) as any;
+        
+        // Manually validate audience and issuer after verification
+        if (payload.aud !== process.env.SLACK_CLIENT_ID) {
+          throw new Error('Token audience does not match client ID');
+        }
+        if (payload.iss !== 'https://slack.com') {
+          throw new Error('Token issuer is not Slack');
+        }
+      } else {
+        throw verifyError;
+      }
+    }
     
     if (!payload || !payload.sub) {
       throw new Error('Invalid token payload - missing subject');
@@ -327,6 +368,21 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
     
     // Get error details for proper error messaging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Log detailed error information for debugging
+    console.error('JWT Verification Error Details:', {
+      errorMessage,
+      errorName: error instanceof Error ? error.name : 'Unknown',
+      errorStack: error instanceof Error ? error.stack : undefined,
+      environment: process.env.NODE_ENV,
+      hasClientId: !!process.env.SLACK_CLIENT_ID,
+      verifyOptionsUsed: {
+        audience: process.env.SLACK_CLIENT_ID,
+        issuer: 'https://slack.com',
+        algorithms: ['RS256'],
+        clockTolerance: 300
+      }
+    });
     
     // Provide more specific error messages
     let userFriendlyError = 'Token validation failed';
