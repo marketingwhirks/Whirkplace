@@ -260,8 +260,8 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
       audience: process.env.SLACK_CLIENT_ID, // Verify audience matches our client ID
       issuer: 'https://slack.com', // Verify issuer is Slack
       algorithms: ['RS256'], // Only allow RS256 algorithm
-      clockTolerance: Number(300), // Allow 5 minutes clock skew (explicitly convert to number)
-      maxAge: undefined // Don't set maxAge, let JWT library handle expiration
+      clockTolerance: 300 // Allow 5 minutes clock skew
+      // Note: Do NOT include maxAge property at all - JWT will validate exp claim automatically
     }) as any; // Use 'any' temporarily to debug the structure
     
     if (!payload || !payload.sub) {
