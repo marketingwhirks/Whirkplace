@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare, CalendarDays, MapPin } from "lucide-react";
+import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare, CalendarDays, MapPin, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -82,6 +84,27 @@ const scheduleMeetingSchema = z.object({
   location: z.string().optional(),
   isOnlineMeeting: z.boolean().default(false),
   syncWithOutlook: z.boolean().default(false),
+  // Recurring meeting fields
+  isRecurring: z.boolean().default(false),
+  recurrencePattern: z.enum(["weekly", "biweekly", "monthly", "quarterly"]).optional(),
+  recurrenceInterval: z.preprocess(
+    (val) => val ? parseInt(val as string, 10) : 1,
+    z.number().min(1).max(12).default(1)
+  ).optional(),
+  recurrenceEndDate: z.string().optional(),
+  recurrenceEndCount: z.preprocess(
+    (val) => val ? parseInt(val as string, 10) : undefined,
+    z.number().min(1).max(52).optional()
+  )
+}).refine((data) => {
+  // If recurring, must have pattern and either end date or count
+  if (data.isRecurring) {
+    return data.recurrencePattern && (data.recurrenceEndDate || data.recurrenceEndCount);
+  }
+  return true;
+}, {
+  message: "Recurring meetings must have a recurrence pattern and either an end date or occurrence count",
+  path: ["isRecurring"]
 });
 
 type ScheduleMeetingForm = z.infer<typeof scheduleMeetingSchema>;
@@ -114,6 +137,11 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
       location: "",
       isOnlineMeeting: false,
       syncWithOutlook: false,
+      isRecurring: false,
+      recurrencePattern: undefined,
+      recurrenceInterval: 1,
+      recurrenceEndDate: "",
+      recurrenceEndCount: undefined,
     },
   });
 
@@ -142,6 +170,12 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
         isOnlineMeeting: data.isOnlineMeeting,
         syncWithOutlook: data.syncWithOutlook,
         status: "scheduled",
+        // Recurring meeting fields
+        isRecurring: data.isRecurring,
+        recurrencePattern: data.isRecurring ? data.recurrencePattern : null,
+        recurrenceInterval: data.isRecurring ? data.recurrenceInterval : null,
+        recurrenceEndDate: data.isRecurring && data.recurrenceEndDate ? data.recurrenceEndDate : null,
+        recurrenceEndCount: data.isRecurring && data.recurrenceEndCount ? data.recurrenceEndCount : null
       };
 
       // Create the one-on-one meeting first
@@ -392,6 +426,147 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
                 )}
               />
             )}
+
+            {/* Recurring Meeting Options */}
+            <div className="space-y-4 border-t pt-4">
+              <div className="flex items-center space-x-2">
+                <Repeat className="w-4 h-4 text-primary" />
+                <FormLabel className="text-sm font-medium">Recurring Meeting</FormLabel>
+              </div>
+              
+              <FormField
+                control={form.control}
+                name="isRecurring"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm font-medium">
+                        Make this a recurring meeting
+                      </FormLabel>
+                      <FormDescription className="text-xs">
+                        Schedule multiple meetings at regular intervals
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        data-testid="switch-recurring"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              
+              {form.watch("isRecurring") && (
+                <div className="space-y-4 ml-4 border-l-2 border-primary/20 pl-4">
+                  {/* Recurrence Pattern */}
+                  <FormField
+                    control={form.control}
+                    name="recurrencePattern"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Frequency</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-recurrence-pattern">
+                              <SelectValue placeholder="Select frequency" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="biweekly">Bi-weekly (Every 2 weeks)</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="quarterly">Quarterly</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  {/* Recurrence Interval */}
+                  <FormField
+                    control={form.control}
+                    name="recurrenceInterval"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Repeat every</FormLabel>
+                        <Select onValueChange={(value) => field.onChange(parseInt(value))} defaultValue={String(field.value)}>
+                          <FormControl>
+                            <SelectTrigger data-testid="select-recurrence-interval">
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {[1, 2, 3, 4, 5, 6].map((num) => (
+                              <SelectItem key={num} value={String(num)}>
+                                {num} {form.watch("recurrencePattern")?.replace('ly', '').replace('weekly', 'week')}
+                                {num > 1 ? 's' : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  
+                  {/* End Options */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="recurrenceEndDate"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>End Date (Optional)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="date"
+                              {...field}
+                              min={new Date().toISOString().split('T')[0]}
+                              data-testid="input-recurrence-end-date"
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs">
+                            When to stop the recurring series
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="recurrenceEndCount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Number of Meetings (Optional)</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              min="1"
+                              max="52"
+                              placeholder="e.g., 10"
+                              {...field}
+                              data-testid="input-recurrence-end-count"
+                            />
+                          </FormControl>
+                          <FormDescription className="text-xs">
+                            Total meetings to schedule
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  
+                  <div className="text-xs text-muted-foreground bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg">
+                    <strong>Note:</strong> Either specify an end date or number of meetings. If both are provided, the series will end when the first condition is met.
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Submit Button */}
             <div className="flex justify-end space-x-3 pt-4">

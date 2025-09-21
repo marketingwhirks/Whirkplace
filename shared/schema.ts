@@ -622,6 +622,14 @@ export const oneOnOnes = pgTable("one_on_ones", {
   actionItems: jsonb("action_items").notNull().default([]), // Array of action items
   duration: integer("duration").default(30), // Duration in minutes
   location: text("location"), // Meeting location or "virtual"
+  // Recurring Meeting Support
+  isRecurring: boolean("is_recurring").notNull().default(false), // Whether this is part of a recurring series
+  recurrenceSeriesId: varchar("recurrence_series_id"), // Groups meetings in the same recurring series
+  recurrencePattern: text("recurrence_pattern"), // weekly, biweekly, monthly, quarterly
+  recurrenceInterval: integer("recurrence_interval").default(1), // Every N intervals (e.g., every 2 weeks)
+  recurrenceEndDate: timestamp("recurrence_end_date"), // When the recurring series ends
+  recurrenceEndCount: integer("recurrence_end_count"), // OR after N occurrences
+  isRecurrenceTemplate: boolean("is_recurrence_template").notNull().default(false), // Template for generating recurring instances
   // Outlook Calendar Integration
   outlookEventId: text("outlook_event_id"), // Microsoft Graph Event ID
   meetingUrl: text("meeting_url"), // Teams meeting URL or other online meeting link
@@ -633,6 +641,8 @@ export const oneOnOnes = pgTable("one_on_ones", {
   orgIdx: index("one_on_ones_org_idx").on(table.organizationId),
   participantsIdx: index("one_on_ones_participants_idx").on(table.participantOneId, table.participantTwoId),
   scheduledIdx: index("one_on_ones_scheduled_idx").on(table.scheduledAt),
+  recurrenceSeriesIdx: index("one_on_ones_recurrence_series_idx").on(table.recurrenceSeriesId),
+  recurrenceTemplateIdx: index("one_on_ones_recurrence_template_idx").on(table.isRecurrenceTemplate),
 }));
 
 // KRA Templates  

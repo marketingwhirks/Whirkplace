@@ -3017,6 +3017,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Helper function to generate recurring meeting instances
+  function generateRecurringMeetings(baseData: any, seriesId: string) {
+    const meetings = [];
+    const startDate = new Date(baseData.scheduledAt);
+    const endDate = baseData.recurrenceEndDate ? new Date(baseData.recurrenceEndDate) : null;
+    const maxOccurrences = baseData.recurrenceEndCount || 52; // Default max 1 year
+    
+    // Calculate interval in milliseconds
+    const intervals = {
+      weekly: 7 * 24 * 60 * 60 * 1000,
+      biweekly: 14 * 24 * 60 * 60 * 1000,
+      monthly: 30 * 24 * 60 * 60 * 1000, // Approximate month
+      quarterly: 90 * 24 * 60 * 60 * 1000 // Approximate quarter
+    };
+    
+    const intervalMs = intervals[baseData.recurrencePattern as keyof typeof intervals] * (baseData.recurrenceInterval || 1);
+    
+    // Create the first meeting (template)
+    meetings.push({
+      ...baseData,
+      isRecurring: true,
+      recurrenceSeriesId: seriesId,
+      isRecurrenceTemplate: true,
+      scheduledAt: startDate
+    });
+    
+    // Generate subsequent meetings
+    let currentDate = new Date(startDate);
+    let occurrenceCount = 1;
+    
+    while (occurrenceCount < maxOccurrences) {
+      currentDate = new Date(currentDate.getTime() + intervalMs);
+      
+      // Check if we've exceeded the end date
+      if (endDate && currentDate > endDate) {
+        break;
+      }
+      
+      // For monthly/quarterly, adjust for actual month lengths
+      if (baseData.recurrencePattern === 'monthly') {
+        currentDate = new Date(startDate);
+        currentDate.setMonth(startDate.getMonth() + occurrenceCount * (baseData.recurrenceInterval || 1));
+      } else if (baseData.recurrencePattern === 'quarterly') {
+        currentDate = new Date(startDate);
+        currentDate.setMonth(startDate.getMonth() + (occurrenceCount * 3) * (baseData.recurrenceInterval || 1));
+      }
+      
+      meetings.push({
+        ...baseData,
+        isRecurring: true,
+        recurrenceSeriesId: seriesId,
+        isRecurrenceTemplate: false,
+        scheduledAt: new Date(currentDate)
+      });
+      
+      occurrenceCount++;
+    }
+    
+    return meetings;
+  }
+
   // Helper function to check One-on-One meeting access permissions
   async function canAccessOneOnOne(orgId: string, userId: string, userRole: string, userTeamId: string | null, meeting: any): Promise<boolean> {
     // Admin users can access all meetings
@@ -3220,11 +3281,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/one-on-ones", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
-      // Validate request body using Zod schema
+      // Validate request body using Zod schema with recurring meeting support
       const validationSchema = insertOneOnOneSchema.omit({ organizationId: true }).extend({
         scheduledAt: z.coerce.date(),
         duration: z.number().min(15).max(240).default(30),
-        status: z.enum(["scheduled", "completed", "cancelled", "rescheduled"]).default("scheduled")
+        status: z.enum(["scheduled", "completed", "cancelled", "rescheduled"]).default("scheduled"),
+        // Recurring meeting fields
+        isRecurring: z.boolean().default(false),
+        recurrencePattern: z.enum(["weekly", "biweekly", "monthly", "quarterly"]).optional(),
+        recurrenceInterval: z.number().min(1).max(12).default(1).optional(),
+        recurrenceEndDate: z.coerce.date().optional(),
+        recurrenceEndCount: z.number().min(1).max(52).optional()
+      }).refine((data) => {
+        // If recurring, must have pattern and either end date or count
+        if (data.isRecurring) {
+          return data.recurrencePattern && (data.recurrenceEndDate || data.recurrenceEndCount);
+        }
+        return true;
+      }, {
+        message: "Recurring meetings must have a recurrence pattern and either an end date or occurrence count"
       });
       
       const validatedData = validationSchema.parse(req.body);
@@ -3252,11 +3327,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "You can only create meetings for yourself or your team members" });
       }
       
-      const oneOnOne = await storage.createOneOnOne(req.orgId, {
-        ...validatedData,
-        organizationId: req.orgId
-      });
-      res.status(201).json(oneOnOne);
+      if (validatedData.isRecurring) {
+        // Generate recurring meeting series
+        const seriesId = `series_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const meetings = generateRecurringMeetings(validatedData, seriesId);
+        
+        // Create all meetings in the series
+        const createdMeetings = [];
+        for (const meetingData of meetings) {
+          const meeting = await storage.createOneOnOne(req.orgId, {
+            ...meetingData,
+            organizationId: req.orgId
+          });
+          createdMeetings.push(meeting);
+        }
+        
+        res.status(201).json({
+          success: true,
+          seriesId,
+          message: `Created ${createdMeetings.length} recurring meetings`,
+          meetings: createdMeetings
+        });
+      } else {
+        // Create single meeting
+        const oneOnOne = await storage.createOneOnOne(req.orgId, {
+          ...validatedData,
+          organizationId: req.orgId
+        });
+        res.status(201).json(oneOnOne);
+      }
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid request data", errors: error.errors });
@@ -3345,6 +3444,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("DELETE /api/one-on-ones/:id - Error:", error);
       res.status(500).json({ message: "Failed to delete one-on-one" });
+    }
+  });
+
+  // Recurring meeting series management endpoints
+  app.get("/api/one-on-ones/series/:seriesId", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
+    try {
+      const seriesId = req.params.seriesId;
+      
+      // Get all meetings in the series
+      const allMeetings = await storage.getAllOneOnOnes(req.orgId);
+      const seriesMeetings = allMeetings.filter(meeting => meeting.recurrenceSeriesId === seriesId);
+      
+      if (seriesMeetings.length === 0) {
+        return res.status(404).json({ message: "Recurring series not found" });
+      }
+      
+      // Check access to the first meeting (if user can access one, they can access the series)
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId,
+        req.currentUser!.id,
+        req.currentUser!.role,
+        req.currentUser!.teamId,
+        seriesMeetings[0]
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      res.json({
+        seriesId,
+        totalMeetings: seriesMeetings.length,
+        meetings: seriesMeetings.sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+      });
+    } catch (error) {
+      console.error("GET /api/one-on-ones/series/:seriesId - Error:", error);
+      res.status(500).json({ message: "Failed to fetch recurring series" });
+    }
+  });
+
+  app.delete("/api/one-on-ones/series/:seriesId", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
+    try {
+      const seriesId = req.params.seriesId;
+      const { cancelFutureOnly = false } = req.query;
+      
+      // Get all meetings in the series
+      const allMeetings = await storage.getAllOneOnOnes(req.orgId);
+      const seriesMeetings = allMeetings.filter(meeting => meeting.recurrenceSeriesId === seriesId);
+      
+      if (seriesMeetings.length === 0) {
+        return res.status(404).json({ message: "Recurring series not found" });
+      }
+      
+      // Check access to the first meeting
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId,
+        req.currentUser!.id,
+        req.currentUser!.role,
+        req.currentUser!.teamId,
+        seriesMeetings[0]
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      let meetingsToCancel = seriesMeetings;
+      
+      if (cancelFutureOnly === 'true') {
+        // Only cancel future meetings (not completed or past ones)
+        const now = new Date();
+        meetingsToCancel = seriesMeetings.filter(meeting => 
+          new Date(meeting.scheduledAt) > now && meeting.status === 'scheduled'
+        );
+      }
+      
+      // Cancel the meetings
+      let canceledCount = 0;
+      for (const meeting of meetingsToCancel) {
+        const success = await storage.deleteOneOnOne(req.orgId, meeting.id);
+        if (success) canceledCount++;
+      }
+      
+      res.json({
+        message: `Canceled ${canceledCount} meetings from the recurring series`,
+        canceledCount,
+        totalInSeries: seriesMeetings.length
+      });
+    } catch (error) {
+      console.error("DELETE /api/one-on-ones/series/:seriesId - Error:", error);
+      res.status(500).json({ message: "Failed to cancel recurring series" });
     }
   });
 
