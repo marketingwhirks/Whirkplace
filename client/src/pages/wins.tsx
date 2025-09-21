@@ -172,6 +172,8 @@ export default function Wins() {
 
   // Handle create form submission
   const handleCreateSubmit = (data: WinForm) => {
+    console.log("Attempting to create win with data:", data);
+    console.log("Form errors:", createForm.formState.errors);
     createWinMutation.mutate(data);
   };
 
@@ -246,7 +248,14 @@ export default function Wins() {
                   </DialogDescription>
                 </DialogHeader>
                 <Form {...createForm}>
-                  <form onSubmit={createForm.handleSubmit(handleCreateSubmit)} className="space-y-4 pb-4">
+                  <form onSubmit={createForm.handleSubmit(handleCreateSubmit, (errors) => {
+                    console.log("Form validation failed:", errors);
+                    toast({
+                      title: "Validation Error",
+                      description: "Please fill in all required fields",
+                      variant: "destructive",
+                    });
+                  })} className="space-y-4 pb-4">
                     <FormField
                       control={createForm.control}
                       name="title"
