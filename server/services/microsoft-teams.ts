@@ -244,24 +244,6 @@ export class MicrosoftTeamsService {
   }
 
   /**
-   * Validate Teams webhook URL
-   */
-  async validateWebhookUrl(webhookUrl: string): Promise<boolean> {
-    try {
-      const testMessage: TeamsMessage = {
-        title: "Whirkplace Integration Test",
-        text: "This is a test message to verify Teams integration is working correctly.",
-        themeColor: "0076D7"
-      };
-
-      return await this.sendMessageToWebhook(webhookUrl, testMessage);
-    } catch (error) {
-      console.error('Failed to validate Teams webhook:', error);
-      return false;
-    }
-  }
-
-  /**
    * Check if Teams integration is configured for organization
    */
   static isConfigured(teamsWebhookUrl?: string): boolean {
