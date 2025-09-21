@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -54,6 +54,11 @@ export default function ShoutoutsPage() {
     queryKey: ["/api/users"],
   });
 
+  // Fetch current user for defaults
+  const { data: currentUser } = useQuery<User>({
+    queryKey: ["/api/users/current"],
+  });
+
   // Create shoutout form
   const createForm = useForm<ShoutoutForm>({
     resolver: zodResolver(shoutoutFormSchema),
@@ -62,8 +67,16 @@ export default function ShoutoutsPage() {
       toUserId: "",
       isPublic: true,
       values: [],
+      organizationId: "",
     },
   });
+
+  // Update form defaults when current user loads  
+  useEffect(() => {
+    if (currentUser) {
+      createForm.setValue('organizationId', currentUser.organizationId, { shouldDirty: false });
+    }
+  }, [currentUser, createForm]);
 
   // Edit shoutout form
   const editFormSchema = z.object({
@@ -88,7 +101,13 @@ export default function ShoutoutsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shoutouts"] });
-      createForm.reset();
+      createForm.reset({
+        message: "",
+        toUserId: "",
+        isPublic: true,
+        values: [],
+        organizationId: currentUser?.organizationId || "",
+      });
       setShowCreateDialog(false);
       toast({
         title: "Success",
