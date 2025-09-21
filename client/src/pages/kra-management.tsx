@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Target, Plus, Search, Filter, Settings, Users, CheckCircle, 
-  Circle, ChevronDown, Calendar, User, BarChart3, Edit2, X
+  Circle, ChevronDown, Calendar, User, BarChart3, Edit2, X, Brain, Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -141,6 +141,33 @@ function CreateTemplateDialog({ trigger }: { trigger: React.ReactNode }) {
     },
   });
 
+  const generateKrasMutation = useMutation({
+    mutationFn: async (data: { role: string; department: string; company?: string }) => {
+      return apiRequest("/api/ai/generate-kras", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    onSuccess: (response: any) => {
+      const suggestions = response.suggestions || [];
+      if (suggestions.length > 0) {
+        // Replace existing goals with AI suggestions
+        form.setValue("goals", suggestions);
+        toast({
+          title: "AI Suggestions Generated!",
+          description: `Generated ${suggestions.length} KRA suggestions. Review and customize as needed.`,
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "AI Error",
+        description: error.message || "Failed to generate KRA suggestions",
+        variant: "destructive",
+      });
+    },
+  });
+
   const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "goals",
@@ -237,16 +264,46 @@ function CreateTemplateDialog({ trigger }: { trigger: React.ReactNode }) {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <Label className="text-base font-medium">Key Result Areas</Label>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => append({ title: "", description: "", target: "", metric: "" })}
-                  data-testid="button-add-goal"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add KRA
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => {
+                      const templateName = form.getValues("name");
+                      const category = form.getValues("category");
+                      
+                      if (!templateName || !category) {
+                        toast({
+                          title: "Missing Information",
+                          description: "Please enter template name and category first for better AI suggestions.",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      
+                      generateKrasMutation.mutate({
+                        role: templateName,
+                        department: category,
+                      });
+                    }}
+                    disabled={generateKrasMutation.isPending}
+                    data-testid="button-ai-generate-kras"
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    {generateKrasMutation.isPending ? "Generating..." : "AI Generate KRAs"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => append({ title: "", description: "", target: "", metric: "" })}
+                    data-testid="button-add-goal"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add KRA
+                  </Button>
+                </div>
               </div>
 
               {fields.map((field, index) => (
@@ -343,6 +400,22 @@ function CreateTemplateDialog({ trigger }: { trigger: React.ReactNode }) {
                   </div>
                 </Card>
               ))}
+            </div>
+
+            {/* AI Assistant Tip */}
+            <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <Brain className="w-5 h-5 text-blue-600 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-1">
+                    AI-Powered KRA Generation
+                  </h4>
+                  <p className="text-sm text-blue-700 dark:text-blue-200">
+                    Use AI to generate comprehensive KRA suggestions based on your template name and category. 
+                    You can then customize and refine the generated KRAs to match your specific requirements.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <DialogFooter>

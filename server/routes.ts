@@ -4792,6 +4792,83 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI KRA Generation endpoint
+  app.post("/api/ai/generate-kras", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { role, department, company } = req.body;
+      
+      // Validate input
+      if (!role || !department) {
+        return res.status(400).json({ message: "Role and department are required" });
+      }
+
+      // Import OpenAI (the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user)
+      const { default: OpenAI } = await import('openai');
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      // Get organization info for context
+      const organization = await storage.getOrganization(req.orgId);
+      const organizationContext = organization ? `at ${organization.name}` : "";
+
+      const prompt = `Generate 3-5 comprehensive Key Result Areas (KRAs) for a ${role} role in the ${department} department ${organizationContext}.
+
+For each KRA, provide:
+- title: A clear, specific title for the KRA
+- description: A detailed description of what this KRA entails and why it's important
+- target: A specific, measurable target or goal (e.g., "$100K ARR", "95% customer satisfaction", "20% reduction in costs")
+- metric: How success will be measured (e.g., "Monthly Revenue", "Customer Survey Scores", "Operational Efficiency")
+
+Focus on outcomes that are:
+- Specific and measurable
+- Aligned with business objectives
+- Achievable but challenging
+- Relevant to the role and department
+- Time-bound where appropriate
+
+Return the response as a JSON object with this structure:
+{
+  "suggestions": [
+    {
+      "title": "KRA Title",
+      "description": "Detailed description of the KRA",
+      "target": "Specific measurable target",
+      "metric": "How success is measured"
+    }
+  ]
+}`;
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert in performance management and Key Result Areas (KRAs). You help create comprehensive, measurable KRAs that drive business outcomes."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const result = JSON.parse(response.choices[0].message.content);
+      
+      // Validate the response structure
+      if (!result.suggestions || !Array.isArray(result.suggestions)) {
+        throw new Error("Invalid AI response format");
+      }
+
+      res.json(result);
+    } catch (error) {
+      console.error("POST /api/ai/generate-kras - Error:", error);
+      res.status(500).json({ 
+        message: "Failed to generate KRA suggestions",
+        error: error.message 
+      });
+    }
+  });
+
   // Register additional route modules
   registerMicrosoftTeamsRoutes(app);
   registerMicrosoftAuthRoutes(app);
