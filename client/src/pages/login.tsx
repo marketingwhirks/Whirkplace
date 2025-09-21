@@ -15,20 +15,20 @@ export default function LoginPage() {
   
   const handleSlackLogin = () => {
     // Redirect to the Slack OAuth endpoint
-    window.location.href = "/auth/slack/login?org=default";
+    window.location.href = "/auth/slack/login?org=default-org";
   };
   
   const handleMicrosoftLogin = () => {
     // Redirect to the Microsoft OAuth endpoint with organization parameter
-    window.location.href = "/auth/microsoft?org=default";
+    window.location.href = "/auth/microsoft?org=default-org";
   };
   
   const handleBackdoorLogin = async () => {
     try {
       console.log("🔄 Starting FRESH backdoor login with:", { username: backdoorUser, key: backdoorKey.substring(0, 3) + "***" });
-      console.log("🌐 Making request to:", `${window.location.origin}/auth/dev-login-fresh?org=default`);
+      console.log("🌐 Making request to:", `${window.location.origin}/auth/dev-login-fresh?org=default-org`);
       
-      const response = await fetch('/auth/dev-login-fresh?org=default', {
+      const response = await fetch('/auth/dev-login-fresh?org=default-org', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
