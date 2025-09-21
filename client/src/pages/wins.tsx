@@ -64,7 +64,7 @@ export default function Wins() {
     defaultValues: {
       title: "",
       description: "",
-      isPublic: true,
+      isPublic: false,
       userId: "",
       nominatedBy: "",
       values: [],
@@ -94,7 +94,7 @@ export default function Wins() {
     defaultValues: {
       title: "",
       description: "",
-      isPublic: true,
+      isPublic: false,
       nominatedBy: "",
       values: [],
     },
@@ -113,7 +113,7 @@ export default function Wins() {
       createForm.reset({
         title: "",
         description: "",
-        isPublic: true,
+        isPublic: false,
         userId: "",
         nominatedBy: currentUser?.id || "",
         values: [],

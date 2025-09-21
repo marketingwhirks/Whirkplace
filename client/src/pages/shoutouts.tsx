@@ -69,7 +69,7 @@ export default function ShoutoutsPage() {
     defaultValues: {
       message: "",
       toUserIds: [],
-      isPublic: true,
+      isPublic: false,
       values: [],
       organizationId: "",
     },
@@ -93,7 +93,7 @@ export default function ShoutoutsPage() {
     resolver: zodResolver(editFormSchema),
     defaultValues: {
       message: "",
-      isPublic: true,
+      isPublic: false,
       values: [],
     },
   });
@@ -108,9 +108,9 @@ export default function ShoutoutsPage() {
       createForm.reset({
         message: "",
         toUserIds: [],
-        isPublic: true,
+        isPublic: false,
         values: [],
-        organizationId: currentUser?.organizationId || "",
+        organizationId: currentUser?.organizationId || ""
       });
       setShowCreateDialog(false);
       toast({

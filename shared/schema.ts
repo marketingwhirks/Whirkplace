@@ -211,7 +211,7 @@ export const wins = pgTable("wins", {
   userId: varchar("user_id").notNull(),
   organizationId: varchar("organization_id").notNull(),
   nominatedBy: varchar("nominated_by"),
-  isPublic: boolean("is_public").notNull().default(true),
+  isPublic: boolean("is_public").notNull().default(false),
   slackMessageId: text("slack_message_id"),
   values: text("values").array().notNull().default([]),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
@@ -233,7 +233,7 @@ export const shoutouts = pgTable("shoutouts", {
   message: text("message").notNull(),
   organizationId: varchar("organization_id").notNull(),
   values: text("values").array().notNull().default([]), // company values associated
-  isPublic: boolean("is_public").notNull().default(true),
+  isPublic: boolean("is_public").notNull().default(false),
   slackMessageId: text("slack_message_id"),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 }, (table) => ({
