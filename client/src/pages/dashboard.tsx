@@ -586,27 +586,37 @@ export default function Dashboard() {
                 <CardTitle>Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Button className="w-full justify-start" data-testid="button-create-question">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create New Question
-                </Button>
-                <Button 
-                  variant="secondary" 
-                  className="w-full justify-start"
-                  onClick={handleSendReminder}
-                  data-testid="button-send-reminder"
-                >
-                  <Bell className="w-4 h-4 mr-2" />
-                  Send Check-in Reminder
-                </Button>
+                {/* Create New Question - Only for managers and admins */}
+                {(currentUser.role === "manager" || currentUser.role === "admin") && (
+                  <Button className="w-full justify-start" data-testid="button-create-question">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create New Question
+                  </Button>
+                )}
+                {/* Send Check-in Reminder - Only for managers and admins */}
+                {(currentUser.role === "manager" || currentUser.role === "admin") && (
+                  <Button 
+                    variant="secondary" 
+                    className="w-full justify-start"
+                    onClick={handleSendReminder}
+                    data-testid="button-send-reminder"
+                  >
+                    <Bell className="w-4 h-4 mr-2" />
+                    Send Check-in Reminder
+                  </Button>
+                )}
+                {/* Celebrate a Win - Available to all users */}
                 <Button variant="secondary" className="w-full justify-start" data-testid="button-celebrate-win">
                   <Trophy className="w-4 h-4 mr-2" />
                   Celebrate a Win
                 </Button>
-                <Button variant="secondary" className="w-full justify-start" data-testid="button-manage-team">
-                  <UserCog className="w-4 h-4 mr-2" />
-                  Manage Team
-                </Button>
+                {/* Manage Team - Only for managers (own team) and admins (all teams) */}
+                {(currentUser.role === "manager" || currentUser.role === "admin") && (
+                  <Button variant="secondary" className="w-full justify-start" data-testid="button-manage-team">
+                    <UserCog className="w-4 h-4 mr-2" />
+                    Manage Team
+                  </Button>
+                )}
               </CardContent>
             </Card>
 
