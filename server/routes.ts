@@ -547,7 +547,151 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Apply organization middleware to all API routes
   app.use("/api", requireOrganization());
   
-  // Apply authentication middleware to all API routes (except public endpoints)
+  // PUBLIC BUSINESS SIGNUP ROUTES (no authentication required)
+  // Get available business plans
+  app.get("/api/business/plans", async (req, res) => {
+    try {
+      // Return static plan data for now - could be from database later
+      const plans = [
+        {
+          id: "starter",
+          name: "starter",
+          displayName: "Starter",
+          description: "Perfect for small teams getting started",
+          monthlyPrice: 0,
+          annualPrice: 0,
+          maxUsers: 10,
+          features: [
+            "Up to 10 team members",
+            "Basic check-ins and mood tracking",
+            "Win celebrations",
+            "Team shoutouts",
+            "Basic analytics",
+            "Email support"
+          ],
+          hasSlackIntegration: false,
+          hasMicrosoftIntegration: false,
+          hasAdvancedAnalytics: false,
+          hasApiAccess: false,
+        },
+        {
+          id: "professional",
+          name: "professional",
+          displayName: "Professional",
+          description: "Advanced features for growing teams",
+          monthlyPrice: 2900, // $29.00 in cents
+          annualPrice: 29000, // $290.00 in cents
+          maxUsers: 100,
+          features: [
+            "Up to 100 team members",
+            "Advanced team hierarchy",
+            "One-on-One meeting management",
+            "KRA (Key Result Area) tracking",
+            "360-degree feedback system",
+            "Advanced analytics and insights",
+            "Priority support"
+          ],
+          hasSlackIntegration: true,
+          hasMicrosoftIntegration: false,
+          hasAdvancedAnalytics: true,
+          hasApiAccess: false,
+        },
+        {
+          id: "enterprise",
+          name: "enterprise",
+          displayName: "Enterprise",
+          description: "Full-featured solution for large organizations",
+          monthlyPrice: 4900, // $49.00 in cents
+          annualPrice: 49000, // $490.00 in cents
+          maxUsers: -1, // Unlimited
+          features: [
+            "Unlimited team members",
+            "Microsoft Teams integration",
+            "Slack workspace integration",
+            "Microsoft Calendar sync",
+            "SSO with Microsoft 365",
+            "Advanced role management",
+            "Custom integrations & API access",
+            "Dedicated account manager",
+            "24/7 priority support"
+          ],
+          hasSlackIntegration: true,
+          hasMicrosoftIntegration: true,
+          hasAdvancedAnalytics: true,
+          hasApiAccess: true,
+        }
+      ];
+      
+      res.json(plans);
+    } catch (error: any) {
+      console.error("Error fetching business plans:", error);
+      res.status(500).json({ message: "Failed to fetch business plans" });
+    }
+  });
+
+  // Create business signup - Step 1: Business registration
+  app.post("/api/business/signup", async (req, res) => {
+    try {
+      const signupSchema = z.object({
+        organizationName: z.string().min(2).max(100),
+        organizationSize: z.string(),
+        firstName: z.string().min(2).max(50),
+        lastName: z.string().min(2).max(50),
+        email: z.string().email(),
+        password: z.string().min(8).max(128),
+        acceptTerms: z.boolean().refine(val => val === true),
+        subscribeNewsletter: z.boolean().optional(),
+      });
+
+      const data = signupSchema.parse(req.body);
+
+      // Create organization
+      const orgSlug = data.organizationName.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+
+      const organization = await storage.createOrganization({
+        name: data.organizationName,
+        slug: orgSlug,
+        plan: "starter", // Default plan
+        customValues: ["Innovation", "Teamwork", "Excellence"], // Default company values
+        enableSlackIntegration: false,
+        enableMicrosoftAuth: false,
+      });
+
+      // Create admin user
+      const adminUser = await storage.createUser(organization.id, {
+        username: data.email.split('@')[0],
+        password: data.password, // Should be hashed in real implementation
+        name: `${data.firstName} ${data.lastName}`,
+        email: data.email,
+        role: "admin",
+        isActive: true,
+        authProvider: "local",
+      });
+
+      // Create initial onboarding record
+      const onboardingId = randomBytes(16).toString('hex');
+      
+      res.status(201).json({
+        message: "Business account created successfully",
+        organizationId: organization.id,
+        userId: adminUser.id,
+        onboardingId,
+      });
+    } catch (error: any) {
+      console.error("Business signup error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Invalid signup data", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to create business account" });
+    }
+  });
+  
+  // Apply authentication middleware to all other API routes
   app.use("/api", authenticateUser());
   
   // Apply CSRF protection and generation after authentication middleware
