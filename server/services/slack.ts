@@ -239,8 +239,8 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
     // This completely eliminates the "maxAge must be a number" error
     console.log('🔒 Validating JWT with modern jose library...');
     
-    // Create remote JWKS for Slack's public keys - this is the modern approach
-    const JWKS = createRemoteJWKSet(new URL('https://slack.com/.well-known/jwks_public'));
+    // Create remote JWKS for Slack's OpenID Connect public keys - this is the correct endpoint
+    const JWKS = createRemoteJWKSet(new URL('https://slack.com/openid/connect/keys'));
     
     // Verify JWT with jose - secure, reliable, and modern
     const { payload } = await jwtVerify(idToken, JWKS, {
@@ -274,6 +274,7 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
 
   } catch (error) {
     console.error('❌ JWT validation failed with jose:', error);
+    console.error('❌ Detailed error for debugging:', error instanceof Error ? error.message : 'Unknown error');
     
     // Provide user-friendly error messages
     let userFriendlyError = 'Authentication failed';
