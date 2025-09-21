@@ -37,8 +37,6 @@ export const TeamType = {
   DEPARTMENT: "department",
   TEAM: "team", 
   POD: "pod",
-  DIVISION: "division",
-  PROJECT_TEAM: "project_team",
 } as const;
 
 export type TeamTypeValue = typeof TeamType[keyof typeof TeamType];
@@ -150,7 +148,7 @@ export const teams = pgTable("teams", {
   organizationId: varchar("organization_id").notNull(),
   leaderId: varchar("leader_id").notNull(),
   parentTeamId: varchar("parent_team_id"), // For hierarchical team structure (Teams/Pods under departments)
-  teamType: text("team_type").notNull().default("department"), // department, team, pod, division
+  teamType: text("team_type").notNull().default("department"), // department, team, pod
   depth: integer("depth").notNull().default(0), // 0 = top level, 1 = sub-team, 2 = sub-sub-team, etc.
   path: text("path"), // Materialized path for efficient hierarchy queries (e.g., "leadership/accounting/team1")
   isActive: boolean("is_active").notNull().default(true),
@@ -365,6 +363,8 @@ export const insertTeamSchema = createInsertSchema(teams).omit({
   createdAt: true,
   depth: true, // Auto-calculated based on parent
   path: true, // Auto-calculated based on parent
+}).extend({
+  teamType: z.enum([TeamType.DEPARTMENT, TeamType.TEAM, TeamType.POD]),
 });
 
 export const insertCheckinSchema = createInsertSchema(checkins).omit({

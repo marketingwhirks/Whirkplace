@@ -91,7 +91,7 @@ export default function Wins() {
     mutationFn: async (data: WinForm) => {
       return apiRequest("POST", "/api/wins", {
         ...data,
-        nominatedBy: data.nominatedBy || null,
+        nominatedBy: data.nominatedBy === "none" ? null : data.nominatedBy || null,
       });
     },
     onSuccess: () => {
@@ -318,7 +318,7 @@ export default function Wins() {
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="">None</SelectItem>
+                              <SelectItem value="none">None</SelectItem>
                               {users.map((user) => (
                                 <SelectItem key={user.id} value={user.id}>
                                   {user.name}
