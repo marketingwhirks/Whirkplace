@@ -85,10 +85,15 @@ export function generateOAuthURL(organizationSlug: string, session: any, req?: R
   const clientId = process.env.SLACK_CLIENT_ID;
   
   // Always use dynamic redirect URI for Replit environments to avoid stale environment variables
-  // For production, always use the correct domain
+  // For production domain, always use the correct domain
   let redirectUri: string;
   if (req) {
     redirectUri = resolveRedirectUri(req, '/auth/slack/callback');
+    // Override for production domain regardless of NODE_ENV
+    const host = req.get('X-Forwarded-Host') || req.get('host') || '';
+    if (host === 'whirkplace.com' || host === 'www.whirkplace.com') {
+      redirectUri = 'https://whirkplace.com/auth/slack/callback';
+    }
   } else {
     // For production, always use whirkplace.com
     if (process.env.NODE_ENV === 'production') {
@@ -212,9 +217,13 @@ export function validateOAuthState(state: string, session: any): string | null {
 export async function exchangeOIDCCode(code: string, redirectUri?: string): Promise<SlackOIDCTokenResponse> {
   const clientId = process.env.SLACK_CLIENT_ID;
   const clientSecret = process.env.SLACK_CLIENT_SECRET;
-  // For production, always use the correct domain
-  const finalRedirectUri = redirectUri || 
-    (process.env.NODE_ENV === 'production' ? 'https://whirkplace.com/auth/slack/callback' : process.env.SLACK_REDIRECT_URI);
+  // For production domain, always use the correct domain
+  let finalRedirectUri = redirectUri || process.env.SLACK_REDIRECT_URI;
+  
+  // Override for production domain regardless of NODE_ENV
+  if (finalRedirectUri && (finalRedirectUri.includes('whirkplace.com') || process.env.NODE_ENV === 'production')) {
+    finalRedirectUri = 'https://whirkplace.com/auth/slack/callback';
+  }
   
   if (!clientId || !clientSecret || !finalRedirectUri) {
     throw new Error("Slack OAuth not configured. Missing required environment variables");
