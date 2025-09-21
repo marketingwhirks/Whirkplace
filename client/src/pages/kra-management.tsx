@@ -55,11 +55,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { KraTemplate, UserKra, User as UserType } from "@shared/schema";
 
-// Template form validation schema
-const templateFormSchema = z.object({
+// Template form validation schema using shared schema
+import { insertKraTemplateSchema } from "@shared/schema";
+
+const templateFormSchema = insertKraTemplateSchema.omit({ 
+  organizationId: true, 
+  createdBy: true 
+}).extend({
   name: z.string().min(1, "Template name is required").max(200, "Template name must be under 200 characters"),
   description: z.string().max(1000, "Description must be under 1000 characters").optional(),
-  category: z.string().min(1, "Category is required"),
   goals: z.array(z.object({
     title: z.string().min(1, "Goal title is required"),
     description: z.string().optional(),
@@ -666,6 +670,15 @@ function KraTemplates() {
         </div>
         
         <div className="flex gap-2">
+          {/* Persistent Create Template Button */}
+          <CreateTemplateDialog 
+            trigger={
+              <Button data-testid="button-create-template-persistent">
+                <Plus className="w-4 h-4 mr-2" />
+                Create Template
+              </Button>
+            }
+          />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="justify-between min-w-32" data-testid="button-filter-category">
@@ -684,8 +697,8 @@ function KraTemplates() {
               <DropdownMenuItem onClick={() => setFilterCategory("sales")}>
                 Sales
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setFilterCategory("development")}>
-                Development
+              <DropdownMenuItem onClick={() => setFilterCategory("engineering")}>
+                Engineering
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
