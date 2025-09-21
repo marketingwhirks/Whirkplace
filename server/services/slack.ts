@@ -32,18 +32,8 @@ if (!process.env.SLACK_REDIRECT_URI) {
   console.warn("SLACK_REDIRECT_URI environment variable not set. Slack OAuth will be disabled.");
 }
 
-// OAuth State Store (in production, use Redis or database)
-const oauthStates = new Map<string, { organizationSlug: string; expiresAt: number }>();
-
-// Cleanup expired states every 10 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [state, data] of Array.from(oauthStates.entries())) {
-    if (now > data.expiresAt) {
-      oauthStates.delete(state);
-    }
-  }
-}, 10 * 60 * 1000);
+// OAuth state is now stored in user sessions for better reliability
+// No need for in-memory storage or cleanup intervals
 
 // Slack OpenID Connect Types
 interface SlackOIDCTokenResponse {
@@ -76,7 +66,7 @@ interface SlackOIDCUserInfo {
 /**
  * Generate OAuth authorization URL for Slack login
  */
-export function generateOAuthURL(organizationSlug: string): string {
+export function generateOAuthURL(organizationSlug: string, session: any): string {
   const clientId = process.env.SLACK_CLIENT_ID;
   const redirectUri = process.env.SLACK_REDIRECT_URI;
   
@@ -87,11 +77,10 @@ export function generateOAuthURL(organizationSlug: string): string {
   // Generate cryptographically secure state parameter
   const state = randomBytes(32).toString('hex');
   
-  // Store state with organization context (expires in 10 minutes)
-  oauthStates.set(state, {
-    organizationSlug,
-    expiresAt: Date.now() + 10 * 60 * 1000
-  });
+  // Store state in session for validation in callback
+  session.slackOAuthState = state;
+  session.slackOAuthOrganizationSlug = organizationSlug;
+  session.slackOAuthExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
   
   // OpenID Connect scopes for user authentication
   const scopes = [
@@ -114,22 +103,29 @@ export function generateOAuthURL(organizationSlug: string): string {
 /**
  * Validate OAuth state parameter and return organization slug
  */
-export function validateOAuthState(state: string): string | null {
-  const stateData = oauthStates.get(state);
-  
-  if (!stateData) {
-    return null; // Invalid or expired state
+export function validateOAuthState(state: string, session: any): string | null {
+  // Check if state matches session
+  if (!session.slackOAuthState || session.slackOAuthState !== state) {
+    return null; // Invalid state
   }
   
-  if (Date.now() > stateData.expiresAt) {
-    oauthStates.delete(state);
+  // Check if state has expired
+  if (!session.slackOAuthExpires || Date.now() > session.slackOAuthExpires) {
+    // Clean up expired session data
+    delete session.slackOAuthState;
+    delete session.slackOAuthOrganizationSlug;
+    delete session.slackOAuthExpires;
     return null; // Expired state
   }
   
-  // Clean up used state
-  oauthStates.delete(state);
+  const organizationSlug = session.slackOAuthOrganizationSlug;
   
-  return stateData.organizationSlug;
+  // Clean up used state from session
+  delete session.slackOAuthState;
+  delete session.slackOAuthOrganizationSlug;
+  delete session.slackOAuthExpires;
+  
+  return organizationSlug;
 }
 
 /**

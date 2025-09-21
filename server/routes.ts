@@ -252,37 +252,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Generate cryptographically secure state parameter
-      const state = randomBytes(32).toString('hex');
-      
-      // Store state in session (more reliable than in-memory storage)
-      req.session.slackOAuthState = state;
-      req.session.slackOrgSlug = org;
-      
-      // Save session before redirect
-      req.session.save((err) => {
-        if (err) {
-          console.error('Failed to save session before Slack OAuth redirect:', err);
-          return res.status(500).json({ message: "Session error during authentication" });
-        }
+      try {
+        // Generate OAuth URL using the unified service function (this sets session state)
+        const oauthUrl = generateOAuthURL(org, req.session);
         
-        // Build OAuth URL
-        const clientId = process.env.SLACK_CLIENT_ID;
-        const redirectUri = process.env.SLACK_REDIRECT_URI;
-        
-        if (!clientId || !redirectUri) {
-          throw new Error("Slack OAuth not configured. Missing SLACK_CLIENT_ID or SLACK_REDIRECT_URI");
-        }
-        
-        const oauthUrl = `https://slack.com/oauth/v2/authorize?` + 
-          `client_id=${encodeURIComponent(clientId)}&` +
-          `scope=channels:read,chat:write,users:read,users:read.email,team:read,groups:read&` +
-          `state=${encodeURIComponent(state)}&` +
-          `redirect_uri=${encodeURIComponent(redirectUri)}`;
-        
-        // Redirect to Slack OAuth
-        res.redirect(oauthUrl);
-      });
+        // Save session AFTER setting the state to ensure persistence
+        req.session.save((err) => {
+          if (err) {
+            console.error('Failed to save session after setting OAuth state:', err);
+            return res.status(500).json({ message: "Session error during authentication" });
+          }
+          
+          console.log('Slack OAuth session state saved, redirecting to:', oauthUrl.substring(0, 100) + '...');
+          
+          // Redirect to Slack OAuth
+          res.redirect(oauthUrl);
+        });
+      } catch (urlError) {
+        console.error("OAuth URL generation error:", urlError);
+        res.status(500).json({ 
+          message: "Failed to generate Slack OAuth URL. Please check configuration." 
+        });
+      }
     } catch (error) {
       console.error("Slack OAuth initiation error:", error);
       res.status(500).json({ 
@@ -311,15 +302,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Validate state parameter using session storage
-      if (!req.session.slackOAuthState || req.session.slackOAuthState !== state) {
-        return res.status(400).json({ 
-          message: "Invalid or expired OAuth state. Please try again." 
-        });
-      }
-      
-      // Get organization slug from session
-      const organizationSlug = req.session.slackOrgSlug;
+      // Validate state parameter using the unified service function
+      const organizationSlug = validateOAuthState(state, req.session);
       if (!organizationSlug) {
         return res.status(400).json({ 
           message: "Invalid or expired OAuth state. Please try again." 
