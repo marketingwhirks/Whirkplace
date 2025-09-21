@@ -15,6 +15,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Checkin } from "@shared/schema";
 
 
+// Helper function to determine if a navigation item is active
+function getIsActive(currentLocation: string, itemHref: string): boolean {
+  // Handle root path specially
+  if (itemHref === "/") {
+    return currentLocation === "/";
+  }
+  
+  // For other paths, check if current location starts with the item href
+  // This handles nested routes properly
+  return currentLocation === itemHref || currentLocation.startsWith(itemHref + "/");
+}
+
 // Base navigation items available to all users
 const baseNavigation = [
   { name: "Dashboard", href: "/", icon: BarChart3, roles: ["member", "manager", "admin"] },
@@ -114,7 +126,8 @@ function SidebarContent() {
           </div>
         ) : (
           (visibleNavigation || []).map((item) => {
-            const isActive = location === item.href;
+            // More robust active state detection
+            const isActive = getIsActive(location, item.href);
             const badgeCount = getBadgeCount(item);
             const showBadge = badgeCount !== undefined && badgeCount > 0;
             
