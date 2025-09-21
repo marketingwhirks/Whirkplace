@@ -112,7 +112,7 @@ function SidebarContent() {
       <div className="p-6 border-b border-border">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <Heart className="w-4 h-4 text-green-600 dark:text-green-400" fill="currentColor" />
+            <Heart className="w-4 h-4" fill="rgb(34 197 94)" stroke="white" strokeWidth="2" />
           </div>
           <h1 className="text-xl font-bold text-foreground">WhirkPlace</h1>
         </div>
