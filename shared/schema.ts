@@ -833,6 +833,116 @@ export const insertBugReportSchema = createInsertSchema(bugReports).omit({ id: t
 export type InsertBugReport = z.infer<typeof insertBugReportSchema>;
 export type BugReport = typeof bugReports.$inferSelect;
 
+// Super Admin Tables for System-wide Management
+
+// System Settings - Global configuration for signup screens, features, etc.
+export const systemSettings = pgTable("system_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  key: text("key").notNull().unique(), // e.g., "signup_enabled", "maintenance_mode", "welcome_message"
+  value: jsonb("value").notNull(), // Flexible JSON value for any setting type
+  description: text("description"), // Human-readable description of the setting
+  category: text("category").notNull().default("general"), // general, signup, pricing, features
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for efficient category-based queries
+  categoryIdx: index("system_settings_category_idx").on(table.category),
+}));
+
+// Pricing Plans - System-wide plan management with Stripe integration
+export const pricingPlans = pgTable("pricing_plans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // e.g., "Starter", "Professional", "Enterprise"
+  description: text("description"),
+  price: integer("price").notNull(), // Price in cents
+  currency: text("currency").notNull().default("usd"),
+  billingPeriod: text("billing_period").notNull(), // monthly, yearly, one_time
+  stripePriceId: text("stripe_price_id"), // Stripe price ID for integration
+  features: jsonb("features").notNull().default([]), // Array of feature descriptions
+  isActive: boolean("is_active").notNull().default(true),
+  isPopular: boolean("is_popular").notNull().default(false), // Highlight as recommended
+  sortOrder: integer("sort_order").notNull().default(0), // Display order
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for active plans ordering
+  activeSortIdx: index("pricing_plans_active_sort_idx").on(table.isActive, table.sortOrder),
+}));
+
+// Discount Codes - System-wide promotional codes  
+export const discountCodes = pgTable("discount_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: text("code").notNull().unique(), // e.g., "WELCOME50", "SPRING2024"
+  name: text("name").notNull(), // Human-readable name for admin reference
+  description: text("description"),
+  discountType: text("discount_type").notNull(), // percentage, fixed_amount
+  discountValue: integer("discount_value").notNull(), // Percentage (1-100) or amount in cents
+  minimumAmount: integer("minimum_amount"), // Minimum order amount in cents (optional)
+  maximumDiscount: integer("maximum_discount"), // Max discount in cents for percentage codes
+  usageLimit: integer("usage_limit"), // Total usage limit (null = unlimited)
+  usageCount: integer("usage_count").notNull().default(0), // Current usage count
+  validFrom: timestamp("valid_from").notNull(),
+  validTo: timestamp("valid_to"),
+  applicablePlans: jsonb("applicable_plans").default([]), // Array of plan IDs this applies to (empty = all)
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for efficient code lookups
+  codeIdx: index("discount_codes_code_idx").on(table.code),
+  // Index for validity period checks
+  validityIdx: index("discount_codes_validity_idx").on(table.validFrom, table.validTo),
+}));
+
+// Discount Code Usage Tracking
+export const discountCodeUsage = pgTable("discount_code_usage", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  discountCodeId: varchar("discount_code_id").notNull(),
+  organizationId: varchar("organization_id").notNull(), // Which organization used it
+  userId: varchar("user_id"), // Which user used it (optional for org-level usage)
+  orderAmount: integer("order_amount").notNull(), // Original order amount in cents
+  discountAmount: integer("discount_amount").notNull(), // Actual discount applied in cents
+  usedAt: timestamp("used_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for usage analytics
+  discountCodeIdx: index("discount_usage_code_idx").on(table.discountCodeId),
+  orgIdx: index("discount_usage_org_idx").on(table.organizationId),
+}));
+
+// Super Admin Zod schemas
+export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
+export type SystemSetting = typeof systemSettings.$inferSelect;
+
+export const insertPricingPlanSchema = createInsertSchema(pricingPlans).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPricingPlan = z.infer<typeof insertPricingPlanSchema>;
+export type PricingPlan = typeof pricingPlans.$inferSelect;
+
+export const insertDiscountCodeSchema = createInsertSchema(discountCodes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  usageCount: true,
+});
+export type InsertDiscountCode = z.infer<typeof insertDiscountCodeSchema>;
+export type DiscountCode = typeof discountCodes.$inferSelect;
+
+export const insertDiscountCodeUsageSchema = createInsertSchema(discountCodeUsage).omit({
+  id: true,
+  usedAt: true,
+});
+export type InsertDiscountCodeUsage = z.infer<typeof insertDiscountCodeUsageSchema>;
+export type DiscountCodeUsage = typeof discountCodeUsage.$inferSelect;
+
 // Calendar Event Types for Microsoft Calendar Integration
 export interface CalendarEvent {
   id: string;
