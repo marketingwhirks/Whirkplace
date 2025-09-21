@@ -12,11 +12,19 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  // Add localStorage auth headers to bypass cookie issues
+  const authUserId = localStorage.getItem('auth_user_id');
+  const headers: Record<string, string> = {
+    ...(data ? { "Content-Type": "application/json" } : {}),
+  };
+  
+  if (authUserId) {
+    headers['x-auth-user-id'] = authUserId;
+  }
+
   const res = await fetch(url, {
     method,
-    headers: {
-      ...(data ? { "Content-Type": "application/json" } : {}),
-    },
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -57,8 +65,17 @@ export const getQueryFn: <T>(options: {
       url = queryKey.join("/") as string;
     }
 
+    // Add localStorage auth headers to bypass cookie issues
+    const authUserId = localStorage.getItem('auth_user_id');
+    const headers: Record<string, string> = {};
+    
+    if (authUserId) {
+      headers['x-auth-user-id'] = authUserId;
+    }
+
     const res = await fetch(url, {
       credentials: "include",
+      headers,
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

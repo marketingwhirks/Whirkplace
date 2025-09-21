@@ -58,13 +58,17 @@ export default function LoginPage() {
         // Clear any role switching state from previous sessions
         sessionStorage.removeItem('viewAsRole');
         
-        console.log("🕐 Waiting for cookies to be set...");
+        console.log("🚀 Login successful! Storing user data...");
         
-        // CRITICAL FIX: Wait for cookies to be fully set before redirecting
-        setTimeout(() => {
-          console.log("🔄 Redirecting after cookie delay...");
-          window.location.reload(); // Use reload instead of href to ensure same domain
-        }, 500); // 500ms delay to ensure cookies are set
+        // BYPASS COOKIE ISSUES: Store authentication in localStorage for immediate access
+        localStorage.setItem('auth_user_id', data.user.id);
+        localStorage.setItem('auth_user_data', JSON.stringify(data.user));
+        
+        // Clear cached queries and redirect immediately
+        queryClient.clear();
+        
+        console.log("🔄 Redirecting to dashboard...");
+        window.location.href = "/";
       } else {
         console.error("❌ Login failed with status:", response.status);
         const error = await response.json();

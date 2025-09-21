@@ -194,7 +194,24 @@ export function authenticateUser() {
         }
       }
       
-      // Check for session-based authentication first
+      // NEW: Check for localStorage-based authentication first (for browser compatibility)
+      const authUserId = req.headers['x-auth-user-id'] as string;
+      console.log(`🔍 localStorage header check: x-auth-user-id = ${authUserId}`);
+      if (authUserId) {
+        console.log(`📱 Found localStorage auth userId: ${authUserId}`);
+        const user = await storage.getUser(req.orgId, authUserId);
+        if (user && user.isActive) {
+          console.log(`✅ localStorage auth successful for: ${user.name}`);
+          req.currentUser = user;
+          return next();
+        } else {
+          console.log(`❌ localStorage auth failed - user not found or inactive`);
+        }
+      } else {
+        console.log(`❌ No localStorage auth header found`);
+      }
+
+      // Check for session-based authentication as fallback
       if (req.session && req.session.userId) {
         console.log(`🎫 Found session userId: ${req.session.userId}`);
         const user = await storage.getUser(req.orgId, req.session.userId);

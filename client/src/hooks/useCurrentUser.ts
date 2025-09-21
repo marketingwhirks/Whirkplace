@@ -9,13 +9,21 @@ export function useCurrentUser() {
   return useQuery<User>({
     queryKey: ["/api/users/current", { org: "default" }],
     queryFn: async () => {
+      // Add localStorage auth headers to bypass cookie issues
+      const authUserId = localStorage.getItem('auth_user_id');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (authUserId) {
+        headers['x-auth-user-id'] = authUserId;
+      }
+
       // Make actual API call to check current user authentication
       const response = await fetch('/api/users/current?org=default', {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers
       });
       
       if (!response.ok) {
