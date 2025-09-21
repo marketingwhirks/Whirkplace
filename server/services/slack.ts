@@ -256,39 +256,25 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
     });
 
     // SECURITY: Verify JWT signature, audience, issuer, and expiration
-    console.log('🔍 JWT verification options:', {
-      audience: process.env.SLACK_CLIENT_ID,
-      issuer: 'https://slack.com',
-      algorithms: ['RS256'],
-      clockTolerance: 300
-    });
-    
-    const payload = jwt.verify(idToken, key, {
+    // IMPORTANT: Do NOT include maxAge in options - it causes errors and JWT validates exp automatically
+    const verifyOptions: jwt.VerifyOptions = {
       audience: process.env.SLACK_CLIENT_ID, // Verify audience matches our client ID
       issuer: 'https://slack.com', // Verify issuer is Slack
       algorithms: ['RS256'], // Only allow RS256 algorithm
       clockTolerance: 300 // Allow 5 minutes clock skew
-      // Note: Do NOT include maxAge property at all - JWT will validate exp claim automatically
-    }) as any; // Use 'any' temporarily to debug the structure
+    };
+    
+    // Ensure no maxAge property exists in options (this was causing the error)
+    if ('maxAge' in verifyOptions) {
+      delete (verifyOptions as any).maxAge;
+    }
+    
+    const payload = jwt.verify(idToken, key, verifyOptions) as any;
     
     if (!payload || !payload.sub) {
       throw new Error('Invalid token payload - missing subject');
     }
 
-    // Log payload structure in development for debugging
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔍 OIDC Token Payload Structure:', {
-        hasAud: !!payload.aud,
-        hasIss: !!payload.iss,
-        hasExp: !!payload.exp,
-        hasIat: !!payload.iat,
-        hasSub: !!payload.sub,
-        actualIssuer: payload.iss,
-        actualAudience: payload.aud,
-        expectedAudience: process.env.SLACK_CLIENT_ID,
-        allKeys: Object.keys(payload)
-      });
-    }
     
     // SECURITY: Additional validation checks
     const now = Math.floor(Date.now() / 1000);
@@ -331,57 +317,16 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
       throw new Error('Token has expired');
     }
 
-    console.log(`✅ OIDC token validation successful for user ${payload.sub}`);
     
     return {
       ok: true,
       user: payload
     };
   } catch (error) {
-    console.error('🚨 SECURITY: OIDC token validation failed:', error);
+    console.error('OIDC token validation failed:', error);
     
-    // SECURITY: Enhanced error logging for debugging
+    // Get error details for proper error messaging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorStack = error instanceof Error ? error.stack : 'No stack trace';
-    const decodedToken = jwt.decode(idToken, { complete: true });
-    
-    // Check if this is an express-session error and provide workaround
-    if (errorMessage.includes('maxAge must be a number')) {
-      console.error('🔴 EXPRESS-SESSION ERROR DETECTED IN JWT VALIDATION!');
-      console.error('This error should not happen here. Working around the issue...');
-      
-      // This is likely a production-specific issue with express-session
-      // Try to decode the token without verification as a fallback
-      try {
-        const unverifiedPayload = jwt.decode(idToken) as any;
-        if (unverifiedPayload && unverifiedPayload.sub && unverifiedPayload.aud === process.env.SLACK_CLIENT_ID && unverifiedPayload.iss === 'https://slack.com') {
-          console.warn('⚠️ Using unverified token due to express-session conflict. This is a temporary workaround.');
-          return {
-            ok: true,
-            user: unverifiedPayload
-          };
-        }
-      } catch (decodeError) {
-        console.error('Failed to decode token as workaround:', decodeError);
-      }
-    }
-    
-    console.error('🔍 Token validation error details:', {
-      errorMessage,
-      errorType: error instanceof Error ? error.name : 'Unknown',
-      tokenLength: idToken?.length,
-      hasToken: !!idToken,
-      decodedSuccessfully: !!decodedToken,
-      header: decodedToken?.header,
-      payloadSub: decodedToken?.payload?.sub,
-      payloadAud: (typeof decodedToken?.payload === 'object' && decodedToken?.payload && 'aud' in decodedToken.payload) ? decodedToken.payload.aud : undefined,
-      payloadIss: (typeof decodedToken?.payload === 'object' && decodedToken?.payload && 'iss' in decodedToken.payload) ? decodedToken.payload.iss : undefined,
-      expectedAudience: process.env.SLACK_CLIENT_ID,
-      clientIdConfigured: !!process.env.SLACK_CLIENT_ID,
-      clientSecretConfigured: !!process.env.SLACK_CLIENT_SECRET,
-      nodeEnv: process.env.NODE_ENV,
-      errorStack: error instanceof Error ? error.stack?.split('\n').slice(0, 5) : undefined
-    });
     
     // Provide more specific error messages
     let userFriendlyError = 'Token validation failed';
