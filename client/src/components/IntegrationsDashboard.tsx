@@ -30,20 +30,21 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
-// Types for organization integration data
+// Types for organization integration data - NEVER include secrets
 interface OrganizationIntegrations {
   id: string;
   name: string;
   // Slack fields
   slackWorkspaceId?: string;
   slackChannelId?: string;
-  slackBotToken?: string;
+  hasSlackBotToken?: boolean; // Boolean indicator only, never actual token
   enableSlackIntegration: boolean;
   slackConnectionStatus: string;
   slackLastConnected?: string;
   // Microsoft fields  
   microsoftTenantId?: string;
   microsoftClientId?: string;
+  hasMicrosoftClientSecret?: boolean; // Boolean indicator only, never actual secret
   enableMicrosoftAuth: boolean;
   enableTeamsIntegration: boolean;
   microsoftConnectionStatus: string;
@@ -92,34 +93,61 @@ export function IntegrationsDashboard() {
     enabled: !!currentUser?.organizationId && currentUser?.role === "admin",
   });
 
-  // Test Slack connection
-  const testSlackConnection = useMutation({
-    mutationFn: async (token: string) => {
-      const response = await apiRequest("POST", "/api/integrations/slack/test", { botToken: token });
-      return await response.json() as SlackTestResult;
+  // Slack OAuth installation flow
+  const getSlackInstallUrl = useMutation({
+    mutationFn: async () => {
+      if (!currentUser?.organizationId) throw new Error("No organization found");
+      const response = await apiRequest("GET", `/api/organizations/${currentUser.organizationId}/integrations/slack/install`);
+      return await response.json() as {
+        installUrl: string;
+        scopes: string[];
+        redirectUri: string;
+        state: string;
+      };
     },
     onSuccess: (data) => {
-      if (data.success) {
-        toast({
-          title: "Slack connection successful",
-          description: `Connected to workspace: ${data.workspaceName}`,
-        });
-      } else {
-        toast({
-          title: "Slack connection failed",
-          description: data.message,
-          variant: "destructive",
-        });
-      }
-    },
-    onError: () => {
+      // Open Slack OAuth in new window
+      window.open(data.installUrl, "_blank", "width=600,height=600");
       toast({
-        title: "Connection test failed",
-        description: "Unable to test Slack connection. Please check your token.",
+        title: "Slack Installation Started",
+        description: "Please complete the installation in the new window.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Installation Error", 
+        description: error.message || "Failed to generate Slack install URL",
         variant: "destructive",
       });
     },
   });
+
+  // Handle OAuth completion via postMessage from popup
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      
+      if (event.data.type === 'SLACK_OAUTH_SUCCESS') {
+        toast({
+          title: "Slack Integration Complete!",
+          description: `Successfully connected to workspace: ${event.data.workspaceName}`,
+        });
+        // Refresh integration data
+        queryClient.invalidateQueries({ 
+          queryKey: ["/api/organizations", currentUser?.organizationId, "integrations"] 
+        });
+      } else if (event.data.type === 'SLACK_OAUTH_ERROR') {
+        toast({
+          title: "Slack Integration Failed",
+          description: event.data.message || "Failed to connect Slack workspace",
+          variant: "destructive",
+        });
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [currentUser?.organizationId, queryClient, toast]);
 
   // Test Microsoft connection
   const testMicrosoftConnection = useMutation({
@@ -150,9 +178,9 @@ export function IntegrationsDashboard() {
     },
   });
 
-  // Save Slack integration
+  // Save Slack integration (channel settings only - token saved via OAuth)
   const saveSlackIntegration = useMutation({
-    mutationFn: async (data: { botToken: string; channelId: string; enable: boolean }) => {
+    mutationFn: async (data: { channelId: string; enable: boolean }) => {
       const response = await apiRequest("PUT", `/api/organizations/${currentUser?.organizationId}/integrations/slack`, data);
       return await response.json();
     },
@@ -213,8 +241,8 @@ export function IntegrationsDashboard() {
   };
 
   const redirectUris = [
-    "https://app.whirkplace.com/auth/slack/callback",
-    "https://whirkplace.com/auth/slack/callback"
+    "https://app.whirkplace.com/api/auth/slack/callback",
+    "https://whirkplace.com/api/auth/slack/callback"
   ];
 
   const microsoftRedirectUris = [
@@ -434,68 +462,83 @@ export function IntegrationsDashboard() {
                 </DialogContent>
               </Dialog>
 
-              {/* Configuration Form */}
+              {/* OAuth-based Configuration */}
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="slack-bot-token">Bot User OAuth Token</Label>
-                  <div className="relative">
-                    <Input
-                      id="slack-bot-token"
-                      type={showSlackToken ? "text" : "password"}
-                      placeholder="xoxb-your-bot-token-here"
-                      value={slackBotToken}
-                      onChange={(e) => setSlackBotToken(e.target.value)}
-                      data-testid="input-slack-bot-token"
-                    />
+                {!orgIntegrations?.hasSlackBotToken ? (
+                  // Show "Add to Slack" button if not connected
+                  <div className="text-center py-8 space-y-4">
+                    <div className="space-y-2">
+                      <h4 className="font-medium">Connect Your Slack Workspace</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Click the button below to securely connect your Slack workspace with OAuth 2.0.
+                      </p>
+                    </div>
                     <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3"
-                      onClick={() => setShowSlackToken(!showSlackToken)}
+                      onClick={() => getSlackInstallUrl.mutate()}
+                      disabled={getSlackInstallUrl.isPending}
+                      className="bg-[#4A154B] hover:bg-[#4A154B]/90 text-white"
+                      data-testid="button-add-to-slack"
                     >
-                      {showSlackToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      <Slack className="w-4 h-4 mr-2" />
+                      {getSlackInstallUrl.isPending ? "Generating Install URL..." : "Add to Slack"}
                     </Button>
+                    <p className="text-xs text-muted-foreground">
+                      You'll be redirected to Slack to authorize the integration.
+                    </p>
                   </div>
-                </div>
+                ) : (
+                  // Show channel configuration if already connected
+                  <div className="space-y-4">
+                    <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                      <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
+                        <CheckCircle className="h-4 w-4" />
+                        <span className="font-medium">Slack Workspace Connected</span>
+                      </div>
+                      {orgIntegrations?.slackWorkspaceId && (
+                        <p className="text-sm text-green-600 dark:text-green-300 mt-1">
+                          Workspace ID: {orgIntegrations.slackWorkspaceId}
+                        </p>
+                      )}
+                    </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="slack-channel-id">Default Channel ID (optional)</Label>
-                  <Input
-                    id="slack-channel-id"
-                    placeholder="#whirkplace-pulse or C1234567890"
-                    value={slackChannelId}
-                    onChange={(e) => setSlackChannelId(e.target.value)}
-                    data-testid="input-slack-channel-id"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Leave empty to use the app's default channel. Channel ID can be found in Slack channel settings.
-                  </p>
-                </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="slack-channel-id">Default Channel ID (optional)</Label>
+                      <Input
+                        id="slack-channel-id"
+                        placeholder="#whirkplace-pulse or C1234567890"
+                        value={slackChannelId}
+                        onChange={(e) => setSlackChannelId(e.target.value)}
+                        data-testid="input-slack-channel-id"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Leave empty to use the app's default channel. Channel ID can be found in Slack channel settings.
+                      </p>
+                    </div>
 
-                <div className="flex gap-3">
-                  <Button
-                    onClick={() => testSlackConnection.mutate(slackBotToken)}
-                    disabled={!slackBotToken || testSlackConnection.isPending}
-                    variant="outline"
-                    data-testid="button-test-slack"
-                  >
-                    <RefreshCw className={`w-4 h-4 mr-2 ${testSlackConnection.isPending ? 'animate-spin' : ''}`} />
-                    Test Connection
-                  </Button>
-                  <Button
-                    onClick={() => saveSlackIntegration.mutate({ 
-                      botToken: slackBotToken, 
-                      channelId: slackChannelId, 
-                      enable: true 
-                    })}
-                    disabled={!slackBotToken || saveSlackIntegration.isPending}
-                    data-testid="button-save-slack"
-                  >
-                    <Settings className="w-4 h-4 mr-2" />
-                    {saveSlackIntegration.isPending ? "Saving..." : "Save Configuration"}
-                  </Button>
-                </div>
+                    <div className="flex gap-3">
+                      <Button
+                        onClick={() => saveSlackIntegration.mutate({ 
+                          channelId: slackChannelId, 
+                          enable: true 
+                        })}
+                        disabled={saveSlackIntegration.isPending}
+                        data-testid="button-save-slack-channel"
+                      >
+                        <Settings className="w-4 h-4 mr-2" />
+                        {saveSlackIntegration.isPending ? "Saving..." : "Update Channel Settings"}
+                      </Button>
+                      <Button
+                        onClick={() => getSlackInstallUrl.mutate()}
+                        disabled={getSlackInstallUrl.isPending}
+                        variant="outline"
+                        data-testid="button-reconnect-slack"
+                      >
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Reconnect Workspace
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

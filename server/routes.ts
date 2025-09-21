@@ -4355,18 +4355,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
       
-      // Return integration-specific fields only
+      // Return integration-specific fields only - NEVER return secrets
       const integrationData = {
         id: organization.id,
         name: organization.name,
         slackWorkspaceId: organization.slackWorkspaceId,
         slackChannelId: organization.slackChannelId,
-        slackBotToken: organization.slackBotToken ? "***HIDDEN***" : undefined, // Hide actual token
+        hasSlackBotToken: !!organization.slackBotToken, // Only boolean indicator
         enableSlackIntegration: organization.enableSlackIntegration,
         slackConnectionStatus: organization.slackConnectionStatus,
         slackLastConnected: organization.slackLastConnected,
         microsoftTenantId: organization.microsoftTenantId,
         microsoftClientId: organization.microsoftClientId,
+        hasMicrosoftClientSecret: !!organization.microsoftClientSecret, // Only boolean indicator
         enableMicrosoftAuth: organization.enableMicrosoftAuth,
         enableTeamsIntegration: organization.enableTeamsIntegration,
         microsoftConnectionStatus: organization.microsoftConnectionStatus,
@@ -4492,7 +4493,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Save Slack integration
+  // Save Slack integration (channel settings only - token saved via OAuth)
   app.put("/api/organizations/:id/integrations/slack", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
       // Verify the organization ID matches the authenticated user's organization
@@ -4500,34 +4501,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "You can only update your own organization's integrations" });
       }
       
-      const { botToken, channelId, enable } = req.body;
+      const { channelId, enable } = req.body;
       
-      if (!botToken) {
-        return res.status(400).json({ message: "Bot token is required" });
+      // Get current organization to check if Slack is already configured
+      const organization = await storage.getOrganization(req.params.id);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
       }
       
-      // Test the token first
-      const testResponse = await fetch("https://slack.com/api/auth.test", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${botToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-      
-      const testData = await testResponse.json();
-      
-      if (!testData.ok) {
-        return res.status(400).json({ message: `Invalid Slack token: ${testData.error}` });
+      // Check if Slack token exists (should have been set via OAuth)
+      if (!organization.slackBotToken) {
+        return res.status(400).json({ 
+          message: "Slack workspace not connected. Please use 'Add to Slack' button first." 
+        });
       }
       
-      // Update organization with Slack integration data
+      // Update only channel settings and enable/disable status
       const updateData = {
-        slackBotToken: botToken,
         slackChannelId: channelId || null,
-        slackWorkspaceId: testData.team_id,
-        enableSlackIntegration: enable,
-        slackConnectionStatus: "connected",
+        enableSlackIntegration: enable !== false, // Default to true if not specified
         slackLastConnected: new Date(),
       };
       
@@ -4537,12 +4529,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       res.json({ 
-        message: "Slack integration saved successfully", 
-        workspaceName: testData.team 
+        message: "Slack integration settings updated successfully"
       });
     } catch (error) {
       console.error("PUT /api/organizations/:id/integrations/slack - Error:", error);
-      res.status(500).json({ message: "Failed to save Slack integration" });
+      res.status(500).json({ message: "Failed to update Slack integration settings" });
     }
   });
 
@@ -4610,6 +4601,206 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("PUT /api/organizations/:id/integrations/microsoft - Error:", error);
       res.status(500).json({ message: "Failed to save Microsoft integration" });
+    }
+  });
+
+  // Slack OAuth Installation Flow
+  
+  // Generate Slack OAuth install URL for organization
+  app.get("/api/organizations/:id/integrations/slack/install", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only install integrations for your own organization" });
+      }
+      
+      if (!process.env.SLACK_CLIENT_ID) {
+        return res.status(500).json({ message: "Slack integration is not configured on this server" });
+      }
+      
+      // Generate secure state parameter to prevent CSRF
+      const state = randomBytes(32).toString('hex');
+      
+      // Store state in session for verification in callback
+      req.session.slackOAuthState = state;
+      req.session.slackOrgId = req.params.id;
+      
+      // Dynamic redirect URI based on environment
+      const baseUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
+      const redirectUri = `${baseUrl}/api/auth/slack/callback`;
+      
+      // Slack OAuth v2 scopes for bot functionality
+      const scopes = [
+        'channels:read',
+        'chat:write',
+        'users:read',
+        'users:read.email',
+        'team:read',
+        'app_mentions:read',
+        'commands'
+      ].join(',');
+      
+      const oauthUrl = `https://slack.com/oauth/v2/authorize?` +
+        `client_id=${process.env.SLACK_CLIENT_ID}&` +
+        `scope=${encodeURIComponent(scopes)}&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `state=${state}&` +
+        `user_scope=`;
+      
+      res.json({
+        installUrl: oauthUrl,
+        scopes: scopes.split(','),
+        redirectUri: redirectUri,
+        state: state
+      });
+    } catch (error) {
+      console.error("GET /api/organizations/:id/integrations/slack/install - Error:", error);
+      res.status(500).json({ message: "Failed to generate Slack install URL" });
+    }
+  });
+
+  // Slack OAuth callback handler
+  app.get("/api/auth/slack/callback", async (req, res) => {
+    try {
+      const { code, state, error } = req.query;
+      
+      if (error) {
+        console.error("Slack OAuth error:", error);
+        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_denied`);
+      }
+      
+      if (!code || !state) {
+        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_missing_params`);
+      }
+      
+      // Verify state to prevent CSRF attacks
+      if (!req.session.slackOAuthState || req.session.slackOAuthState !== state) {
+        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_invalid_state`);
+      }
+      
+      const orgId = req.session.slackOrgId;
+      if (!orgId) {
+        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_missing_org`);
+      }
+      
+      if (!process.env.SLACK_CLIENT_ID || !process.env.SLACK_CLIENT_SECRET) {
+        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_not_configured`);
+      }
+      
+      // Exchange authorization code for access token
+      const baseUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
+      const redirectUri = `${baseUrl}/api/auth/slack/callback`;
+      
+      const tokenResponse = await fetch("https://slack.com/api/oauth.v2.access", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          client_id: process.env.SLACK_CLIENT_ID,
+          client_secret: process.env.SLACK_CLIENT_SECRET,
+          code: code as string,
+          redirect_uri: redirectUri,
+        }),
+      });
+      
+      const tokenData = await tokenResponse.json();
+      
+      if (!tokenData.ok) {
+        console.error("Slack token exchange error:", tokenData.error);
+        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_token_failed`);
+      }
+      
+      // Update organization with Slack integration data
+      const updateData = {
+        slackBotToken: tokenData.access_token,
+        slackWorkspaceId: tokenData.team.id,
+        slackChannelId: null, // Will be set separately by admin
+        enableSlackIntegration: true,
+        slackConnectionStatus: "connected",
+        slackLastConnected: new Date(),
+      };
+      
+      const updatedOrg = await storage.updateOrganization(orgId, updateData);
+      if (!updatedOrg) {
+        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_org_update_failed`);
+      }
+      
+      // Clear OAuth state
+      req.session.slackOAuthState = undefined;
+      req.session.slackOrgId = undefined;
+      
+      console.log(`Slack integration installed for organization ${updatedOrg.name} (${tokenData.team.name})`);
+      
+      // Return HTML page that notifies parent window and closes popup
+      const successHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Slack Integration Complete</title>
+            <style>
+              body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+              .success { color: #22c55e; }
+              .loading { margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <h2 class="success">✅ Slack Integration Complete!</h2>
+            <p>Successfully connected workspace: <strong>${tokenData.team.name}</strong></p>
+            <p class="loading">Closing window...</p>
+            <script>
+              // Notify parent window of success
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'SLACK_OAUTH_SUCCESS',
+                  workspaceName: '${tokenData.team.name}'
+                }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+              }
+              // Close popup after a short delay
+              setTimeout(() => window.close(), 2000);
+            </script>
+          </body>
+        </html>
+      `;
+      
+      res.setHeader('Content-Type', 'text/html');
+      res.send(successHtml);
+    } catch (error) {
+      console.error("Slack OAuth callback error:", error);
+      
+      // Return HTML page that notifies parent window of error and closes popup
+      const errorHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Slack Integration Failed</title>
+            <style>
+              body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+              .error { color: #ef4444; }
+              .loading { margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <h2 class="error">❌ Slack Integration Failed</h2>
+            <p>There was an error connecting your Slack workspace.</p>
+            <p class="loading">Closing window...</p>
+            <script>
+              // Notify parent window of error
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'SLACK_OAUTH_ERROR',
+                  message: 'Failed to complete Slack integration'
+                }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+              }
+              // Close popup after a short delay
+              setTimeout(() => window.close(), 3000);
+            </script>
+          </body>
+        </html>
+      `;
+      
+      res.setHeader('Content-Type', 'text/html');
+      res.send(errorHtml);
     }
   });
 
