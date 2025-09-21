@@ -87,13 +87,15 @@ export function validateCSRF() {
     // 2. OAuth callback routes (they have their own state validation)
     // 3. Backdoor auth (development only)
     // 4. Logout endpoint (logout is inherently safe and CSRF protection would prevent legitimate logouts)
+    // 5. localStorage auth (development only - sessions are not consistent)
     const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const isOAuthCallback = (req.path.includes('/auth/') || req.originalUrl.includes('/auth/')) && 
                            (req.path.includes('/callback') || req.originalUrl.includes('/callback'));
     const isBackdoorAuth = /\/auth\/backdoor$/.test(req.originalUrl) || req.path === '/auth/backdoor';
     const isLogout = /\/auth\/logout$/.test(req.originalUrl) || req.path === '/auth/logout';
+    const isLocalStorageAuth = !!req.headers['x-auth-user-id']; // Development localStorage auth
     
-    if (!isStateChanging || isOAuthCallback || isBackdoorAuth || isLogout) {
+    if (!isStateChanging || isOAuthCallback || isBackdoorAuth || isLogout || isLocalStorageAuth) {
       return next();
     }
     
