@@ -6,7 +6,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { RoleSwitchProvider } from "@/hooks/useViewAsRole";
 import { Skeleton } from "@/components/ui/skeleton";
-import { HelpButton } from "@/components/support/HelpButton";
 import { DynamicThemeProvider } from "@/components/theme/DynamicThemeProvider";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
@@ -83,7 +82,6 @@ function AuthenticatedApp() {
   return (
     <DynamicThemeProvider>
       <Router />
-      <HelpButton />
     </DynamicThemeProvider>
   );
 }

@@ -28,7 +28,7 @@ import type { Checkin, Question, User, InsertCheckin } from "@shared/schema";
 // Only includes fields the user should provide - server computes the rest
 const checkinFormSchema = z.object({
   overallMood: z.number().min(1, "Please provide a mood rating").max(5, "Rating must be between 1 and 5"),
-  responses: z.record(z.string().min(1, "Please provide a response")),
+  responses: z.record(z.string()).optional().default({}), // Make responses optional since questions might not exist
   winningNextWeek: z.string().min(1, "Please describe what winning looks like for next week"),
 });
 
@@ -147,6 +147,7 @@ export default function Checkins() {
       form.reset({
         overallMood: currentWeekCheckin.overallMood,
         responses: currentWeekCheckin.responses as Record<string, string>,
+        winningNextWeek: currentWeekCheckin.winningNextWeek || "",
       });
       setShowCreateDialog(true);
     }
@@ -308,16 +309,6 @@ export default function Checkins() {
                   </div>
                 </CardContent>
               </Card>
-            ) : questions.length === 0 ? (
-              <Card>
-                <CardContent className="p-12 text-center">
-                  <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                  <h3 className="text-lg font-semibold mb-2">No questions available</h3>
-                  <p className="text-muted-foreground">
-                    Your team leader hasn't set up check-in questions yet.
-                  </p>
-                </CardContent>
-              </Card>
             ) : (
               !currentWeekCheckin && (
                 <Card>
@@ -357,29 +348,38 @@ export default function Checkins() {
                         />
 
                         {/* Question Responses */}
-                        <div className="space-y-4">
-                          {questions.map((question, index) => (
-                            <FormField
-                              key={question.id}
-                              control={form.control}
-                              name={`responses.${question.id}`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>{question.text}</FormLabel>
-                                  <FormControl>
-                                    <Textarea
-                                      placeholder="Share your thoughts..."
-                                      rows={3}
-                                      data-testid={`textarea-question-${index}`}
-                                      {...field}
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          ))}
-                        </div>
+                        {questions.length > 0 ? (
+                          <div className="space-y-4">
+                            {questions.map((question, index) => (
+                              <FormField
+                                key={question.id}
+                                control={form.control}
+                                name={`responses.${question.id}`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>{question.text}</FormLabel>
+                                    <FormControl>
+                                      <Textarea
+                                        placeholder="Share your thoughts..."
+                                        rows={3}
+                                        data-testid={`textarea-question-${index}`}
+                                        {...field}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center p-4 bg-muted/50 rounded-lg">
+                            <AlertCircle className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                            <p className="text-sm text-muted-foreground">
+                              No custom questions have been set up yet. You can still submit your mood and goals below.
+                            </p>
+                          </div>
+                        )}
 
                         {/* Winning Next Week */}
                         <FormField
@@ -549,27 +549,58 @@ export default function Checkins() {
                   />
 
                   {/* Question Responses */}
-                  {questions.map((question, index) => (
-                    <FormField
-                      key={question.id}
-                      control={form.control}
-                      name={`responses.${question.id}`}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>{question.text}</FormLabel>
-                          <FormControl>
-                            <Textarea
-                              placeholder="Share your thoughts..."
-                              rows={3}
-                              data-testid={`dialog-textarea-question-${index}`}
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ))}
+                  {questions.length > 0 ? (
+                    <div className="space-y-4">
+                      {questions.map((question, index) => (
+                        <FormField
+                          key={question.id}
+                          control={form.control}
+                          name={`responses.${question.id}`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>{question.text}</FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  placeholder="Share your thoughts..."
+                                  rows={3}
+                                  data-testid={`dialog-textarea-question-${index}`}
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center p-4 bg-muted/50 rounded-lg">
+                      <AlertCircle className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">
+                        No custom questions have been set up yet. You can still submit your mood and goals below.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Winning Next Week */}
+                  <FormField
+                    control={form.control}
+                    name="winningNextWeek"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>What would winning look like for you next week?</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Describe what success looks like for you next week..."
+                            rows={3}
+                            data-testid="dialog-textarea-winning-next-week"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                   <DialogFooter>
                     <Button

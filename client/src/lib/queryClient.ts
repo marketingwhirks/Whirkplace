@@ -7,6 +7,37 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+// CSRF token management
+let cachedCSRFToken: string | null = null;
+
+async function getCSRFToken(): Promise<string | null> {
+  try {
+    // Add localStorage auth headers for CSRF token request
+    const authUserId = localStorage.getItem('auth_user_id');
+    const headers: Record<string, string> = {};
+    
+    if (authUserId) {
+      headers['x-auth-user-id'] = authUserId;
+    }
+
+    const response = await fetch('/api/csrf-token', {
+      credentials: 'include',
+      headers,
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      cachedCSRFToken = data.csrfToken;
+      return cachedCSRFToken;
+    }
+    
+    return null;
+  } catch (error) {
+    console.warn('Failed to fetch CSRF token:', error);
+    return null;
+  }
+}
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -22,12 +53,67 @@ export async function apiRequest(
     headers['x-auth-user-id'] = authUserId;
   }
 
+  // Add CSRF token for state-changing requests
+  const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase());
+  if (isStateChanging) {
+    // Try to get CSRF token
+    let csrfToken = cachedCSRFToken;
+    if (!csrfToken) {
+      csrfToken = await getCSRFToken();
+    }
+    
+    if (csrfToken) {
+      headers['x-csrf-token'] = csrfToken;
+    }
+  }
+
   const res = await fetch(url, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
+
+  // Check for new CSRF token in response headers
+  const newCSRFToken = res.headers.get('X-CSRF-Token');
+  if (newCSRFToken) {
+    cachedCSRFToken = newCSRFToken;
+  }
+
+  // If CSRF token failed, try to get a new one and retry once
+  if (!res.ok && res.status === 403 && isStateChanging) {
+    try {
+      const errorText = await res.clone().text();
+      if (errorText.includes('CSRF')) {
+        console.log('CSRF token failed, attempting to refresh and retry...');
+        cachedCSRFToken = null; // Clear cached token
+        const newToken = await getCSRFToken();
+        
+        if (newToken) {
+          headers['x-csrf-token'] = newToken;
+          
+          // Retry the request with new token
+          const retryRes = await fetch(url, {
+            method,
+            headers,
+            body: data ? JSON.stringify(data) : undefined,
+            credentials: "include",
+          });
+          
+          // Check for new CSRF token in retry response
+          const retryCSRFToken = retryRes.headers.get('X-CSRF-Token');
+          if (retryCSRFToken) {
+            cachedCSRFToken = retryCSRFToken;
+          }
+          
+          await throwIfResNotOk(retryRes);
+          return retryRes;
+        }
+      }
+    } catch (retryError) {
+      console.warn('CSRF retry failed:', retryError);
+    }
+  }
 
   await throwIfResNotOk(res);
   return res;

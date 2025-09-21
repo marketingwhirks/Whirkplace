@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { LogOut, User, Settings, AlertTriangle } from "lucide-react";
+import { useLocation } from "wouter";
+import { LogOut, User, Settings, AlertTriangle, HelpCircle, CheckCircle2, Lightbulb, MessageSquare } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -11,15 +12,28 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { queryClient } from "@/lib/queryClient";
 import { SupportReportForm } from "@/components/support/SupportReportForm";
+import { getHelpContent } from "@/lib/helpRegistry";
 
 export function UserProfile() {
   const { data: currentUser } = useCurrentUser();
   const { toast } = useToast();
+  const [location] = useLocation();
   const [isSupportFormOpen, setIsSupportFormOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
+  
+  const helpContent = getHelpContent(location);
+
+  const openSupportForm = (category: "bug" | "question" | "feature_request" = "question") => {
+    setIsHelpOpen(false);
+    setIsSupportFormOpen(true);
+  };
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
@@ -126,6 +140,14 @@ export function UserProfile() {
         </DropdownMenuItem>
         <DropdownMenuItem 
           className="cursor-pointer"
+          onClick={() => setIsHelpOpen(true)}
+          data-testid="help-menu-item"
+        >
+          <HelpCircle className="mr-2 h-4 w-4" />
+          <span>Help</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem 
+          className="cursor-pointer"
           onClick={() => setIsSupportFormOpen(true)}
           data-testid="support-menu-item"
         >
@@ -149,6 +171,92 @@ export function UserProfile() {
         onClose={() => setIsSupportFormOpen(false)}
         defaultCategory="bug"
       />
+
+      <Sheet open={isHelpOpen} onOpenChange={setIsHelpOpen}>
+        <SheetContent className="w-[400px] sm:w-[540px]" data-testid="sheet-help">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <HelpCircle className="w-5 h-5 text-blue-500" />
+              {helpContent.title}
+            </SheetTitle>
+            <SheetDescription>
+              Get help with this page and contact support
+            </SheetDescription>
+          </SheetHeader>
+          
+          <div className="mt-6 space-y-6">
+            {/* Current Page Help */}
+            <div className="space-y-3">
+              <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+                Tips for this page
+              </h3>
+              <div className="space-y-2">
+                {helpContent.tips.map((tip, index) => (
+                  <div key={index} className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{tip}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Quick Actions */}
+            <div className="space-y-3">
+              <h3 className="font-medium text-sm text-muted-foreground uppercase tracking-wide">
+                Quick Actions
+              </h3>
+              <div className="grid gap-2">
+                <Button
+                  variant="outline"
+                  className="justify-start h-auto p-3"
+                  onClick={() => openSupportForm("question")}
+                >
+                  <MessageSquare className="w-4 h-4 mr-3 text-blue-500" />
+                  <div className="text-left">
+                    <div className="font-medium">Ask a Question</div>
+                    <div className="text-xs text-muted-foreground">Get help from our support team</div>
+                  </div>
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  className="justify-start h-auto p-3"
+                  onClick={() => openSupportForm("feature_request")}
+                >
+                  <Lightbulb className="w-4 h-4 mr-3 text-yellow-500" />
+                  <div className="text-left">
+                    <div className="font-medium">Request a Feature</div>
+                    <div className="text-xs text-muted-foreground">Suggest improvements or new features</div>
+                  </div>
+                </Button>
+                
+                <Button
+                  variant="outline"
+                  className="justify-start h-auto p-3"
+                  onClick={() => openSupportForm("bug")}
+                >
+                  <AlertTriangle className="w-4 h-4 mr-3 text-red-500" />
+                  <div className="text-left">
+                    <div className="font-medium">Report a Bug</div>
+                    <div className="text-xs text-muted-foreground">Let us know about any issues</div>
+                  </div>
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Help Badge */}
+            <div className="flex items-center justify-center">
+              <Badge variant="secondary" className="text-xs">
+                Need more help? Use the quick actions above
+              </Badge>
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
     </DropdownMenu>
   );
 }
