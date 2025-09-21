@@ -5296,6 +5296,200 @@ Return the response as a JSON object with this structure:
     }
   });
 
+  // Super Admin Routes - System-wide management
+  app.get("/api/super-admin/stats", requireSuperAdmin, async (req, res) => {
+    try {
+      const stats = {
+        totalOrganizations: (await storage.getAllOrganizations()).length,
+        totalUsers: (await storage.getAllUsersGlobal()).length,
+        activeDiscountCodes: (await storage.getAllDiscountCodes(true)).length,
+        systemSettings: (await storage.getAllSystemSettings()).length,
+        timestamp: new Date().toISOString()
+      };
+      res.json(stats);
+    } catch (error) {
+      console.error("Failed to fetch super admin stats:", error);
+      res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
+  // System Settings Management
+  app.get("/api/super-admin/settings", requireSuperAdmin, async (req, res) => {
+    try {
+      const category = req.query.category as string;
+      const settings = await storage.getAllSystemSettings(category);
+      res.json(settings);
+    } catch (error) {
+      console.error("Failed to fetch system settings:", error);
+      res.status(500).json({ message: "Failed to fetch system settings" });
+    }
+  });
+
+  app.post("/api/super-admin/settings", requireSuperAdmin, async (req, res) => {
+    try {
+      const setting = await storage.createSystemSetting(req.body);
+      res.status(201).json(setting);
+    } catch (error) {
+      console.error("Failed to create system setting:", error);
+      res.status(500).json({ message: "Failed to create system setting" });
+    }
+  });
+
+  app.put("/api/super-admin/settings/:id", requireSuperAdmin, async (req, res) => {
+    try {
+      const setting = await storage.updateSystemSetting(req.params.id, req.body);
+      if (!setting) {
+        return res.status(404).json({ message: "System setting not found" });
+      }
+      res.json(setting);
+    } catch (error) {
+      console.error("Failed to update system setting:", error);
+      res.status(500).json({ message: "Failed to update system setting" });
+    }
+  });
+
+  app.delete("/api/super-admin/settings/:id", requireSuperAdmin, async (req, res) => {
+    try {
+      const deleted = await storage.deleteSystemSetting(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "System setting not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete system setting:", error);
+      res.status(500).json({ message: "Failed to delete system setting" });
+    }
+  });
+
+  // Pricing Plans Management
+  app.get("/api/super-admin/pricing-plans", requireSuperAdmin, async (req, res) => {
+    try {
+      const activeOnly = req.query.active === 'true';
+      const plans = await storage.getAllPricingPlans(activeOnly);
+      res.json(plans);
+    } catch (error) {
+      console.error("Failed to fetch pricing plans:", error);
+      res.status(500).json({ message: "Failed to fetch pricing plans" });
+    }
+  });
+
+  app.post("/api/super-admin/pricing-plans", requireSuperAdmin, async (req, res) => {
+    try {
+      const plan = await storage.createPricingPlan(req.body);
+      res.status(201).json(plan);
+    } catch (error) {
+      console.error("Failed to create pricing plan:", error);
+      res.status(500).json({ message: "Failed to create pricing plan" });
+    }
+  });
+
+  app.put("/api/super-admin/pricing-plans/:id", requireSuperAdmin, async (req, res) => {
+    try {
+      const plan = await storage.updatePricingPlan(req.params.id, req.body);
+      if (!plan) {
+        return res.status(404).json({ message: "Pricing plan not found" });
+      }
+      res.json(plan);
+    } catch (error) {
+      console.error("Failed to update pricing plan:", error);
+      res.status(500).json({ message: "Failed to update pricing plan" });
+    }
+  });
+
+  app.delete("/api/super-admin/pricing-plans/:id", requireSuperAdmin, async (req, res) => {
+    try {
+      const deleted = await storage.deletePricingPlan(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Pricing plan not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete pricing plan:", error);
+      res.status(500).json({ message: "Failed to delete pricing plan" });
+    }
+  });
+
+  // Discount Codes Management
+  app.get("/api/super-admin/discount-codes", requireSuperAdmin, async (req, res) => {
+    try {
+      const activeOnly = req.query.active === 'true';
+      const codes = await storage.getAllDiscountCodes(activeOnly);
+      res.json(codes);
+    } catch (error) {
+      console.error("Failed to fetch discount codes:", error);
+      res.status(500).json({ message: "Failed to fetch discount codes" });
+    }
+  });
+
+  app.post("/api/super-admin/discount-codes", requireSuperAdmin, async (req, res) => {
+    try {
+      const discountCode = await storage.createDiscountCode(req.body);
+      res.status(201).json(discountCode);
+    } catch (error) {
+      console.error("Failed to create discount code:", error);
+      res.status(500).json({ message: "Failed to create discount code" });
+    }
+  });
+
+  app.put("/api/super-admin/discount-codes/:id", requireSuperAdmin, async (req, res) => {
+    try {
+      const discountCode = await storage.updateDiscountCode(req.params.id, req.body);
+      if (!discountCode) {
+        return res.status(404).json({ message: "Discount code not found" });
+      }
+      res.json(discountCode);
+    } catch (error) {
+      console.error("Failed to update discount code:", error);
+      res.status(500).json({ message: "Failed to update discount code" });
+    }
+  });
+
+  app.delete("/api/super-admin/discount-codes/:id", requireSuperAdmin, async (req, res) => {
+    try {
+      const deleted = await storage.deleteDiscountCode(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Discount code not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete discount code:", error);
+      res.status(500).json({ message: "Failed to delete discount code" });
+    }
+  });
+
+  // Discount Code Validation (publicly accessible for signup)
+  app.post("/api/discount-codes/validate", requireOrganization(), async (req, res) => {
+    try {
+      const { code, planId, orderAmount } = req.body;
+      const validation = await storage.validateDiscountCode(code, planId, orderAmount);
+      res.json(validation);
+    } catch (error) {
+      console.error("Failed to validate discount code:", error);
+      res.status(500).json({ message: "Failed to validate discount code" });
+    }
+  });
+
+  // Organization Management for Super Admin
+  app.get("/api/super-admin/organizations", requireSuperAdmin, async (req, res) => {
+    try {
+      const organizations = await storage.getAllOrganizations();
+      res.json(organizations);
+    } catch (error) {
+      console.error("Failed to fetch organizations:", error);
+      res.status(500).json({ message: "Failed to fetch organizations" });
+    }
+  });
+
+  app.get("/api/super-admin/users", requireSuperAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsersGlobal();
+      res.json(users);
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
   // Register additional route modules
   registerMicrosoftTeamsRoutes(app);
   registerMicrosoftAuthRoutes(app);

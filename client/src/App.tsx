@@ -21,7 +21,7 @@ import LeadershipDashboard from "@/pages/leadership-dashboard";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import Admin from "@/pages/admin";
-import SuperAdminPage from "@/pages/SuperAdminPage";
+import SuperAdminPage from "@/pages/super-admin";
 import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import Sidebar from "@/components/layout/sidebar";

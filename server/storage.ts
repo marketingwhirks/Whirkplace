@@ -19,8 +19,13 @@ import {
   type LeaderboardOptions, type LeaderboardEntry,
   type AnalyticsOverview, type AnalyticsPeriod,
   type ComplianceMetricsOptions, type ComplianceMetricsResult,
+  type SystemSetting, type InsertSystemSetting,
+  type PricingPlan, type InsertPricingPlan,
+  type DiscountCode, type InsertDiscountCode,
+  type DiscountCodeUsage, type InsertDiscountCodeUsage,
   users, teams, checkins, questions, wins, comments, shoutouts, vacations, organizations,
   oneOnOnes, kraTemplates, userKras, actionItems, bugReports,
+  systemSettings, pricingPlans, discountCodes, discountCodeUsage,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   ReviewStatus
 } from "@shared/schema";
@@ -240,6 +245,31 @@ export interface IStorage {
   updateBugReport(organizationId: string, id: string, bugReport: Partial<InsertBugReport>): Promise<BugReport | undefined>;
   getBugReports(organizationId: string, statusFilter?: string, userId?: string): Promise<BugReport[]>;
   getBugReportsByUser(organizationId: string, userId: string): Promise<BugReport[]>;
+
+  // Super Admin - System Settings
+  getSystemSetting(key: string): Promise<SystemSetting | undefined>;
+  getAllSystemSettings(category?: string): Promise<SystemSetting[]>;
+  createSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting>;
+  updateSystemSetting(id: string, setting: Partial<InsertSystemSetting>): Promise<SystemSetting | undefined>;
+  deleteSystemSetting(id: string): Promise<boolean>;
+
+  // Super Admin - Pricing Plans
+  getPricingPlan(id: string): Promise<PricingPlan | undefined>;
+  getAllPricingPlans(activeOnly?: boolean): Promise<PricingPlan[]>;
+  createPricingPlan(plan: InsertPricingPlan): Promise<PricingPlan>;
+  updatePricingPlan(id: string, plan: Partial<InsertPricingPlan>): Promise<PricingPlan | undefined>;
+  deletePricingPlan(id: string): Promise<boolean>;
+
+  // Super Admin - Discount Codes
+  getDiscountCode(id: string): Promise<DiscountCode | undefined>;
+  getDiscountCodeByCode(code: string): Promise<DiscountCode | undefined>;
+  getAllDiscountCodes(activeOnly?: boolean): Promise<DiscountCode[]>;
+  createDiscountCode(discountCode: InsertDiscountCode): Promise<DiscountCode>;
+  updateDiscountCode(id: string, discountCode: Partial<InsertDiscountCode>): Promise<DiscountCode | undefined>;
+  deleteDiscountCode(id: string): Promise<boolean>;
+  validateDiscountCode(code: string, planId?: string, orderAmount?: number): Promise<{ valid: boolean; discountCode?: DiscountCode; reason?: string }>;
+  applyDiscountCode(usage: InsertDiscountCodeUsage): Promise<DiscountCodeUsage>;
+  getDiscountCodeUsage(discountCodeId: string): Promise<DiscountCodeUsage[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2962,6 +2992,277 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  // Super Admin - System Settings
+  async getSystemSetting(key: string): Promise<SystemSetting | undefined> {
+    try {
+      const [setting] = await db.select().from(systemSettings).where(eq(systemSettings.key, key));
+      return setting;
+    } catch (error) {
+      console.error("Failed to get system setting:", error);
+      throw error;
+    }
+  }
+
+  async getAllSystemSettings(category?: string): Promise<SystemSetting[]> {
+    try {
+      let query = db.select().from(systemSettings);
+      if (category) {
+        query = query.where(eq(systemSettings.category, category));
+      }
+      return await query.orderBy(systemSettings.category, systemSettings.key);
+    } catch (error) {
+      console.error("Failed to get system settings:", error);
+      throw error;
+    }
+  }
+
+  async createSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting> {
+    try {
+      const [newSetting] = await db.insert(systemSettings).values(setting).returning();
+      return newSetting;
+    } catch (error) {
+      console.error("Failed to create system setting:", error);
+      throw error;
+    }
+  }
+
+  async updateSystemSetting(id: string, setting: Partial<InsertSystemSetting>): Promise<SystemSetting | undefined> {
+    try {
+      const updateData = {
+        ...setting,
+        updatedAt: new Date(),
+      };
+      const [updatedSetting] = await db.update(systemSettings)
+        .set(updateData)
+        .where(eq(systemSettings.id, id))
+        .returning();
+      return updatedSetting;
+    } catch (error) {
+      console.error("Failed to update system setting:", error);
+      throw error;
+    }
+  }
+
+  async deleteSystemSetting(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(systemSettings).where(eq(systemSettings.id, id));
+      return result.rowCount !== null && result.rowCount > 0;
+    } catch (error) {
+      console.error("Failed to delete system setting:", error);
+      throw error;
+    }
+  }
+
+  // Super Admin - Pricing Plans
+  async getPricingPlan(id: string): Promise<PricingPlan | undefined> {
+    try {
+      const [plan] = await db.select().from(pricingPlans).where(eq(pricingPlans.id, id));
+      return plan;
+    } catch (error) {
+      console.error("Failed to get pricing plan:", error);
+      throw error;
+    }
+  }
+
+  async getAllPricingPlans(activeOnly?: boolean): Promise<PricingPlan[]> {
+    try {
+      let query = db.select().from(pricingPlans);
+      if (activeOnly) {
+        query = query.where(eq(pricingPlans.isActive, true));
+      }
+      return await query.orderBy(pricingPlans.sortOrder, pricingPlans.name);
+    } catch (error) {
+      console.error("Failed to get pricing plans:", error);
+      throw error;
+    }
+  }
+
+  async createPricingPlan(plan: InsertPricingPlan): Promise<PricingPlan> {
+    try {
+      const [newPlan] = await db.insert(pricingPlans).values(plan).returning();
+      return newPlan;
+    } catch (error) {
+      console.error("Failed to create pricing plan:", error);
+      throw error;
+    }
+  }
+
+  async updatePricingPlan(id: string, plan: Partial<InsertPricingPlan>): Promise<PricingPlan | undefined> {
+    try {
+      const updateData = {
+        ...plan,
+        updatedAt: new Date(),
+      };
+      const [updatedPlan] = await db.update(pricingPlans)
+        .set(updateData)
+        .where(eq(pricingPlans.id, id))
+        .returning();
+      return updatedPlan;
+    } catch (error) {
+      console.error("Failed to update pricing plan:", error);
+      throw error;
+    }
+  }
+
+  async deletePricingPlan(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(pricingPlans).where(eq(pricingPlans.id, id));
+      return result.rowCount !== null && result.rowCount > 0;
+    } catch (error) {
+      console.error("Failed to delete pricing plan:", error);
+      throw error;
+    }
+  }
+
+  // Super Admin - Discount Codes
+  async getDiscountCode(id: string): Promise<DiscountCode | undefined> {
+    try {
+      const [discountCode] = await db.select().from(discountCodes).where(eq(discountCodes.id, id));
+      return discountCode;
+    } catch (error) {
+      console.error("Failed to get discount code:", error);
+      throw error;
+    }
+  }
+
+  async getDiscountCodeByCode(code: string): Promise<DiscountCode | undefined> {
+    try {
+      const [discountCode] = await db.select().from(discountCodes).where(eq(discountCodes.code, code.toUpperCase()));
+      return discountCode;
+    } catch (error) {
+      console.error("Failed to get discount code by code:", error);
+      throw error;
+    }
+  }
+
+  async getAllDiscountCodes(activeOnly?: boolean): Promise<DiscountCode[]> {
+    try {
+      let query = db.select().from(discountCodes);
+      if (activeOnly) {
+        query = query.where(eq(discountCodes.isActive, true));
+      }
+      return await query.orderBy(desc(discountCodes.createdAt));
+    } catch (error) {
+      console.error("Failed to get discount codes:", error);
+      throw error;
+    }
+  }
+
+  async createDiscountCode(discountCode: InsertDiscountCode): Promise<DiscountCode> {
+    try {
+      const codeData = {
+        ...discountCode,
+        code: discountCode.code.toUpperCase(),
+      };
+      const [newDiscountCode] = await db.insert(discountCodes).values(codeData).returning();
+      return newDiscountCode;
+    } catch (error) {
+      console.error("Failed to create discount code:", error);
+      throw error;
+    }
+  }
+
+  async updateDiscountCode(id: string, discountCode: Partial<InsertDiscountCode>): Promise<DiscountCode | undefined> {
+    try {
+      const updateData = {
+        ...discountCode,
+        ...(discountCode.code && { code: discountCode.code.toUpperCase() }),
+        updatedAt: new Date(),
+      };
+      const [updatedDiscountCode] = await db.update(discountCodes)
+        .set(updateData)
+        .where(eq(discountCodes.id, id))
+        .returning();
+      return updatedDiscountCode;
+    } catch (error) {
+      console.error("Failed to update discount code:", error);
+      throw error;
+    }
+  }
+
+  async deleteDiscountCode(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(discountCodes).where(eq(discountCodes.id, id));
+      return result.rowCount !== null && result.rowCount > 0;
+    } catch (error) {
+      console.error("Failed to delete discount code:", error);
+      throw error;
+    }
+  }
+
+  async validateDiscountCode(code: string, planId?: string, orderAmount?: number): Promise<{ valid: boolean; discountCode?: DiscountCode; reason?: string }> {
+    try {
+      const discountCode = await this.getDiscountCodeByCode(code);
+      
+      if (!discountCode) {
+        return { valid: false, reason: "Discount code not found" };
+      }
+
+      if (!discountCode.isActive) {
+        return { valid: false, reason: "Discount code is inactive" };
+      }
+
+      const now = new Date();
+      if (discountCode.validFrom && new Date(discountCode.validFrom) > now) {
+        return { valid: false, reason: "Discount code is not yet valid" };
+      }
+
+      if (discountCode.validTo && new Date(discountCode.validTo) < now) {
+        return { valid: false, reason: "Discount code has expired" };
+      }
+
+      if (discountCode.usageLimit && discountCode.usageCount >= discountCode.usageLimit) {
+        return { valid: false, reason: "Discount code usage limit reached" };
+      }
+
+      if (discountCode.minimumAmount && orderAmount && orderAmount < discountCode.minimumAmount) {
+        return { valid: false, reason: `Minimum order amount of $${(discountCode.minimumAmount / 100).toFixed(2)} required` };
+      }
+
+      // Check if discount applies to specific plans
+      if (planId && discountCode.applicablePlans && Array.isArray(discountCode.applicablePlans) && discountCode.applicablePlans.length > 0) {
+        if (!discountCode.applicablePlans.includes(planId)) {
+          return { valid: false, reason: "Discount code not applicable to selected plan" };
+        }
+      }
+
+      return { valid: true, discountCode };
+    } catch (error) {
+      console.error("Failed to validate discount code:", error);
+      return { valid: false, reason: "Error validating discount code" };
+    }
+  }
+
+  async applyDiscountCode(usage: InsertDiscountCodeUsage): Promise<DiscountCodeUsage> {
+    try {
+      // First, increment the usage count
+      await db.update(discountCodes)
+        .set({ 
+          usageCount: sql`${discountCodes.usageCount} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(discountCodes.id, usage.discountCodeId));
+
+      // Then record the usage
+      const [newUsage] = await db.insert(discountCodeUsage).values(usage).returning();
+      return newUsage;
+    } catch (error) {
+      console.error("Failed to apply discount code:", error);
+      throw error;
+    }
+  }
+
+  async getDiscountCodeUsage(discountCodeId: string): Promise<DiscountCodeUsage[]> {
+    try {
+      return await db.select().from(discountCodeUsage)
+        .where(eq(discountCodeUsage.discountCodeId, discountCodeId))
+        .orderBy(desc(discountCodeUsage.usedAt));
+    } catch (error) {
+      console.error("Failed to get discount code usage:", error);
+      throw error;
+    }
+  }
+
   // Helper method for date truncation based on period
   private truncateDate(date: Date, period: AnalyticsPeriod): Date {
     const d = new Date(date);
@@ -4541,6 +4842,87 @@ export class MemStorage implements IStorage {
       );
 
     return !!vacation;
+  }
+
+  // Super Admin - System Settings (MemStorage implementation)
+  async getSystemSetting(key: string): Promise<SystemSetting | undefined> {
+    // MemStorage doesn't support super admin features - return undefined
+    return undefined;
+  }
+
+  async getAllSystemSettings(category?: string): Promise<SystemSetting[]> {
+    // MemStorage doesn't support super admin features - return empty array
+    return [];
+  }
+
+  async createSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  async updateSystemSetting(id: string, setting: Partial<InsertSystemSetting>): Promise<SystemSetting | undefined> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  async deleteSystemSetting(id: string): Promise<boolean> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  // Super Admin - Pricing Plans (MemStorage implementation)
+  async getPricingPlan(id: string): Promise<PricingPlan | undefined> {
+    return undefined;
+  }
+
+  async getAllPricingPlans(activeOnly?: boolean): Promise<PricingPlan[]> {
+    return [];
+  }
+
+  async createPricingPlan(plan: InsertPricingPlan): Promise<PricingPlan> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  async updatePricingPlan(id: string, plan: Partial<InsertPricingPlan>): Promise<PricingPlan | undefined> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  async deletePricingPlan(id: string): Promise<boolean> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  // Super Admin - Discount Codes (MemStorage implementation)
+  async getDiscountCode(id: string): Promise<DiscountCode | undefined> {
+    return undefined;
+  }
+
+  async getDiscountCodeByCode(code: string): Promise<DiscountCode | undefined> {
+    return undefined;
+  }
+
+  async getAllDiscountCodes(activeOnly?: boolean): Promise<DiscountCode[]> {
+    return [];
+  }
+
+  async createDiscountCode(discountCode: InsertDiscountCode): Promise<DiscountCode> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  async updateDiscountCode(id: string, discountCode: Partial<InsertDiscountCode>): Promise<DiscountCode | undefined> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  async deleteDiscountCode(id: string): Promise<boolean> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  async validateDiscountCode(code: string, planId?: string, orderAmount?: number): Promise<{ valid: boolean; discountCode?: DiscountCode; reason?: string }> {
+    return { valid: false, reason: "Super admin features not supported in MemStorage" };
+  }
+
+  async applyDiscountCode(usage: InsertDiscountCodeUsage): Promise<DiscountCodeUsage> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  async getDiscountCodeUsage(discountCodeId: string): Promise<DiscountCodeUsage[]> {
+    return [];
   }
 }
 
