@@ -265,52 +265,36 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
     });
 
     // SECURITY: Verify JWT signature, audience, issuer, and expiration
-    // IMPORTANT: Do NOT include maxAge in options - it causes errors and JWT validates exp automatically
-    const verifyOptions: jwt.VerifyOptions = {
+    // FIX: Use null-prototype object to avoid inherited properties (like maxAge from prototype pollution)
+    
+    // Diagnostic: Check for prototype pollution
+    if (Object.prototype.hasOwnProperty('maxAge')) {
+      console.error('CRITICAL: Object.prototype pollution detected! maxAge =', (Object.prototype as any).maxAge);
+    }
+    
+    // Create verify options with null prototype to avoid ANY inherited properties
+    const verifyOptions = Object.assign(Object.create(null), {
       audience: process.env.SLACK_CLIENT_ID, // Verify audience matches our client ID
       issuer: 'https://slack.com', // Verify issuer is Slack
       algorithms: ['RS256'], // Only allow RS256 algorithm
       clockTolerance: 300 // Allow 5 minutes clock skew
-    };
+    }) as jwt.VerifyOptions;
     
-    // Ensure no maxAge property exists in options (this was causing the error)
-    if ('maxAge' in verifyOptions) {
-      console.error('WARNING: maxAge found in verifyOptions, removing it');
-      delete (verifyOptions as any).maxAge;
-    }
+    // Explicitly shadow any inherited maxAge by setting it to undefined
+    // This ensures even if Object.prototype has maxAge, our object has its own undefined maxAge
+    (verifyOptions as any).maxAge = undefined;
     
     // Debug: Log what we're about to pass to jwt.verify
     console.log('JWT Verify Inputs:', {
       hasIdToken: !!idToken,
       hasKey: !!key,
       verifyOptionsKeys: Object.keys(verifyOptions),
-      verifyOptionsStringified: JSON.stringify(verifyOptions)
+      verifyOptionsStringified: JSON.stringify(verifyOptions),
+      hasInheritedMaxAge: 'maxAge' in verifyOptions,
+      maxAgeValue: (verifyOptions as any).maxAge
     });
     
-    let payload: any;
-    try {
-      payload = jwt.verify(idToken, key, verifyOptions) as any;
-    } catch (verifyError: any) {
-      // If we get the maxAge error, try without any options at all
-      if (verifyError?.message?.includes('maxAge must be a number')) {
-        console.warn('Got maxAge error, retrying with minimal options');
-        // Try with absolutely minimal options - just algorithms
-        const minimalOptions: jwt.VerifyOptions = {
-          algorithms: ['RS256']
-        };
-        payload = jwt.verify(idToken, key, minimalOptions) as any;
-        
-        // Manually validate audience and issuer after verification
-        if (payload.aud !== process.env.SLACK_CLIENT_ID) {
-          throw new Error('Token audience does not match client ID');
-        }
-        if (payload.iss !== 'https://slack.com') {
-          throw new Error('Token issuer is not Slack');
-        }
-      } else {
-        throw verifyError;
-      }
-    }
+    const payload = jwt.verify(idToken, key, verifyOptions) as any;
     
     if (!payload || !payload.sub) {
       throw new Error('Invalid token payload - missing subject');
