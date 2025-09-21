@@ -32,6 +32,7 @@ const winFormSchema = insertWinSchema.extend({
   description: z.string().min(1, "Description is required").max(500, "Description too long"),
   userId: z.string().min(1, "User is required"),
   nominatedBy: z.string().optional(),
+  values: z.array(z.string()).min(1, "At least one company value must be selected"),
 });
 
 type WinForm = z.infer<typeof winFormSchema>;
