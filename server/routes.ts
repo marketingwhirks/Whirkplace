@@ -359,7 +359,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!userInfoResponse.ok || !userInfoResponse.user) {
         console.error("Failed to validate ID token:", userInfoResponse.error);
         return res.status(400).json({ 
-          message: "Failed to validate user identity token" 
+          message: userInfoResponse.error || "Failed to validate user identity token" 
         });
       }
       

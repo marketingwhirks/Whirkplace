@@ -244,7 +244,7 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
 
     // Get the signing key
     const key = await new Promise<string>((resolve, reject) => {
-      client.getSigningKey(decoded.header.kid, (err, signingKey) => {
+      client.getSigningKey(decoded.header.kid, (err: any, signingKey: any) => {
         if (err) {
           reject(err);
           return;
@@ -333,21 +333,43 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
     console.error('🚨 SECURITY: OIDC token validation failed:', error);
     
     // SECURITY: Enhanced error logging for debugging
-    if (process.env.NODE_ENV === 'development') {
-      const decodedToken = jwt.decode(idToken, { complete: true });
-      console.error('Token validation error details:', {
-        tokenLength: idToken?.length,
-        decodedHeader: decodedToken?.header,
-        decodedPayload: decodedToken?.payload,
-        errorMessage: error instanceof Error ? error.message : 'Unknown error',
-        errorStack: error instanceof Error ? error.stack : undefined,
-        clientId: process.env.SLACK_CLIENT_ID?.substring(0, 5) + '...'
-      });
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const decodedToken = jwt.decode(idToken, { complete: true });
+    
+    console.error('🔍 Token validation error details:', {
+      errorMessage,
+      errorType: error instanceof Error ? error.name : 'Unknown',
+      tokenLength: idToken?.length,
+      hasToken: !!idToken,
+      decodedSuccessfully: !!decodedToken,
+      header: decodedToken?.header,
+      payloadSub: decodedToken?.payload?.sub,
+      payloadAud: (typeof decodedToken?.payload === 'object' && decodedToken?.payload && 'aud' in decodedToken.payload) ? decodedToken.payload.aud : undefined,
+      payloadIss: (typeof decodedToken?.payload === 'object' && decodedToken?.payload && 'iss' in decodedToken.payload) ? decodedToken.payload.iss : undefined,
+      expectedAudience: process.env.SLACK_CLIENT_ID,
+      clientIdConfigured: !!process.env.SLACK_CLIENT_ID,
+      clientSecretConfigured: !!process.env.SLACK_CLIENT_SECRET,
+      nodeEnv: process.env.NODE_ENV,
+      errorStack: error instanceof Error ? error.stack?.split('\n').slice(0, 5) : undefined
+    });
+    
+    // Provide more specific error messages
+    let userFriendlyError = 'Token validation failed';
+    if (errorMessage.includes('expired')) {
+      userFriendlyError = 'Authentication token has expired. Please try logging in again.';
+    } else if (errorMessage.includes('audience')) {
+      userFriendlyError = 'Token validation failed: Invalid audience. Please check Slack app configuration.';
+    } else if (errorMessage.includes('issuer')) {
+      userFriendlyError = 'Token validation failed: Invalid issuer.';
+    } else if (errorMessage.includes('signature')) {
+      userFriendlyError = 'Token validation failed: Invalid signature.';
+    } else if (errorMessage.includes('getSigningKey')) {
+      userFriendlyError = 'Token validation failed: Could not fetch Slack signing keys.';
     }
     
     return {
       ok: false,
-      error: error instanceof Error ? error.message : 'Token validation failed'
+      error: userFriendlyError + ' (Details: ' + errorMessage + ')'
     };
   }
 }
