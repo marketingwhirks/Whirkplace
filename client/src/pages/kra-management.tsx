@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Target, Plus, Search, Filter, Settings, Users, CheckCircle, 
-  Circle, ChevronDown, Calendar, User, BarChart3, Edit2
+  Circle, ChevronDown, Calendar, User, BarChart3, Edit2, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,10 +20,28 @@ import {
   Dialog, 
   DialogContent, 
   DialogDescription, 
+  DialogFooter,
   DialogHeader, 
   DialogTitle, 
   DialogTrigger 
 } from "@/components/ui/dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/layout/header";
 import { useToast } from "@/hooks/use-toast";
@@ -32,7 +50,23 @@ import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import { UpgradePrompt } from "@/components/ui/upgrade-prompt";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { format, parseISO } from "date-fns";
+import { useForm, useFieldArray } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import type { KraTemplate, UserKra, User as UserType } from "@shared/schema";
+
+// Template form validation schema
+const templateFormSchema = z.object({
+  name: z.string().min(1, "Template name is required").max(200, "Template name must be under 200 characters"),
+  description: z.string().max(1000, "Description must be under 1000 characters").optional(),
+  category: z.string().min(1, "Category is required"),
+  goals: z.array(z.object({
+    title: z.string().min(1, "Goal title is required"),
+    description: z.string().optional(),
+    target: z.string().optional(),
+    metric: z.string().optional(),
+  })).min(1, "At least one goal is required"),
+});
 
 interface KraTemplateWithMeta extends KraTemplate {
   assignmentCount?: number;
@@ -68,12 +102,48 @@ function CreateTemplateDialog({ trigger }: { trigger: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   
-  const handleCreate = () => {
-    toast({
-      title: "Coming Soon",
-      description: "KRA template creation will be available soon!",
-    });
-    setOpen(false);
+  const form = useForm<z.infer<typeof templateFormSchema>>({
+    resolver: zodResolver(templateFormSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      category: "general",
+      goals: [{ title: "", description: "", target: "", metric: "" }],
+    },
+  });
+
+  const createTemplateMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof templateFormSchema>) => {
+      return apiRequest("/api/kra-templates", {
+        method: "POST",
+        body: JSON.stringify(data),
+      });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "KRA template created successfully!",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/kra-templates"] });
+      setOpen(false);
+      form.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create KRA template",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "goals",
+  });
+
+  const onSubmit = (data: z.infer<typeof templateFormSchema>) => {
+    createTemplateMutation.mutate(data);
   };
 
   return (
@@ -81,28 +151,215 @@ function CreateTemplateDialog({ trigger }: { trigger: React.ReactNode }) {
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New KRA Template</DialogTitle>
           <DialogDescription>
             Create a reusable template for Key Result Areas that can be assigned to team members.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="text-center py-8">
-            <Target className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">
-              Template creation interface coming soon...
-            </p>
-            <Button 
-              className="mt-4" 
-              onClick={handleCreate}
-              data-testid="button-create-template-placeholder"
-            >
-              Create Template
-            </Button>
-          </div>
-        </div>
+        
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Template Name */}
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Template Name</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="e.g., Sales Executive KRAs"
+                      data-testid="input-template-name"
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Description */}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      placeholder="Describe what this KRA template is for..."
+                      className="min-h-[80px]"
+                      data-testid="textarea-template-description"
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Category */}
+            <FormField
+              control={form.control}
+              name="category"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Category</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-template-category">
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="general">General</SelectItem>
+                      <SelectItem value="sales">Sales</SelectItem>
+                      <SelectItem value="engineering">Engineering</SelectItem>
+                      <SelectItem value="marketing">Marketing</SelectItem>
+                      <SelectItem value="hr">Human Resources</SelectItem>
+                      <SelectItem value="finance">Finance</SelectItem>
+                      <SelectItem value="operations">Operations</SelectItem>
+                      <SelectItem value="customer_success">Customer Success</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Goals Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-medium">Key Result Areas</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => append({ title: "", description: "", target: "", metric: "" })}
+                  data-testid="button-add-goal"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add KRA
+                </Button>
+              </div>
+
+              {fields.map((field, index) => (
+                <Card key={field.id} className="p-4">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-medium">KRA {index + 1}</h4>
+                      {fields.length > 1 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => remove(index)}
+                          data-testid={`button-remove-goal-${index}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+
+                    <FormField
+                      control={form.control}
+                      name={`goals.${index}.title`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Title</FormLabel>
+                          <FormControl>
+                            <Input 
+                              placeholder="e.g., Revenue Growth"
+                              data-testid={`input-goal-title-${index}`}
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name={`goals.${index}.description`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Description</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              placeholder="Detailed description of this KRA..."
+                              data-testid={`textarea-goal-description-${index}`}
+                              {...field} 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name={`goals.${index}.target`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Target</FormLabel>
+                            <FormControl>
+                              <Input 
+                                placeholder="e.g., $100K ARR"
+                                data-testid={`input-goal-target-${index}`}
+                                {...field} 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name={`goals.${index}.metric`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Metric</FormLabel>
+                            <FormControl>
+                              <Input 
+                                placeholder="e.g., Monthly Revenue"
+                                data-testid={`input-goal-metric-${index}`}
+                                {...field} 
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setOpen(false)}
+                data-testid="button-cancel-template"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={createTemplateMutation.isPending}
+                data-testid="button-submit-template"
+              >
+                {createTemplateMutation.isPending ? "Creating..." : "Create Template"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );
