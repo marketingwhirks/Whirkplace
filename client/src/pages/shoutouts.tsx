@@ -25,10 +25,12 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import type { Shoutout, User, InsertShoutout } from "@shared/schema";
 import { insertShoutoutSchema, defaultCompanyValuesArray } from "@shared/schema";
 
-// Form schema for shoutout creation - fromUserId is set server-side
-const shoutoutFormSchema = insertShoutoutSchema.extend({
+// Form schema for shoutout creation - fromUserId is set server-side  
+const shoutoutFormSchema = insertShoutoutSchema.omit({
+  toUserId: true, // Replace single recipient with multiple
+}).extend({
   message: z.string().min(1, "Message is required").max(500, "Message too long"),
-  toUserId: z.string().min(1, "Please select a recipient"),
+  toUserIds: z.array(z.string()).min(1, "Please select at least one recipient"),
 });
 
 type ShoutoutForm = z.infer<typeof shoutoutFormSchema>;
@@ -64,7 +66,7 @@ export default function ShoutoutsPage() {
     resolver: zodResolver(shoutoutFormSchema),
     defaultValues: {
       message: "",
-      toUserId: "",
+      toUserIds: [],
       isPublic: true,
       values: [],
       organizationId: "",
@@ -103,7 +105,7 @@ export default function ShoutoutsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/shoutouts"] });
       createForm.reset({
         message: "",
-        toUserId: "",
+        toUserIds: [],
         isPublic: true,
         values: [],
         organizationId: currentUser?.organizationId || "",
@@ -246,34 +248,49 @@ export default function ShoutoutsPage() {
 
                 <Form {...createForm}>
                   <form onSubmit={onCreateSubmit} className="space-y-4">
-                    {/* Recipient Selection */}
+                    {/* Recipients Selection */}
                     <FormField
                       control={createForm.control}
-                      name="toUserId"
+                      name="toUserIds"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Recipient *</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-recipient">
-                                <SelectValue placeholder="Choose someone to recognize" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {users.map((user) => (
-                                <SelectItem key={user.id} value={user.id}>
-                                  <div className="flex items-center gap-2">
-                                    <Avatar className="h-6 w-6">
-                                      <AvatarFallback className="text-xs">
-                                        {getUserInitials(user.id)}
-                                      </AvatarFallback>
-                                    </Avatar>
+                          <FormLabel>Recipients *</FormLabel>
+                          <FormDescription className="text-sm text-muted-foreground">
+                            Select one or more people to recognize
+                          </FormDescription>
+                          <div className="space-y-2">
+                            {users.map((user) => (
+                              <FormItem
+                                key={user.id}
+                                className="flex flex-row items-center space-x-3 space-y-0"
+                              >
+                                <FormControl>
+                                  <Checkbox
+                                    checked={field.value?.includes(user.id)}
+                                    onCheckedChange={(checked) => {
+                                      const currentIds = field.value || [];
+                                      return checked
+                                        ? field.onChange([...currentIds, user.id])
+                                        : field.onChange(
+                                            currentIds.filter((id) => id !== user.id)
+                                          );
+                                    }}
+                                    data-testid={`checkbox-recipient-${user.id}`}
+                                  />
+                                </FormControl>
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="h-6 w-6">
+                                    <AvatarFallback className="text-xs">
+                                      {getUserInitials(user.id)}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <FormLabel className="text-sm font-normal">
                                     {user.name}
-                                  </div>
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                                  </FormLabel>
+                                </div>
+                              </FormItem>
+                            ))}
+                          </div>
                           <FormMessage />
                         </FormItem>
                       )}
