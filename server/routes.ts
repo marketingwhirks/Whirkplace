@@ -578,8 +578,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: "starter",
           displayName: "Starter",
           description: "Perfect for small teams getting started",
-          monthlyPrice: 0,
-          annualPrice: 0,
+          monthlyPrice: 900, // $9.00 in cents
+          annualPrice: 9000, // $90.00 in cents (2 months free)
           maxUsers: 10,
           features: [
             "Up to 10 team members",
@@ -4696,88 +4696,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Business Signup and Onboarding Routes
-  
-  // Get available business plans
-  app.get("/api/business/plans", async (req, res) => {
-    try {
-      // Return static plan data for now - could be from database later
-      const plans = [
-        {
-          id: "starter",
-          name: "starter",
-          displayName: "Starter",
-          description: "Perfect for small teams getting started",
-          monthlyPrice: 0,
-          annualPrice: 0,
-          maxUsers: 10,
-          features: [
-            "Up to 10 team members",
-            "Basic check-ins and mood tracking",
-            "Win celebrations",
-            "Team shoutouts",
-            "Basic analytics",
-            "Email support"
-          ],
-          hasSlackIntegration: false,
-          hasMicrosoftIntegration: false,
-          hasAdvancedAnalytics: false,
-          hasApiAccess: false,
-        },
-        {
-          id: "professional",
-          name: "professional",
-          displayName: "Professional",
-          description: "Advanced features for growing teams",
-          monthlyPrice: 2900, // $29.00 in cents
-          annualPrice: 29000, // $290.00 in cents
-          maxUsers: 100,
-          features: [
-            "Up to 100 team members",
-            "Advanced team hierarchy",
-            "One-on-One meeting management",
-            "Key Result Areas (KRA) tracking",
-            "Advanced analytics & insights",
-            "Custom check-in questions",
-            "Priority email support"
-          ],
-          hasSlackIntegration: false,
-          hasMicrosoftIntegration: false,
-          hasAdvancedAnalytics: true,
-          hasApiAccess: false,
-        },
-        {
-          id: "enterprise",
-          name: "enterprise",
-          displayName: "Enterprise",
-          description: "Full-featured solution for large organizations",
-          monthlyPrice: 4900, // $49.00 in cents
-          annualPrice: 49000, // $490.00 in cents
-          maxUsers: null,
-          features: [
-            "Unlimited team members",
-            "Microsoft Teams integration",
-            "Slack workspace integration",
-            "Microsoft Calendar sync",
-            "SSO with Microsoft 365",
-            "Advanced role management",
-            "Custom integrations & API access",
-            "Dedicated account manager",
-            "24/7 priority support"
-          ],
-          hasSlackIntegration: true,
-          hasMicrosoftIntegration: true,
-          hasAdvancedAnalytics: true,
-          hasApiAccess: true,
-        }
-      ];
-      
-      res.json(plans);
-    } catch (error: any) {
-      console.error("Error fetching business plans:", error);
-      res.status(500).json({ message: "Failed to fetch business plans" });
-    }
-  });
+  // Business Signup and Onboarding Routes - NOTE: Duplicate removed, kept single definition above
 
   // Create business signup - Step 1: Business registration
   app.post("/api/business/signup", async (req, res) => {

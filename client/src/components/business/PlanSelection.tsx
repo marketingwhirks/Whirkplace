@@ -223,7 +223,7 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
       )}
       
       <div className="text-center text-sm text-muted-foreground">
-        <p>All plans include a 14-day free trial • No credit card required • Cancel anytime</p>
+        <p>All plans include a 10-day free trial • No credit card required • Cancel anytime</p>
       </div>
     </div>
   );

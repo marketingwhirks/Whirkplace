@@ -62,6 +62,20 @@ interface SlackOIDCUserInfo {
   "https://slack.com/user_id"?: string;
   "https://slack.com/team_id"?: string;
   "https://slack.com/team_name"?: string;
+  team?: {
+    id: string;
+    name: string;
+  };
+  user?: {
+    id: string;
+    name: string;
+    email: string;
+    image: string;
+  };
+  enterprise?: {
+    id: string;
+    name: string;
+  };
 }
 
 /**
