@@ -25,6 +25,7 @@ import {
   DialogTrigger 
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import Header from "@/components/layout/header";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
@@ -626,39 +627,55 @@ export default function KraManagementPage() {
   // Show loading while checking feature access
   if (featureLoading) {
     return (
-      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <>
+        <Header
+          title="KRA Management"
+          description="Manage Key Result Areas for your team members"
+        />
+        <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
         <div className="space-y-4">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-4 w-96" />
           <Skeleton className="h-64 w-full" />
         </div>
       </div>
+      </>
     );
   }
   
   // Show upgrade prompt if user doesn't have access to KRA Management
   if (!canAccessKraManagement) {
     return (
-      <UpgradePrompt
+      <>
+        <Header
+          title="KRA Management"
+          description="Manage Key Result Areas for your team members"
+        />
+        <UpgradePrompt
         feature="kra_management"
         title="KRA Management"
         description="Unlock comprehensive Key Result Area management to set clear goals, track performance, and drive accountability across your organization."
       />
+      </>
     );
   }
   
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">KRA Management</h2>
-          <p className="text-muted-foreground">
-            Manage Key Result Areas templates and track team progress.
-          </p>
-        </div>
+    <>
+      <Header
+        title="KRA Management"
+        description="Manage Key Result Areas templates and track team progress"
+      />
+      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">KRA Management</h2>
+            <p className="text-muted-foreground">
+              Manage Key Result Areas templates and track team progress.
+            </p>
+          </div>
         
-        {canManage && (
+          {canManage && (
           <div className="flex gap-2">
             <AssignKraDialog 
               trigger={
@@ -677,8 +694,8 @@ export default function KraManagementPage() {
               }
             />
           </div>
-        )}
-      </div>
+          )}
+        </div>
 
       {/* Main Content */}
       <Tabs defaultValue="templates" className="space-y-4">
@@ -700,5 +717,6 @@ export default function KraManagementPage() {
         </TabsContent>
       </Tabs>
     </div>
+    </>
   );
 }

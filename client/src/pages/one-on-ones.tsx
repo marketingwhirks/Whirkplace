@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Skeleton } from "@/components/ui/skeleton";
+import Header from "@/components/layout/header";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
@@ -708,47 +709,63 @@ export default function OneOnOnesPage() {
   // Show loading while checking feature access
   if (featureLoading) {
     return (
-      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <>
+        <Header
+          title="One-on-One Meetings"
+          description="Schedule and manage one-on-one meetings with your team"
+        />
+        <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
         <div className="space-y-4">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-4 w-96" />
           <Skeleton className="h-64 w-full" />
         </div>
       </div>
+      </>
     );
   }
   
   // Show upgrade prompt if user doesn't have access to One-on-Ones
   if (!canAccessOneOnOnes) {
     return (
-      <UpgradePrompt
+      <>
+        <Header
+          title="One-on-One Meetings"
+          description="Schedule and manage one-on-one meetings with your team"
+        />
+        <UpgradePrompt
         feature="one_on_ones"
         title="One-on-One Meetings"
         description="Unlock powerful 1:1 meeting management to build stronger relationships with your team members and track their professional development."
       />
+      </>
     );
   }
   
   return (
-    <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">One-on-One Meetings</h2>
-          <p className="text-muted-foreground">
-            Manage your one-on-one meetings and track progress with your team.
-          </p>
-        </div>
+    <>
+      <Header
+        title="One-on-One Meetings"
+        description="Manage your one-on-one meetings and track progress with your team"
+      />
+      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight" data-testid="text-page-title">One-on-One Meetings</h2>
+            <p className="text-muted-foreground">
+              Manage your one-on-one meetings and track progress with your team.
+            </p>
+          </div>
         
-        <ScheduleMeetingDialog 
-          trigger={
-            <Button data-testid="button-schedule-meeting">
-              <Plus className="w-4 h-4 mr-2" />
-              Schedule Meeting
-            </Button>
-          }
-        />
-      </div>
+          <ScheduleMeetingDialog 
+            trigger={
+              <Button data-testid="button-schedule-meeting">
+                <Plus className="w-4 h-4 mr-2" />
+                Schedule Meeting
+              </Button>
+            }
+          />
+        </div>
 
       {/* Main Content */}
       <Tabs defaultValue="upcoming" className="space-y-4">
@@ -770,5 +787,6 @@ export default function OneOnOnesPage() {
         </TabsContent>
       </Tabs>
     </div>
+    </>
   );
 }
