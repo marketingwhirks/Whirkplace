@@ -1,7 +1,6 @@
 import { WebClient, type ChatPostMessageArguments } from "@slack/web-api";
 import { randomBytes } from "crypto";
-import jwt from "jsonwebtoken";
-import jwksClient from 'jwks-client';
+import { jwtVerify, createRemoteJWKSet } from 'jose';
 import * as cron from "node-cron";
 import type { Request } from 'express';
 import { resolveRedirectUri } from '../utils/redirect-uri';
@@ -225,166 +224,63 @@ export async function exchangeOIDCCode(code: string, redirectUri?: string): Prom
  */
 export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean; user?: SlackOIDCUserInfo; error?: string }> {
   try {
-    // SECURITY: Enhanced OIDC token validation with proper JWT signature verification
-    const decoded = jwt.decode(idToken, { complete: true }) as any;
+    // PERMANENT FIX: Use jose library instead of problematic jsonwebtoken
+    // This completely eliminates the "maxAge must be a number" error
+    console.log('🔒 Validating JWT with modern jose library...');
     
-    // Debug: Log the decoded token to check for maxAge claim
-    console.log('Decoded JWT token:', {
-      hasHeader: !!decoded?.header,
-      hasPayload: !!decoded?.payload,
-      payloadKeys: decoded?.payload ? Object.keys(decoded.payload) : [],
-      hasMaxAge: decoded?.payload && 'maxAge' in decoded.payload,
-      maxAgeValue: decoded?.payload?.maxAge
-    });
-    if (!decoded || typeof decoded === 'string') {
-      throw new Error('Invalid JWT token format');
-    }
-
-    // SECURITY: Verify token signature using Slack's JWKS endpoint
-    const jwksUri = 'https://slack.com/.well-known/jwks';
-    const client = jwksClient({
-      jwksUri,
-      requestHeaders: {},
-      timeout: 30000,
-      cache: true,
-      cacheMaxEntries: 5,
-      cacheMaxAge: 3600000 // Cache for 1 hour (60 * 60 * 1000 ms)
+    // Create remote JWKS for Slack's public keys - this is the modern approach
+    const JWKS = createRemoteJWKSet(new URL('https://slack.com/.well-known/jwks_public'));
+    
+    // Verify JWT with jose - secure, reliable, and modern
+    const { payload } = await jwtVerify(idToken, JWKS, {
+      issuer: 'https://slack.com',
+      audience: process.env.SLACK_CLIENT_ID,
+      algorithms: ['RS256']
     });
 
-    // Get the signing key
-    const key = await new Promise<string>((resolve, reject) => {
-      client.getSigningKey(decoded.header.kid, (err: any, signingKey: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        
-        const publicKey = 'publicKey' in signingKey ? signingKey.publicKey : signingKey.rsaPublicKey;
-        resolve(publicKey);
-      });
-    });
+    console.log('✅ JWT verification successful with jose library');
 
-    // SECURITY: Verify JWT signature, audience, issuer, and expiration
-    // FIX: Use null-prototype object to avoid inherited properties (like maxAge from prototype pollution)
-    
-    // Diagnostic: Check for prototype pollution
-    if (Object.prototype.hasOwnProperty('maxAge')) {
-      console.error('CRITICAL: Object.prototype pollution detected! maxAge =', (Object.prototype as any).maxAge);
-    }
-    
-    // Create verify options with null prototype to avoid ANY inherited properties
-    const verifyOptions = Object.assign(Object.create(null), {
-      audience: process.env.SLACK_CLIENT_ID, // Verify audience matches our client ID
-      issuer: 'https://slack.com', // Verify issuer is Slack
-      algorithms: ['RS256'], // Only allow RS256 algorithm
-      clockTolerance: 300 // Allow 5 minutes clock skew
-    }) as jwt.VerifyOptions;
-    
-    // Explicitly shadow any inherited maxAge by setting it to undefined
-    // This ensures even if Object.prototype has maxAge, our object has its own undefined maxAge
-    (verifyOptions as any).maxAge = undefined;
-    
-    // Debug: Log what we're about to pass to jwt.verify
-    console.log('JWT Verify Inputs:', {
-      hasIdToken: !!idToken,
-      hasKey: !!key,
-      verifyOptionsKeys: Object.keys(verifyOptions),
-      verifyOptionsStringified: JSON.stringify(verifyOptions),
-      hasInheritedMaxAge: 'maxAge' in verifyOptions,
-      maxAgeValue: (verifyOptions as any).maxAge
-    });
-    
-    const payload = jwt.verify(idToken, key, verifyOptions) as any;
-    
-    if (!payload || !payload.sub) {
-      throw new Error('Invalid token payload - missing subject');
-    }
-
-    
-    // SECURITY: Additional validation checks
-    const now = Math.floor(Date.now() / 1000);
-    
-    // Ensure token has required claims
-    if (!payload.aud || !payload.iss || !payload.exp || !payload.iat) {
-      console.error('Token missing claims:', {
-        hasAud: !!payload.aud,
-        hasIss: !!payload.iss,
-        hasExp: !!payload.exp,
-        hasIat: !!payload.iat
-      });
-      throw new Error('Token missing required claims');
-    }
-
-    // Validate audience matches our application
-    if (payload.aud !== process.env.SLACK_CLIENT_ID) {
-      console.error('Token audience mismatch:', {
-        expected: process.env.SLACK_CLIENT_ID,
-        received: payload.aud
-      });
-      throw new Error(`Token audience mismatch - expected ${process.env.SLACK_CLIENT_ID}, got ${payload.aud}`);
-    }
-
-    // Validate issuer is Slack
-    if (payload.iss !== 'https://slack.com') {
-      console.error('Token issuer mismatch:', {
-        expected: 'https://slack.com',
-        received: payload.iss
-      });
-      throw new Error(`Token issuer mismatch - expected https://slack.com, got ${payload.iss}`);
-    }
-
-    // Additional time validations
-    if (payload.iat > now + 300) {
-      throw new Error('Token issued in the future');
-    }
-
-    if (payload.exp < now) {
-      throw new Error('Token has expired');
-    }
-
-    
-    return {
-      ok: true,
-      user: payload
+    // Extract user information from verified token
+    const userInfo: SlackOIDCUserInfo = {
+      sub: payload.sub!,
+      team: {
+        id: payload['https://slack.com/team_id'] as string,
+        name: payload['https://slack.com/team_name'] as string
+      },
+      user: {
+        id: payload['https://slack.com/user_id'] as string,
+        name: payload.name as string,
+        email: payload.email as string,
+        image: payload.picture as string
+      },
+      enterprise: payload['https://slack.com/enterprise_id'] ? {
+        id: payload['https://slack.com/enterprise_id'] as string,
+        name: payload['https://slack.com/enterprise_name'] as string
+      } : undefined
     };
+
+    return { ok: true, user: userInfo };
+
   } catch (error) {
-    console.error('OIDC token validation failed:', error);
+    console.error('❌ JWT validation failed with jose:', error);
     
-    // Get error details for proper error messaging
+    // Provide user-friendly error messages
+    let userFriendlyError = 'Authentication failed';
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
-    // Log detailed error information for debugging
-    console.error('JWT Verification Error Details:', {
-      errorMessage,
-      errorName: error instanceof Error ? error.name : 'Unknown',
-      errorStack: error instanceof Error ? error.stack : undefined,
-      environment: process.env.NODE_ENV,
-      hasClientId: !!process.env.SLACK_CLIENT_ID,
-      verifyOptionsUsed: {
-        audience: process.env.SLACK_CLIENT_ID,
-        issuer: 'https://slack.com',
-        algorithms: ['RS256'],
-        clockTolerance: 300
-      }
-    });
-    
-    // Provide more specific error messages
-    let userFriendlyError = 'Token validation failed';
     if (errorMessage.includes('expired')) {
-      userFriendlyError = 'Authentication token has expired. Please try logging in again.';
+      userFriendlyError = 'Your login session has expired. Please try logging in again.';
     } else if (errorMessage.includes('audience')) {
-      userFriendlyError = 'Token validation failed: Invalid audience. Please check Slack app configuration.';
+      userFriendlyError = 'Authentication configuration error. Please contact support.';
     } else if (errorMessage.includes('issuer')) {
-      userFriendlyError = 'Token validation failed: Invalid issuer.';
+      userFriendlyError = 'Invalid authentication source.';
     } else if (errorMessage.includes('signature')) {
-      userFriendlyError = 'Token validation failed: Invalid signature.';
-    } else if (errorMessage.includes('getSigningKey')) {
-      userFriendlyError = 'Token validation failed: Could not fetch Slack signing keys.';
+      userFriendlyError = 'Authentication verification failed.';
     }
     
     return {
       ok: false,
-      error: userFriendlyError + ' (Details: ' + errorMessage + ')'
+      error: userFriendlyError
     };
   }
 }

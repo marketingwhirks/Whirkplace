@@ -67,6 +67,7 @@
     "html2canvas": "^1.4.1",
     "input-otp": "^1.4.2",
     "isomorphic-fetch": "^3.0.0",
+    "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^3.0.3",
     "jwks-client": "^2.0.5",
