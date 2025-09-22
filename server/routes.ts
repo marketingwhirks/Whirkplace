@@ -241,6 +241,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Backward compatibility: redirect /auth to /login
+  app.get("/auth", (req, res) => {
+    res.redirect(301, "/login");
+  });
+
   // OAuth endpoints (before organization middleware as they need to work without org context)
   
   // GET /auth/slack/login - Initiate Slack OAuth flow
