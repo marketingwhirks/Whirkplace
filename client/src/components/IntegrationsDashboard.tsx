@@ -142,6 +142,21 @@ export function IntegrationsDashboard() {
           description: event.data.message || "Failed to connect Slack workspace",
           variant: "destructive",
         });
+      } else if (event.data.type === 'MICROSOFT_OAUTH_SUCCESS') {
+        toast({
+          title: "Microsoft Integration Complete!",
+          description: `Successfully connected Microsoft 365 tenant: ${event.data.tenantId}`,
+        });
+        // Refresh integration data
+        queryClient.invalidateQueries({ 
+          queryKey: ["/api/organizations", currentUser?.organizationId, "integrations"] 
+        });
+      } else if (event.data.type === 'MICROSOFT_OAUTH_ERROR') {
+        toast({
+          title: "Microsoft Integration Failed",
+          description: event.data.message || "Failed to connect Microsoft 365 tenant",
+          variant: "destructive",
+        });
       }
     };
 
@@ -149,30 +164,29 @@ export function IntegrationsDashboard() {
     return () => window.removeEventListener('message', handleMessage);
   }, [currentUser?.organizationId, queryClient, toast]);
 
-  // Test Microsoft connection
-  const testMicrosoftConnection = useMutation({
-    mutationFn: async (credentials: { tenantId: string; clientId: string; clientSecret: string }) => {
-      const response = await apiRequest("POST", "/api/integrations/microsoft/test", credentials);
-      return await response.json() as MicrosoftTestResult;
+  // Get Microsoft OAuth install URL
+  const getMicrosoftInstallUrl = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("GET", `/api/organizations/${currentUser?.organizationId}/integrations/microsoft/install`);
+      return await response.json() as { installUrl: string; scopes: string[]; redirectUri: string; state: string };
     },
     onSuccess: (data) => {
-      if (data.success) {
-        toast({
-          title: "Microsoft connection successful",
-          description: `Connected to tenant: ${data.tenantName}`,
-        });
-      } else {
-        toast({
-          title: "Microsoft connection failed",
-          description: data.message,
-          variant: "destructive",
-        });
+      // Open OAuth popup window
+      const popup = window.open(
+        data.installUrl,
+        'microsoft-oauth',
+        'width=500,height=600,scrollbars=yes,resizable=yes'
+      );
+      
+      // Focus the popup window
+      if (popup) {
+        popup.focus();
       }
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
-        title: "Connection test failed",
-        description: "Unable to test Microsoft connection. Please check your credentials.",
+        title: "Installation Error", 
+        description: error.message || "Failed to generate Microsoft install URL",
         variant: "destructive",
       });
     },
@@ -200,9 +214,9 @@ export function IntegrationsDashboard() {
     },
   });
 
-  // Save Microsoft integration
+  // Save Microsoft integration (settings only - tokens saved via OAuth)
   const saveMicrosoftIntegration = useMutation({
-    mutationFn: async (data: { tenantId: string; clientId: string; clientSecret: string; enableAuth: boolean; enableTeams: boolean }) => {
+    mutationFn: async (data: { enableAuth: boolean; enableTeams: boolean }) => {
       const response = await apiRequest("PUT", `/api/organizations/${currentUser?.organizationId}/integrations/microsoft`, data);
       return await response.json();
     },
@@ -246,8 +260,8 @@ export function IntegrationsDashboard() {
   ];
 
   const microsoftRedirectUris = [
-    "https://app.whirkplace.com/auth/microsoft/callback", 
-    "https://whirkplace.com/auth/microsoft/callback"
+    "https://app.whirkplace.com/api/auth/microsoft/tenant/callback", 
+    "https://whirkplace.com/api/auth/microsoft/tenant/callback"
   ];
 
   const slackBotScopes = [
@@ -702,89 +716,87 @@ export function IntegrationsDashboard() {
                 </DialogContent>
               </Dialog>
 
-              {/* Configuration Form */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="microsoft-tenant-id">Tenant ID</Label>
-                  <Input
-                    id="microsoft-tenant-id"
-                    placeholder="12345678-1234-1234-1234-123456789012"
-                    value={microsoftTenantId}
-                    onChange={(e) => setMicrosoftTenantId(e.target.value)}
-                    data-testid="input-microsoft-tenant-id"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Found in Azure Portal → Azure Active Directory → Overview
+              {/* Microsoft OAuth Integration */}
+              {!orgIntegrations?.enableMicrosoftAuth ? (
+                <div className="text-center py-8">
+                  <Building className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+                  <h3 className="text-lg font-semibold mb-2">Connect Microsoft 365</h3>
+                  <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                    Connect your organization's Microsoft 365 tenant to enable SSO authentication and calendar integration for your team.
+                  </p>
+                  <Button 
+                    onClick={() => getMicrosoftInstallUrl.mutate()}
+                    disabled={getMicrosoftInstallUrl.isPending}
+                    className="bg-[#0078d4] hover:bg-[#106ebe] text-white"
+                    data-testid="button-add-microsoft"
+                  >
+                    {getMicrosoftInstallUrl.isPending ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Connecting...
+                      </>
+                    ) : (
+                      <>
+                        <Building className="w-4 h-4 mr-2" />
+                        Add to Microsoft
+                      </>
+                    )}
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-4">
+                    Secure OAuth 2.0 connection • No credentials to manage
                   </p>
                 </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Integration Settings */}
+                  <div className="space-y-4">
+                    <h4 className="font-medium">Integration Settings</h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-base">SSO Authentication</Label>
+                          <p className="text-sm text-muted-foreground">Allow users to sign in with Microsoft 365</p>
+                        </div>
+                        <Switch 
+                          checked={orgIntegrations?.enableMicrosoftAuth || false}
+                          onCheckedChange={(checked) => saveMicrosoftIntegration.mutate({ 
+                            enableAuth: checked, 
+                            enableTeams: orgIntegrations?.enableTeamsIntegration || false 
+                          })}
+                          data-testid="switch-microsoft-auth"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label className="text-base">Teams Integration</Label>
+                          <p className="text-sm text-muted-foreground">Enable Microsoft Teams notifications and workflows</p>
+                        </div>
+                        <Switch 
+                          checked={orgIntegrations?.enableTeamsIntegration || false}
+                          onCheckedChange={(checked) => saveMicrosoftIntegration.mutate({ 
+                            enableAuth: orgIntegrations?.enableMicrosoftAuth || false, 
+                            enableTeams: checked 
+                          })}
+                          data-testid="switch-microsoft-teams"
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="microsoft-client-id">Application (Client) ID</Label>
-                  <Input
-                    id="microsoft-client-id"
-                    placeholder="12345678-1234-1234-1234-123456789012"
-                    value={microsoftClientId}
-                    onChange={(e) => setMicrosoftClientId(e.target.value)}
-                    data-testid="input-microsoft-client-id"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Found in your app registration overview page
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="microsoft-client-secret">Client Secret</Label>
-                  <div className="relative">
-                    <Input
-                      id="microsoft-client-secret"
-                      type={showMicrosoftSecret ? "text" : "password"}
-                      placeholder="Client secret value"
-                      value={microsoftClientSecret}
-                      onChange={(e) => setMicrosoftClientSecret(e.target.value)}
-                      data-testid="input-microsoft-client-secret"
-                    />
+                  {/* Management Actions */}
+                  <div className="flex gap-3 pt-4 border-t">
                     <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="absolute right-0 top-0 h-full px-3"
-                      onClick={() => setShowMicrosoftSecret(!showMicrosoftSecret)}
+                      onClick={() => getMicrosoftInstallUrl.mutate()}
+                      disabled={getMicrosoftInstallUrl.isPending}
+                      variant="outline"
+                      data-testid="button-reconnect-microsoft"
                     >
-                      {showMicrosoftSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      <RefreshCw className="w-4 h-4 mr-2" />
+                      Reconnect Tenant
                     </Button>
                   </div>
                 </div>
-
-                <div className="flex gap-3">
-                  <Button
-                    onClick={() => testMicrosoftConnection.mutate({ 
-                      tenantId: microsoftTenantId, 
-                      clientId: microsoftClientId, 
-                      clientSecret: microsoftClientSecret 
-                    })}
-                    disabled={!microsoftTenantId || !microsoftClientId || !microsoftClientSecret || testMicrosoftConnection.isPending}
-                    variant="outline"
-                    data-testid="button-test-microsoft"
-                  >
-                    <RefreshCw className={`w-4 h-4 mr-2 ${testMicrosoftConnection.isPending ? 'animate-spin' : ''}`} />
-                    Test Connection
-                  </Button>
-                  <Button
-                    onClick={() => saveMicrosoftIntegration.mutate({ 
-                      tenantId: microsoftTenantId,
-                      clientId: microsoftClientId,
-                      clientSecret: microsoftClientSecret,
-                      enableAuth: true,
-                      enableTeams: true
-                    })}
-                    disabled={!microsoftTenantId || !microsoftClientId || !microsoftClientSecret || saveMicrosoftIntegration.isPending}
-                    data-testid="button-save-microsoft"
-                  >
-                    <Settings className="w-4 h-4 mr-2" />
-                    {saveMicrosoftIntegration.isPending ? "Saving..." : "Save Configuration"}
-                  </Button>
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

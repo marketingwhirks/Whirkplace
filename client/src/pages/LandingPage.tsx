@@ -190,13 +190,16 @@ export default function LandingPage() {
               <CardHeader>
                 <CardTitle>Starter</CardTitle>
                 <div className="text-3xl font-bold">$8<span className="text-sm font-normal">/member/month</span></div>
+                <div className="text-lg text-muted-foreground">$80<span className="text-sm">/member/year (billed annually)</span></div>
                 <CardDescription>Perfect for small teams getting started</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Essential team features</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Basic check-ins</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Slack integration</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Basic check-ins & surveys</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Basic team reports</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Email support</li>
+                  <li className="flex items-center text-muted-foreground"><span className="w-5 h-5 mr-2">•</span>No Slack or Microsoft integrations</li>
                 </ul>
               </CardContent>
             </Card>
@@ -206,13 +209,15 @@ export default function LandingPage() {
               <CardHeader>
                 <CardTitle>Professional</CardTitle>
                 <div className="text-3xl font-bold">$12<span className="text-sm font-normal">/member/month</span></div>
+                <div className="text-lg text-muted-foreground">$120<span className="text-sm">/member/year (billed annually)</span></div>
                 <CardDescription>Advanced features for growing teams</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Everything in Starter</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Slack integration</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Microsoft 365 integration</li>
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Advanced analytics</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Microsoft integration</li>
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Custom questions</li>
                 </ul>
               </CardContent>
@@ -221,15 +226,17 @@ export default function LandingPage() {
             <Card className="border-2" data-testid="card-plan-enterprise">
               <CardHeader>
                 <CardTitle>Enterprise</CardTitle>
-                <div className="text-3xl font-bold">$18<span className="text-sm font-normal">/member/month</span></div>
-                <CardDescription>Full platform for large organizations</CardDescription>
+                <div className="text-3xl font-bold">$24<span className="text-sm font-normal">/member/month</span></div>
+                <div className="text-lg text-muted-foreground">$240<span className="text-sm">/member/year (billed annually)</span></div>
+                <CardDescription>White label solution for firms and businesses</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Everything in Professional</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />White label options</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Priority support</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Custom integrations</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Complete white label branding</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Custom domain support</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Dedicated account manager</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Priority support & training</li>
                 </ul>
               </CardContent>
             </Card>

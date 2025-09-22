@@ -4659,6 +4659,458 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Microsoft OAuth Installation Flow
+  
+  // Generate Microsoft OAuth install URL for organization
+  app.get("/api/organizations/:id/integrations/microsoft/install", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only install integrations for your own organization" });
+      }
+      
+      if (!process.env.MICROSOFT_CLIENT_ID || !process.env.MICROSOFT_CLIENT_SECRET) {
+        return res.status(500).json({ message: "Microsoft integration is not configured on this server" });
+      }
+      
+      // Generate secure state parameter to prevent CSRF
+      const state = randomBytes(32).toString('hex');
+      
+      // Store state in session for verification in callback
+      req.session.microsoftAuthState = state;
+      req.session.authOrgId = req.params.id;
+      
+      // Dynamic redirect URI based on environment
+      const baseUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
+      const redirectUri = `${baseUrl}/api/auth/microsoft/tenant/callback`;
+      
+      // Microsoft Graph scopes for tenant/app management
+      const scopes = [
+        'openid',
+        'profile', 
+        'email',
+        'User.Read',
+        'Directory.Read.All',    // To read organization info
+        'Application.ReadWrite.All' // To manage app registrations if needed
+      ].join(' ');
+      
+      // Use common tenant for multi-tenant app installation
+      const clientId = process.env.MICROSOFT_CLIENT_ID;
+      const tenantId = 'common'; // Allow sign-in from any Azure AD tenant
+      
+      const params = new URLSearchParams({
+        client_id: clientId,
+        response_type: 'code',
+        redirect_uri: redirectUri,
+        response_mode: 'query',
+        scope: scopes,
+        state: state,
+        prompt: 'consent' // Force consent screen for proper permissions
+      });
+      
+      const oauthUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params.toString()}`;
+      
+      console.log(`Generated Microsoft OAuth install URL for org ${req.params.id}`);
+      
+      res.json({
+        installUrl: oauthUrl,
+        scopes: scopes.split(' '),
+        redirectUri: redirectUri,
+        state: state
+      });
+    } catch (error) {
+      console.error("GET /api/organizations/:id/integrations/microsoft/install - Error:", error);
+      res.status(500).json({ message: "Failed to generate Microsoft install URL" });
+    }
+  });
+
+  // Microsoft OAuth tenant callback handler
+  app.get("/api/auth/microsoft/tenant/callback", async (req, res) => {
+    try {
+      const { code, state, error } = req.query;
+      
+      if (error) {
+        console.error("Microsoft OAuth error:", error);
+        
+        const errorHtml = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Microsoft Integration Failed</title>
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #ef4444; }
+                .loading { margin-top: 20px; }
+              </style>
+            </head>
+            <body>
+              <h2 class="error">❌ Microsoft Integration Failed</h2>
+              <p>There was an error connecting your Microsoft 365 tenant.</p>
+              <p>Error: ${error}</p>
+              <p class="loading">Closing window...</p>
+              <script>
+                // Notify parent window of error
+                if (window.opener) {
+                  window.opener.postMessage({
+                    type: 'MICROSOFT_OAUTH_ERROR',
+                    message: 'Failed to complete Microsoft integration'
+                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }
+                // Close popup after a short delay
+                setTimeout(() => window.close(), 3000);
+              </script>
+            </body>
+          </html>
+        `;
+        
+        res.setHeader('Content-Type', 'text/html');
+        return res.send(errorHtml);
+      }
+      
+      if (!code || !state) {
+        const errorHtml = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Microsoft Integration Failed</title>
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #ef4444; }
+                .loading { margin-top: 20px; }
+              </style>
+            </head>
+            <body>
+              <h2 class="error">❌ Microsoft Integration Failed</h2>
+              <p>Missing authorization parameters.</p>
+              <p class="loading">Closing window...</p>
+              <script>
+                // Notify parent window of error
+                if (window.opener) {
+                  window.opener.postMessage({
+                    type: 'MICROSOFT_OAUTH_ERROR',
+                    message: 'Missing authorization parameters'
+                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }
+                // Close popup after a short delay
+                setTimeout(() => window.close(), 3000);
+              </script>
+            </body>
+          </html>
+        `;
+        
+        res.setHeader('Content-Type', 'text/html');
+        return res.send(errorHtml);
+      }
+      
+      // Verify state to prevent CSRF attacks
+      if (!req.session.microsoftAuthState || req.session.microsoftAuthState !== state) {
+        const errorHtml = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Microsoft Integration Failed</title>
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #ef4444; }
+                .loading { margin-top: 20px; }
+              </style>
+            </head>
+            <body>
+              <h2 class="error">❌ Microsoft Integration Failed</h2>
+              <p>Invalid security token. Please try again.</p>
+              <p class="loading">Closing window...</p>
+              <script>
+                // Notify parent window of error
+                if (window.opener) {
+                  window.opener.postMessage({
+                    type: 'MICROSOFT_OAUTH_ERROR',
+                    message: 'Invalid security token'
+                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }
+                // Close popup after a short delay
+                setTimeout(() => window.close(), 3000);
+              </script>
+            </body>
+          </html>
+        `;
+        
+        res.setHeader('Content-Type', 'text/html');
+        return res.send(errorHtml);
+      }
+      
+      const orgId = req.session.authOrgId;
+      if (!orgId) {
+        const errorHtml = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Microsoft Integration Failed</title>
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #ef4444; }
+                .loading { margin-top: 20px; }
+              </style>
+            </head>
+            <body>
+              <h2 class="error">❌ Microsoft Integration Failed</h2>
+              <p>Organization context lost. Please try again.</p>
+              <p class="loading">Closing window...</p>
+              <script>
+                // Notify parent window of error
+                if (window.opener) {
+                  window.opener.postMessage({
+                    type: 'MICROSOFT_OAUTH_ERROR',
+                    message: 'Organization context lost'
+                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }
+                // Close popup after a short delay
+                setTimeout(() => window.close(), 3000);
+              </script>
+            </body>
+          </html>
+        `;
+        
+        res.setHeader('Content-Type', 'text/html');
+        return res.send(errorHtml);
+      }
+      
+      // Exchange authorization code for access token
+      const baseUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
+      const redirectUri = `${baseUrl}/api/auth/microsoft/tenant/callback`;
+      
+      const tokenResponse = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          client_id: process.env.MICROSOFT_CLIENT_ID!,
+          client_secret: process.env.MICROSOFT_CLIENT_SECRET!,
+          code: code as string,
+          redirect_uri: redirectUri,
+          grant_type: 'authorization_code',
+        }),
+      });
+      
+      const tokenData = await tokenResponse.json();
+      
+      if (tokenData.error) {
+        console.error("Microsoft token exchange error:", tokenData.error);
+        const errorHtml = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Microsoft Integration Failed</title>
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #ef4444; }
+                .loading { margin-top: 20px; }
+              </style>
+            </head>
+            <body>
+              <h2 class="error">❌ Microsoft Integration Failed</h2>
+              <p>Failed to exchange authorization code.</p>
+              <p class="loading">Closing window...</p>
+              <script>
+                // Notify parent window of error
+                if (window.opener) {
+                  window.opener.postMessage({
+                    type: 'MICROSOFT_OAUTH_ERROR',
+                    message: 'Failed to exchange authorization code'
+                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }
+                // Close popup after a short delay
+                setTimeout(() => window.close(), 3000);
+              </script>
+            </body>
+          </html>
+        `;
+        
+        res.setHeader('Content-Type', 'text/html');
+        return res.send(errorHtml);
+      }
+      
+      // Get user/tenant info from Microsoft Graph
+      const graphResponse = await fetch("https://graph.microsoft.com/v1.0/me", {
+        headers: {
+          'Authorization': `Bearer ${tokenData.access_token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      const userInfo = await graphResponse.json();
+      
+      if (graphResponse.status !== 200) {
+        console.error("Microsoft Graph API error:", userInfo);
+        const errorHtml = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Microsoft Integration Failed</title>
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #ef4444; }
+                .loading { margin-top: 20px; }
+              </style>
+            </head>
+            <body>
+              <h2 class="error">❌ Microsoft Integration Failed</h2>
+              <p>Failed to retrieve user information.</p>
+              <p class="loading">Closing window...</p>
+              <script>
+                // Notify parent window of error
+                if (window.opener) {
+                  window.opener.postMessage({
+                    type: 'MICROSOFT_OAUTH_ERROR',
+                    message: 'Failed to retrieve user information'
+                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }
+                // Close popup after a short delay
+                setTimeout(() => window.close(), 3000);
+              </script>
+            </body>
+          </html>
+        `;
+        
+        res.setHeader('Content-Type', 'text/html');
+        return res.send(errorHtml);
+      }
+      
+      // Extract tenant information
+      const tenantId = userInfo.businessPhones && userInfo.businessPhones.length > 0 
+        ? 'unknown' // We'll need to get this differently
+        : 'personal'; // Personal Microsoft account
+      
+      // For now, let's use a different approach to get tenant ID
+      const tenantInfo = tokenData.access_token ? JSON.parse(atob(tokenData.access_token.split('.')[1])) : null;
+      const actualTenantId = tenantInfo?.tid || tenantId;
+      
+      // Update organization with Microsoft integration data
+      const updateData = {
+        microsoftClientId: process.env.MICROSOFT_CLIENT_ID,
+        microsoftTenantId: actualTenantId,
+        microsoftClientSecret: process.env.MICROSOFT_CLIENT_SECRET, // Store centrally for now
+        enableMicrosoftAuth: true,
+        microsoftConnectionStatus: "connected",
+        microsoftLastConnected: new Date(),
+      };
+      
+      const updatedOrg = await storage.updateOrganization(orgId, updateData);
+      if (!updatedOrg) {
+        const errorHtml = `
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Microsoft Integration Failed</title>
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #ef4444; }
+                .loading { margin-top: 20px; }
+              </style>
+            </head>
+            <body>
+              <h2 class="error">❌ Microsoft Integration Failed</h2>
+              <p>Failed to update organization settings.</p>
+              <p class="loading">Closing window...</p>
+              <script>
+                // Notify parent window of error
+                if (window.opener) {
+                  window.opener.postMessage({
+                    type: 'MICROSOFT_OAUTH_ERROR',
+                    message: 'Failed to update organization settings'
+                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }
+                // Close popup after a short delay
+                setTimeout(() => window.close(), 3000);
+              </script>
+            </body>
+          </html>
+        `;
+        
+        res.setHeader('Content-Type', 'text/html');
+        return res.send(errorHtml);
+      }
+      
+      // Clear OAuth state
+      req.session.microsoftAuthState = undefined;
+      req.session.authOrgId = undefined;
+      
+      console.log(`Microsoft integration installed for organization ${updatedOrg.name} (Tenant: ${actualTenantId})`);
+      
+      // Return HTML page that notifies parent window and closes popup
+      const successHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Microsoft Integration Complete</title>
+            <style>
+              body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+              .success { color: #22c55e; }
+              .loading { margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <h2 class="success">✅ Microsoft Integration Complete!</h2>
+            <p>Successfully connected Microsoft 365 tenant.</p>
+            <p><strong>Organization:</strong> ${updatedOrg.name}</p>
+            <p><strong>Tenant:</strong> ${actualTenantId}</p>
+            <p class="loading">Closing window...</p>
+            <script>
+              // Notify parent window of success
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'MICROSOFT_OAUTH_SUCCESS',
+                  tenantId: '${actualTenantId}',
+                  organization: '${updatedOrg.name}'
+                }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+              }
+              // Close popup after a short delay
+              setTimeout(() => window.close(), 2000);
+            </script>
+          </body>
+        </html>
+      `;
+      
+      res.setHeader('Content-Type', 'text/html');
+      res.send(successHtml);
+    } catch (error) {
+      console.error("Microsoft OAuth tenant callback error:", error);
+      
+      const errorHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Microsoft Integration Failed</title>
+            <style>
+              body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+              .error { color: #ef4444; }
+              .loading { margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <h2 class="error">❌ Microsoft Integration Failed</h2>
+            <p>An unexpected error occurred during integration.</p>
+            <p class="loading">Closing window...</p>
+            <script>
+              // Notify parent window of error
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'MICROSOFT_OAUTH_ERROR',
+                  message: 'Unexpected error during integration'
+                }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+              }
+              // Close popup after a short delay
+              setTimeout(() => window.close(), 3000);
+            </script>
+          </body>
+        </html>
+      `;
+      
+      res.setHeader('Content-Type', 'text/html');
+      res.send(errorHtml);
+    }
+  });
+
   // Slack OAuth callback handler
   app.get("/api/auth/slack/callback", async (req, res) => {
     try {
