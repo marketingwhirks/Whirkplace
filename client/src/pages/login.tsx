@@ -11,6 +11,9 @@ export default function LoginPage() {
   const [backdoorUser, setBackdoorUser] = useState('');
   const [backdoorKey, setBackdoorKey] = useState('');
   const [isBackdoorLogin, setIsBackdoorLogin] = useState(false);
+  const [planType, setPlanType] = useState<'starter' | 'professional'>('starter');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const { toast } = useToast();
   
   const handleSlackLogin = () => {
@@ -23,6 +26,42 @@ export default function LoginPage() {
     window.location.href = "/auth/microsoft?org=default-org";
   };
   
+  const handleSimpleLogin = async () => {
+    try {
+      // This would be the regular user login for Starter plan users
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ email, password, organizationSlug: 'default-org' })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        toast({ title: "Welcome back!", description: "Login successful" });
+        
+        // Clear cached data and redirect
+        queryClient.clear();
+        window.location.href = "/";
+      } else {
+        const error = await response.json();
+        toast({ 
+          title: "Login failed", 
+          description: error.message,
+          variant: "destructive" 
+        });
+      }
+    } catch (error: any) {
+      toast({ 
+        title: "Error", 
+        description: `Login failed: ${error?.message || 'Unknown error'}`,
+        variant: "destructive" 
+      });
+    }
+  };
+
   const handleBackdoorLogin = async () => {
     try {
       console.log("🔄 Starting FRESH backdoor login with:", { username: backdoorUser, key: backdoorKey.substring(0, 3) + "***" });
@@ -107,64 +146,151 @@ export default function LoginPage() {
           </p>
         </div>
 
+        {/* Plan Selection */}
+        <div className="flex bg-muted rounded-lg p-1 mb-4">
+          <button
+            onClick={() => setPlanType('starter')}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              planType === 'starter' 
+                ? 'bg-background text-foreground shadow-sm' 
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            data-testid="plan-starter"
+          >
+            Starter Plan
+          </button>
+          <button
+            onClick={() => setPlanType('professional')}
+            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              planType === 'professional' 
+                ? 'bg-background text-foreground shadow-sm' 
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            data-testid="plan-professional"
+          >
+            Professional Plan
+          </button>
+        </div>
+
         {/* Login Card */}
         <Card className="w-full">
           <CardHeader className="text-center">
             <CardTitle>Sign In</CardTitle>
             <CardDescription>
-              Connect with your Slack or Microsoft account to get started
+              {planType === 'starter' 
+                ? 'Sign in with your email and password' 
+                : 'Connect with your Slack or Microsoft account'
+              }
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {!isBackdoorLogin ? (
-              <>
-                <Button 
-                  onClick={handleSlackLogin}
-                  className="w-full flex items-center justify-center space-x-2"
-                  size="lg"
-                  data-testid="slack-login-button"
-                >
-                  <svg 
-                    viewBox="0 0 24 24" 
-                    className="w-5 h-5" 
-                    fill="white"
+              planType === 'starter' ? (
+                <>
+                  {/* Starter Plan - Simple Login */}
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="email">Email</Label>
+                      <Input 
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Enter your email"
+                        data-testid="input-email"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="password">Password</Label>
+                      <Input 
+                        id="password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter your password"
+                        data-testid="input-password"
+                      />
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    onClick={handleSimpleLogin}
+                    className="w-full"
+                    size="lg"
+                    disabled={!email || !password}
+                    data-testid="button-simple-login"
                   >
-                    <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52-2.523c0-1.398 1.13-2.528 2.52-2.528h2.52v2.528c0 1.393-1.122 2.523-2.52 2.523Zm0 0a2.528 2.528 0 0 1-2.52 2.523c0-1.398 1.13-2.528 2.52-2.528v2.528h2.52c1.398 0 2.528-1.13 2.528-2.523a2.528 2.528 0 0 1-2.528-2.52H5.042v2.52Z"/>
-                    <path d="M8.958 8.835a2.528 2.528 0 0 1 2.523-2.52c1.398 0 2.528 1.13 2.528 2.52v2.52h-2.528a2.528 2.528 0 0 1-2.523-2.52Zm0 0a2.528 2.528 0 0 1-2.523-2.52c1.398 0 2.528 1.13 2.528 2.52H8.958v2.52c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523-2.528v-2.52Z"/>
-                    <path d="M15.165 18.958a2.528 2.528 0 0 1 2.523 2.52c0-1.398 1.13-2.528 2.523-2.528a2.528 2.528 0 0 1-2.523-2.52v-2.52h2.523c1.398 0 2.528 1.13 2.528 2.52a2.528 2.528 0 0 1-2.528 2.523h-2.523v2.523Z"/>
-                    <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
-                  </svg>
-                  <span>Continue with Slack</span>
-                </Button>
-                
-                <Button 
-                  onClick={handleMicrosoftLogin}
-                  className="w-full flex items-center justify-center space-x-2"
-                  variant="outline"
-                  size="lg"
-                  data-testid="microsoft-login-button"
-                >
-                  <svg 
-                    viewBox="0 0 24 24" 
-                    className="w-5 h-5" 
-                    fill="currentColor"
+                    Sign In
+                  </Button>
+                  
+                  <div className="text-center text-sm text-muted-foreground">
+                    <button 
+                      type="button"
+                      onClick={() => setIsBackdoorLogin(true)}
+                      className="underline hover:no-underline"
+                      data-testid="backdoor-toggle"
+                    >
+                      Developer Login
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Professional Plan - OAuth Login */}
+                  <Button 
+                    onClick={handleSlackLogin}
+                    className="w-full flex items-center justify-center space-x-2"
+                    size="lg"
+                    data-testid="slack-login-button"
                   >
-                    <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
-                  </svg>
-                  <span>Continue with Microsoft</span>
-                </Button>
-                
-                <div className="text-center text-sm text-muted-foreground">
-                  <button 
-                    type="button"
-                    onClick={() => setIsBackdoorLogin(true)}
-                    className="underline hover:no-underline"
-                    data-testid="backdoor-toggle"
+                    <svg 
+                      viewBox="0 0 24 24" 
+                      className="w-5 h-5" 
+                      fill="white"
+                    >
+                      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52-2.523c0-1.398 1.13-2.528 2.52-2.528h2.52v2.528c0 1.393-1.122 2.523-2.52 2.523Zm0 0a2.528 2.528 0 0 1-2.52 2.523c0-1.398 1.13-2.528 2.52-2.528v2.528h2.52c1.398 0 2.528-1.13 2.528-2.523a2.528 2.528 0 0 1-2.528-2.52H5.042v2.52Z"/>
+                      <path d="M8.958 8.835a2.528 2.528 0 0 1 2.523-2.52c1.398 0 2.528 1.13 2.528 2.52v2.52h-2.528a2.528 2.528 0 0 1-2.523-2.52Zm0 0a2.528 2.528 0 0 1-2.523-2.52c1.398 0 2.528 1.13 2.528 2.52H8.958v2.52c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523-2.528v-2.52Z"/>
+                      <path d="M15.165 18.958a2.528 2.528 0 0 1 2.523 2.52c0-1.398 1.13-2.528 2.523-2.528a2.528 2.528 0 0 1-2.523-2.52v-2.52h2.523c1.398 0 2.528 1.13 2.528 2.20a2.528 2.528 0 0 1-2.528 2.523h-2.523v2.523Z"/>
+                      <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
+                    </svg>
+                    <span>Continue with Slack</span>
+                  </Button>
+                  
+                  <Button 
+                    onClick={handleMicrosoftLogin}
+                    className="w-full flex items-center justify-center space-x-2"
+                    variant="outline"
+                    size="lg"
+                    data-testid="microsoft-login-button"
                   >
-                    Developer Login
-                  </button>
-                </div>
-              </>
+                    <svg 
+                      viewBox="0 0 24 24" 
+                      className="w-5 h-5" 
+                      fill="currentColor"
+                    >
+                      <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
+                    </svg>
+                    <span>Continue with Microsoft</span>
+                  </Button>
+                  
+                  <div className="text-center text-sm text-muted-foreground">
+                    <button 
+                      type="button"
+                      onClick={() => setIsBackdoorLogin(true)}
+                      className="underline hover:no-underline"
+                      data-testid="backdoor-toggle"
+                    >
+                      Developer Login
+                    </button>
+                  </div>
+                  
+                  <div className="text-center">
+                    <p className="text-sm text-muted-foreground">
+                      Join the <strong>whirkplace-pulse</strong> Slack channel to automatically get access
+                    </p>
+                  </div>
+                </>
+              )
             ) : (
               <>
                 <div className="space-y-3">
@@ -205,19 +331,13 @@ export default function LoginPage() {
                     type="button"
                     onClick={() => setIsBackdoorLogin(false)}
                     className="underline hover:no-underline"
-                    data-testid="slack-toggle"
+                    data-testid="back-toggle"
                   >
-                    Back to Slack Login
+                    Back to Login
                   </button>
                 </div>
               </>
             )}
-            
-            <div className="text-center">
-              <p className="text-sm text-muted-foreground">
-                Join the <strong>whirkplace-pulse</strong> Slack channel to automatically get access
-              </p>
-            </div>
 
             <div className="border-t pt-4">
               <div className="flex items-center justify-center space-x-4 text-sm text-muted-foreground">
