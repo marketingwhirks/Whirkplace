@@ -189,8 +189,8 @@ export default function LandingPage() {
             <Card className="border-2" data-testid="card-plan-starter">
               <CardHeader>
                 <CardTitle>Starter</CardTitle>
-                <div className="text-3xl font-bold">$6.67<span className="text-sm font-normal">/member/month</span></div>
-                <div className="text-sm text-muted-foreground">Billed annually ($80/year)</div>
+                <div className="text-3xl font-bold">$6<span className="text-sm font-normal">/member/month</span></div>
+                <div className="text-sm text-muted-foreground">Billed annually ($72/year)</div>
                 <CardDescription>Perfect for small teams getting started</CardDescription>
               </CardHeader>
               <CardContent>
