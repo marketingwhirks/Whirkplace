@@ -23,7 +23,46 @@ export default function LoginPage() {
     if (urlParams.get('signup') === 'true') {
       setIsSignUpMode(true);
     }
+    
+    // Clear any old localStorage authentication tokens that might be causing conflicts
+    clearOldAuthTokens();
   }, []);
+  
+  const clearOldAuthTokens = () => {
+    // Clear any old authentication tokens from localStorage
+    const itemsToRemove = [
+      'whirkplace-auth-token',
+      'whirkplace-user-id', 
+      'auth-token',
+      'user-id',
+      'auth_user_id',
+      'auth_org_id'
+    ];
+    
+    itemsToRemove.forEach(item => {
+      localStorage.removeItem(item);
+      sessionStorage.removeItem(item);
+    });
+    
+    console.log('🧹 Cleared old authentication tokens from storage');
+  };
+  
+  const clearAuthData = async () => {
+    try {
+      // Clear localStorage/sessionStorage
+      clearOldAuthTokens();
+      
+      // Clear server-side authentication data
+      await fetch('/api/auth/clear', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      
+      console.log('🧹 Cleared all authentication data');
+    } catch (error) {
+      console.log('Note: Could not clear server auth data (this is normal for new sessions)');
+    }
+  };
   
   const handleSlackLogin = () => {
     // Redirect to the Slack OAuth endpoint
@@ -37,6 +76,9 @@ export default function LoginPage() {
   
   const handleSimpleLogin = async () => {
     try {
+      // Clear any old authentication data first
+      await clearAuthData();
+      
       // This would be the regular user login for Starter plan users
       const response = await fetch('/api/auth/login', {
         method: 'POST',

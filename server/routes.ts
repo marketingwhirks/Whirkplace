@@ -17,6 +17,7 @@ import {
 import Stripe from "stripe";
 import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken } from "./services/slack";
 import { randomBytes } from "crypto";
+import bcrypt from "bcryptjs";
 import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
 import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser, requireSuperAdmin } from "./middleware/auth";
@@ -743,6 +744,156 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       res.status(500).json({ message: "Failed to submit partner application" });
+    }
+  });
+
+  // Clear authentication data endpoint (before auth middleware)
+  app.post("/api/auth/clear", (req, res) => {
+    try {
+      console.log("🧹 Clearing authentication data");
+      
+      // Clear all authentication-related cookies
+      res.clearCookie('auth_user_id', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/'
+      });
+      
+      res.clearCookie('auth_org_id', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/'
+      });
+      
+      res.clearCookie('auth_session_token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/'
+      });
+      
+      // Clear session if it exists
+      if (req.session) {
+        req.session.destroy((err) => {
+          if (err) {
+            console.error('Session destroy error during clear:', err);
+          }
+        });
+      }
+      
+      res.json({ 
+        message: "Authentication data cleared successfully" 
+      });
+    } catch (error) {
+      console.error("Clear auth error:", error);
+      res.status(500).json({ message: "Failed to clear authentication data" });
+    }
+  });
+
+  // Email/Password Login endpoint (placed before auth middleware)
+  app.post("/api/auth/login", requireOrganization(), async (req, res) => {
+    try {
+      console.log("🔐 Email/password login attempt");
+      
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ 
+          message: "Email and password are required" 
+        });
+      }
+      
+      // Find user by email in the current organization
+      const user = await storage.getUserByEmail(req.orgId, email.toLowerCase().trim());
+      
+      if (!user || !user.isActive) {
+        return res.status(401).json({ 
+          message: "Invalid email or password" 
+        });
+      }
+      
+      // Check password (handle both plain text and hashed passwords)
+      let isValidPassword = false;
+      if (user.password.startsWith('$2a$') || user.password.startsWith('$2b$')) {
+        // Password is already hashed with bcrypt
+        isValidPassword = await bcrypt.compare(password, user.password);
+      } else {
+        // Password is plain text (legacy), compare directly for now
+        isValidPassword = user.password === password;
+      }
+      
+      if (!isValidPassword) {
+        return res.status(401).json({ 
+          message: "Invalid email or password" 
+        });
+      }
+      
+      console.log(`✅ Login successful for: ${user.name} (${user.email})`);
+      
+      // Generate new session
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error('Failed to regenerate session:', regenerateErr);
+          return res.status(500).json({ message: "Session regeneration failed" });
+        }
+        
+        // Set session after regeneration
+        req.session.userId = user.id;
+        
+        // Save session before sending response
+        req.session.save((err) => {
+          if (err) {
+            console.error('Failed to save session:', err);
+            return res.status(500).json({ message: "Session save failed" });
+          }
+          
+          console.log(`💾 Session saved for user: ${user.id}`);
+          
+          // Set authentication cookies for compatibility
+          const sessionToken = randomBytes(32).toString('hex');
+          
+          res.cookie('auth_user_id', user.id, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          });
+          
+          res.cookie('auth_org_id', req.orgId, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          });
+          
+          res.cookie('auth_session_token', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          });
+          
+          res.json({ 
+            message: "Login successful",
+            user: {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              organizationId: user.organizationId
+            }
+          });
+        });
+      });
+      
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ message: "Login failed" });
     }
   });
   
