@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Users, MessageSquare, BarChart3, CheckCircle, Star, ArrowRight, Building, Zap, Shield } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -235,6 +235,16 @@ export default function LandingPage() {
                   <li className="flex items-start"><CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />First 50 seats free to start</li>
                 </ul>
               </CardContent>
+              <CardFooter>
+                <Button 
+                  className="w-full" 
+                  variant="outline" 
+                  onClick={() => window.location.href = "/partners"}
+                  data-testid="button-learn-more-partners"
+                >
+                  Learn More
+                </Button>
+              </CardFooter>
             </Card>
           </div>
         </div>

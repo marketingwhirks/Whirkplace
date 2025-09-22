@@ -26,6 +26,7 @@ import SuperAdminPage from "@/pages/super-admin";
 import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import LandingPage from "@/pages/LandingPage";
+import PartnerPage from "@/pages/PartnerPage";
 import Sidebar from "@/components/layout/sidebar";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
 import { ThemeCustomizer } from "@/components/ThemeCustomizer";
@@ -98,6 +99,7 @@ function App() {
             <Switch>
               <Route path="/signup" component={BusinessSignupPage} />
               <Route path="/login" component={LoginPage} />
+              <Route path="/partners" component={PartnerPage} />
               <Route component={AuthenticatedApp} />
             </Switch>
           </RoleSwitchProvider>
