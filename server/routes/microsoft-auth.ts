@@ -31,17 +31,20 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       if (!org || typeof org !== 'string') {
         // Default to the default organization
         console.log("No organization parameter provided, using default organization");
-        const defaultOrgSlug = 'default-org'; // Use the actual default-org slug
+        const defaultOrgSlug = 'default'; // Use the actual default slug
         organization = await storage.getOrganizationBySlug(defaultOrgSlug);
         
         if (!organization) {
           return res.status(400).json({ 
-            message: "Organization parameter is required. Use ?org=default-org or your organization slug" 
+            message: "Organization parameter is required. Use ?org=default or your organization slug" 
           });
         }
       } else {
+        // Handle legacy 'default-org' slug for backwards compatibility
+        const orgSlug = org === 'default-org' ? 'default' : org;
+        
         // Get organization by slug to validate it exists and get its ID
-        organization = await storage.getOrganizationBySlug(org);
+        organization = await storage.getOrganizationBySlug(orgSlug);
       }
       if (!organization) {
         return res.status(404).json({ message: "Organization not found" });

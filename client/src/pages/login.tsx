@@ -113,27 +113,37 @@ export default function LoginPage() {
   const handleMicrosoftLogin = () => {
     // Get organization from subdomain or use default
     const hostname = window.location.hostname;
-    let orgSlug = 'default-org';
+    let orgSlug = 'default';
     
-    // If we're on a subdomain (not www or root domain), use that as the org slug
-    if (hostname !== 'localhost' && 
-        hostname !== 'whirkplace.com' && 
-        hostname !== 'www.whirkplace.com' &&
-        hostname !== 'app.whirkplace.com') {
-      const subdomain = hostname.split('.')[0];
-      if (subdomain) {
-        orgSlug = subdomain;
-      }
-    }
-    
-    // Check if there's an org parameter in the URL
+    // Check if there's an org parameter in the URL first
     const urlParams = new URLSearchParams(window.location.search);
     const orgParam = urlParams.get('org');
     if (orgParam) {
       orgSlug = orgParam;
+    } else {
+      // Determine org based on hostname
+      if (hostname === 'whirkplace.com' || 
+          hostname === 'www.whirkplace.com' || 
+          hostname === 'app.whirkplace.com') {
+        // For the main whirkplace.com domain, use whirkplace org for super admin
+        orgSlug = 'whirkplace';
+        console.log('Microsoft super admin authentication mode - using whirkplace org');
+      } else if (hostname !== 'localhost' && 
+                 !hostname.includes('127.0.0.1') &&
+                 !hostname.includes('replit')) {
+        // If we're on a subdomain, use that as the org slug
+        const subdomain = hostname.split('.')[0];
+        if (subdomain) {
+          orgSlug = subdomain;
+        }
+      } else {
+        // For localhost/dev, use default org
+        orgSlug = 'default';
+      }
     }
     
     // Redirect to the Microsoft OAuth endpoint with organization parameter
+    console.log('Initiating Microsoft login for org:', orgSlug);
     window.location.href = `/auth/microsoft?org=${orgSlug}`;
   };
   
@@ -149,7 +159,7 @@ export default function LoginPage() {
           'Content-Type': 'application/json'
         },
         credentials: 'include',
-        body: JSON.stringify({ email, password, organizationSlug: 'default-org' })
+        body: JSON.stringify({ email, password, organizationSlug: 'default' })
       });
       
       if (response.ok) {
@@ -193,7 +203,7 @@ export default function LoginPage() {
           'Content-Type': 'application/json'
         },
         credentials: 'include',
-        body: JSON.stringify({ email, password, organizationSlug: 'default-org' })
+        body: JSON.stringify({ email, password, organizationSlug: 'default' })
       });
       
       if (response.ok) {
