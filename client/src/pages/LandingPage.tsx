@@ -23,12 +23,27 @@ export default function LandingPage() {
 
   // Determine organization based on hostname
   const getOrgSlug = () => {
-    const hostname = window.location.hostname;
-    // If on whirkplace.com domain (including app.whirkplace.com), use whirkplace org
-    if (hostname.includes('whirkplace.com')) {
+    const hostname = window.location.hostname.toLowerCase();
+    
+    // Debug logging to see what hostname we're getting
+    console.log('Landing page hostname:', hostname);
+    
+    // If on whirkplace.com domain (including www.whirkplace.com, app.whirkplace.com, etc.)
+    if (hostname === 'whirkplace.com' || 
+        hostname === 'www.whirkplace.com' || 
+        hostname.endsWith('.whirkplace.com')) {
+      console.log('Detected whirkplace.com domain, using whirkplace org');
       return 'whirkplace';
     }
+    
+    // For replit dev environments
+    if (hostname.includes('replit') || hostname.includes('repl.co')) {
+      console.log('Detected replit domain, using default-org');
+      return 'default-org';
+    }
+    
     // Otherwise use default org
+    console.log('Using default-org for hostname:', hostname);
     return 'default-org';
   };
 
