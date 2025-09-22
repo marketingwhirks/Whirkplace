@@ -21,24 +21,40 @@ export default function LandingPage() {
     setIsAuthenticated(!!user);
   }, [user]);
 
+  // Determine organization based on hostname
+  const getOrgSlug = () => {
+    const hostname = window.location.hostname;
+    // If on whirkplace.com domain (including app.whirkplace.com), use whirkplace org
+    if (hostname.includes('whirkplace.com')) {
+      return 'whirkplace';
+    }
+    // Otherwise use default org
+    return 'default-org';
+  };
+
   const redirectToDashboard = () => {
-    setLocation("/?org=default-org");
+    const orgSlug = getOrgSlug();
+    setLocation(`/?org=${orgSlug}`);
   };
 
   const handleSignIn = () => {
-    setLocation("/login?org=default-org");
+    const orgSlug = getOrgSlug();
+    setLocation(`/login?org=${orgSlug}`);
   };
 
   const handleSignUp = () => {
-    setLocation("/login?org=default-org&signup=true");
+    const orgSlug = getOrgSlug();
+    setLocation(`/login?org=${orgSlug}&signup=true`);
   };
 
   const handleStarterSignUp = () => {
-    setLocation("/login?org=default-org&signup=true&plan=starter");
+    const orgSlug = getOrgSlug();
+    setLocation(`/login?org=${orgSlug}&signup=true&plan=starter`);
   };
 
   const handleProfessionalSignUp = () => {
-    setLocation("/login?org=default-org&signup=true&plan=professional");
+    const orgSlug = getOrgSlug();
+    setLocation(`/login?org=${orgSlug}&signup=true&plan=professional`);
   };
 
   // If user is authenticated, redirect to dashboard
