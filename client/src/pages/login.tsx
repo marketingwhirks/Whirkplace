@@ -70,30 +70,44 @@ export default function LoginPage() {
   };
   
   const handleSlackLogin = () => {
-    // Get organization from subdomain or use default
+    // Get organization from subdomain or URL parameter
     const hostname = window.location.hostname;
-    let orgSlug = 'default-org';
+    let orgSlug = '';
     
-    // If we're on a subdomain (not www or root domain), use that as the org slug
-    if (hostname !== 'localhost' && 
-        hostname !== 'whirkplace.com' && 
-        hostname !== 'www.whirkplace.com' &&
-        hostname !== 'app.whirkplace.com') {
-      const subdomain = hostname.split('.')[0];
-      if (subdomain) {
-        orgSlug = subdomain;
-      }
-    }
-    
-    // Check if there's an org parameter in the URL
+    // Check if there's an org parameter in the URL first
     const urlParams = new URLSearchParams(window.location.search);
     const orgParam = urlParams.get('org');
     if (orgParam) {
       orgSlug = orgParam;
+    } else {
+      // Check if we're on a specific organization's subdomain
+      if (hostname !== 'localhost' && 
+          hostname !== 'whirkplace.com' && 
+          hostname !== 'www.whirkplace.com' &&
+          hostname !== 'app.whirkplace.com' &&
+          !hostname.includes('replit')) {
+        const subdomain = hostname.split('.')[0];
+        if (subdomain) {
+          orgSlug = subdomain;
+        }
+      } else if (hostname === 'whirkplace.com' || 
+                 hostname === 'www.whirkplace.com' || 
+                 hostname === 'app.whirkplace.com') {
+        // For the main whirkplace.com domain, don't specify an org
+        // This triggers super admin authentication flow
+        orgSlug = '';
+        console.log('Super admin authentication mode - no org specified');
+      } else {
+        // For localhost/dev only, use default-org
+        orgSlug = 'default-org';
+      }
     }
     
-    // Redirect to the Slack OAuth endpoint
-    window.location.href = `/auth/slack/login?org=${orgSlug}`;
+    // Redirect to Slack OAuth endpoint
+    // If no org is specified, it will trigger super admin authentication
+    const url = orgSlug ? `/auth/slack/login?org=${orgSlug}` : '/auth/slack/login';
+    console.log('Initiating Slack login:', url);
+    window.location.href = url;
   };
   
   const handleMicrosoftLogin = () => {
