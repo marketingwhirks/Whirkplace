@@ -33,6 +33,14 @@ export default function LandingPage() {
     setLocation("/login?org=default-org&signup=true");
   };
 
+  const handleStarterSignUp = () => {
+    setLocation("/login?org=default-org&signup=true&plan=starter");
+  };
+
+  const handleProfessionalSignUp = () => {
+    setLocation("/login?org=default-org&signup=true&plan=professional");
+  };
+
   // If user is authenticated, redirect to dashboard
   if (isAuthenticated) {
     return (
@@ -193,7 +201,7 @@ export default function LandingPage() {
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             <Card 
               className="border-2 cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105" 
-              onClick={handleSignUp}
+              onClick={handleStarterSignUp}
               data-testid="card-plan-starter"
             >
               <CardHeader>
@@ -214,7 +222,7 @@ export default function LandingPage() {
 
             <Card 
               className="border-2 border-primary relative cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105" 
-              onClick={handleSignUp}
+              onClick={handleProfessionalSignUp}
               data-testid="card-plan-professional"
             >
               <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2">Most Popular</Badge>

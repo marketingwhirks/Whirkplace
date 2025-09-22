@@ -15,6 +15,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSignUpMode, setIsSignUpMode] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Check if this is sign-up mode from URL parameters
@@ -23,6 +24,10 @@ export default function LoginPage() {
     if (urlParams.get('signup') === 'true') {
       setIsSignUpMode(true);
     }
+    
+    // Get plan parameter to restrict signup options
+    const plan = urlParams.get('plan');
+    setSelectedPlan(plan);
     
     // Clear any old localStorage authentication tokens that might be causing conflicts
     clearOldAuthTokens();
@@ -252,54 +257,58 @@ export default function LoginPage() {
           <CardContent className="space-y-4">
             {!isBackdoorLogin ? (
               <>
-                {/* SSO Options */}
-                <div className="space-y-3">
-                  <Button 
-                    onClick={handleSlackLogin}
-                    className="w-full flex items-center justify-center space-x-2 bg-[#4A154B] hover:bg-[#350d36] text-white border-[#4A154B]"
-                    size="lg"
-                    data-testid="slack-login-button"
-                  >
-                    <svg 
-                      viewBox="0 0 24 24" 
-                      className="w-5 h-5" 
-                      fill="white"
+                {/* SSO Options - Hidden for Starter plan */}
+                {selectedPlan !== 'starter' && (
+                  <div className="space-y-3">
+                    <Button 
+                      onClick={handleSlackLogin}
+                      className="w-full flex items-center justify-center space-x-2 bg-[#4A154B] hover:bg-[#350d36] text-white border-[#4A154B]"
+                      size="lg"
+                      data-testid="slack-login-button"
                     >
-                      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52-2.523c0-1.398 1.13-2.528 2.52-2.528h2.52v2.528c0 1.393-1.122 2.523-2.52 2.523Zm0 0a2.528 2.528 0 0 1-2.52 2.523c0-1.398 1.13-2.528 2.52-2.528v2.528h2.52c1.398 0 2.528-1.13 2.528-2.523a2.528 2.528 0 0 1-2.528-2.52H5.042v2.52Z"/>
-                      <path d="M8.958 8.835a2.528 2.528 0 0 1 2.523-2.52c1.398 0 2.528 1.13 2.528 2.52v2.52h-2.528a2.528 2.528 0 0 1-2.523-2.52Zm0 0a2.528 2.528 0 0 1-2.523-2.52c1.398 0 2.528 1.13 2.528 2.52H8.958v2.52c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523-2.528v-2.52Z"/>
-                      <path d="M15.165 18.958a2.528 2.528 0 0 1 2.523 2.52c0-1.398 1.13-2.528 2.523-2.528a2.528 2.528 0 0 1-2.523-2.52v-2.52h2.523c1.398 0 2.528 1.13 2.528 2.20a2.528 2.528 0 0 1-2.528 2.523h-2.523v2.523Z"/>
-                      <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
-                    </svg>
-                    <span>{isSignUpMode ? 'Sign up with Slack' : 'Continue with Slack'}</span>
-                  </Button>
-                  
-                  <Button 
-                    onClick={handleMicrosoftLogin}
-                    className="w-full flex items-center justify-center space-x-2"
-                    variant="outline"
-                    size="lg"
-                    data-testid="microsoft-login-button"
-                  >
-                    <svg 
-                      viewBox="0 0 24 24" 
-                      className="w-5 h-5" 
-                      fill="currentColor"
+                      <svg 
+                        viewBox="0 0 24 24" 
+                        className="w-5 h-5" 
+                        fill="white"
+                      >
+                        <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52-2.523c0-1.398 1.13-2.528 2.52-2.528h2.52v2.528c0 1.393-1.122 2.523-2.52 2.523Zm0 0a2.528 2.528 0 0 1-2.52 2.523c0-1.398 1.13-2.528 2.52-2.528v2.528h2.52c1.398 0 2.528-1.13 2.528-2.523a2.528 2.528 0 0 1-2.528-2.52H5.042v2.52Z"/>
+                        <path d="M8.958 8.835a2.528 2.528 0 0 1 2.523-2.52c1.398 0 2.528 1.13 2.528 2.52v2.52h-2.528a2.528 2.528 0 0 1-2.523-2.52Zm0 0a2.528 2.528 0 0 1-2.523-2.52c1.398 0 2.528 1.13 2.528 2.52H8.958v2.52c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523-2.528v-2.52Z"/>
+                        <path d="M15.165 18.958a2.528 2.528 0 0 1 2.523 2.52c0-1.398 1.13-2.528 2.523-2.528a2.528 2.528 0 0 1-2.523-2.52v-2.52h2.523c1.398 0 2.528 1.13 2.528 2.20a2.528 2.528 0 0 1-2.528 2.523h-2.523v2.523Z"/>
+                        <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
+                      </svg>
+                      <span>{isSignUpMode ? 'Sign up with Slack' : 'Continue with Slack'}</span>
+                    </Button>
+                    
+                    <Button 
+                      onClick={handleMicrosoftLogin}
+                      className="w-full flex items-center justify-center space-x-2"
+                      variant="outline"
+                      size="lg"
+                      data-testid="microsoft-login-button"
                     >
-                      <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
-                    </svg>
-                    <span>{isSignUpMode ? 'Sign up with Microsoft' : 'Continue with Microsoft'}</span>
-                  </Button>
-                </div>
+                      <svg 
+                        viewBox="0 0 24 24" 
+                        className="w-5 h-5" 
+                        fill="currentColor"
+                      >
+                        <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
+                      </svg>
+                      <span>{isSignUpMode ? 'Sign up with Microsoft' : 'Continue with Microsoft'}</span>
+                    </Button>
+                  </div>
+                )}
 
-                {/* Divider */}
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
+                {/* Divider - Only show if SSO options are visible */}
+                {selectedPlan !== 'starter' && (
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">{isSignUpMode ? 'Or sign up with email' : 'Or sign in with email'}</span>
+                    </div>
                   </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">{isSignUpMode ? 'Or sign up with email' : 'Or sign in with email'}</span>
-                  </div>
-                </div>
+                )}
 
                 {/* Email/Password Login */}
                 <div className="space-y-3">
