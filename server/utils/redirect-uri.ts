@@ -6,15 +6,25 @@ import type { Request } from 'express';
  */
 export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft/callback'): string {
   // Check for explicit redirect URIs based on the path
-  if (path.includes('slack') && process.env.SLACK_REDIRECT_URI_OVERRIDE) {
-    return process.env.SLACK_REDIRECT_URI_OVERRIDE;
+  if (path.includes('slack')) {
+    // For production, always use the correct domain for Slack
+    if (process.env.NODE_ENV === 'production') {
+      return 'https://whirkplace.com/auth/slack/callback';
+    }
+    // Only use override in development if provided
+    if (process.env.SLACK_REDIRECT_URI_OVERRIDE) {
+      return process.env.SLACK_REDIRECT_URI_OVERRIDE;
+    }
   }
-  if (path.includes('microsoft') && process.env.MICROSOFT_REDIRECT_URI) {
-    // For production, always use the correct domain regardless of env var
+  if (path.includes('microsoft')) {
+    // For production, always use the correct domain for Microsoft
     if (process.env.NODE_ENV === 'production') {
       return 'https://whirkplace.com/auth/microsoft/callback';
     }
-    return process.env.MICROSOFT_REDIRECT_URI;
+    // Only use override in development if provided
+    if (process.env.MICROSOFT_REDIRECT_URI) {
+      return process.env.MICROSOFT_REDIRECT_URI;
+    }
   }
 
   // Determine protocol from headers (for proxied environments) or request
