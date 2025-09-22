@@ -28,6 +28,7 @@ import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import LandingPage from "@/pages/LandingPage";
 import PartnerPage from "@/pages/PartnerPage";
 import Sidebar from "@/components/layout/sidebar";
+import Header from "@/components/layout/header";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
 import { ThemeCustomizer } from "@/components/ThemeCustomizer";
 
@@ -36,25 +37,28 @@ function Router() {
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Switch>
-          <Route path="/" component={Dashboard} />
-          <Route path="/checkins" component={Checkins} />
-          <Route path="/one-on-ones" component={OneOnOnesPage} />
-          <Route path="/kra-management" component={KraManagementPage} />
-          <Route path="/team" component={Team} />
-          <Route path="/wins" component={Wins} />
-          <Route path="/shoutouts" component={ShoutoutsPage} />
-          <Route path="/questions" component={Questions} />
-          <Route path="/reviews" component={Reviews} />
-          <Route path="/leadership-dashboard" component={LeadershipDashboard} />
-          <Route path="/analytics" component={Analytics} />
-          <Route path="/settings" component={Settings} />
-          <Route path="/admin" component={Admin} />
-          <Route path="/super-admin" component={SuperAdminPage} />
-          <Route path="/brand-guide" component={BrandGuideViewer} />
-          <Route path="/theme-customizer" component={ThemeCustomizer} />
-          <Route component={NotFound} />
-        </Switch>
+        <Header title="Whirkplace" description="Team Culture Platform" />
+        <main className="flex-1 overflow-auto">
+          <Switch>
+            <Route path="/" component={Dashboard} />
+            <Route path="/checkins" component={Checkins} />
+            <Route path="/one-on-ones" component={OneOnOnesPage} />
+            <Route path="/kra-management" component={KraManagementPage} />
+            <Route path="/team" component={Team} />
+            <Route path="/wins" component={Wins} />
+            <Route path="/shoutouts" component={ShoutoutsPage} />
+            <Route path="/questions" component={Questions} />
+            <Route path="/reviews" component={Reviews} />
+            <Route path="/leadership-dashboard" component={LeadershipDashboard} />
+            <Route path="/analytics" component={Analytics} />
+            <Route path="/settings" component={Settings} />
+            <Route path="/admin" component={Admin} />
+            <Route path="/super-admin" component={SuperAdminPage} />
+            <Route path="/brand-guide" component={BrandGuideViewer} />
+            <Route path="/theme-customizer" component={ThemeCustomizer} />
+            <Route component={NotFound} />
+          </Switch>
+        </main>
       </div>
     </div>
   );
