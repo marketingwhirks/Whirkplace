@@ -251,7 +251,7 @@ export default function Checkins() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center space-x-2">
-                      <Heart className="w-5 h-5 text-red-500" />
+                      <Heart className="w-5 h-5 fill-accent stroke-accent" />
                       <span className="font-medium">Mood:</span>
                       <RatingStars rating={currentWeekCheckin.overallMood} readonly size="sm" />
                       <span className="text-sm text-muted-foreground">({currentWeekCheckin.overallMood}/5)</span>

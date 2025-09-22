@@ -511,7 +511,7 @@ export default function ShoutoutsPage() {
               ) : shoutouts.length === 0 ? (
                 <Card>
                   <CardContent className="p-12 text-center">
-                    <Heart className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+                    <Heart className="mx-auto h-12 w-12 fill-accent stroke-accent mb-4" />
                     <h3 className="text-lg font-medium mb-2">No shoutouts yet</h3>
                     <p className="text-muted-foreground mb-4">
                       Be the first to recognize someone's great work!
