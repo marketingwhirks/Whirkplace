@@ -44,7 +44,7 @@ export default function LandingPage() {
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center space-x-2" data-testid="logo">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{backgroundColor: '#1b365d'}}>
-              <Heart className="w-4 h-4 fill-primary stroke-primary" strokeWidth="2" />
+              <Heart className="w-4 h-4 fill-accent stroke-accent" strokeWidth="2" />
             </div>
             <span className="text-xl font-bold">Whirkplace</span>
           </div>
@@ -280,7 +280,7 @@ export default function LandingPage() {
         <div className="container mx-auto text-center">
           <div className="flex items-center justify-center space-x-2 mb-4" data-testid="footer-logo">
             <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{backgroundColor: '#1b365d'}}>
-              <Heart className="w-3 h-3 fill-primary stroke-primary" strokeWidth="2" />
+              <Heart className="w-3 h-3 fill-accent stroke-accent" strokeWidth="2" />
             </div>
             <span className="text-lg font-semibold">Whirkplace</span>
           </div>
