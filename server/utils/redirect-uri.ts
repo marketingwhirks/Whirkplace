@@ -5,6 +5,13 @@ import type { Request } from 'express';
  * Supports development, Replit dev, and production (whirkplace.com) environments
  */
 export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft/callback'): string {
+  // CRITICAL FIX: Check for override environment variable first
+  if (process.env.OAUTH_REDIRECT_BASE_URL) {
+    const baseUrl = process.env.OAUTH_REDIRECT_BASE_URL.replace(/\/$/, ''); // Remove trailing slash
+    console.log('🔒 Using OAUTH_REDIRECT_BASE_URL override:', baseUrl);
+    return `${baseUrl}${path}`;
+  }
+  
   // Determine host from headers (for proxied environments) or request
   // Handle comma-separated hosts from multiple proxies
   const rawHost = (req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000')
@@ -21,7 +28,8 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
   const isProductionDomain = host === 'whirkplace.com' || 
                             host === 'www.whirkplace.com' ||
                             host === 'app.whirkplace.com' ||
-                            host.endsWith('.whirkplace.com');
+                            host.endsWith('.whirkplace.com') ||
+                            host.endsWith('whirkplace.replit.app'); // Also detect Replit deployment
   
   const isProduction = process.env.NODE_ENV === 'production' || 
                        process.env.FORCE_PRODUCTION === 'true' ||
@@ -30,11 +38,15 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
   
   // Debug logging
   console.log('🔍 Redirect URI resolution:');
-  console.log('  Host:', host);
+  console.log('  Raw Host Header:', rawHost);
+  console.log('  Cleaned Host:', host);
   console.log('  Protocol:', protocol);
-  console.log('  NODE_ENV:', process.env.NODE_ENV);
-  console.log('  Is production domain:', isProductionDomain);
-  console.log('  Is production:', isProduction);
+  console.log('  Is Production Domain:', isProductionDomain);
+  console.log('  Is Production:', isProduction);
+  console.log('  ENV: NODE_ENV:', process.env.NODE_ENV);
+  console.log('  ENV: FORCE_PRODUCTION:', process.env.FORCE_PRODUCTION);
+  console.log('  ENV: FORCE_PRODUCTION_OAUTH:', process.env.FORCE_PRODUCTION_OAUTH);
+  console.log('  ENV: OAUTH_REDIRECT_BASE_URL:', process.env.OAUTH_REDIRECT_BASE_URL);
   
   // Check for explicit redirect URIs based on the path
   if (path.includes('slack')) {

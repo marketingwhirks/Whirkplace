@@ -70,13 +70,57 @@ export default function LoginPage() {
   };
   
   const handleSlackLogin = () => {
+    // Get organization from subdomain or use default
+    const hostname = window.location.hostname;
+    let orgSlug = 'default-org';
+    
+    // If we're on a subdomain (not www or root domain), use that as the org slug
+    if (hostname !== 'localhost' && 
+        hostname !== 'whirkplace.com' && 
+        hostname !== 'www.whirkplace.com' &&
+        hostname !== 'app.whirkplace.com') {
+      const subdomain = hostname.split('.')[0];
+      if (subdomain) {
+        orgSlug = subdomain;
+      }
+    }
+    
+    // Check if there's an org parameter in the URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const orgParam = urlParams.get('org');
+    if (orgParam) {
+      orgSlug = orgParam;
+    }
+    
     // Redirect to the Slack OAuth endpoint
-    window.location.href = "/auth/slack/login?org=default-org";
+    window.location.href = `/auth/slack/login?org=${orgSlug}`;
   };
   
   const handleMicrosoftLogin = () => {
+    // Get organization from subdomain or use default
+    const hostname = window.location.hostname;
+    let orgSlug = 'default-org';
+    
+    // If we're on a subdomain (not www or root domain), use that as the org slug
+    if (hostname !== 'localhost' && 
+        hostname !== 'whirkplace.com' && 
+        hostname !== 'www.whirkplace.com' &&
+        hostname !== 'app.whirkplace.com') {
+      const subdomain = hostname.split('.')[0];
+      if (subdomain) {
+        orgSlug = subdomain;
+      }
+    }
+    
+    // Check if there's an org parameter in the URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const orgParam = urlParams.get('org');
+    if (orgParam) {
+      orgSlug = orgParam;
+    }
+    
     // Redirect to the Microsoft OAuth endpoint with organization parameter
-    window.location.href = "/auth/microsoft?org=default-org";
+    window.location.href = `/auth/microsoft?org=${orgSlug}`;
   };
   
   const handleSimpleLogin = async () => {
