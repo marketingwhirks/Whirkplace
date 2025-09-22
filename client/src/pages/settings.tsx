@@ -326,6 +326,17 @@ export default function Settings() {
   };
 
   const handleDeleteAccount = () => {
+    // SECURITY: Double-check super admin privileges
+    if (!currentUser?.isSuperAdmin) {
+      toast({
+        title: "Access denied",
+        description: "Only super administrators can delete accounts.",
+        variant: "destructive",
+      });
+      setShowDeleteDialog(false);
+      return;
+    }
+
     // Placeholder for account deletion
     toast({
       title: "Account deletion requested",
@@ -1087,26 +1098,28 @@ export default function Settings() {
                     </div>
                   </div>
 
-                  {/* Danger Zone */}
-                  <div className="space-y-4 pt-4 border-t border-destructive/20">
-                    <h4 className="font-medium text-destructive">Danger Zone</h4>
-                    <div className="flex items-center justify-between p-4 border border-destructive/20 rounded-lg">
-                      <div>
-                        <p className="font-medium">Delete Account</p>
-                        <p className="text-sm text-muted-foreground">
-                          Permanently delete your account and all associated data
-                        </p>
+                  {/* Danger Zone - Only visible to super admins */}
+                  {currentUser?.isSuperAdmin && (
+                    <div className="space-y-4 pt-4 border-t border-destructive/20">
+                      <h4 className="font-medium text-destructive">Danger Zone</h4>
+                      <div className="flex items-center justify-between p-4 border border-destructive/20 rounded-lg">
+                        <div>
+                          <p className="font-medium">Delete Account</p>
+                          <p className="text-sm text-muted-foreground">
+                            Permanently delete your account and all associated data
+                          </p>
+                        </div>
+                        <Button
+                          variant="destructive"
+                          onClick={() => setShowDeleteDialog(true)}
+                          data-testid="button-delete-account"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete Account
+                        </Button>
                       </div>
-                      <Button
-                        variant="destructive"
-                        onClick={() => setShowDeleteDialog(true)}
-                        data-testid="button-delete-account"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete Account
-                      </Button>
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
