@@ -192,7 +192,7 @@ export default function LoginPage() {
             <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{backgroundColor: '#1b365d'}}>
               <Heart className="w-6 h-6 fill-accent stroke-accent" strokeWidth="2" />
             </div>
-            <h1 className="text-3xl font-bold text-foreground">WhirkPlace</h1>
+            <h1 className="text-3xl font-bold" style={{color: '#1b365d'}}>WhirkPlace</h1>
           </div>
           <p className="text-muted-foreground">
             Welcome to your team culture platform
