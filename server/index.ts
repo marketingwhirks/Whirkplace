@@ -138,6 +138,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // SECURITY: Validate authentication configuration before startup
+  const { validateAuthConfiguration } = await import("./middleware/auth");
+  validateAuthConfiguration();
+  
   // Run development seeding before setting up routes
   await runDevelopmentSeeding();
   

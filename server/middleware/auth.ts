@@ -4,6 +4,66 @@ import type { User } from "@shared/schema";
 import { getTestUser, getAvailableTestUsers } from "../seeding";
 
 /**
+ * SECURITY: Additional authentication security guards
+ * These guards prevent development-only authentication methods from being used inappropriately
+ */
+
+// SECURITY: Feature flag for development authentication methods (dual-gating: both development AND explicit flag)
+const IS_DEV = process.env.NODE_ENV === 'development';
+const DEV_AUTH_ENABLED = IS_DEV && process.env.DEV_AUTH_ENABLED === 'true';
+
+/**
+ * SECURITY: Startup validation to prevent dangerous configurations in production
+ * This function should be called during server startup to validate auth configuration
+ */
+export function validateAuthConfiguration() {
+  // SECURITY: In production, throw if any development authentication flags are present
+  if (process.env.NODE_ENV === 'production') {
+    const dangerousFlags = [
+      'DEV_AUTH_ENABLED',
+      'BACKDOOR_USER', 
+      'BACKDOOR_KEY',
+      'BACKDOOR_PROFILE_NAME',
+      'BACKDOOR_PROFILE_EMAIL'
+    ];
+    
+    const presentFlags = dangerousFlags.filter(flag => process.env[flag]);
+    if (presentFlags.length > 0) {
+      console.error(`🚨 CRITICAL SECURITY ERROR: Development authentication flags found in production: ${presentFlags.join(', ')}`);
+      throw new Error(`SECURITY: Development authentication flags not allowed in production: ${presentFlags.join(', ')}`);
+    }
+  }
+  
+  // SECURITY: Require strong backdoor credentials in development if backdoor auth is enabled
+  if (DEV_AUTH_ENABLED && process.env.NODE_ENV === 'development') {
+    const backdoorUser = process.env.BACKDOOR_USER || "Matthew";
+    const backdoorKey = process.env.BACKDOOR_KEY || "Dev123";
+    
+    // Warn about default credentials (but don't block - this is development)
+    if (backdoorUser === "Matthew" && backdoorKey === "Dev123") {
+      console.warn('⚠️  WARNING: Using default backdoor credentials. Set BACKDOOR_USER and BACKDOOR_KEY environment variables for stronger security.');
+    }
+    
+    // Log backdoor configuration for debugging
+    console.log('🔓 Development authentication enabled with backdoor access');
+  }
+  
+  console.log('✅ Authentication configuration validated');
+}
+
+/**
+ * SECURITY: Runtime monitoring for development authentication usage
+ * Logs any usage of development authentication methods for monitoring
+ */
+function logDevAuthUsage(method: string, details: string) {
+  if (process.env.NODE_ENV !== 'development') {
+    console.error(`🚨 SECURITY ALERT: Development authentication method '${method}' used in non-development environment: ${details}`);
+  } else {
+    console.log(`🔓 Development auth used: ${method} - ${details}`);
+  }
+}
+
+/**
  * Helper function to ensure backdoor admin user exists for development
  * 
  * SECURITY: This function is only available in development environments
@@ -151,7 +211,23 @@ export function authenticateUser() {
         }
       }
       
-      // Check for backdoor authentication (development environment only)
+      
+      // Check for session-based authentication FIRST (primary method)
+      if (req.session && req.session.userId) {
+        console.log(`🎫 Found session userId: ${req.session.userId}`);
+        const user = await storage.getUser(req.orgId, req.session.userId);
+        if (user && user.isActive) {
+          console.log(`✅ Session auth successful for: ${user.name}`);
+          req.currentUser = user;
+          return next();
+        } else {
+          console.log(`❌ Session auth failed - user not found or inactive`);
+        }
+      } else {
+        console.log(`❌ No session or session userId`);
+      }
+
+      // Check for backdoor authentication (development with feature flag)
       const backdoorUser = req.headers['x-backdoor-user'] as string;
       const backdoorKey = req.headers['x-backdoor-key'] as string;
       const backdoorImpersonate = req.headers['x-backdoor-impersonate'] as string;
@@ -160,8 +236,11 @@ export function authenticateUser() {
         console.log(`🔓 Backdoor headers: user=${backdoorUser}, key=${backdoorKey}, env=${process.env.NODE_ENV}`);
       }
       
-      // SECURITY: Backdoor only works in development environment with explicit env vars
-      if (backdoorUser && backdoorKey && process.env.NODE_ENV === 'development') {
+      // SECURITY: Backdoor only works with both NODE_ENV=development AND DEV_AUTH_ENABLED flag
+      if (backdoorUser && backdoorKey && DEV_AUTH_ENABLED) {
+        logDevAuthUsage('backdoor', `user=${backdoorUser}, impersonate=${backdoorImpersonate || 'none'}`);
+        
+        // DEV_AUTH_ENABLED already includes development environment check
         // Verify backdoor credentials - use defaults for development if env vars not set (like routes.ts)
         const validBackdoorUser = process.env.BACKDOOR_USER || "Matthew";
         const validBackdoorKey = process.env.BACKDOOR_KEY || "Dev123";
@@ -193,27 +272,13 @@ export function authenticateUser() {
           return next();
         }
       }
-      
-      // Check for session-based authentication FIRST (primary method)
-      if (req.session && req.session.userId) {
-        console.log(`🎫 Found session userId: ${req.session.userId}`);
-        const user = await storage.getUser(req.orgId, req.session.userId);
-        if (user && user.isActive) {
-          console.log(`✅ Session auth successful for: ${user.name}`);
-          req.currentUser = user;
-          return next();
-        } else {
-          console.log(`❌ Session auth failed - user not found or inactive`);
-        }
-      } else {
-        console.log(`❌ No session or session userId`);
-      }
 
       // Check for localStorage-based authentication as development fallback only
-      if (process.env.NODE_ENV === 'development') {
+      if (DEV_AUTH_ENABLED) {
         const authUserId = req.headers['x-auth-user-id'] as string;
         console.log(`🔍 localStorage header check: x-auth-user-id = ${authUserId}`);
         if (authUserId) {
+          logDevAuthUsage('localStorage', `userId=${authUserId}`);
           console.log(`📱 Found localStorage auth userId: ${authUserId}`);
           const user = await storage.getUser(req.orgId, authUserId);
           if (user && user.isActive) {
@@ -230,7 +295,8 @@ export function authenticateUser() {
       
       // SECURITY: Cookie-based authentication disabled in production due to security risks
       // The previous implementation trusted client-provided user IDs without proper token validation
-      if (process.env.NODE_ENV === 'development') {
+      if (DEV_AUTH_ENABLED) {
+        // DEV_AUTH_ENABLED already includes development environment check
         // Check for cookie-based authentication (development only)
         let authUserId, authOrgId, authToken;
         
@@ -258,6 +324,7 @@ export function authenticateUser() {
         
         // TODO: Implement proper token validation instead of trusting client-provided user IDs
         if (authUserId && authOrgId && authToken && authOrgId === req.orgId) {
+          logDevAuthUsage('cookie', `userId=${authUserId}, orgId=${authOrgId}`);
           const user = await storage.getUser(req.orgId, authUserId);
           if (user && user.isActive) {
             req.currentUser = user;
