@@ -555,8 +555,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`User ${authenticatedUser.name} (${authenticatedUser.email}) successfully authenticated via Slack OAuth for organization ${organization.name}`);
             
             // Redirect to the organization's dashboard
-            const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
+            // Use the same logic as OAuth redirect to determine the correct domain
+            let appUrl = 'http://localhost:5000';
+            
+            // Check for production override first
+            if (process.env.OAUTH_REDIRECT_BASE_URL) {
+              appUrl = process.env.OAUTH_REDIRECT_BASE_URL;
+            } else if (process.env.NODE_ENV === 'production' || process.env.FORCE_PRODUCTION_OAUTH === 'true') {
+              appUrl = 'https://whirkplace.com';
+            } else if (process.env.REPL_URL || process.env.REPLIT_URL) {
+              appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
+            }
+            
             const dashboardUrl = `${appUrl}/#/dashboard?org=${organizationSlug}`;
+            console.log('🚀 Redirecting to dashboard:', dashboardUrl);
             
             res.redirect(dashboardUrl);
           });
