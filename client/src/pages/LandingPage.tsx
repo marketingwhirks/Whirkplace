@@ -51,7 +51,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center space-x-2" data-testid="logo">
-            <Heart className="h-8 w-8 text-green-600" />
+            <Heart className="h-8 w-8 text-green-600" fill="currentColor" />
             <span className="text-xl font-bold">Whirkplace</span>
           </div>
           
