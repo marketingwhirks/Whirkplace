@@ -108,8 +108,16 @@ export function generateOAuthURL(organizationSlug: string, session: any, req?: R
     // Use the centralized resolver which handles production properly
     redirectUri = resolveRedirectUri(req, '/auth/slack/callback');
   } else {
-    // Fallback for when req is not available
-    if (process.env.NODE_ENV === 'production') {
+    // Fallback for when req is not available - prefer production URL
+    console.warn('⚠️  generateOAuthURL called without request object, using fallback logic');
+    
+    // Check if we're likely in production based on various indicators
+    const likelyProduction = process.env.NODE_ENV === 'production' ||
+                           process.env.FORCE_PRODUCTION === 'true' ||
+                           (process.env.REPLIT_URL && process.env.REPLIT_URL.includes('whirkplace.com')) ||
+                           (process.env.PUBLIC_BASE_URL && process.env.PUBLIC_BASE_URL.includes('whirkplace.com'));
+    
+    if (likelyProduction) {
       // Production always uses whirkplace.com
       redirectUri = 'https://whirkplace.com/auth/slack/callback';
     } else {

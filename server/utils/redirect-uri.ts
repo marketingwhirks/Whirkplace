@@ -6,15 +6,26 @@ import type { Request } from 'express';
  */
 export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft/callback'): string {
   // Determine host from headers (for proxied environments) or request
-  const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
+  // Handle comma-separated hosts from multiple proxies
+  const rawHost = (req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000')
+    .split(',')[0]  // Take first host if comma-separated
+    .trim()
+    .toLowerCase();
+  
+  // Strip port for cleaner comparison
+  const host = rawHost.split(':')[0];
+  
   const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
   
-  // Force production URLs if request is from whirkplace.com domain or if in production env
+  // Better production domain detection - check if it ends with whirkplace.com
   const isProductionDomain = host === 'whirkplace.com' || 
                             host === 'www.whirkplace.com' ||
-                            host === 'app.whirkplace.com';
+                            host === 'app.whirkplace.com' ||
+                            host.endsWith('.whirkplace.com');
+  
   const isProduction = process.env.NODE_ENV === 'production' || 
                        process.env.FORCE_PRODUCTION === 'true' ||
+                       process.env.FORCE_PRODUCTION_OAUTH === 'true' ||
                        isProductionDomain;
   
   // Debug logging
