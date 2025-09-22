@@ -90,6 +90,7 @@ export function generateOAuthURL(organizationSlug: string, session: any, req?: R
   // Debug logging
   console.log('🔧 Slack OAuth generation debug:');
   console.log('  NODE_ENV:', process.env.NODE_ENV);
+  console.log('  OAUTH_REDIRECT_BASE_URL:', process.env.OAUTH_REDIRECT_BASE_URL);
   console.log('  FORCE_PRODUCTION_OAUTH:', process.env.FORCE_PRODUCTION_OAUTH);
   console.log('  Request provided:', !!req);
   if (req) {
