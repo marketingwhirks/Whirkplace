@@ -59,6 +59,7 @@ export default function LandingPage() {
             <Button 
               onClick={() => window.location.href = "https://app.whirkplace.com/login?org=default-org&signup=true"}
               data-testid="button-signup"
+              className="border-primary"
             >
               Sign Up
             </Button>
