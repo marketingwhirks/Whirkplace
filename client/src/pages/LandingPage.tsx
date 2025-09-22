@@ -43,7 +43,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center space-x-2" data-testid="logo">
-            <div className="w-8 h-8 rounded-lg" style={{backgroundColor: '#1b365d'}}>
+            <div className="w-8 h-8 rounded-lg border-2" style={{backgroundColor: '#1b365d', borderColor: '#1b365d'}}>
             </div>
             <span className="text-xl font-bold" style={{color: '#1b365d'}}>Whirkplace</span>
           </div>
