@@ -232,12 +232,10 @@ export default function LandingPage() {
                 <CardDescription>Resell Whirkplace and maximize your margins</CardDescription>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-2">
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Volume pricing: $5 → $4 → $3/seat</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />50-70% profit margins at scale</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />White label customization</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />25% affiliate commission option</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Launch credits: First 50 seats free</li>
+                <ul className="space-y-3">
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />More customers = lower cost per seat</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />50-70% profit margins</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />First 50 seats free to start</li>
                 </ul>
               </CardContent>
             </Card>
