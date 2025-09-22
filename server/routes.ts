@@ -9,7 +9,7 @@ import {
   insertVacationSchema, reviewCheckinSchema, ReviewStatus,
   insertOneOnOneSchema, insertKraTemplateSchema, insertUserKraSchema, insertActionItemSchema,
   insertOrganizationSchema, insertBusinessPlanSchema, insertOrganizationOnboardingSchema, insertUserInvitationSchema,
-  insertDashboardConfigSchema, insertDashboardWidgetTemplateSchema,
+  insertDashboardConfigSchema, insertDashboardWidgetTemplateSchema, insertBugReportSchema,
   insertPartnerApplicationSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType, type Checkin
@@ -275,7 +275,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         // Generate OAuth URL using the unified service function (this sets session state)
-        const oauthUrl = generateOAuthURL(organizationSlug, req.session, req);
+        const orgSlugString = typeof organizationSlug === 'string' ? organizationSlug : String(organizationSlug);
+        const oauthUrl = generateOAuthURL(orgSlugString, req.session, req);
         
         console.log('🔐 OAuth state generated and stored in session');
         console.log('📋 Session data after state generation:', {
@@ -319,7 +320,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('📦 Callback Session ID:', req.sessionID);
       console.log('🍪 Cookie header present:', !!req.headers.cookie);
       console.log('🍪 Cookie header length:', req.headers.cookie?.length || 0);
-      console.log('🆕 Session is new:', req.session.isNew);
+      console.log('🆕 Session is new:', !req.session || Object.keys(req.session).length === 0);
       console.log('🔗 Request origin:', req.headers.origin);
       console.log('🔗 Request referrer:', req.headers.referer);
       console.log('🔒 Protocol:', req.protocol);
@@ -442,7 +443,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               isActive: true,
               customValues: ['Own It', 'Challenge It', 'Team First', 'Empathy for Others', 'Passion for Our Purpose'],
               enableSlackIntegration: true,
-              enableMicrosoftIntegration: true
+              enableTeamsIntegration: true
             });
           }
         } else {
@@ -819,6 +820,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "admin",
         isActive: true,
         authProvider: "local",
+        organizationId: organization.id,
       });
 
       // Create initial onboarding record
@@ -4311,7 +4313,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const actionItemData = {
         ...validatedData,
-        meetingId: req.params.id
+        meetingId: req.params.id,
+        organizationId: req.orgId
       };
       
       const actionItem = await storage.createActionItem(req.orgId, actionItemData);
@@ -4492,7 +4495,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const templateData = {
         ...validatedData,
-        createdBy: req.userId
+        createdBy: req.userId,
+        organizationId: req.orgId
       };
       
       const template = await storage.createKraTemplate(req.orgId, templateData);
@@ -6108,6 +6112,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "admin",
         isActive: true,
         authProvider: "local",
+        organizationId: organization.id,
       });
 
       // Create initial onboarding record
@@ -6238,6 +6243,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               leaderId: adminUser.id,
               teamType: team.type,
               parentTeamId: null,
+              organizationId: data.organizationId,
             });
             createdTeams.push(createdTeam);
           }

@@ -8,6 +8,25 @@ import { setupVite, serveStatic, log } from "./vite";
 import { resolveOrganization } from "./middleware/organization";
 import { runDevelopmentSeeding } from "./seeding";
 
+// Add process error handlers to catch unhandled exceptions
+process.on('uncaughtException', (error) => {
+  console.error('🚨 Uncaught Exception:', error);
+  console.error('Stack:', error.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🚨 Unhandled Promise Rejection at:', promise);
+  console.error('Reason:', reason);
+  process.exit(1);
+});
+
+// Add startup logging
+console.log('🚀 Starting application...');
+console.log('📊 Environment:', process.env.NODE_ENV || 'development');
+console.log('🌍 Platform:', process.platform);
+console.log('📡 Node version:', process.version);
+
 const app = express();
 
 // Enable trust proxy for proper header handling in production
@@ -138,51 +157,101 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // SECURITY: Validate authentication configuration before startup
-  const { validateAuthConfiguration } = await import("./middleware/auth");
-  validateAuthConfiguration();
-  
-  // Run development seeding before setting up routes
-  await runDevelopmentSeeding();
-  
-  const server = await registerRoutes(app);
-  
-  // Initialize Slack weekly reminder scheduler (runs every Monday at 9:05 AM)
   try {
-    const { initializeWeeklyReminderScheduler } = await import("./services/slack");
-    const { storage } = await import("./storage");
-    initializeWeeklyReminderScheduler(storage);
-    console.log('✅ Weekly reminder scheduler initialized successfully');
+    console.log('🔧 Starting application setup...');
+    
+    // SECURITY: Validate authentication configuration before startup
+    console.log('🔒 Validating authentication configuration...');
+    const { validateAuthConfiguration } = await import("./middleware/auth");
+    validateAuthConfiguration();
+    console.log('✅ Authentication configuration validated');
+    
+    // Run development seeding before setting up routes
+    console.log('🌱 Running development seeding...');
+    await runDevelopmentSeeding();
+    console.log('✅ Development seeding completed');
+    
+    // Register routes
+    console.log('🛣️  Registering routes...');
+    const server = await registerRoutes(app);
+    console.log('✅ Routes registered successfully');
+    
+    // Initialize Slack weekly reminder scheduler (runs every Monday at 9:05 AM)
+    console.log('⏰ Initializing weekly reminder scheduler...');
+    try {
+      const { initializeWeeklyReminderScheduler } = await import("./services/slack");
+      const { storage } = await import("./storage");
+      initializeWeeklyReminderScheduler(storage);
+      console.log('✅ Weekly reminder scheduler initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize weekly reminder scheduler:', error);
+      // Don't throw here, as this is not critical for startup
+    }
+
+    // Global error handler
+    console.log('🛡️  Setting up global error handler...');
+    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+      
+      console.error('🚨 Express error handler caught:', {
+        status,
+        message,
+        stack: err.stack,
+        url: _req.url,
+        method: _req.method
+      });
+
+      res.status(status).json({ message });
+      // Don't throw the error here as it would crash the server
+    });
+    console.log('✅ Global error handler configured');
+
+    // Setup Vite or static serving
+    console.log('📦 Setting up frontend serving...');
+    if (app.get("env") === "development") {
+      console.log('🔧 Setting up Vite development server...');
+      await setupVite(app, server);
+      console.log('✅ Vite development server setup complete');
+    } else {
+      console.log('📁 Setting up static file serving...');
+      serveStatic(app);
+      console.log('✅ Static file serving setup complete');
+    }
+
+    // Start the server
+    const port = parseInt(process.env.PORT || '5000', 10);
+    console.log(`🌐 Starting server on port ${port}...`);
+    
+    server.listen({
+      port,
+      host: "0.0.0.0",
+    }, () => {
+      console.log('🎉 Server started successfully!');
+      console.log(`🌍 Server is listening on http://0.0.0.0:${port}`);
+      console.log('✅ Application startup completed successfully');
+      log(`serving on port ${port}`);
+    });
+    
   } catch (error) {
-    console.error('❌ Failed to initialize weekly reminder scheduler:', error);
+    console.error('💥 FATAL: Application startup failed!');
+    console.error('Error details:', error);
+    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace available');
+    
+    // Log environment details for debugging
+    console.error('Environment details:', {
+      nodeEnv: process.env.NODE_ENV,
+      port: process.env.PORT,
+      databaseUrl: process.env.DATABASE_URL ? '[PRESENT]' : '[MISSING]',
+      sessionSecret: process.env.SESSION_SECRET ? '[PRESENT]' : '[MISSING]'
+    });
+    
+    // Exit with error code
+    process.exit(1);
   }
-
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
-  });
-
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
-
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-  }, () => {
-    log(`serving on port ${port}`);
-  });
-})();
+})().catch((error) => {
+  console.error('💥 CRITICAL: Unhandled error in startup function!');
+  console.error('Error:', error);
+  console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace available');
+  process.exit(1);
+});
