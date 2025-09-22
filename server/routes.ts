@@ -28,6 +28,7 @@ import { registerMicrosoftTeamsRoutes } from "./routes/microsoft-teams";
 import { registerMicrosoftAuthRoutes } from "./routes/microsoft-auth";
 import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
 import { resolveRedirectUri } from "./utils/redirect-uri";
+import { sendWelcomeEmail } from "./services/emailService";
 
 // Initialize Stripe if available
 let stripe: Stripe | null = null;
@@ -894,6 +895,153 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  // Email/Password Registration endpoint (before auth middleware)
+  app.post("/api/auth/register", requireOrganization(), async (req, res) => {
+    try {
+      console.log("📝 Email/password registration attempt");
+      
+      const { email, password, organizationSlug } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ 
+          message: "Email and password are required" 
+        });
+      }
+
+      if (password.length < 8) {
+        return res.status(400).json({ 
+          message: "Password must be at least 8 characters long" 
+        });
+      }
+      
+      const normalizedEmail = email.toLowerCase().trim();
+      
+      // Check if user already exists in this organization
+      const existingUser = await storage.getUserByEmail(req.orgId, normalizedEmail);
+      if (existingUser) {
+        return res.status(409).json({ 
+          message: "An account with this email already exists" 
+        });
+      }
+      
+      // Get organization details for welcome email
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ 
+          message: "Organization not found" 
+        });
+      }
+      
+      // Hash password before storing
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(password, saltRounds);
+      
+      // Create user data
+      const userData = {
+        username: normalizedEmail.split('@')[0], // Use email prefix as username
+        password: hashedPassword,
+        name: normalizedEmail.split('@')[0], // Default name, user can update later
+        email: normalizedEmail,
+        organizationId: req.orgId, // Add required organizationId
+        role: "member" as const,
+        isActive: true,
+        authProvider: "local" as const,
+      };
+      
+      console.log(`👤 Creating new user: ${userData.name} (${userData.email})`);
+      
+      // Create the user
+      const newUser = await storage.createUser(req.orgId, userData);
+      
+      if (!newUser) {
+        return res.status(500).json({ 
+          message: "Failed to create user account" 
+        });
+      }
+      
+      console.log(`✅ User created successfully: ${newUser.name} (${newUser.email})`);
+      
+      // Send welcome email (don't block registration if email fails)
+      try {
+        console.log(`📧 Sending welcome email to ${newUser.email}...`);
+        await sendWelcomeEmail(newUser.email, newUser.name, organization.name);
+        console.log(`📧 Welcome email sent successfully to ${newUser.email}`);
+      } catch (emailError) {
+        console.error(`📧 Failed to send welcome email to ${newUser.email}:`, emailError);
+        // Continue with registration even if email fails
+      }
+      
+      // Generate new session for the user
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error('Failed to regenerate session:', regenerateErr);
+          return res.status(500).json({ message: "Session regeneration failed" });
+        }
+        
+        // Set session after regeneration
+        req.session.userId = newUser.id;
+        
+        // Save session before sending response
+        req.session.save((err) => {
+          if (err) {
+            console.error('Failed to save session:', err);
+            return res.status(500).json({ message: "Session save failed" });
+          }
+          
+          console.log(`💾 Registration session saved for user: ${newUser.id}`);
+          
+          // Set authentication cookies
+          const sessionToken = randomBytes(32).toString('hex');
+          
+          res.cookie('auth_user_id', newUser.id, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          });
+          
+          res.cookie('auth_org_id', req.orgId, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          });
+          
+          res.cookie('auth_session_token', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+            path: '/',
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+          });
+          
+          res.status(201).json({ 
+            message: "Registration successful",
+            user: {
+              id: newUser.id,
+              name: newUser.name,
+              email: newUser.email,
+              role: newUser.role,
+              organizationId: newUser.organizationId
+            }
+          });
+        });
+      });
+      
+    } catch (error) {
+      console.error("Registration error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid registration data",
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Registration failed" });
     }
   });
   
