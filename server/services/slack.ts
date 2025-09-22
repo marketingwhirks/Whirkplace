@@ -370,6 +370,47 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
 }
 
 /**
+ * Get user info from Slack API using access token
+ */
+export async function getSlackUserInfo(accessToken: string, userId: string): Promise<{ email?: string; name?: string }> {
+  try {
+    console.log('🔍 Fetching user info from Slack API for user:', userId);
+    
+    const response = await fetch(`https://slack.com/api/users.info?user=${userId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to fetch user info from Slack:', response.status, response.statusText);
+      return {};
+    }
+    
+    const data = await response.json();
+    
+    if (data.ok && data.user) {
+      console.log('✅ Successfully fetched user info from Slack');
+      console.log('  Email:', data.user.profile?.email);
+      console.log('  Real name:', data.user.profile?.real_name);
+      
+      return {
+        email: data.user.profile?.email,
+        name: data.user.profile?.real_name || data.user.real_name || data.user.name,
+      };
+    } else {
+      console.error('Slack API returned error:', data.error);
+      return {};
+    }
+  } catch (error) {
+    console.error('Error fetching Slack user info:', error);
+    return {};
+  }
+}
+
+/**
  * Sends a structured message to a Slack channel using the Slack Web API
  */
 export async function sendSlackMessage(

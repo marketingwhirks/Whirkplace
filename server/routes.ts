@@ -15,7 +15,7 @@ import {
   type ReviewStatusType, type Checkin
 } from "@shared/schema";
 import Stripe from "stripe";
-import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken } from "./services/slack";
+import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo } from "./services/slack";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { aggregationService } from "./services/aggregation";
@@ -382,6 +382,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const user = userInfoResponse.user;
       const team = tokenResponse.team;
+      
+      // Try to fetch actual email from Slack API if we have an access token
+      if (tokenResponse.access_token && user.user?.id) {
+        const slackUserInfo = await getSlackUserInfo(tokenResponse.access_token, user.user.id);
+        if (slackUserInfo.email) {
+          console.log('📧 Successfully fetched email from Slack API:', slackUserInfo.email);
+          user.user.email = slackUserInfo.email;
+        }
+        if (slackUserInfo.name) {
+          user.user.name = slackUserInfo.name;
+        }
+      }
       
       // Resolve organization (we know the slug from state validation)
       // Note: We need to manually resolve the organization here since we're before the org middleware
