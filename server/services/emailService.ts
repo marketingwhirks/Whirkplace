@@ -1,12 +1,25 @@
 // Email service using SendGrid integration from Replit blueprint
 import { MailService } from '@sendgrid/mail';
 
-if (!process.env.SENDGRID_API_KEY) {
-  throw new Error("SENDGRID_API_KEY environment variable must be set");
-}
+// Configuration
+const isEmailEnabled = process.env.EMAIL_ENABLED !== 'false';
+const senderEmail = process.env.SENDGRID_FROM_EMAIL;
+const senderName = process.env.SENDGRID_SENDER_NAME || 'Whirkplace';
 
-const mailService = new MailService();
-mailService.setApiKey(process.env.SENDGRID_API_KEY!);
+// Initialize SendGrid only if email is enabled and configured
+let mailService: MailService | null = null;
+
+if (isEmailEnabled) {
+  if (!process.env.SENDGRID_API_KEY) {
+    console.warn("⚠️ SENDGRID_API_KEY not set - email sending disabled");
+  } else if (!senderEmail) {
+    console.warn("⚠️ SENDGRID_FROM_EMAIL not set - email sending disabled");
+  } else {
+    mailService = new MailService();
+    mailService.setApiKey(process.env.SENDGRID_API_KEY!);
+    console.log(`📧 Email service initialized with sender: ${senderEmail}`);
+  }
+}
 
 interface EmailParams {
   to: string;
@@ -16,7 +29,24 @@ interface EmailParams {
   html?: string;
 }
 
+// Helper function to get sender information - returns null if not configured
+function tryGetSender(): { email: string; name: string } | null {
+  if (!senderEmail) {
+    return null;
+  }
+  return {
+    email: senderEmail,
+    name: senderName
+  };
+}
+
 export async function sendEmail(params: EmailParams): Promise<boolean> {
+  // Check if email is disabled or not configured
+  if (!mailService) {
+    console.log(`📧 Email sending disabled - would have sent email to ${params.to} with subject: ${params.subject}`);
+    return false;
+  }
+
   try {
     const emailData: any = {
       to: params.to,
@@ -35,8 +65,11 @@ export async function sendEmail(params: EmailParams): Promise<boolean> {
     await mailService.send(emailData);
     console.log(`📧 Email sent successfully to ${params.to}`);
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('📧 SendGrid email error:', error);
+    if (error.response && error.response.body) {
+      console.error('📧 SendGrid error details:', JSON.stringify(error.response.body, null, 2));
+    }
     return false;
   }
 }
@@ -222,11 +255,23 @@ export async function sendWelcomeEmail(
   userName: string, 
   organizationName: string
 ): Promise<boolean> {
+  // Check if email service is configured
+  if (!mailService) {
+    console.log(`📧 Email sending disabled - would have sent welcome email to ${userEmail}`);
+    return false;
+  }
+  
+  const sender = tryGetSender();
+  if (!sender) {
+    console.log(`📧 Sender email not configured - cannot send welcome email to ${userEmail}`);
+    return false;
+  }
+  
   const template = emailTemplates.welcome(userName, organizationName);
   
   return sendEmail({
     to: userEmail,
-    from: 'noreply@whirkplace.com', // You can customize this sender email
+    from: `${sender.name} <${sender.email}>`,
     subject: template.subject,
     text: template.text,
     html: template.html
@@ -238,14 +283,28 @@ export async function sendPasswordResetEmail(
   userName: string,
   resetToken: string,
   organizationName: string,
-  baseUrl: string = 'https://app.whirkplace.com'
+  baseUrl?: string
 ): Promise<boolean> {
-  const resetLink = `${baseUrl}/reset-password?token=${resetToken}`;
+  // Check if email service is configured
+  if (!mailService) {
+    console.log(`📧 Email sending disabled - would have sent password reset email to ${userEmail}`);
+    return false;
+  }
+  
+  const sender = tryGetSender();
+  if (!sender) {
+    console.log(`📧 Sender email not configured - cannot send password reset email to ${userEmail}`);
+    return false;
+  }
+  
+  // Use dynamic base URL or default
+  const resetBaseUrl = baseUrl || process.env.BASE_URL || 'https://app.whirkplace.com';
+  const resetLink = `${resetBaseUrl}/reset-password?token=${resetToken}`;
   const template = emailTemplates.passwordReset(userName, resetLink, organizationName);
   
   return sendEmail({
     to: userEmail,
-    from: 'noreply@whirkplace.com',
+    from: `${sender.name} <${sender.email}>`,
     subject: template.subject,
     text: template.text,
     html: template.html
@@ -258,16 +317,40 @@ export async function sendTeamInviteEmail(
   teamName: string,
   organizationName: string,
   inviteToken: string,
-  baseUrl: string = 'https://app.whirkplace.com'
+  baseUrl?: string
 ): Promise<boolean> {
-  const inviteLink = `${baseUrl}/invite?token=${inviteToken}`;
+  // Check if email service is configured
+  if (!mailService) {
+    console.log(`📧 Email sending disabled - would have sent team invite email to ${inviteeEmail}`);
+    return false;
+  }
+  
+  const sender = tryGetSender();
+  if (!sender) {
+    console.log(`📧 Sender email not configured - cannot send team invite email to ${inviteeEmail}`);
+    return false;
+  }
+  
+  // Use dynamic base URL or default
+  const inviteBaseUrl = baseUrl || process.env.BASE_URL || 'https://app.whirkplace.com';
+  const inviteLink = `${inviteBaseUrl}/invite?token=${inviteToken}`;
   const template = emailTemplates.teamInvite(inviterName, teamName, organizationName, inviteLink);
   
   return sendEmail({
     to: inviteeEmail,
-    from: 'noreply@whirkplace.com',
+    from: `${sender.name} <${sender.email}>`,
     subject: template.subject,
     text: template.text,
     html: template.html
   });
+}
+
+// Email configuration status utility
+export function getEmailConfiguration() {
+  return {
+    enabled: isEmailEnabled && !!mailService,
+    configured: !!(senderEmail && process.env.SENDGRID_API_KEY),
+    senderEmail: senderEmail || 'Not configured',
+    senderName: senderName
+  };
 }

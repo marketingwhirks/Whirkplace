@@ -967,8 +967,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Send welcome email (don't block registration if email fails)
       try {
         console.log(`📧 Sending welcome email to ${newUser.email}...`);
-        await sendWelcomeEmail(newUser.email, newUser.name, organization.name);
-        console.log(`📧 Welcome email sent successfully to ${newUser.email}`);
+        const emailSent = await sendWelcomeEmail(newUser.email, newUser.name, organization.name);
+        if (emailSent) {
+          console.log(`📧 Welcome email sent successfully to ${newUser.email}`);
+        } else {
+          console.log(`📧 Failed to send welcome email to ${newUser.email} - email service returned false`);
+        }
       } catch (emailError) {
         console.error(`📧 Failed to send welcome email to ${newUser.email}:`, emailError);
         // Continue with registration even if email fails
