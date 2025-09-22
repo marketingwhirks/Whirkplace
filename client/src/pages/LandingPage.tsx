@@ -199,7 +199,6 @@ export default function LandingPage() {
                   <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Basic check-ins & surveys</li>
                   <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Basic team reports</li>
                   <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Email support</li>
-                  <li className="flex items-center text-muted-foreground"><span className="w-5 h-5 mr-2">•</span>No Slack or Microsoft integrations</li>
                 </ul>
               </CardContent>
             </Card>
