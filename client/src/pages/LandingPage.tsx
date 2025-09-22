@@ -195,10 +195,10 @@ export default function LandingPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Essential team features</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Basic check-ins & surveys</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Basic team reports</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Email support</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Essential team features</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Basic check-ins & surveys</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Basic team reports</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Email support</li>
                   <li className="flex items-center text-muted-foreground"><span className="w-5 h-5 mr-2">•</span>No Slack or Microsoft integrations</li>
                 </ul>
               </CardContent>
@@ -214,11 +214,11 @@ export default function LandingPage() {
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Everything in Starter</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Slack integration</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Microsoft 365 integration</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Advanced analytics</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Custom questions</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Everything in Starter</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Slack integration</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Microsoft 365 integration</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Advanced analytics</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />Custom questions</li>
                 </ul>
               </CardContent>
             </Card>
@@ -227,15 +227,14 @@ export default function LandingPage() {
               <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-green-500 text-white" data-testid="badge-partner">Partner Program</Badge>
               <CardHeader>
                 <CardTitle>Partner Program</CardTitle>
-                <div className="text-3xl font-bold">$3-5<span className="text-sm font-normal">/member/month</span></div>
-                <div className="text-sm text-muted-foreground">Tiered wholesale pricing • Scale and save</div>
+                <div className="text-lg text-muted-foreground font-medium">Tiered wholesale pricing • Scale and save</div>
                 <CardDescription>Resell Whirkplace and maximize your margins</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-3">
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />More customers = lower cost per seat</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />50-70% profit margins</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />First 50 seats free to start</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />More customers = lower cost per seat</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />50-70% profit margins</li>
+                  <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />First 50 seats free to start</li>
                 </ul>
               </CardContent>
             </Card>
