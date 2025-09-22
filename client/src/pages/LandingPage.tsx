@@ -222,8 +222,7 @@ export default function LandingPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-2 border-green-500 relative" data-testid="card-plan-partner">
-              <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-green-500 text-white" data-testid="badge-partner">Partner Program</Badge>
+            <Card className="border-2 border-green-500" data-testid="card-plan-partner">
               <CardHeader>
                 <CardTitle>Partner Program</CardTitle>
                 <div className="text-lg text-muted-foreground font-medium">Tiered wholesale pricing • Scale and save</div>
