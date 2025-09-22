@@ -255,15 +255,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { org } = req.query;
       
-      // Validate organization slug parameter
-      if (!org || typeof org !== 'string') {
-        return res.status(400).json({ 
-          message: "Organization slug is required. Use ?org=your-organization-slug" 
-        });
+      // For super admin users, allow authentication without organization
+      // They will select organization after authentication
+      const organizationSlug = org || 'whirkplace';
+      
+      // If no org specified, we're authenticating as super admin
+      if (!org) {
+        console.log('🔐 Super admin authentication initiated via Slack');
       }
       
       try {
-        console.log('🚀 Slack OAuth login initiated for org:', org);
+        console.log('🚀 Slack OAuth login initiated for org:', organizationSlug);
         console.log('📦 Session ID before OAuth:', req.sessionID);
         console.log('🌐 Request host headers:', {
           host: req.get('host'),
@@ -273,7 +275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         
         // Generate OAuth URL using the unified service function (this sets session state)
-        const oauthUrl = generateOAuthURL(org, req.session, req);
+        const oauthUrl = generateOAuthURL(organizationSlug, req.session, req);
         
         console.log('🔐 OAuth state generated and stored in session');
         console.log('📋 Session data after state generation:', {
@@ -384,13 +386,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Resolve organization (we know the slug from state validation)
       // Note: We need to manually resolve the organization here since we're before the org middleware
       let organization;
+      let isSuperAdmin = false;
+      
       try {
         const allOrgs = await storage.getAllOrganizations();
-        organization = allOrgs.find(org => org.slug === organizationSlug);
-        if (!organization) {
-          return res.status(404).json({ 
-            message: `Organization '${organizationSlug}' not found` 
-          });
+        
+        // Check if this is a super admin authentication
+        if (organizationSlug === 'whirkplace') {
+          // Look for the whirkplace super admin organization
+          organization = allOrgs.find(org => org.id === 'whirkplace' || org.slug === 'whirkplace');
+          isSuperAdmin = true;
+          
+          if (!organization) {
+            // Create whirkplace organization if it doesn't exist
+            console.log('Creating whirkplace super admin organization...');
+            organization = await storage.createOrganization({
+              id: 'whirkplace',
+              name: 'Whirkplace (Super Admin)',
+              slug: 'whirkplace',
+              plan: 'enterprise',
+              isActive: true,
+              customValues: ['Own It', 'Challenge It', 'Team First', 'Empathy for Others', 'Passion for Our Purpose'],
+              enableSlackIntegration: true,
+              enableMicrosoftIntegration: true
+            });
+          }
+        } else {
+          organization = allOrgs.find(org => org.slug === organizationSlug);
+          if (!organization) {
+            return res.status(404).json({ 
+              message: `Organization '${organizationSlug}' not found` 
+            });
+          }
         }
       } catch (error) {
         console.error("Failed to resolve organization:", error);
@@ -475,7 +502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             password: securePassword, // Secure random password for Slack users
             name: displayName,
             email: user.email || `${slackUserId}@slack.local`,
-            role: "member",
+            role: isSuperAdmin ? "admin" : "member",  // Super admins get admin role
             organizationId: organization.id,
             slackUserId: slackUserId,
             slackUsername: slackUserId, // OIDC doesn't provide username
@@ -567,10 +594,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
               appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
             }
             
-            const dashboardUrl = `${appUrl}/#/dashboard?org=${organizationSlug}`;
-            console.log('🚀 Redirecting to dashboard:', dashboardUrl);
+            // For super admin users, redirect to organization selection
+            // Otherwise, redirect to the specific organization dashboard
+            const redirectPath = isSuperAdmin 
+              ? `${appUrl}/#/select-organization` 
+              : `${appUrl}/#/dashboard?org=${organizationSlug}`;
             
-            res.redirect(dashboardUrl);
+            console.log(`🚀 Redirecting ${isSuperAdmin ? 'super admin' : 'user'} to:`, redirectPath);
+            
+            res.redirect(redirectPath);
           });
         });
       } catch (error) {
