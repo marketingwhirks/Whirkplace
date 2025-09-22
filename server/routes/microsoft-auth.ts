@@ -155,15 +155,20 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         // Check if this is the Whirkplace master organization
         const isMasterOrg = orgId === '6c070124-fae2-472a-a826-cd460dd6f6ea';
         
-        // Security: Only allow super admin creation for specific email domains
+        // Security: Only allow super admin creation for specific email addresses
         const userEmail = userProfile.mail || userProfile.userPrincipalName || "";
-        const allowedSuperAdminDomains = ['whirkplace.com', 'patrickaccounting.com']; // Add your trusted domains
-        const isAllowedSuperAdminDomain = allowedSuperAdminDomains.some(domain => 
-          userEmail.toLowerCase().endsWith(`@${domain}`)
-        );
+        const allowedSuperAdminEmails = [
+          'mpatrick@patrickaccounting.com'  // Matthew Patrick - specific email
+        ];
+        const allowedSuperAdminDomains = ['whirkplace.com']; // Only whirkplace.com domain gets automatic super admin
         
-        // Only grant super admin if in master org AND from allowed domain
-        const shouldBeSuperAdmin = isMasterOrg && isAllowedSuperAdminDomain;
+        // Check if this is a specific allowed email OR from whirkplace.com domain
+        const isAllowedSuperAdmin = 
+          allowedSuperAdminEmails.includes(userEmail.toLowerCase()) ||
+          allowedSuperAdminDomains.some(domain => userEmail.toLowerCase().endsWith(`@${domain}`));
+        
+        // Only grant super admin if in master org AND specifically allowed
+        const shouldBeSuperAdmin = isMasterOrg && isAllowedSuperAdmin;
         
         // Create new user
         const newUser: InsertUser = {

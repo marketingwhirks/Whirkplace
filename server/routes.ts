@@ -396,21 +396,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Look for the whirkplace super admin organization
           organization = allOrgs.find(org => org.id === 'whirkplace' || org.slug === 'whirkplace');
           
-          // Security: Only allow super admin creation for specific email domains
+          // Security: Only allow super admin creation for specific email addresses
           const userEmail = user.email || "";
-          const allowedSuperAdminDomains = ['whirkplace.com', 'patrickaccounting.com']; // Add your trusted domains
-          const isAllowedSuperAdminDomain = allowedSuperAdminDomains.some(domain => 
-            userEmail.toLowerCase().endsWith(`@${domain}`)
-          );
+          const allowedSuperAdminEmails = [
+            'mpatrick@patrickaccounting.com'  // Matthew Patrick - specific email
+          ];
+          const allowedSuperAdminDomains = ['whirkplace.com']; // Only whirkplace.com domain gets automatic super admin
           
-          // Only grant super admin if from allowed domain
-          isSuperAdmin = isAllowedSuperAdminDomain;
+          // Check if this is a specific allowed email OR from whirkplace.com domain
+          const isAllowedSuperAdmin = 
+            allowedSuperAdminEmails.includes(userEmail.toLowerCase()) ||
+            allowedSuperAdminDomains.some(domain => userEmail.toLowerCase().endsWith(`@${domain}`));
+          
+          // Only grant super admin if specifically allowed
+          isSuperAdmin = isAllowedSuperAdmin;
           
           console.log('🔐 Super admin check for Slack OAuth:');
           console.log('  Organization:', organizationSlug);
           console.log('  Email:', userEmail);
-          console.log('  Allowed domains:', allowedSuperAdminDomains);
-          console.log('  Is allowed domain:', isAllowedSuperAdminDomain);
+          console.log('  Specific allowed emails:', allowedSuperAdminEmails);
+          console.log('  Domain-wide allowed:', allowedSuperAdminDomains);
+          console.log('  Is allowed super admin:', isAllowedSuperAdmin);
           console.log('  Will be super admin:', isSuperAdmin);
           
           if (!organization) {
