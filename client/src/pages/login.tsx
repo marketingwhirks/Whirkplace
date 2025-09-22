@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Heart, Users } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
@@ -13,7 +13,17 @@ export default function LoginPage() {
   const [isBackdoorLogin, setIsBackdoorLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSignUpMode, setIsSignUpMode] = useState(false);
   const { toast } = useToast();
+
+  // Check if this is sign-up mode from URL parameters
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('signup') === 'true') {
+      setIsSignUpMode(true);
+    }
+  }, []);
   
   const handleSlackLogin = () => {
     // Redirect to the Slack OAuth endpoint
@@ -56,6 +66,50 @@ export default function LoginPage() {
       toast({ 
         title: "Error", 
         description: `Login failed: ${error?.message || 'Unknown error'}`,
+        variant: "destructive" 
+      });
+    }
+  };
+
+  const handleSignUp = async () => {
+    if (password !== confirmPassword) {
+      toast({ 
+        title: "Password mismatch", 
+        description: "Passwords do not match",
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({ email, password, organizationSlug: 'default-org' })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        toast({ title: "Welcome!", description: "Account created successfully" });
+        
+        // Clear cached data and redirect
+        queryClient.clear();
+        window.location.href = "/";
+      } else {
+        const error = await response.json();
+        toast({ 
+          title: "Sign up failed", 
+          description: error.message,
+          variant: "destructive" 
+        });
+      }
+    } catch (error: any) {
+      toast({ 
+        title: "Error", 
+        description: `Sign up failed: ${error?.message || 'Unknown error'}`,
         variant: "destructive" 
       });
     }
@@ -148,9 +202,9 @@ export default function LoginPage() {
         {/* Login Card */}
         <Card className="w-full">
           <CardHeader className="text-center">
-            <CardTitle>Sign In to Whirkplace</CardTitle>
+            <CardTitle>{isSignUpMode ? 'Create Your Account' : 'Sign In to Whirkplace'}</CardTitle>
             <CardDescription>
-              Sign in with your work account or email
+              {isSignUpMode ? 'Get started with your team culture platform' : 'Sign in with your work account or email'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -174,7 +228,7 @@ export default function LoginPage() {
                       <path d="M15.165 18.958a2.528 2.528 0 0 1 2.523 2.52c0-1.398 1.13-2.528 2.523-2.528a2.528 2.528 0 0 1-2.523-2.52v-2.52h2.523c1.398 0 2.528 1.13 2.528 2.20a2.528 2.528 0 0 1-2.528 2.523h-2.523v2.523Z"/>
                       <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
                     </svg>
-                    <span>Continue with Slack</span>
+                    <span>{isSignUpMode ? 'Sign up with Slack' : 'Continue with Slack'}</span>
                   </Button>
                   
                   <Button 
@@ -191,7 +245,7 @@ export default function LoginPage() {
                     >
                       <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
                     </svg>
-                    <span>Continue with Microsoft</span>
+                    <span>{isSignUpMode ? 'Sign up with Microsoft' : 'Continue with Microsoft'}</span>
                   </Button>
                 </div>
 
@@ -201,7 +255,7 @@ export default function LoginPage() {
                     <span className="w-full border-t" />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">Or sign in with email</span>
+                    <span className="bg-background px-2 text-muted-foreground">{isSignUpMode ? 'Or sign up with email' : 'Or sign in with email'}</span>
                   </div>
                 </div>
 
@@ -225,21 +279,62 @@ export default function LoginPage() {
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
+                      placeholder={isSignUpMode ? "Create a password" : "Enter your password"}
                       data-testid="input-password"
                     />
                   </div>
+                  {isSignUpMode && (
+                    <div>
+                      <Label htmlFor="confirmPassword">Confirm Password</Label>
+                      <Input 
+                        id="confirmPassword"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm your password"
+                        data-testid="input-confirm-password"
+                      />
+                    </div>
+                  )}
                 </div>
                 
                 <Button 
-                  onClick={handleSimpleLogin}
+                  onClick={isSignUpMode ? handleSignUp : handleSimpleLogin}
                   className="w-full"
                   size="lg"
-                  disabled={!email || !password}
-                  data-testid="button-simple-login"
+                  disabled={!email || !password || (isSignUpMode && !confirmPassword)}
+                  data-testid={isSignUpMode ? "button-sign-up" : "button-simple-login"}
                 >
-                  Sign In
+                  {isSignUpMode ? 'Create Account' : 'Sign In'}
                 </Button>
+                
+                <div className="text-center text-sm text-muted-foreground">
+                  {isSignUpMode ? (
+                    <span>
+                      Already have an account?{' '}
+                      <button 
+                        type="button"
+                        onClick={() => setIsSignUpMode(false)}
+                        className="underline hover:no-underline text-primary"
+                        data-testid="switch-to-signin"
+                      >
+                        Sign in here
+                      </button>
+                    </span>
+                  ) : (
+                    <span>
+                      Don't have an account?{' '}
+                      <button 
+                        type="button"
+                        onClick={() => setIsSignUpMode(true)}
+                        className="underline hover:no-underline text-primary"
+                        data-testid="switch-to-signup"
+                      >
+                        Sign up here
+                      </button>
+                    </span>
+                  )}
+                </div>
                 
                 {/* Only show Developer Login in development */}
                 {import.meta.env.MODE === 'development' && (
