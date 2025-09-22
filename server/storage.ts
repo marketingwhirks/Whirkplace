@@ -13,6 +13,7 @@ import {
   type UserKra, type InsertUserKra,
   type ActionItem, type InsertActionItem,
   type BugReport, type InsertBugReport,
+  type PartnerApplication, type InsertPartnerApplication,
   type ReviewCheckin, type ReviewStatusType,
   type PulseMetricsOptions, type PulseMetricsResult,
   type ShoutoutMetricsOptions, type ShoutoutMetricsResult,
@@ -26,7 +27,7 @@ import {
   type DashboardConfig, type InsertDashboardConfig,
   type DashboardWidgetTemplate, type InsertDashboardWidgetTemplate,
   users, teams, checkins, questions, wins, comments, shoutouts, vacations, organizations,
-  oneOnOnes, kraTemplates, userKras, actionItems, bugReports,
+  oneOnOnes, kraTemplates, userKras, actionItems, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   ReviewStatus
@@ -272,6 +273,12 @@ export interface IStorage {
   validateDiscountCode(code: string, planId?: string, orderAmount?: number): Promise<{ valid: boolean; discountCode?: DiscountCode; reason?: string }>;
   applyDiscountCode(usage: InsertDiscountCodeUsage): Promise<DiscountCodeUsage>;
   getDiscountCodeUsage(discountCodeId: string): Promise<DiscountCodeUsage[]>;
+
+  // Super Admin - Partner Applications
+  getPartnerApplication(id: string): Promise<PartnerApplication | undefined>;
+  getAllPartnerApplications(statusFilter?: string): Promise<PartnerApplication[]>;
+  createPartnerApplication(application: InsertPartnerApplication): Promise<PartnerApplication>;
+  updatePartnerApplication(id: string, application: Partial<InsertPartnerApplication>): Promise<PartnerApplication | undefined>;
 
   // Dashboard Configurations
   getDashboardConfig(organizationId: string, userId: string): Promise<DashboardConfig | undefined>;
@@ -3278,6 +3285,56 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  // Super Admin - Partner Applications
+  async getPartnerApplication(id: string): Promise<PartnerApplication | undefined> {
+    try {
+      const [application] = await db.select().from(partnerApplications)
+        .where(eq(partnerApplications.id, id));
+      return application;
+    } catch (error) {
+      console.error("Failed to get partner application:", error);
+      throw error;
+    }
+  }
+
+  async getAllPartnerApplications(statusFilter?: string): Promise<PartnerApplication[]> {
+    try {
+      let query = db.select().from(partnerApplications);
+      
+      if (statusFilter) {
+        query = query.where(eq(partnerApplications.status, statusFilter as any));
+      }
+      
+      return await query.orderBy(desc(partnerApplications.createdAt));
+    } catch (error) {
+      console.error("Failed to get partner applications:", error);
+      throw error;
+    }
+  }
+
+  async createPartnerApplication(application: InsertPartnerApplication): Promise<PartnerApplication> {
+    try {
+      const [newApplication] = await db.insert(partnerApplications).values(application).returning();
+      return newApplication;
+    } catch (error) {
+      console.error("Failed to create partner application:", error);
+      throw error;
+    }
+  }
+
+  async updatePartnerApplication(id: string, application: Partial<InsertPartnerApplication>): Promise<PartnerApplication | undefined> {
+    try {
+      const [updated] = await db.update(partnerApplications)
+        .set({ ...application, updatedAt: new Date() })
+        .where(eq(partnerApplications.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error("Failed to update partner application:", error);
+      throw error;
+    }
+  }
+
   // Helper method for date truncation based on period
   private truncateDate(date: Date, period: AnalyticsPeriod): Date {
     const d = new Date(date);
@@ -5111,6 +5168,23 @@ export class MemStorage implements IStorage {
 
   async getDiscountCodeUsage(discountCodeId: string): Promise<DiscountCodeUsage[]> {
     return [];
+  }
+
+  // Super Admin - Partner Applications (MemStorage implementation)
+  async getPartnerApplication(id: string): Promise<PartnerApplication | undefined> {
+    return undefined;
+  }
+
+  async getAllPartnerApplications(statusFilter?: string): Promise<PartnerApplication[]> {
+    return [];
+  }
+
+  async createPartnerApplication(application: InsertPartnerApplication): Promise<PartnerApplication> {
+    throw new Error("Super admin features not supported in MemStorage");
+  }
+
+  async updatePartnerApplication(id: string, application: Partial<InsertPartnerApplication>): Promise<PartnerApplication | undefined> {
+    throw new Error("Super admin features not supported in MemStorage");
   }
 
   // Dashboard Configurations (MemStorage implementation)

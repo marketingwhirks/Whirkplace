@@ -1,9 +1,105 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { insertPartnerApplicationSchema } from "@shared/schema";
+import type { InsertPartnerApplication } from "@shared/schema";
+import { useToast } from "@/hooks/use-toast";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { CheckCircle, Users, TrendingUp, DollarSign, Handshake, ArrowRight, Star } from "lucide-react";
 
 export default function PartnerPage() {
+  const { toast } = useToast();
+  const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const form = useForm<InsertPartnerApplication>({
+    resolver: zodResolver(insertPartnerApplicationSchema),
+    defaultValues: {
+      name: "",
+      email: "",
+      company: "",
+      website: "",
+      expectedSeats: undefined,
+      partnershipType: "reseller",
+      message: "",
+    },
+  });
+
+  const submitApplication = useMutation({
+    mutationFn: (data: InsertPartnerApplication) => 
+      apiRequest("/api/partners/applications", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (data) => {
+      console.log("Partner application submitted:", data);
+      setIsSubmitted(true);
+      toast({
+        title: "Application Submitted!",
+        description: "Thank you for your interest in partnering with us. We'll be in touch soon.",
+      });
+    },
+    onError: (error: any) => {
+      console.error("Error submitting partner application:", error);
+      toast({
+        title: "Submission Failed",
+        description: "There was an error submitting your application. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onSubmit = (data: InsertPartnerApplication) => {
+    submitApplication.mutate(data);
+  };
+
+  const scrollToForm = () => {
+    document.getElementById('partner-application-form')?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // SEO: Set page title and meta tags
+  useEffect(() => {
+    document.title = "Partner Program - Join Whirkplace's Growing Network | Whirkplace";
+    
+    // Add or update meta description
+    let metaDescription = document.querySelector('meta[name="description"]');
+    if (!metaDescription) {
+      metaDescription = document.createElement('meta');
+      metaDescription.setAttribute('name', 'description');
+      document.head.appendChild(metaDescription);
+    }
+    metaDescription.setAttribute('content', 'Join Whirkplace\'s Partner Program and earn 50-80% margins reselling team culture solutions. Risk-free launch with 60-day trial and full sales support included.');
+
+    // Add Open Graph tags for social sharing
+    const updateMetaTag = (property: string, content: string, isProperty = true) => {
+      const attr = isProperty ? 'property' : 'name';
+      let tag = document.querySelector(`meta[${attr}="${property}"]`);
+      if (!tag) {
+        tag = document.createElement('meta');
+        tag.setAttribute(attr, property);
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute('content', content);
+    };
+
+    updateMetaTag('og:title', 'Partner Program - Scale Together, Profit Together | Whirkplace');
+    updateMetaTag('og:description', 'Join our partner network and earn high margins reselling team culture solutions. Risk-free start with 60-day trial and full support.');
+    updateMetaTag('og:type', 'website');
+    updateMetaTag('og:url', window.location.href);
+    
+    // Cleanup function to restore original title
+    return () => {
+      document.title = 'Whirkplace';
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
@@ -18,7 +114,7 @@ export default function PartnerPage() {
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto" data-testid="text-partner-subtitle">
             Join our partner program and build a profitable business reselling Whirkplace's team culture platform
           </p>
-          <Button size="lg" className="bg-green-600 hover:bg-green-700" data-testid="button-partner-cta-top">
+          <Button size="lg" className="bg-green-600 hover:bg-green-700" onClick={scrollToForm} data-testid="button-partner-cta-top">
             Apply to Become a Partner <ArrowRight className="ml-2 h-5 w-5" />
           </Button>
         </div>
@@ -207,6 +303,182 @@ export default function PartnerPage() {
         </div>
       </section>
 
+      {/* Partner Application Form */}
+      <section id="partner-application-form" className="py-20 px-4 bg-white dark:bg-gray-800">
+        <div className="container mx-auto max-w-2xl">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4" data-testid="text-form-title">
+              Partner Application
+            </h2>
+            <p className="text-xl text-muted-foreground" data-testid="text-form-subtitle">
+              Tell us about your business and how you'd like to partner with us
+            </p>
+          </div>
+
+          {isSubmitted ? (
+            <Card className="p-8 text-center" data-testid="card-form-success">
+              <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
+              <h3 className="text-2xl font-bold mb-4" data-testid="text-success-title">Application Submitted!</h3>
+              <p className="text-muted-foreground mb-6" data-testid="text-success-message">
+                Thank you for your interest in partnering with Whirkplace. We'll review your application and get back to you within 2-3 business days.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                In the meantime, feel free to reach out with any questions at{" "}
+                <a href="mailto:partners@whirkplace.com" className="text-green-600 hover:underline">
+                  partners@whirkplace.com
+                </a>
+              </p>
+            </Card>
+          ) : (
+            <Card className="p-8" data-testid="card-application-form">
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <FormField
+                      control={form.control}
+                      name="name"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Full Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Your full name" {...field} data-testid="input-name" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email Address</FormLabel>
+                          <FormControl>
+                            <Input type="email" placeholder="your@email.com" {...field} data-testid="input-email" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <FormField
+                      control={form.control}
+                      name="company"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Company Name</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Your company name" {...field} data-testid="input-company" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="website"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Website (Optional)</FormLabel>
+                          <FormControl>
+                            <Input placeholder="https://yourcompany.com" {...field} data-testid="input-website" />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <div className="grid md:grid-cols-2 gap-6">
+                    <FormField
+                      control={form.control}
+                      name="partnershipType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Partnership Type</FormLabel>
+                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                              <SelectTrigger data-testid="select-partnership-type">
+                                <SelectValue placeholder="Select partnership type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="reseller" data-testid="option-reseller">Reseller Partner</SelectItem>
+                              <SelectItem value="affiliate" data-testid="option-affiliate">Affiliate Partner</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormDescription>
+                            Resellers sell directly to customers. Affiliates earn commissions on referrals.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="expectedSeats"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Expected Monthly Seats (Optional)</FormLabel>
+                          <FormControl>
+                            <Input 
+                              type="number" 
+                              placeholder="50" 
+                              {...field}
+                              onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                              data-testid="input-expected-seats"
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            How many seats do you expect to sell per month?
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  <FormField
+                    control={form.control}
+                    name="message"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Tell Us About Your Business (Optional)</FormLabel>
+                        <FormControl>
+                          <Textarea 
+                            placeholder="Tell us about your business, target market, and why you'd like to partner with Whirkplace..." 
+                            className="min-h-[100px]"
+                            {...field} 
+                            data-testid="textarea-message"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    disabled={submitApplication.isPending}
+                    data-testid="button-submit-application"
+                  >
+                    {submitApplication.isPending ? "Submitting..." : "Submit Application"}
+                    <ArrowRight className="ml-2 h-5 w-5" />
+                  </Button>
+                </form>
+              </Form>
+            </Card>
+          )}
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-20 px-4 bg-gradient-to-br from-green-600 to-green-700 text-white">
         <div className="container mx-auto text-center">
@@ -220,6 +492,7 @@ export default function PartnerPage() {
             <Button 
               size="lg" 
               variant="secondary"
+              onClick={scrollToForm}
               data-testid="button-partner-apply"
             >
               Apply to Partner Program <ArrowRight className="ml-2 h-5 w-5" />
@@ -228,7 +501,8 @@ export default function PartnerPage() {
               size="lg" 
               variant="outline"
               className="bg-transparent border-white text-white hover:bg-white hover:text-green-600"
-              data-testid="button-partner-learn-more"
+              onClick={() => window.open('mailto:partners@whirkplace.com?subject=Partnership%20Discussion', '_blank')}
+              data-testid="button-partner-schedule-call"
             >
               Schedule a Call
             </Button>

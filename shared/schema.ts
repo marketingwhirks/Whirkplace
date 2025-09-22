@@ -993,6 +993,39 @@ export const insertDashboardWidgetTemplateSchema = createInsertSchema(dashboardW
 export type InsertDashboardWidgetTemplate = z.infer<typeof insertDashboardWidgetTemplateSchema>;
 export type DashboardWidgetTemplate = typeof dashboardWidgetTemplates.$inferSelect;
 
+// Partner Applications table
+export const partnerApplications = pgTable('partner_applications', {
+  id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
+  name: text('name').notNull(),
+  email: text('email').notNull(),
+  company: text('company').notNull(),
+  website: text('website'),
+  expectedSeats: integer('expected_seats'),
+  partnershipType: text('partnership_type').$type<'reseller' | 'affiliate'>().notNull(),
+  message: text('message'),
+  status: text('status').$type<'pending' | 'approved' | 'rejected'>().default('pending'),
+  createdAt: timestamp('created_at').notNull().default(sql`now()`),
+  updatedAt: timestamp('updated_at').notNull().default(sql`now()`)
+});
+
+export const insertPartnerApplicationSchema = createInsertSchema(partnerApplications).omit({
+  id: true,
+  status: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  name: z.string().min(1, "Name is required").max(100, "Name too long"),
+  email: z.string().email("Invalid email format"),
+  company: z.string().min(1, "Company name is required").max(100, "Company name too long"),
+  website: z.string().url("Invalid website URL").optional(),
+  expectedSeats: z.number().int().min(1, "Expected seats must be at least 1").max(10000, "Expected seats too large").optional(),
+  partnershipType: z.enum(['reseller', 'affiliate']),
+  message: z.string().max(1000, "Message too long").optional(),
+});
+
+export type InsertPartnerApplication = z.infer<typeof insertPartnerApplicationSchema>;
+export type PartnerApplication = typeof partnerApplications.$inferSelect;
+
 // Widget Configuration Types
 export interface WidgetConfig {
   id: string;

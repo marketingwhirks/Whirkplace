@@ -10,6 +10,7 @@ import {
   insertOneOnOneSchema, insertKraTemplateSchema, insertUserKraSchema, insertActionItemSchema,
   insertOrganizationSchema, insertBusinessPlanSchema, insertOrganizationOnboardingSchema, insertUserInvitationSchema,
   insertDashboardConfigSchema, insertDashboardWidgetTemplateSchema,
+  insertPartnerApplicationSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType, type Checkin
 } from "@shared/schema";
@@ -714,6 +715,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       res.status(500).json({ message: "Failed to create business account" });
+    }
+  });
+
+  // Partner Application Submission - Public endpoint (no authentication required)
+  app.post("/api/partners/applications", async (req, res) => {
+    try {
+      const data = insertPartnerApplicationSchema.parse(req.body);
+
+      const application = await storage.createPartnerApplication(data);
+
+      res.status(201).json({
+        message: "Partner application submitted successfully",
+        applicationId: application.id,
+      });
+    } catch (error: any) {
+      console.error("Partner application submission error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Invalid application data", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to submit partner application" });
     }
   });
   
