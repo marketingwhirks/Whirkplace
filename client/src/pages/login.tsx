@@ -190,7 +190,7 @@ export default function LoginPage() {
         <div className="text-center">
           <div className="flex justify-center items-center space-x-3 mb-6">
             <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
-              <Heart className="w-6 h-6" fill="#84ae58" stroke="#84ae58" strokeWidth="2" />
+              <Heart className="w-6 h-6 fill-primary stroke-primary" strokeWidth="2" />
             </div>
             <h1 className="text-3xl font-bold text-foreground">WhirkPlace</h1>
           </div>
@@ -405,7 +405,7 @@ export default function LoginPage() {
                   <span>Team Check-ins</span>
                 </div>
                 <div className="flex items-center space-x-1">
-                  <Heart className="w-4 h-4" style={{ color: '#84ae58', fill: '#84ae58' }} />
+                  <Heart className="w-4 h-4 fill-primary stroke-primary" />
                   <span>Recognition</span>
                 </div>
               </div>
