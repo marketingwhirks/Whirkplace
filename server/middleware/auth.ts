@@ -1,7 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import type { User } from "@shared/schema";
-import { getTestUser, getAvailableTestUsers } from "../seeding";
 
 /**
  * SECURITY: Additional authentication security guards
@@ -248,22 +247,11 @@ export function authenticateUser() {
         if (validBackdoorUser && validBackdoorKey && 
             backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
           
-          // Check if impersonation is requested
+          // Backdoor impersonation is no longer supported
           if (backdoorImpersonate) {
-            // Try to get test user for impersonation
-            const testUser = await getTestUser(req.orgId, backdoorImpersonate);
-            if (testUser && testUser.isActive) {
-              req.currentUser = testUser;
-              console.log(`Backdoor impersonating test user: ${testUser.username} (${testUser.role})`);
-              return next();
-            } else {
-              // Log available test users for debugging
-              const availableUsers = getAvailableTestUsers();
-              console.log(`Test user '${backdoorImpersonate}' not found. Available test users:`, availableUsers.map(u => u.username));
-              return res.status(400).json({ 
-                message: `Test user '${backdoorImpersonate}' not found. Available: ${availableUsers.map(u => u.username).join(', ')}` 
-              });
-            }
+            return res.status(400).json({ 
+              message: 'User impersonation has been removed from the system' 
+            });
           }
           
           // Default: use Matthew Patrick's admin account
