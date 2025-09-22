@@ -77,8 +77,14 @@ export default function LoginPage() {
     // Check if there's an org parameter in the URL first
     const urlParams = new URLSearchParams(window.location.search);
     const orgParam = urlParams.get('org');
+    const superAdminMode = urlParams.get('superadmin');
+    
     if (orgParam) {
       orgSlug = orgParam;
+    } else if (superAdminMode === 'true') {
+      // Special super admin mode for testing on localhost
+      orgSlug = 'whirkplace';
+      console.log('🔑 Super admin authentication mode - using whirkplace org');
     } else {
       // Check if we're on a specific organization's subdomain
       if (hostname !== 'localhost' && 
@@ -93,13 +99,12 @@ export default function LoginPage() {
       } else if (hostname === 'whirkplace.com' || 
                  hostname === 'www.whirkplace.com' || 
                  hostname === 'app.whirkplace.com') {
-        // For the main whirkplace.com domain, don't specify an org
-        // This triggers super admin authentication flow
-        orgSlug = '';
-        console.log('Super admin authentication mode - no org specified');
+        // For the main whirkplace.com domain, use whirkplace org
+        orgSlug = 'whirkplace';
+        console.log('Super admin authentication mode - using whirkplace org');
       } else {
-        // For localhost/dev only, use default-org
-        orgSlug = 'default-org';
+        // For localhost/dev only, use default org
+        orgSlug = 'default';
       }
     }
     
