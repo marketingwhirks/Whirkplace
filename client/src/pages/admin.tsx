@@ -628,7 +628,7 @@ export default function Admin() {
               <DialogDescription>
                 This will pull all members from the "whirkplace-pulse" channel and:
                 <ul className="mt-2 list-disc list-inside space-y-1">
-                  <li>Create new WhirkPlace accounts for channel members who don't have accounts</li>
+                  <li>Create new Whirkplace accounts for channel members who don't have accounts</li>
                   <li>Reactivate any previously deactivated users who are back in the channel</li>
                   <li>Deactivate users who are no longer in the channel</li>
                 </ul>

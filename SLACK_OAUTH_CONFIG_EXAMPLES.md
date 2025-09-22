@@ -23,7 +23,7 @@ SLACK_PRIVATE_CHANNEL_ID=C0987654321
 ## Slack App Configuration Checklist
 
 ### 1. Basic Information
-- **App Name**: WhirkPlace Authentication
+- **App Name**: Whirkplace Authentication
 - **Short Description**: Team wellness and check-in platform with Slack integration
 - **App Icon**: Upload your app logo
 - **Background Color**: Match your brand colors
@@ -58,7 +58,7 @@ identity.team
 
 ```yaml
 display_information:
-  name: WhirkPlace
+  name: Whirkplace
   description: Team wellness and check-in platform
   background_color: "#2c3e50"
 features:
@@ -66,7 +66,7 @@ features:
     home_tab_enabled: true
     messages_tab_enabled: false
   bot_user:
-    display_name: WhirkPlace Bot
+    display_name: Whirkplace Bot
     always_online: true
 oauth_config:
   redirect_urls:
@@ -309,4 +309,4 @@ curl -H "Authorization: Bearer $USER_TOKEN" \
   https://slack.com/api/users.identity
 ```
 
-This configuration guide provides all the necessary examples and setup instructions for implementing Slack OAuth authentication in WhirkPlace.
+This configuration guide provides all the necessary examples and setup instructions for implementing Slack OAuth authentication in Whirkplace.

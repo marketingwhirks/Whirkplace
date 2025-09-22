@@ -4,7 +4,7 @@ import { syncUsersFromSlack, getChannelMembers, handleChannelMembershipEvent } f
  * User Sync Functions for Channel-based Membership
  * 
  * This module provides automatic user synchronization based on Slack channel membership.
- * When users join/leave the "whirkplace-pulse" channel, their WhirkPlace access is updated.
+ * When users join/leave the "whirkplace-pulse" channel, their Whirkplace access is updated.
  */
 
 // Export the sync functions for use in routes and scheduled tasks
