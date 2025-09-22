@@ -19,14 +19,6 @@ export default function LandingPage() {
     setIsAuthenticated(!!user);
   }, [user]);
 
-  const handleSlackLogin = () => {
-    window.location.href = "/auth/slack/login?org=default-org";
-  };
-
-  const handleMicrosoftLogin = () => {
-    window.location.href = "/auth/microsoft?org=default-org";
-  };
-
   const redirectToDashboard = () => {
     window.location.href = "/?org=default-org";
   };
