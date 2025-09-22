@@ -395,7 +395,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (organizationSlug === 'whirkplace') {
           // Look for the whirkplace super admin organization
           organization = allOrgs.find(org => org.id === 'whirkplace' || org.slug === 'whirkplace');
-          isSuperAdmin = true;
+          
+          // Security: Only allow super admin creation for specific email domains
+          const userEmail = user.email || "";
+          const allowedSuperAdminDomains = ['whirkplace.com', 'patrickaccounting.com']; // Add your trusted domains
+          const isAllowedSuperAdminDomain = allowedSuperAdminDomains.some(domain => 
+            userEmail.toLowerCase().endsWith(`@${domain}`)
+          );
+          
+          // Only grant super admin if from allowed domain
+          isSuperAdmin = isAllowedSuperAdminDomain;
+          
+          console.log('🔐 Super admin check for Slack OAuth:');
+          console.log('  Organization:', organizationSlug);
+          console.log('  Email:', userEmail);
+          console.log('  Allowed domains:', allowedSuperAdminDomains);
+          console.log('  Is allowed domain:', isAllowedSuperAdminDomain);
+          console.log('  Will be super admin:', isSuperAdmin);
           
           if (!organization) {
             // Create whirkplace organization if it doesn't exist
@@ -475,6 +491,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: existingUser.name === existingUser.email && displayName ? 
                   displayName : existingUser.name
           };
+          
+          // Update super admin status if they meet the criteria
+          if (isSuperAdmin && !existingUser.isSuperAdmin) {
+            updateData.isSuperAdmin = true;
+            updateData.role = "admin"; // Ensure admin role for super admins
+            console.log('🔑 Upgrading existing user to super admin:', existingUser.email);
+          }
 
           // Smart authProvider handling: preserve existing provider or set multi-provider state
           if (!existingUser.authProvider || existingUser.authProvider === 'local') {
@@ -503,6 +526,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             name: displayName,
             email: user.email || `${slackUserId}@slack.local`,
             role: isSuperAdmin ? "admin" : "member",  // Super admins get admin role
+            isSuperAdmin: isSuperAdmin,  // Set super admin flag based on domain check
             organizationId: organization.id,
             slackUserId: slackUserId,
             slackUsername: slackUserId, // OIDC doesn't provide username
