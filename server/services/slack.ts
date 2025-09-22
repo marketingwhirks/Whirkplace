@@ -84,9 +84,13 @@ interface SlackOIDCUserInfo {
 export function generateOAuthURL(organizationSlug: string, session: any, req?: Request): string {
   const clientId = process.env.SLACK_CLIENT_ID;
   
+  // Force production redirect URI if configured
+  const forceProductionUri = process.env.FORCE_PRODUCTION_OAUTH === 'true';
+  
   // Debug logging
   console.log('🔧 Slack OAuth generation debug:');
   console.log('  NODE_ENV:', process.env.NODE_ENV);
+  console.log('  FORCE_PRODUCTION_OAUTH:', process.env.FORCE_PRODUCTION_OAUTH);
   console.log('  Request provided:', !!req);
   if (req) {
     console.log('  Request host:', req.get('host'));
@@ -96,7 +100,11 @@ export function generateOAuthURL(organizationSlug: string, session: any, req?: R
   
   // Use the unified redirect URI resolver function
   let redirectUri: string;
-  if (req) {
+  
+  // Always use production URL if forced
+  if (forceProductionUri) {
+    redirectUri = 'https://whirkplace.com/auth/slack/callback';
+  } else if (req) {
     // Use the centralized resolver which handles production properly
     redirectUri = resolveRedirectUri(req, '/auth/slack/callback');
   } else {
@@ -218,10 +226,13 @@ export async function exchangeOIDCCode(code: string, redirectUri?: string): Prom
   const clientId = process.env.SLACK_CLIENT_ID;
   const clientSecret = process.env.SLACK_CLIENT_SECRET;
   
+  // Force production redirect URI if configured
+  const forceProductionUri = process.env.FORCE_PRODUCTION_OAUTH === 'true';
+  
   // Use provided redirect URI or fallback to production/dev defaults
   let finalRedirectUri = redirectUri;
-  if (!finalRedirectUri) {
-    if (process.env.NODE_ENV === 'production') {
+  if (!finalRedirectUri || forceProductionUri) {
+    if (process.env.NODE_ENV === 'production' || forceProductionUri) {
       // Production always uses whirkplace.com
       finalRedirectUri = 'https://whirkplace.com/auth/slack/callback';
     } else {
@@ -233,6 +244,7 @@ export async function exchangeOIDCCode(code: string, redirectUri?: string): Prom
   // Debug logging for redirect URI
   console.log('🔄 Token exchange redirect URI:', finalRedirectUri);
   console.log('  NODE_ENV:', process.env.NODE_ENV);
+  console.log('  FORCE_PRODUCTION_OAUTH:', process.env.FORCE_PRODUCTION_OAUTH);
   
   // Extra safety: if redirect URI contains whirkplace.com, ensure it uses HTTPS and correct path
   if (finalRedirectUri.includes('whirkplace.com') && !finalRedirectUri.startsWith('https://whirkplace.com/auth/slack/callback')) {
