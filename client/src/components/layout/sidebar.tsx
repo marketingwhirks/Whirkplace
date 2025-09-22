@@ -114,7 +114,7 @@ function SidebarContent() {
           <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{backgroundColor: '#1b365d'}}>
             <Heart className="w-4 h-4 fill-accent stroke-accent" strokeWidth="2" />
           </div>
-          <h1 className="text-xl font-bold" style={{color: 'white'}}>Whirkplace</h1>
+          <h1 className="text-xl font-bold text-[#1b365d] dark:text-white">Whirkplace</h1>
         </div>
       </div>
 
