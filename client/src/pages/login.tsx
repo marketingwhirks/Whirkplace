@@ -11,7 +11,6 @@ export default function LoginPage() {
   const [backdoorUser, setBackdoorUser] = useState('');
   const [backdoorKey, setBackdoorKey] = useState('');
   const [isBackdoorLogin, setIsBackdoorLogin] = useState(false);
-  const [planType, setPlanType] = useState<'starter' | 'professional'>('starter');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const { toast } = useToast();
@@ -146,97 +145,19 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Plan Selection */}
-        <div className="flex bg-muted rounded-lg p-1 mb-4">
-          <button
-            onClick={() => setPlanType('starter')}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              planType === 'starter' 
-                ? 'bg-background text-foreground shadow-sm' 
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            data-testid="plan-starter"
-          >
-            Starter Plan
-          </button>
-          <button
-            onClick={() => setPlanType('professional')}
-            className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              planType === 'professional' 
-                ? 'bg-background text-foreground shadow-sm' 
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-            data-testid="plan-professional"
-          >
-            Professional Plan
-          </button>
-        </div>
-
         {/* Login Card */}
         <Card className="w-full">
           <CardHeader className="text-center">
-            <CardTitle>Sign In</CardTitle>
+            <CardTitle>Sign In to Whirkplace</CardTitle>
             <CardDescription>
-              {planType === 'starter' 
-                ? 'Sign in with your email and password' 
-                : 'Connect with your Slack or Microsoft account'
-              }
+              Sign in with your work account or email
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {!isBackdoorLogin ? (
-              planType === 'starter' ? (
-                <>
-                  {/* Starter Plan - Simple Login */}
-                  <div className="space-y-3">
-                    <div>
-                      <Label htmlFor="email">Email</Label>
-                      <Input 
-                        id="email"
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="Enter your email"
-                        data-testid="input-email"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="password">Password</Label>
-                      <Input 
-                        id="password"
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter your password"
-                        data-testid="input-password"
-                      />
-                    </div>
-                  </div>
-                  
-                  <Button 
-                    onClick={handleSimpleLogin}
-                    className="w-full"
-                    size="lg"
-                    disabled={!email || !password}
-                    data-testid="button-simple-login"
-                  >
-                    Sign In
-                  </Button>
-                  
-                  <div className="text-center text-sm text-muted-foreground">
-                    <button 
-                      type="button"
-                      onClick={() => setIsBackdoorLogin(true)}
-                      className="underline hover:no-underline"
-                      data-testid="backdoor-toggle"
-                    >
-                      Developer Login
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {/* Professional Plan - OAuth Login */}
+              <>
+                {/* SSO Options */}
+                <div className="space-y-3">
                   <Button 
                     onClick={handleSlackLogin}
                     className="w-full flex items-center justify-center space-x-2"
@@ -272,25 +193,65 @@ export default function LoginPage() {
                     </svg>
                     <span>Continue with Microsoft</span>
                   </Button>
-                  
-                  <div className="text-center text-sm text-muted-foreground">
-                    <button 
-                      type="button"
-                      onClick={() => setIsBackdoorLogin(true)}
-                      className="underline hover:no-underline"
-                      data-testid="backdoor-toggle"
-                    >
-                      Developer Login
-                    </button>
+                </div>
+
+                {/* Divider */}
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
                   </div>
-                  
-                  <div className="text-center">
-                    <p className="text-sm text-muted-foreground">
-                      Join the <strong>whirkplace-pulse</strong> Slack channel to automatically get access
-                    </p>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-background px-2 text-muted-foreground">Or sign in with email</span>
                   </div>
-                </>
-              )
+                </div>
+
+                {/* Email/Password Login */}
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="email">Email</Label>
+                    <Input 
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="Enter your email"
+                      data-testid="input-email"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="password">Password</Label>
+                    <Input 
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      data-testid="input-password"
+                    />
+                  </div>
+                </div>
+                
+                <Button 
+                  onClick={handleSimpleLogin}
+                  className="w-full"
+                  size="lg"
+                  disabled={!email || !password}
+                  data-testid="button-simple-login"
+                >
+                  Sign In
+                </Button>
+                
+                <div className="text-center text-sm text-muted-foreground">
+                  <button 
+                    type="button"
+                    onClick={() => setIsBackdoorLogin(true)}
+                    className="underline hover:no-underline"
+                    data-testid="backdoor-toggle"
+                  >
+                    Developer Login
+                  </button>
+                </div>
+              </>
             ) : (
               <>
                 <div className="space-y-3">
