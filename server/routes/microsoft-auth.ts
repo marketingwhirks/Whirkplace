@@ -29,20 +29,15 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       let organization;
       
       if (!org || typeof org !== 'string') {
-        // Default to Whirkplace master organization if no org parameter provided
-        console.log("No organization parameter provided, defaulting to Whirkplace master organization");
-        const masterOrgSlug = process.env.MASTER_ORG_SLUG || 'whirkplace-master';
-        organization = await storage.getOrganizationBySlug(masterOrgSlug);
+        // Default to the default organization
+        console.log("No organization parameter provided, using default organization");
+        const defaultOrgSlug = 'default-org'; // Use the actual default-org slug
+        organization = await storage.getOrganizationBySlug(defaultOrgSlug);
         
         if (!organization) {
-          // If we're in production, don't allow defaulting to master org for security
-          if (process.env.NODE_ENV === 'production') {
-            return res.status(400).json({ 
-              message: "Organization parameter is required in production environment" 
-            });
-          }
-          // Development fallback only
-          organization = await storage.getOrganization('6c070124-fae2-472a-a826-cd460dd6f6ea');
+          return res.status(400).json({ 
+            message: "Organization parameter is required. Use ?org=default-org or your organization slug" 
+          });
         }
       } else {
         // Get organization by slug to validate it exists and get its ID

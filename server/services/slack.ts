@@ -84,6 +84,16 @@ interface SlackOIDCUserInfo {
 export function generateOAuthURL(organizationSlug: string, session: any, req?: Request): string {
   const clientId = process.env.SLACK_CLIENT_ID;
   
+  // Debug logging
+  console.log('🔧 Slack OAuth generation debug:');
+  console.log('  NODE_ENV:', process.env.NODE_ENV);
+  console.log('  Request provided:', !!req);
+  if (req) {
+    console.log('  Request host:', req.get('host'));
+    console.log('  X-Forwarded-Host:', req.get('X-Forwarded-Host'));
+    console.log('  X-Forwarded-Proto:', req.get('X-Forwarded-Proto'));
+  }
+  
   // Use the unified redirect URI resolver function
   let redirectUri: string;
   if (req) {
@@ -104,7 +114,7 @@ export function generateOAuthURL(organizationSlug: string, session: any, req?: R
     throw new Error("Slack OAuth not configured. Missing SLACK_CLIENT_ID or redirect URI");
   }
   
-  console.log('🔗 Using Slack redirect URI:', redirectUri);
+  console.log('🔗 Final Slack redirect URI:', redirectUri);
   
   // Generate cryptographically secure state parameter
   const state = randomBytes(32).toString('hex');
@@ -220,9 +230,13 @@ export async function exchangeOIDCCode(code: string, redirectUri?: string): Prom
     }
   }
   
-  // Extra safety: ensure production always uses the correct domain
-  if (process.env.NODE_ENV === 'production' && !finalRedirectUri.includes('whirkplace.com')) {
-    console.warn('⚠️  Production detected but redirect URI not using whirkplace.com, forcing correction');
+  // Debug logging for redirect URI
+  console.log('🔄 Token exchange redirect URI:', finalRedirectUri);
+  console.log('  NODE_ENV:', process.env.NODE_ENV);
+  
+  // Extra safety: if redirect URI contains whirkplace.com, ensure it uses HTTPS and correct path
+  if (finalRedirectUri.includes('whirkplace.com') && !finalRedirectUri.startsWith('https://whirkplace.com/auth/slack/callback')) {
+    console.warn('⚠️  Correcting whirkplace.com redirect URI format');
     finalRedirectUri = 'https://whirkplace.com/auth/slack/callback';
   }
   

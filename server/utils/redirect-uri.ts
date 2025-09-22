@@ -5,38 +5,55 @@ import type { Request } from 'express';
  * Supports development, Replit dev, and production (whirkplace.com) environments
  */
 export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft/callback'): string {
+  // Determine host from headers (for proxied environments) or request
+  const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
+  const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
+  
+  // Force production URLs if request is from whirkplace.com domain or if in production env
+  const isProductionDomain = host === 'whirkplace.com' || 
+                            host === 'www.whirkplace.com' ||
+                            host === 'app.whirkplace.com';
+  const isProduction = process.env.NODE_ENV === 'production' || 
+                       process.env.FORCE_PRODUCTION === 'true' ||
+                       isProductionDomain;
+  
+  // Debug logging
+  console.log('🔍 Redirect URI resolution:');
+  console.log('  Host:', host);
+  console.log('  Protocol:', protocol);
+  console.log('  NODE_ENV:', process.env.NODE_ENV);
+  console.log('  Is production domain:', isProductionDomain);
+  console.log('  Is production:', isProduction);
+  
   // Check for explicit redirect URIs based on the path
   if (path.includes('slack')) {
     // For production, always use the correct domain for Slack
-    if (process.env.NODE_ENV === 'production') {
+    if (isProduction) {
+      console.log('  → Forcing Slack production URL');
       return 'https://whirkplace.com/auth/slack/callback';
     }
     // Only use override in development if provided
     if (process.env.SLACK_REDIRECT_URI_OVERRIDE) {
+      console.log('  → Using Slack override:', process.env.SLACK_REDIRECT_URI_OVERRIDE);
       return process.env.SLACK_REDIRECT_URI_OVERRIDE;
     }
   }
   if (path.includes('microsoft')) {
     // For production, always use the correct domain for Microsoft
-    if (process.env.NODE_ENV === 'production') {
+    if (isProduction) {
+      console.log('  → Forcing Microsoft production URL');
       return 'https://whirkplace.com/auth/microsoft/callback';
     }
     // Only use override in development if provided
     if (process.env.MICROSOFT_REDIRECT_URI) {
+      console.log('  → Using Microsoft override:', process.env.MICROSOFT_REDIRECT_URI);
       return process.env.MICROSOFT_REDIRECT_URI;
     }
   }
 
-  // Determine protocol from headers (for proxied environments) or request
-  const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
-  
-  // Determine host from headers (for proxied environments) or request
-  const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
-
-  // For production, use the custom domain
-  if (process.env.NODE_ENV === 'production' || 
-      host === 'whirkplace.com' || 
-      host === 'www.whirkplace.com') {
+  // For production domains, use the custom domain
+  if (isProduction) {
+    console.log('  → Using production domain');
     return `https://whirkplace.com${path}`;
   }
 
