@@ -189,8 +189,8 @@ export default function LandingPage() {
             <Card className="border-2" data-testid="card-plan-starter">
               <CardHeader>
                 <CardTitle>Starter</CardTitle>
-                <div className="text-3xl font-bold">$80<span className="text-sm font-normal">/member/year</span></div>
-                <div className="text-sm text-muted-foreground">Billed annually</div>
+                <div className="text-3xl font-bold">$6.67<span className="text-sm font-normal">/member/month</span></div>
+                <div className="text-sm text-muted-foreground">Billed annually ($80/year)</div>
                 <CardDescription>Perfect for small teams getting started</CardDescription>
               </CardHeader>
               <CardContent>
@@ -208,8 +208,8 @@ export default function LandingPage() {
               <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2">Most Popular</Badge>
               <CardHeader>
                 <CardTitle>Professional</CardTitle>
-                <div className="text-3xl font-bold">$120<span className="text-sm font-normal">/member/year</span></div>
-                <div className="text-sm text-muted-foreground">Billed annually</div>
+                <div className="text-3xl font-bold">$10<span className="text-sm font-normal">/member/month</span></div>
+                <div className="text-sm text-muted-foreground">Billed annually ($120/year)</div>
                 <CardDescription>Advanced features for growing teams</CardDescription>
               </CardHeader>
               <CardContent>
@@ -226,8 +226,8 @@ export default function LandingPage() {
             <Card className="border-2" data-testid="card-plan-enterprise">
               <CardHeader>
                 <CardTitle>Enterprise</CardTitle>
-                <div className="text-3xl font-bold">$180<span className="text-sm font-normal">/member/year</span></div>
-                <div className="text-sm text-muted-foreground">Your wholesale rate • Billed annually</div>
+                <div className="text-3xl font-bold">$15<span className="text-sm font-normal">/member/month</span></div>
+                <div className="text-sm text-muted-foreground">Your wholesale rate • Billed annually ($180/year)</div>
                 <CardDescription>White label platform for firms and consultancies</CardDescription>
               </CardHeader>
               <CardContent>
