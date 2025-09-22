@@ -241,16 +241,19 @@ export default function LoginPage() {
                   Sign In
                 </Button>
                 
-                <div className="text-center text-sm text-muted-foreground">
-                  <button 
-                    type="button"
-                    onClick={() => setIsBackdoorLogin(true)}
-                    className="underline hover:no-underline"
-                    data-testid="backdoor-toggle"
-                  >
-                    Developer Login
-                  </button>
-                </div>
+                {/* Only show Developer Login in development */}
+                {import.meta.env.MODE === 'development' && (
+                  <div className="text-center text-sm text-muted-foreground">
+                    <button 
+                      type="button"
+                      onClick={() => setIsBackdoorLogin(true)}
+                      className="underline hover:no-underline"
+                      data-testid="backdoor-toggle"
+                    >
+                      Developer Login
+                    </button>
+                  </div>
+                )}
               </>
             ) : (
               <>
