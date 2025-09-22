@@ -316,6 +316,12 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
     });
 
     console.log('✅ JWT verification successful with jose library');
+    
+    // Debug: Log the entire payload to see what fields are available
+    console.log('📋 JWT Payload fields:', Object.keys(payload));
+    console.log('📧 Email field value:', payload.email);
+    console.log('👤 Name field value:', payload.name);
+    console.log('🔍 Full payload:', JSON.stringify(payload, null, 2));
 
     // Extract user information from verified token
     const userInfo: SlackOIDCUserInfo = {
@@ -326,8 +332,8 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
       },
       user: {
         id: payload['https://slack.com/user_id'] as string,
-        name: payload.name as string,
-        email: payload.email as string,
+        name: payload.name as string || payload.given_name as string || payload.family_name as string,
+        email: payload.email as string || payload['https://slack.com/user_email'] as string,
         image: payload.picture as string
       },
       enterprise: payload['https://slack.com/enterprise_id'] ? {
