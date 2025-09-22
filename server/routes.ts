@@ -403,32 +403,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const allOrgs = await storage.getAllOrganizations();
         
-        // Check if this is a super admin authentication
+        // ALWAYS check if user should be super admin based on their email
+        // This ensures super admins maintain their status regardless of which org they auth to
+        const userEmail = (user.email || user.user?.email || "").toLowerCase();
+        const allowedSuperAdminEmails = [
+          'mpatrick@patrickaccounting.com'  // Matthew Patrick - specific email
+        ];
+        const allowedSuperAdminDomains = ['whirkplace.com']; // Only whirkplace.com domain gets automatic super admin
+        
+        // Check if this is a specific allowed email OR from whirkplace.com domain
+        const isAllowedSuperAdmin = 
+          allowedSuperAdminEmails.includes(userEmail) ||
+          allowedSuperAdminDomains.some(domain => userEmail.endsWith(`@${domain}`));
+        
+        console.log('🔐 Super admin check for Slack OAuth:');
+        console.log('  Organization:', organizationSlug);
+        console.log('  Email:', userEmail);
+        console.log('  Is allowed super admin:', isAllowedSuperAdmin);
+        
+        // Check if this is a super admin authentication to whirkplace org
         if (organizationSlug === 'whirkplace') {
           // Look for the whirkplace super admin organization
           organization = allOrgs.find(org => org.id === 'whirkplace' || org.slug === 'whirkplace');
           
-          // Security: Only allow super admin creation for specific email addresses
-          const userEmail = user.email || "";
-          const allowedSuperAdminEmails = [
-            'mpatrick@patrickaccounting.com'  // Matthew Patrick - specific email
-          ];
-          const allowedSuperAdminDomains = ['whirkplace.com']; // Only whirkplace.com domain gets automatic super admin
-          
-          // Check if this is a specific allowed email OR from whirkplace.com domain
-          const isAllowedSuperAdmin = 
-            allowedSuperAdminEmails.includes(userEmail.toLowerCase()) ||
-            allowedSuperAdminDomains.some(domain => userEmail.toLowerCase().endsWith(`@${domain}`));
-          
           // Only grant super admin if specifically allowed
           isSuperAdmin = isAllowedSuperAdmin;
           
-          console.log('🔐 Super admin check for Slack OAuth:');
-          console.log('  Organization:', organizationSlug);
-          console.log('  Email:', userEmail);
-          console.log('  Specific allowed emails:', allowedSuperAdminEmails);
-          console.log('  Domain-wide allowed:', allowedSuperAdminDomains);
-          console.log('  Is allowed super admin:', isAllowedSuperAdmin);
           console.log('  Will be super admin:', isSuperAdmin);
           
           if (!organization) {
@@ -510,11 +510,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   displayName : existingUser.name
           };
           
-          // Update super admin status if they meet the criteria
-          if (isSuperAdmin && !existingUser.isSuperAdmin) {
+          // CRITICAL: Check if user should be super admin based on email
+          const userEmail = (user.email || user.user?.email || existingUser.email || "").toLowerCase();
+          const allowedSuperAdminEmails = [
+            'mpatrick@patrickaccounting.com'  // Matthew Patrick - specific email
+          ];
+          const allowedSuperAdminDomains = ['whirkplace.com'];
+          
+          const shouldBeSuperAdmin = 
+            allowedSuperAdminEmails.includes(userEmail) ||
+            allowedSuperAdminDomains.some(domain => userEmail.endsWith(`@${domain}`));
+          
+          // Update super admin status if they meet the criteria OR preserve existing super admin status
+          if (shouldBeSuperAdmin || existingUser.isSuperAdmin) {
             updateData.isSuperAdmin = true;
-            updateData.role = "admin"; // Ensure admin role for super admins
-            console.log('🔑 Upgrading existing user to super admin:', existingUser.email);
+            updateData.role = existingUser.role === 'admin' ? 'admin' : updateData.role || existingUser.role; // Preserve role or ensure admin
+            console.log('🔑 Setting super admin for user:', existingUser.email, 'shouldBe:', shouldBeSuperAdmin, 'existing:', existingUser.isSuperAdmin);
+          } else {
+            // Preserve existing role and super admin status if not in allowed list
+            updateData.role = existingUser.role;
+            updateData.isSuperAdmin = existingUser.isSuperAdmin;
           }
 
           // Smart authProvider handling: preserve existing provider or set multi-provider state
@@ -538,13 +553,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const slackUserId = user.sub;
           const displayName = user.name || user.given_name || slackUserId;
           
+          // Check if new user should be super admin based on their email
+          const newUserEmail = (user.email || user.user?.email || `${slackUserId}@slack.local`).toLowerCase();
+          const allowedSuperAdminEmails = [
+            'mpatrick@patrickaccounting.com'  // Matthew Patrick - specific email
+          ];
+          const allowedSuperAdminDomains = ['whirkplace.com'];
+          
+          const shouldBeSuperAdmin = 
+            allowedSuperAdminEmails.includes(newUserEmail) ||
+            allowedSuperAdminDomains.some(domain => newUserEmail.endsWith(`@${domain}`));
+          
+          // Use the email-based check OR the org-based check (from earlier in the function)
+          const finalSuperAdmin = shouldBeSuperAdmin || isSuperAdmin;
+          
+          console.log('🔑 Creating new user - super admin check:', newUserEmail, 'shouldBe:', shouldBeSuperAdmin, 'orgBased:', isSuperAdmin, 'final:', finalSuperAdmin);
+          
           const userData = {
             username: slackUserId, // Use Slack user ID as username for uniqueness
             password: securePassword, // Secure random password for Slack users
             name: displayName,
-            email: user.email || `${slackUserId}@slack.local`,
-            role: isSuperAdmin ? "admin" : "member",  // Super admins get admin role
-            isSuperAdmin: isSuperAdmin,  // Set super admin flag based on domain check
+            email: newUserEmail !== `${slackUserId}@slack.local` ? newUserEmail : `${slackUserId}@slack.local`,
+            role: finalSuperAdmin ? "admin" : "member",  // Super admins get admin role
+            isSuperAdmin: finalSuperAdmin,  // Set super admin flag based on email check
             organizationId: organization.id,
             slackUserId: slackUserId,
             slackUsername: slackUserId, // OIDC doesn't provide username

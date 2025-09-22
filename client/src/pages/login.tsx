@@ -108,10 +108,9 @@ export default function LoginPage() {
       }
     }
     
-    // Redirect to Slack OAuth endpoint
-    // If no org is specified, it will trigger super admin authentication
-    const url = orgSlug ? `/auth/slack/login?org=${orgSlug}` : '/auth/slack/login';
-    console.log('Initiating Slack login:', url);
+    // Always include the org parameter - never leave it empty
+    const url = `/auth/slack/login?org=${orgSlug || 'default'}`;
+    console.log('Initiating Slack login for org:', orgSlug || 'default');
     window.location.href = url;
   };
   
