@@ -58,18 +58,16 @@ export default function LandingPage() {
           <div className="flex items-center space-x-3">
             <Button 
               variant="outline" 
-              onClick={handleSlackLogin}
-              data-testid="button-slack-login"
-              className="flex items-center space-x-2"
+              onClick={() => window.location.href = "/auth?org=default-org"}
+              data-testid="button-signin"
             >
-              <span>Sign in with Slack</span>
+              Sign In
             </Button>
             <Button 
-              onClick={handleMicrosoftLogin}
-              data-testid="button-microsoft-login"
-              className="flex items-center space-x-2"
+              onClick={() => window.location.href = "/auth?org=default-org&signup=true"}
+              data-testid="button-signup"
             >
-              <span>Sign in with Microsoft</span>
+              Sign Up
             </Button>
           </div>
         </div>
@@ -89,11 +87,11 @@ export default function LandingPage() {
             The comprehensive team management and wellness platform that helps organizations track team health, conduct regular check-ins, and foster positive workplace culture.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" onClick={handleSlackLogin} data-testid="button-get-started-slack">
-              Get Started with Slack <ArrowRight className="ml-2 h-5 w-5" />
+            <Button size="lg" onClick={() => window.location.href = "/auth?org=default-org&signup=true"} data-testid="button-get-started">
+              Get Started Free <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
-            <Button size="lg" variant="outline" onClick={handleMicrosoftLogin} data-testid="button-get-started-microsoft">
-              Get Started with Microsoft
+            <Button size="lg" variant="outline" onClick={() => window.location.href = "/auth?org=default-org"} data-testid="button-signin-hero">
+              Sign In
             </Button>
           </div>
         </div>
@@ -183,7 +181,7 @@ export default function LandingPage() {
               Simple, transparent pricing
             </h2>
             <p className="text-xl text-muted-foreground" data-testid="text-pricing-description">
-              Choose the plan that works for your team
+              Pay per team member, cancel anytime
             </p>
           </div>
 
@@ -191,12 +189,12 @@ export default function LandingPage() {
             <Card className="border-2" data-testid="card-plan-starter">
               <CardHeader>
                 <CardTitle>Starter</CardTitle>
-                <div className="text-3xl font-bold">$9<span className="text-sm font-normal">/month</span></div>
+                <div className="text-3xl font-bold">$8<span className="text-sm font-normal">/member/month</span></div>
                 <CardDescription>Perfect for small teams getting started</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Up to 10 team members</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Essential team features</li>
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Basic check-ins</li>
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Slack integration</li>
                 </ul>
@@ -207,12 +205,12 @@ export default function LandingPage() {
               <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2">Most Popular</Badge>
               <CardHeader>
                 <CardTitle>Professional</CardTitle>
-                <div className="text-3xl font-bold">$29<span className="text-sm font-normal">/month</span></div>
+                <div className="text-3xl font-bold">$12<span className="text-sm font-normal">/member/month</span></div>
                 <CardDescription>Advanced features for growing teams</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Up to 50 team members</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Everything in Starter</li>
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Advanced analytics</li>
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Microsoft integration</li>
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Custom questions</li>
@@ -223,12 +221,12 @@ export default function LandingPage() {
             <Card className="border-2" data-testid="card-plan-enterprise">
               <CardHeader>
                 <CardTitle>Enterprise</CardTitle>
-                <div className="text-3xl font-bold">$49<span className="text-sm font-normal">/month</span></div>
+                <div className="text-3xl font-bold">$18<span className="text-sm font-normal">/member/month</span></div>
                 <CardDescription>Full platform for large organizations</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Unlimited team members</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Everything in Professional</li>
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />White label options</li>
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Priority support</li>
                   <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Custom integrations</li>
@@ -252,19 +250,19 @@ export default function LandingPage() {
             <Button 
               size="lg" 
               variant="secondary" 
-              onClick={handleSlackLogin} 
-              data-testid="button-cta-slack"
+              onClick={() => window.location.href = "/auth?org=default-org&signup=true"} 
+              data-testid="button-cta-signup"
             >
-              Start with Slack <ArrowRight className="ml-2 h-5 w-5" />
+              Start Free Trial <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
             <Button 
               size="lg" 
               variant="outline" 
-              onClick={handleMicrosoftLogin} 
-              data-testid="button-cta-microsoft"
+              onClick={() => window.location.href = "/auth?org=default-org"}
+              data-testid="button-cta-signin"
               className="bg-transparent border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary"
             >
-              Start with Microsoft
+              Sign In
             </Button>
           </div>
         </div>
@@ -274,7 +272,7 @@ export default function LandingPage() {
       <footer className="py-12 px-4 bg-white dark:bg-gray-800 border-t">
         <div className="container mx-auto text-center">
           <div className="flex items-center justify-center space-x-2 mb-4" data-testid="footer-logo">
-            <Heart className="h-6 w-6 text-primary" />
+            <Heart className="h-6 w-6 text-green-600" fill="currentColor" />
             <span className="text-lg font-semibold">Whirkplace</span>
           </div>
           <p className="text-muted-foreground" data-testid="text-footer">
