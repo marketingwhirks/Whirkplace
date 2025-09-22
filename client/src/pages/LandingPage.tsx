@@ -43,7 +43,9 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center space-x-2" data-testid="logo">
-            <Heart className="h-8 w-8 text-green-600" fill="#84ae58" stroke="#84ae58" strokeWidth="2" />
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <Heart className="w-4 h-4" fill="#84ae58" stroke="#84ae58" strokeWidth="2" />
+            </div>
             <span className="text-xl font-bold">Whirkplace</span>
           </div>
           
@@ -277,7 +279,9 @@ export default function LandingPage() {
       <footer className="py-12 px-4 bg-white dark:bg-gray-800 border-t">
         <div className="container mx-auto text-center">
           <div className="flex items-center justify-center space-x-2 mb-4" data-testid="footer-logo">
-            <Heart className="h-6 w-6" fill="#84ae58" stroke="#84ae58" strokeWidth="2" />
+            <div className="w-6 h-6 bg-primary rounded-lg flex items-center justify-center">
+              <Heart className="w-3 h-3" fill="#84ae58" stroke="#84ae58" strokeWidth="2" />
+            </div>
             <span className="text-lg font-semibold">Whirkplace</span>
           </div>
           <p className="text-muted-foreground" data-testid="text-footer">
