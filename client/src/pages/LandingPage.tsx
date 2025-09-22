@@ -229,7 +229,7 @@ export default function LandingPage() {
                 <CardDescription>Resell Whirkplace and maximize your margins</CardDescription>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-3">
+                <ul className="space-y-2">
                   <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />More customers = lower cost per seat</li>
                   <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />50-70% profit margins</li>
                   <li className="flex items-center"><CheckCircle className="h-4 w-4 text-green-500 mr-2" />First 50 seats free to start</li>
