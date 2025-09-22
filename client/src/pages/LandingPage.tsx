@@ -52,13 +52,13 @@ export default function LandingPage() {
           <div className="flex items-center space-x-3">
             <Button 
               variant="outline" 
-              onClick={() => window.location.href = "https://app.whirkplace.com/login?org=default-org"}
+              onClick={() => window.location.href = "/login?org=default-org"}
               data-testid="button-signin"
             >
               Sign In
             </Button>
             <Button 
-              onClick={() => window.location.href = "https://app.whirkplace.com/login?org=default-org&signup=true"}
+              onClick={() => window.location.href = "/login?org=default-org&signup=true"}
               data-testid="button-signup"
               className="border-primary"
             >
@@ -82,10 +82,10 @@ export default function LandingPage() {
             The comprehensive team management and wellness platform that helps organizations track team health, conduct regular check-ins, and foster positive workplace culture.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" onClick={() => window.location.href = "https://app.whirkplace.com/login?org=default-org&signup=true"} data-testid="button-get-started">
+            <Button size="lg" onClick={() => window.location.href = "/login?org=default-org&signup=true"} data-testid="button-get-started">
               Get Started Free <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
-            <Button size="lg" variant="outline" onClick={() => window.location.href = "https://app.whirkplace.com/login?org=default-org"} data-testid="button-signin-hero">
+            <Button size="lg" variant="outline" onClick={() => window.location.href = "/login?org=default-org"} data-testid="button-signin-hero">
               Sign In
             </Button>
           </div>
@@ -258,7 +258,7 @@ export default function LandingPage() {
             <Button 
               size="lg" 
               variant="secondary" 
-              onClick={() => window.location.href = "https://app.whirkplace.com/login?org=default-org&signup=true"} 
+              onClick={() => window.location.href = "/login?org=default-org&signup=true"} 
               data-testid="button-cta-signup"
             >
               Start Free Trial <ArrowRight className="ml-2 h-5 w-5" />
@@ -266,7 +266,7 @@ export default function LandingPage() {
             <Button 
               size="lg" 
               variant="outline" 
-              onClick={() => window.location.href = "https://app.whirkplace.com/login?org=default-org"}
+              onClick={() => window.location.href = "/login?org=default-org"}
               data-testid="button-cta-signin"
               className="bg-transparent border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary"
             >
