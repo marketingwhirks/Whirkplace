@@ -189,7 +189,7 @@ export default function LoginPage() {
         {/* Logo and Welcome */}
         <div className="text-center">
           <div className="flex justify-center items-center space-x-3 mb-6">
-            <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{backgroundColor: '#1b365d'}}>
               <Heart className="w-6 h-6 fill-primary stroke-primary" strokeWidth="2" />
             </div>
             <h1 className="text-3xl font-bold text-foreground">WhirkPlace</h1>
