@@ -136,7 +136,7 @@ export default function LoginPage() {
         <div className="text-center">
           <div className="flex justify-center items-center space-x-3 mb-6">
             <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
-              <Heart className="w-6 h-6" fill="#16a34a" stroke="#16a34a" strokeWidth="2" />
+              <Heart className="w-6 h-6" fill="#84ae58" stroke="#84ae58" strokeWidth="2" />
             </div>
             <h1 className="text-3xl font-bold text-foreground">WhirkPlace</h1>
           </div>
