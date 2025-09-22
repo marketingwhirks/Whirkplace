@@ -136,7 +136,7 @@ export default function LoginPage() {
         <div className="text-center">
           <div className="flex justify-center items-center space-x-3 mb-6">
             <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center">
-              <Heart className="w-6 h-6" style={{ color: '#84ae58', fill: '#84ae58' }} />
+              <Heart className="w-6 h-6" fill="#2563eb" stroke="#16a34a" strokeWidth="2" />
             </div>
             <h1 className="text-3xl font-bold text-foreground">WhirkPlace</h1>
           </div>
@@ -160,7 +160,7 @@ export default function LoginPage() {
                 <div className="space-y-3">
                   <Button 
                     onClick={handleSlackLogin}
-                    className="w-full flex items-center justify-center space-x-2"
+                    className="w-full flex items-center justify-center space-x-2 bg-[#4A154B] hover:bg-[#350d36] text-white border-[#4A154B]"
                     size="lg"
                     data-testid="slack-login-button"
                   >
