@@ -191,7 +191,11 @@ export default function LandingPage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            <Card className="border-2" data-testid="card-plan-starter">
+            <Card 
+              className="border-2 cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105" 
+              onClick={handleSignUp}
+              data-testid="card-plan-starter"
+            >
               <CardHeader>
                 <CardTitle>Starter</CardTitle>
                 <div className="text-3xl font-bold">$6<span className="text-sm font-normal">/member/month</span></div>
@@ -208,7 +212,11 @@ export default function LandingPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-2 border-primary relative" data-testid="card-plan-professional">
+            <Card 
+              className="border-2 border-primary relative cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105" 
+              onClick={handleSignUp}
+              data-testid="card-plan-professional"
+            >
               <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2">Most Popular</Badge>
               <CardHeader>
                 <CardTitle>Professional</CardTitle>
