@@ -223,20 +223,21 @@ export default function LandingPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-2" data-testid="card-plan-enterprise">
+            <Card className="border-2 border-green-500 relative" data-testid="card-plan-partner">
+              <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2 bg-green-500 text-white" data-testid="badge-partner">Partner Program</Badge>
               <CardHeader>
-                <CardTitle>Enterprise</CardTitle>
-                <div className="text-3xl font-bold">$15<span className="text-sm font-normal">/member/month</span></div>
-                <div className="text-sm text-muted-foreground">Your wholesale rate • Billed annually ($180/year)</div>
-                <CardDescription>White label platform for firms and consultancies</CardDescription>
+                <CardTitle>Partner Program</CardTitle>
+                <div className="text-3xl font-bold">$3-5<span className="text-sm font-normal">/member/month</span></div>
+                <div className="text-sm text-muted-foreground">Tiered wholesale pricing • Scale and save</div>
+                <CardDescription>Resell Whirkplace and maximize your margins</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Everything in Professional</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Complete white label branding</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Custom domain & branding</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />You set your own customer pricing</li>
-                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Dedicated success manager</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Volume pricing: $5 → $4 → $3/seat</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />50-70% profit margins at scale</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />White label customization</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />25% affiliate commission option</li>
+                  <li className="flex items-center"><CheckCircle className="h-5 w-5 text-green-500 mr-2" />Launch credits: First 50 seats free</li>
                 </ul>
               </CardContent>
             </Card>
