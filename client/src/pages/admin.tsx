@@ -29,7 +29,8 @@ import {
   Building2,
   Edit,
   Trash2,
-  Crown
+  Crown,
+  Plus
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -81,6 +82,16 @@ const editTeamSchema = z.object({
 
 type EditTeamFormData = z.infer<typeof editTeamSchema>;
 
+// Form validation schema for team creation
+const createTeamSchema = z.object({
+  name: z.string().min(1, "Team name is required").max(100, "Team name must be less than 100 characters"),
+  description: z.string().optional(),
+  leaderId: z.string().optional(),
+  teamType: z.enum(["department", "team", "pod"]).default("team"),
+});
+
+type CreateTeamFormData = z.infer<typeof createTeamSchema>;
+
 export default function Admin() {
   const { toast } = useToast();
   const [showSyncDialog, setShowSyncDialog] = useState(false);
@@ -92,6 +103,7 @@ export default function Admin() {
   // Team management state
   const [selectedTeam, setSelectedTeam] = useState<TeamType | null>(null);
   const [teamToDelete, setTeamToDelete] = useState<TeamType | null>(null);
+  const [showCreateTeam, setShowCreateTeam] = useState(false);
 
   const { data: currentUser, actualUser, canSwitchRoles } = useViewAsRole();
 
@@ -192,6 +204,7 @@ export default function Admin() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams/hierarchy"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({
         title: "Team updated",
@@ -216,6 +229,7 @@ export default function Admin() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams/hierarchy"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({
         title: "Team deleted",
@@ -228,6 +242,37 @@ export default function Admin() {
         variant: "destructive",
         title: "Failed to delete team",
         description: error.message || "An error occurred while deleting the team.",
+      });
+    },
+  });
+
+  // Create team mutation
+  const createTeamMutation = useMutation({
+    mutationFn: async (teamData: CreateTeamFormData) => {
+      const response = await apiRequest("POST", "/api/teams", {
+        name: teamData.name,
+        description: teamData.description || null,
+        leaderId: teamData.leaderId || null,
+        teamType: teamData.teamType,
+      });
+      return await response.json() as TeamUpdateResult;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams/hierarchy"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "Team created",
+        description: data.message,
+      });
+      setShowCreateTeam(false);
+      createTeamForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to create team",
+        description: error.message || "An error occurred while creating the team.",
       });
     },
   });
@@ -256,6 +301,17 @@ export default function Admin() {
     },
   });
 
+  // Team create form
+  const createTeamForm = useForm<CreateTeamFormData>({
+    resolver: zodResolver(createTeamSchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      leaderId: "",
+      teamType: "team",
+    },
+  });
+
   const handleEditTeam = (team: TeamType) => {
     setSelectedTeam(team);
     editTeamForm.reset({
@@ -271,7 +327,7 @@ export default function Admin() {
         teamId: selectedTeam.id, 
         teamData: {
           ...data,
-          leaderId: data.leaderId === "" ? undefined : data.leaderId,
+          leaderId: data.leaderId === "" || data.leaderId === "no-leader" ? undefined : data.leaderId,
         }
       });
     }
@@ -285,6 +341,13 @@ export default function Admin() {
     if (teamToDelete) {
       deleteTeamMutation.mutate(teamToDelete.id);
     }
+  };
+
+  const handleCreateTeamSubmit = (data: CreateTeamFormData) => {
+    createTeamMutation.mutate({
+      ...data,
+      leaderId: data.leaderId === "" || data.leaderId === "no-leader" ? undefined : data.leaderId,
+    });
   };
 
   const getRoleBadge = (role: string) => {
@@ -525,10 +588,19 @@ export default function Admin() {
         {/* Teams Management */}
         <Card data-testid="card-teams-management">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="w-5 h-5" />
-              Teams Management
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="w-5 h-5" />
+                Teams Management
+              </CardTitle>
+              <Button 
+                onClick={() => setShowCreateTeam(true)}
+                data-testid="button-create-team"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Create Team
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             {teamsLoading ? (
@@ -813,7 +885,7 @@ export default function Admin() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="" data-testid="option-no-leader">No Leader</SelectItem>
+                          <SelectItem value="no-leader" data-testid="option-no-leader">No Leader</SelectItem>
                           {users
                             .filter(user => user.role === "manager" || user.role === "admin")
                             .map((user) => (
@@ -895,6 +967,131 @@ export default function Admin() {
                 Delete Team
               </Button>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Create Team Dialog */}
+        <Dialog open={showCreateTeam} onOpenChange={setShowCreateTeam}>
+          <DialogContent data-testid="dialog-create-team">
+            <DialogHeader>
+              <DialogTitle>Create New Team</DialogTitle>
+              <DialogDescription>
+                Create a new team in your organization. You can assign a team leader and set team details.
+              </DialogDescription>
+            </DialogHeader>
+            <Form {...createTeamForm}>
+              <form onSubmit={createTeamForm.handleSubmit(handleCreateTeamSubmit)} className="space-y-4">
+                <FormField
+                  control={createTeamForm.control}
+                  name="name"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Team Name</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Enter team name" 
+                          {...field} 
+                          data-testid="input-create-team-name"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={createTeamForm.control}
+                  name="description"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Description (Optional)</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="Enter team description" 
+                          {...field} 
+                          data-testid="input-create-team-description"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={createTeamForm.control}
+                  name="teamType"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Team Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-create-team-type">
+                            <SelectValue placeholder="Select team type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="team" data-testid="option-type-team">Team</SelectItem>
+                          <SelectItem value="department" data-testid="option-type-department">Department</SelectItem>
+                          <SelectItem value="pod" data-testid="option-type-pod">Pod</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={createTeamForm.control}
+                  name="leaderId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Team Leader (Optional)</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-create-team-leader">
+                            <SelectValue placeholder="Select a team leader" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="no-leader" data-testid="option-no-leader">No Leader</SelectItem>
+                          {users
+                            .filter(user => user.role === "manager" || user.role === "admin")
+                            .map((user) => (
+                              <SelectItem 
+                                key={user.id} 
+                                value={user.id} 
+                                data-testid={`option-leader-${user.id}`}
+                              >
+                                {user.name} ({user.role})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <div className="flex justify-end gap-2">
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    onClick={() => setShowCreateTeam(false)}
+                    data-testid="button-cancel-create-team"
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    type="submit"
+                    disabled={createTeamMutation.isPending}
+                    data-testid="button-confirm-create-team"
+                  >
+                    {createTeamMutation.isPending && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
+                    Create Team
+                  </Button>
+                </div>
+              </form>
+            </Form>
           </DialogContent>
         </Dialog>
       </div>
