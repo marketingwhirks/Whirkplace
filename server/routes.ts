@@ -3979,10 +3979,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Check if user has access to this meeting
       const hasAccess = await canAccessOneOnOne(
-        req.orgId, 
-        req.userId, 
-        req.currentUser.role, 
-        req.currentUser.teamId, 
+        req.orgId!, 
+        req.userId!, 
+        req.currentUser!.role, 
+        req.currentUser!.teamId, 
         oneOnOne
       );
       
@@ -4142,10 +4142,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Check if user has access to delete this meeting
       const hasAccess = await canAccessOneOnOne(
-        req.orgId, 
-        req.userId, 
-        req.currentUser.role, 
-        req.currentUser.teamId, 
+        req.orgId!, 
+        req.userId!, 
+        req.currentUser!.role, 
+        req.currentUser!.teamId, 
         existingMeeting
       );
       
@@ -4180,7 +4180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Check access to the first meeting (if user can access one, they can access the series)
       const hasAccess = await canAccessOneOnOne(
-        req.orgId,
+        req.orgId!,
         req.currentUser!.id,
         req.currentUser!.role,
         req.currentUser!.teamId,
@@ -4267,10 +4267,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Check if user has access to this meeting's action items
       const hasAccess = await canAccessOneOnOne(
-        req.orgId, 
-        req.userId, 
-        req.currentUser.role, 
-        req.currentUser.teamId, 
+        req.orgId!, 
+        req.userId!, 
+        req.currentUser!.role, 
+        req.currentUser!.teamId, 
         meeting
       );
       
@@ -4304,10 +4304,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Check if user has access to create action items for this meeting
       const hasAccess = await canAccessOneOnOne(
-        req.orgId, 
-        req.userId, 
-        req.currentUser.role, 
-        req.currentUser.teamId, 
+        req.orgId!, 
+        req.userId!, 
+        req.currentUser!.role, 
+        req.currentUser!.teamId, 
         meeting
       );
       
@@ -4499,8 +4499,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const templateData = {
         ...validatedData,
-        createdBy: req.userId,
-        organizationId: req.orgId
+        createdBy: req.userId!,
+        organizationId: req.orgId!
       };
       
       const template = await storage.createKraTemplate(req.orgId, templateData);
@@ -4636,7 +4636,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name,
         description: description || null,
         goals: goals || [],
-        assignedBy: req.userId,
+        assignedBy: req.userId!,
+        organizationId: req.orgId!,
         startDate: new Date(startDate),
         endDate: endDate ? new Date(endDate) : null,
         status: "active" as const,
@@ -4662,7 +4663,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Check if user can update this KRA
-      const currentUser = await storage.getUser(req.orgId, req.userId);
+      const currentUser = await storage.getUser(req.orgId!, req.userId!);
       if (!currentUser) {
         return res.status(401).json({ message: "User not found" });
       }
@@ -5080,7 +5081,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Store state in session for verification in callback
       req.session.slackOAuthState = state;
-      req.session.slackOrgId = req.params.id;
+      (req.session as any).slackOrgId = req.params.id;
       
       // Dynamic redirect URI based on environment
       const baseUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
@@ -5587,7 +5588,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_invalid_state`);
       }
       
-      const orgId = req.session.slackOrgId;
+      const orgId = (req.session as any).slackOrgId;
       if (!orgId) {
         return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_missing_org`);
       }
@@ -5637,7 +5638,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Clear OAuth state
       req.session.slackOAuthState = undefined;
-      req.session.slackOrgId = undefined;
+      (req.session as any).slackOrgId = undefined;
       
       console.log(`Slack integration installed for organization ${updatedOrg.name} (${tokenData.team.name})`);
       
