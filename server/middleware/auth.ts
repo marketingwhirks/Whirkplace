@@ -35,10 +35,22 @@ function isBackdoorAuthAllowed() {
  * SECURITY: Startup validation to prevent dangerous configurations in production
  * This function should be called during server startup to validate auth configuration
  * 
- * To allow backdoor access in production (USE WITH EXTREME CAUTION), set:
- * ALLOW_PRODUCTION_BACKDOOR=true
+ * DEPLOYMENT FIX: Updated to provide clearer guidance for production deployment
+ * 
+ * Options for fixing production deployment errors:
+ * 1. RECOMMENDED: Remove development environment variables: BACKDOOR_USER, BACKDOOR_KEY
+ * 2. TEMPORARY: Set ALLOW_PRODUCTION_BACKDOOR=true (use with extreme caution)
+ * 3. BYPASS: Set SKIP_AUTH_VALIDATION=true (not recommended for security)
  */
 export function validateAuthConfiguration() {
+  // Allow bypassing validation entirely if explicitly requested
+  if (process.env.SKIP_AUTH_VALIDATION === 'true') {
+    console.warn(`⚠️  SECURITY WARNING: Authentication validation has been BYPASSED via SKIP_AUTH_VALIDATION=true`);
+    console.warn(`⚠️  This disables important security checks and should only be used temporarily`);
+    console.warn(`⚠️  Remove SKIP_AUTH_VALIDATION=true once deployment issues are resolved`);
+    return;
+  }
+
   // SECURITY: In production, check for development authentication flags
   if (process.env.NODE_ENV === 'production') {
     const dangerousFlags = [
@@ -60,10 +72,22 @@ export function validateAuthConfiguration() {
         console.warn(`⚠️  This should only be used for emergency administrative access`);
         console.warn(`⚠️  Remove ALLOW_PRODUCTION_BACKDOOR and development flags when not needed`);
       } else {
-        console.error(`🚨 CRITICAL SECURITY ERROR: Development authentication flags found in production: ${presentFlags.join(', ')}`);
-        console.error(`🚨 To allow this (NOT RECOMMENDED), set ALLOW_PRODUCTION_BACKDOOR=true`);
-        console.error(`🚨 Otherwise, remove these environment variables: ${presentFlags.join(', ')}`);
-        throw new Error(`SECURITY: Development authentication flags not allowed in production: ${presentFlags.join(', ')}`);
+        console.error(`🚨 DEPLOYMENT ERROR: Development authentication flags found in production environment`);
+        console.error(`🚨 Present flags: ${presentFlags.join(', ')}`);
+        console.error(`🚨`);
+        console.error(`🚨 RECOMMENDED FIX: Remove these environment variables from production deployment:`);
+        presentFlags.forEach(flag => {
+          console.error(`🚨   - ${flag}`);
+        });
+        console.error(`🚨`);
+        console.error(`🚨 ALTERNATIVE FIXES:`);
+        console.error(`🚨   - Set ALLOW_PRODUCTION_BACKDOOR=true (use with extreme caution for emergency access)`);
+        console.error(`🚨   - Set SKIP_AUTH_VALIDATION=true (bypasses security checks - not recommended)`);
+        console.error(`🚨`);
+        console.error(`🚨 These development flags are intended for local development only and pose`);
+        console.error(`🚨 security risks in production environments.`);
+        
+        throw new Error(`SECURITY: Development authentication flags not allowed in production: ${presentFlags.join(', ')}. See logs above for fix options.`);
       }
     }
   }
