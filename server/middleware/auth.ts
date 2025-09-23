@@ -11,17 +11,35 @@ import type { User } from "@shared/schema";
 // We check this dynamically because it may be set after module load
 function isDevelopmentAuthEnabled() {
   const isDevEnv = process.env.NODE_ENV === 'development';
-  const isAuthEnabled = process.env.DEV_AUTH_ENABLED === 'true' || process.env.DEV_AUTH_ENABLED === true;
+  const isAuthEnabled = process.env.DEV_AUTH_ENABLED === 'true';
   console.log(`🔧 Dev auth check: NODE_ENV=${process.env.NODE_ENV}, DEV_AUTH_ENABLED=${process.env.DEV_AUTH_ENABLED}, result=${isDevEnv && isAuthEnabled}`);
   return isDevEnv && isAuthEnabled;
+}
+
+// SECURITY: Check if backdoor authentication is allowed in current environment
+// This allows backdoor access in development OR production with explicit flag
+function isBackdoorAuthAllowed() {
+  const isDevAllowed = isDevelopmentAuthEnabled();
+  const isProdAllowed = process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_BACKDOOR === 'true';
+  const result = isDevAllowed || isProdAllowed;
+  
+  if (isProdAllowed) {
+    console.log(`⚠️  Production backdoor access is ENABLED via ALLOW_PRODUCTION_BACKDOOR=true`);
+  }
+  
+  console.log(`🔑 Backdoor auth check: dev=${isDevAllowed}, prod=${isProdAllowed}, result=${result}`);
+  return result;
 }
 
 /**
  * SECURITY: Startup validation to prevent dangerous configurations in production
  * This function should be called during server startup to validate auth configuration
+ * 
+ * To allow backdoor access in production (USE WITH EXTREME CAUTION), set:
+ * ALLOW_PRODUCTION_BACKDOOR=true
  */
 export function validateAuthConfiguration() {
-  // SECURITY: In production, throw if any development authentication flags are present
+  // SECURITY: In production, check for development authentication flags
   if (process.env.NODE_ENV === 'production') {
     const dangerousFlags = [
       'DEV_AUTH_ENABLED',
@@ -33,8 +51,20 @@ export function validateAuthConfiguration() {
     
     const presentFlags = dangerousFlags.filter(flag => process.env[flag]);
     if (presentFlags.length > 0) {
-      console.error(`🚨 CRITICAL SECURITY ERROR: Development authentication flags found in production: ${presentFlags.join(', ')}`);
-      throw new Error(`SECURITY: Development authentication flags not allowed in production: ${presentFlags.join(', ')}`);
+      // Check if production backdoor access is explicitly allowed
+      const allowProductionBackdoor = process.env.ALLOW_PRODUCTION_BACKDOOR === 'true';
+      
+      if (allowProductionBackdoor) {
+        console.warn(`⚠️  SECURITY WARNING: Development authentication flags detected in production: ${presentFlags.join(', ')}`);
+        console.warn(`⚠️  Production backdoor access is ENABLED via ALLOW_PRODUCTION_BACKDOOR=true`);
+        console.warn(`⚠️  This should only be used for emergency administrative access`);
+        console.warn(`⚠️  Remove ALLOW_PRODUCTION_BACKDOOR and development flags when not needed`);
+      } else {
+        console.error(`🚨 CRITICAL SECURITY ERROR: Development authentication flags found in production: ${presentFlags.join(', ')}`);
+        console.error(`🚨 To allow this (NOT RECOMMENDED), set ALLOW_PRODUCTION_BACKDOOR=true`);
+        console.error(`🚨 Otherwise, remove these environment variables: ${presentFlags.join(', ')}`);
+        throw new Error(`SECURITY: Development authentication flags not allowed in production: ${presentFlags.join(', ')}`);
+      }
     }
   }
   
@@ -243,11 +273,10 @@ export function authenticateUser() {
         console.log(`🔧 DEV_AUTH_ENABLED=${isDevelopmentAuthEnabled()}`);
       }
       
-      // SECURITY: Backdoor only works with both NODE_ENV=development AND DEV_AUTH_ENABLED flag
-      if (backdoorUser && backdoorKey && isDevelopmentAuthEnabled()) {
+      // SECURITY: Backdoor authentication with environment-specific handling
+      if (backdoorUser && backdoorKey && isBackdoorAuthAllowed()) {
         logDevAuthUsage('backdoor', `user=${backdoorUser}, impersonate=${backdoorImpersonate || 'none'}`);
         
-        // isDevelopmentAuthEnabled() already includes development environment check
         // Verify backdoor credentials - use environment variables for security
         const validBackdoorUser = process.env.BACKDOOR_USER;
         const validBackdoorKey = process.env.BACKDOOR_KEY;
@@ -266,10 +295,29 @@ export function authenticateUser() {
             });
           }
           
-          // Default: use Matthew Patrick's admin account
-          const matthewUser = await ensureBackdoorUser(req.orgId);
-          req.currentUser = matthewUser;
-          return next();
+          // Handle development vs production backdoor access differently
+          if (process.env.NODE_ENV === 'development') {
+            // Development: use Matthew Patrick's admin account (creates if needed)
+            const matthewUser = await ensureBackdoorUser(req.orgId);
+            req.currentUser = matthewUser;
+            return next();
+          } else {
+            // Production: find existing admin user matching BACKDOOR_USER (no creation)
+            console.log(`🔓 Production backdoor access: looking for existing user ${validBackdoorUser}`);
+            const existingUser = await storage.getUserByUsername(req.orgId, validBackdoorUser) || 
+                                await storage.getUserByEmail(req.orgId, validBackdoorUser);
+            
+            if (existingUser && existingUser.isActive && (existingUser.role === 'admin' || existingUser.isSuperAdmin)) {
+              console.log(`✅ Production backdoor access granted to existing admin: ${existingUser.username}`);
+              req.currentUser = existingUser;
+              return next();
+            } else {
+              console.error(`🚨 Production backdoor failed: no active admin user found for ${validBackdoorUser}`);
+              return res.status(401).json({ 
+                message: 'Backdoor authentication failed: admin user not found' 
+              });
+            }
+          }
         }
       }
 
