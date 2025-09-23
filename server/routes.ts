@@ -27,6 +27,7 @@ import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } f
 import { registerMicrosoftTeamsRoutes } from "./routes/microsoft-teams";
 import { registerMicrosoftAuthRoutes } from "./routes/microsoft-auth";
 import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
+import { registerAuthDiagnosticRoutes } from "./routes/auth-diagnostic";
 import { resolveRedirectUri } from "./utils/redirect-uri";
 import { sendWelcomeEmail } from "./services/emailService";
 
@@ -695,6 +696,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerMicrosoftAuthRoutes(app);
   registerMicrosoftTeamsRoutes(app);
   registerMicrosoftCalendarRoutes(app);
+  
+  // Register authentication diagnostic routes
+  registerAuthDiagnosticRoutes(app);
   
   // Apply organization middleware to all API routes
   app.use("/api", requireOrganization());
