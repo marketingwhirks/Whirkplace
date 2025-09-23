@@ -318,15 +318,22 @@ export function authenticateUser() {
         // TODO: Implement proper token validation instead of trusting client-provided user IDs
         if (authUserId && authOrgId && authToken && authOrgId === req.orgId) {
           logDevAuthUsage('cookie', `userId=${authUserId}, orgId=${authOrgId}`);
+          console.log(`🍪 Cookie auth attempt: userId=${authUserId}, orgId=${authOrgId}, token present=${!!authToken}`);
           const user = await storage.getUser(req.orgId, authUserId);
           if (user && user.isActive) {
+            console.log(`✅ Cookie auth successful for: ${user.name}`);
             req.currentUser = user;
-            // Also set session for consistency
+            // Also set session for consistency (helps prevent repeated cookie lookups)
             if (req.session) {
-              req.session.userId = authUserId;
+              req.session.userId = user.id;
+              console.log(`📦 Updated session with userId: ${user.id}`);
             }
             return next();
+          } else {
+            console.log(`❌ Cookie auth failed - user not found or inactive`);
           }
+        } else if (authUserId) {
+          console.log(`❌ Cookie auth failed - missing data or org mismatch. userId=${!!authUserId}, orgId=${authOrgId}, expectedOrg=${req.orgId}, token=${!!authToken}`);
         }
       }
       

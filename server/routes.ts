@@ -628,28 +628,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
             
             // Set HTTP-only secure cookies for authentication fallback
+            // CRITICAL: Match session cookie settings for consistency
             const sessionToken = randomBytes(32).toString('hex');
+            const isReplit = !!process.env.REPL_SLUG;
+            const isProduction = process.env.NODE_ENV === 'production';
+            const isSecureEnvironment = isProduction || isReplit;
+            
+            console.log(`🍪 Setting auth cookies - secure: ${isSecureEnvironment}, sameSite: ${isReplit ? 'none' : 'lax'}`);
             
             res.cookie('auth_user_id', authenticatedUser.id, {
               httpOnly: true,
-              secure: process.env.NODE_ENV === 'production',
-              sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+              secure: isSecureEnvironment,
+              sameSite: isReplit ? 'none' : 'lax',
               path: '/',
               maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
             });
             
             res.cookie('auth_org_id', organization.id, {
               httpOnly: true,
-              secure: process.env.NODE_ENV === 'production',
-              sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+              secure: isSecureEnvironment,
+              sameSite: isReplit ? 'none' : 'lax',
               path: '/',
               maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
             });
             
             res.cookie('auth_session_token', sessionToken, {
               httpOnly: true,
-              secure: process.env.NODE_ENV === 'production',
-              sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+              secure: isSecureEnvironment,
+              sameSite: isReplit ? 'none' : 'lax',
               path: '/',
               maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
             });
