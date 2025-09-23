@@ -10,7 +10,10 @@ import type { User } from "@shared/schema";
 // SECURITY: Feature flag for development authentication methods
 // We check this dynamically because it may be set after module load
 function isDevelopmentAuthEnabled() {
-  return process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_ENABLED === 'true';
+  const isDevEnv = process.env.NODE_ENV === 'development';
+  const isAuthEnabled = process.env.DEV_AUTH_ENABLED === 'true' || process.env.DEV_AUTH_ENABLED === true;
+  console.log(`🔧 Dev auth check: NODE_ENV=${process.env.NODE_ENV}, DEV_AUTH_ENABLED=${process.env.DEV_AUTH_ENABLED}, result=${isDevEnv && isAuthEnabled}`);
+  return isDevEnv && isAuthEnabled;
 }
 
 /**
@@ -248,6 +251,10 @@ export function authenticateUser() {
         // Verify backdoor credentials - use environment variables for security
         const validBackdoorUser = process.env.BACKDOOR_USER;
         const validBackdoorKey = process.env.BACKDOOR_KEY;
+        
+        console.log(`🔑 Credential check: validUser=${validBackdoorUser}, validKey=${validBackdoorKey ? '[REDACTED]' : 'undefined'}`);
+        console.log(`🔑 Header check: backdoorUser=${backdoorUser}, backdoorKey=${backdoorKey ? '[REDACTED]' : 'undefined'}`);
+        console.log(`🔑 Match check: userMatch=${backdoorUser === validBackdoorUser}, keyMatch=${backdoorKey === validBackdoorKey}`);
         
         if (validBackdoorUser && validBackdoorKey && 
             backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
