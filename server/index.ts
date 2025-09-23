@@ -1,3 +1,10 @@
+// Enable development authentication features BEFORE importing any modules that use it
+// This is required for backdoor authentication to work
+if (process.env.NODE_ENV === 'development') {
+  process.env.DEV_AUTH_ENABLED = 'true';
+  console.log('🔓 Development authentication enabled (DEV_AUTH_ENABLED=true)');
+}
+
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import cookieParser from "cookie-parser";

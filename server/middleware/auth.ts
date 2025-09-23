@@ -7,9 +7,11 @@ import type { User } from "@shared/schema";
  * These guards prevent development-only authentication methods from being used inappropriately
  */
 
-// SECURITY: Feature flag for development authentication methods (dual-gating: both development AND explicit flag)
-const IS_DEV = process.env.NODE_ENV === 'development';
-const DEV_AUTH_ENABLED = IS_DEV && process.env.DEV_AUTH_ENABLED === 'true';
+// SECURITY: Feature flag for development authentication methods
+// We check this dynamically because it may be set after module load
+function isDevelopmentAuthEnabled() {
+  return process.env.NODE_ENV === 'development' && process.env.DEV_AUTH_ENABLED === 'true';
+}
 
 /**
  * SECURITY: Startup validation to prevent dangerous configurations in production
@@ -34,7 +36,7 @@ export function validateAuthConfiguration() {
   }
   
   // SECURITY: Require strong backdoor credentials in development if backdoor auth is enabled
-  if (DEV_AUTH_ENABLED && process.env.NODE_ENV === 'development') {
+  if (isDevelopmentAuthEnabled()) {
     const backdoorUser = process.env.BACKDOOR_USER || "Matthew";
     const backdoorKey = process.env.BACKDOOR_KEY || "Dev123";
     
@@ -227,22 +229,25 @@ export function authenticateUser() {
       }
 
       // Check for backdoor authentication (development with feature flag)
+      // Express automatically lowercases header names
       const backdoorUser = req.headers['x-backdoor-user'] as string;
       const backdoorKey = req.headers['x-backdoor-key'] as string;
       const backdoorImpersonate = req.headers['x-backdoor-impersonate'] as string;
       
       if (process.env.NODE_ENV === 'development') {
-        console.log(`🔓 Backdoor headers: user=${backdoorUser}, key=${backdoorKey}, env=${process.env.NODE_ENV}`);
+        console.log(`🔓 Backdoor headers: user=${backdoorUser}, key=${backdoorKey ? '[REDACTED]' : 'undefined'}, env=${process.env.NODE_ENV}`);
+        console.log(`🔑 Environment backdoor: user=${process.env.BACKDOOR_USER}, key=${process.env.BACKDOOR_KEY ? '[REDACTED]' : 'undefined'}`);
+        console.log(`🔧 DEV_AUTH_ENABLED=${isDevelopmentAuthEnabled()}`);
       }
       
       // SECURITY: Backdoor only works with both NODE_ENV=development AND DEV_AUTH_ENABLED flag
-      if (backdoorUser && backdoorKey && DEV_AUTH_ENABLED) {
+      if (backdoorUser && backdoorKey && isDevelopmentAuthEnabled()) {
         logDevAuthUsage('backdoor', `user=${backdoorUser}, impersonate=${backdoorImpersonate || 'none'}`);
         
-        // DEV_AUTH_ENABLED already includes development environment check
-        // Verify backdoor credentials - use defaults for development if env vars not set (like routes.ts)
-        const validBackdoorUser = process.env.BACKDOOR_USER || "Matthew";
-        const validBackdoorKey = process.env.BACKDOOR_KEY || "Dev123";
+        // isDevelopmentAuthEnabled() already includes development environment check
+        // Verify backdoor credentials - use environment variables for security
+        const validBackdoorUser = process.env.BACKDOOR_USER;
+        const validBackdoorKey = process.env.BACKDOOR_KEY;
         
         if (validBackdoorUser && validBackdoorKey && 
             backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
@@ -262,7 +267,7 @@ export function authenticateUser() {
       }
 
       // Check for localStorage-based authentication as development fallback only
-      if (DEV_AUTH_ENABLED) {
+      if (isDevelopmentAuthEnabled()) {
         const authUserId = req.headers['x-auth-user-id'] as string;
         console.log(`🔍 localStorage header check: x-auth-user-id = ${authUserId}`);
         if (authUserId) {
@@ -283,8 +288,8 @@ export function authenticateUser() {
       
       // SECURITY: Cookie-based authentication disabled in production due to security risks
       // The previous implementation trusted client-provided user IDs without proper token validation
-      if (DEV_AUTH_ENABLED) {
-        // DEV_AUTH_ENABLED already includes development environment check
+      if (isDevelopmentAuthEnabled()) {
+        // isDevelopmentAuthEnabled() already includes development environment check
         // Check for cookie-based authentication (development only)
         let authUserId, authOrgId, authToken;
         
