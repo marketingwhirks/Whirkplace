@@ -500,61 +500,100 @@ export default function Dashboard() {
                     No check-ins yet. Encourage your team to submit their weekly check-ins!
                   </p>
                 ) : (
-                  enrichedCheckins.map((checkin) => (
-                    <div key={checkin.id} className="flex items-center space-x-4 p-4 bg-muted rounded-lg">
-                      {checkin.user?.avatar ? (
-                        <img
-                          src={checkin.user.avatar}
-                          alt={`${checkin.user.name} avatar`}
-                          className="w-12 h-12 rounded-full"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
-                          <span className="text-primary-foreground font-medium">
-                            {checkin.user?.name?.[0] || "?"}
-                          </span>
-                        </div>
-                      )}
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <p className="font-medium text-foreground" data-testid={`text-checkin-user-${checkin.id}`}>
-                              {checkin.user?.name || "Unknown User"}
-                            </p>
-                            <Badge 
-                              variant={checkin.reviewStatus === "pending" ? "secondary" : checkin.reviewStatus === "approved" ? "default" : "destructive"}
-                              className="text-xs"
-                              data-testid={`badge-review-status-${checkin.id}`}
-                            >
-                              {checkin.reviewStatus === "pending" ? "Pending Review" : 
-                               checkin.reviewStatus === "approved" ? "Approved" : 
-                               checkin.reviewStatus === "rejected" ? "Rejected" : "Unknown"}
-                            </Badge>
+                  enrichedCheckins.map((checkin) => {
+                    // Get question-answer pairs from responses
+                    const responses = checkin.responses as Record<string, string>;
+                    const questionResponses = questions.map(q => ({
+                      question: q.text,
+                      answer: responses[q.id] || null
+                    })).filter(qr => qr.answer);
+                    
+                    // If no responses, show default question
+                    const displayResponses = questionResponses.length > 0 ? questionResponses : [{
+                      question: "Is there anything I can help you with?",
+                      answer: "No response provided"
+                    }];
+
+                    return (
+                      <div key={checkin.id} className="p-4 bg-muted rounded-lg">
+                        <div className="flex items-start space-x-4">
+                          {checkin.user?.avatar ? (
+                            <img
+                              src={checkin.user.avatar}
+                              alt={`${checkin.user.name} avatar`}
+                              className="w-12 h-12 rounded-full"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
+                              <span className="text-primary-foreground font-medium">
+                                {checkin.user?.name?.[0] || "?"}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex-1 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <p className="font-medium text-foreground" data-testid={`text-checkin-user-${checkin.id}`}>
+                                  {checkin.user?.name || "Unknown User"}
+                                </p>
+                                <Badge 
+                                  variant={checkin.reviewStatus === "pending" ? "secondary" : checkin.reviewStatus === "approved" ? "default" : "destructive"}
+                                  className="text-xs"
+                                  data-testid={`badge-review-status-${checkin.id}`}
+                                >
+                                  {checkin.reviewStatus === "pending" ? "Pending Review" : 
+                                   checkin.reviewStatus === "approved" ? "Approved" : 
+                                   checkin.reviewStatus === "rejected" ? "Rejected" : "Unknown"}
+                                </Badge>
+                              </div>
+                              <span className="text-xs text-muted-foreground" data-testid={`text-checkin-timestamp-${checkin.id}`}>
+                                {formatDistanceToNow(new Date(checkin.createdAt), { addSuffix: true })}
+                              </span>
+                            </div>
+                            
+                            {/* Mood Rating */}
+                            <div className="flex items-center space-x-2">
+                              <span className="text-sm font-medium text-muted-foreground">Overall Mood:</span>
+                              <RatingStars rating={checkin.overallMood} readonly size="sm" />
+                              <Badge variant={checkin.overallMood >= 4 ? "default" : checkin.overallMood >= 3 ? "secondary" : "destructive"}>
+                                {checkin.overallMood}/5
+                              </Badge>
+                            </div>
+                            
+                            {/* Questions and Answers */}
+                            <div className="space-y-2">
+                              {displayResponses.slice(0, 2).map((qr, idx) => (
+                                <div key={idx} className="space-y-1">
+                                  <p className="text-sm font-medium text-muted-foreground">
+                                    {qr.question}
+                                  </p>
+                                  <p className="text-sm text-foreground pl-2 border-l-2 border-muted">
+                                    {qr.answer}
+                                  </p>
+                                </div>
+                              ))}
+                              {displayResponses.length > 2 && (
+                                <p className="text-xs text-muted-foreground italic">
+                                  +{displayResponses.length - 2} more responses
+                                </p>
+                              )}
+                            </div>
+                            
+                            <div className="flex items-center justify-end">
+                              <Button 
+                                variant="link" 
+                                size="sm" 
+                                onClick={() => setSelectedCheckin(checkin)}
+                                data-testid={`button-view-checkin-${checkin.id}`}
+                              >
+                                View Details
+                              </Button>
+                            </div>
                           </div>
-                          <div className="flex items-center space-x-1">
-                            <span className="text-sm text-muted-foreground">Overall:</span>
-                            <RatingStars rating={checkin.overallMood} readonly size="sm" />
-                          </div>
-                        </div>
-                        <p className="text-sm text-muted-foreground mt-1" data-testid={`text-checkin-preview-${checkin.id}`}>
-                          {Object.values(checkin.responses as Record<string, string>)[0] || "No responses provided"}
-                        </p>
-                        <div className="flex items-center justify-between mt-2">
-                          <span className="text-xs text-muted-foreground" data-testid={`text-checkin-timestamp-${checkin.id}`}>
-                            {formatDistanceToNow(new Date(checkin.createdAt), { addSuffix: true })}
-                          </span>
-                          <Button 
-                            variant="link" 
-                            size="sm" 
-                            onClick={() => setSelectedCheckin(checkin)}
-                            data-testid={`button-view-checkin-${checkin.id}`}
-                          >
-                            View Details
-                          </Button>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </CardContent>
             </Card>

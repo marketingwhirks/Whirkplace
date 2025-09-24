@@ -113,7 +113,7 @@ type ScheduleMeetingForm = z.infer<typeof scheduleMeetingSchema>;
 // Meeting Detail Dialog - Shows KRAs, ratings, flagged check-ins, and action items
 function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; trigger: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("kras");
+  const [activeTab, setActiveTab] = useState("checkins"); // Start with check-ins tab
   const [kraRatings, setKraRatings] = useState<Record<string, number>>({});
   const [newActionItem, setNewActionItem] = useState({ description: "", dueDate: "", assignedTo: "" });
   const { toast } = useToast();
@@ -260,13 +260,13 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
           <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="kras">
-              <Target className="w-4 h-4 mr-2" />
-              KRAs
-            </TabsTrigger>
             <TabsTrigger value="checkins">
               <AlertCircle className="w-4 h-4 mr-2" />
               Check-ins
+            </TabsTrigger>
+            <TabsTrigger value="kras">
+              <Target className="w-4 h-4 mr-2" />
+              KRAs
             </TabsTrigger>
             <TabsTrigger value="actions">
               <CheckSquare className="w-4 h-4 mr-2" />
@@ -348,31 +348,59 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
 
               <TabsContent value="checkins" className="space-y-4">
                 <ScrollArea className="h-[400px] pr-4">
-                  {agenda?.flaggedCheckins?.length > 0 ? (
+                  {agenda?.recentCheckins?.length > 0 ? (
                     <div className="space-y-3">
-                      {agenda.flaggedCheckins.map((checkin: any) => (
+                      {agenda.recentCheckins.map((checkin: any) => (
                         <Card key={checkin.id} data-testid={`checkin-card-${checkin.id}`}>
                           <CardHeader className="pb-3">
                             <div className="flex items-start justify-between">
                               <CardTitle className="text-sm font-medium">
                                 Week of {format(parseISO(checkin.weekOf), "MMM d, yyyy")}
                               </CardTitle>
-                              <Badge variant="outline" className="ml-2">
-                                <AlertCircle className="w-3 h-3 mr-1" />
-                                Flagged
-                              </Badge>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={checkin.moodRating >= 4 ? "default" : checkin.moodRating >= 3 ? "secondary" : "destructive"}>
+                                  Mood: {checkin.moodRating}/5
+                                </Badge>
+                                {checkin.flagged && (
+                                  <Badge variant="outline">
+                                    <AlertCircle className="w-3 h-3 mr-1" />
+                                    Flagged
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </CardHeader>
                           <CardContent>
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium">Mood:</span>
-                                <Badge variant={checkin.moodRating >= 4 ? "default" : "secondary"}>
-                                  {checkin.moodRating}/5
-                                </Badge>
-                              </div>
+                            <div className="space-y-3">
+                              {/* Display questions and answers */}
+                              {checkin.responses && checkin.responses.length > 0 ? (
+                                checkin.responses.map((response: any, index: number) => (
+                                  <div key={index} className="space-y-1">
+                                    <p className="text-sm font-medium text-muted-foreground">
+                                      {response.question || "Question"}
+                                    </p>
+                                    <p className="text-sm pl-2 border-l-2 border-muted">
+                                      {response.answer || "No response"}
+                                    </p>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="space-y-1">
+                                  <p className="text-sm font-medium text-muted-foreground">
+                                    Is there anything I can help you with?
+                                  </p>
+                                  <p className="text-sm pl-2 border-l-2 border-muted italic text-muted-foreground">
+                                    No questions answered yet
+                                  </p>
+                                </div>
+                              )}
+                              
+                              {/* Show flag notes if present */}
                               {checkin.flagNotes && (
-                                <p className="text-sm text-muted-foreground">{checkin.flagNotes}</p>
+                                <div className="pt-2 border-t">
+                                  <p className="text-sm font-medium text-orange-600">Flag Note:</p>
+                                  <p className="text-sm text-muted-foreground">{checkin.flagNotes}</p>
+                                </div>
                               )}
                             </div>
                           </CardContent>
@@ -383,7 +411,10 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
                     <Card>
                       <CardContent className="py-8 text-center">
                         <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                        <p className="text-muted-foreground">No flagged check-ins</p>
+                        <p className="text-muted-foreground">No check-ins available</p>
+                        <p className="text-sm text-muted-foreground mt-2">
+                          Check-ins will appear here once team members submit them
+                        </p>
                       </CardContent>
                     </Card>
                   )}
