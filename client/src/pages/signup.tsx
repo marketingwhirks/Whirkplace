@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Building2, Users, ArrowLeft, Sparkles } from "lucide-react";
+import { Building2, Users, ArrowLeft, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -81,7 +81,7 @@ export default function SignupPage() {
           <div className="text-center mb-8">
             <div className="flex items-center justify-center mb-4">
               <div className="w-12 h-12 rounded-lg border-2 flex items-center justify-center" style={{backgroundColor: '#1b365d', borderColor: '#1b365d'}}>
-                <Sparkles className="w-6 h-6" style={{fill: '#84ae56', stroke: '#84ae56'}} />
+                <Heart className="w-6 h-6 fill-accent stroke-accent" strokeWidth="2" />
               </div>
             </div>
             <h1 className="text-3xl font-bold mb-2">Welcome to Whirkplace</h1>
