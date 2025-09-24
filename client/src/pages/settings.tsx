@@ -375,32 +375,38 @@ export default function Settings() {
     <main className="flex-1 overflow-auto p-4 md:p-6">
         <div className="max-w-4xl mx-auto space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-6" data-testid="tabs-settings">
-              <TabsTrigger value="profile" data-testid="tab-profile">
-                <User className="w-4 h-4 mr-2" />
-                Profile
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1" data-testid="tabs-settings">
+              <TabsTrigger value="profile" data-testid="tab-profile" className="flex items-center justify-center px-2 py-1">
+                <User className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Profile</span>
+                <span className="sm:hidden text-xs">Profile</span>
               </TabsTrigger>
-              <TabsTrigger value="notifications" data-testid="tab-notifications">
-                <Bell className="w-4 h-4 mr-2" />
-                Notifications
+              <TabsTrigger value="notifications" data-testid="tab-notifications" className="flex items-center justify-center px-2 py-1">
+                <Bell className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Notifications</span>
+                <span className="sm:hidden text-xs">Notif</span>
               </TabsTrigger>
               {currentUser?.role === "admin" && (
-                <TabsTrigger value="organization" data-testid="tab-organization">
-                  <Building className="w-4 h-4 mr-2" />
-                  Organization
+                <TabsTrigger value="organization" data-testid="tab-organization" className="flex items-center justify-center px-2 py-1">
+                  <Building className="w-4 h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Organization</span>
+                  <span className="sm:hidden text-xs">Org</span>
                 </TabsTrigger>
               )}
-              <TabsTrigger value="security" data-testid="tab-security">
-                <Shield className="w-4 h-4 mr-2" />
-                Security
+              <TabsTrigger value="security" data-testid="tab-security" className="flex items-center justify-center px-2 py-1">
+                <Shield className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Security</span>
+                <span className="sm:hidden text-xs">Security</span>
               </TabsTrigger>
-              <TabsTrigger value="preferences" data-testid="tab-preferences">
-                <SettingsIcon className="w-4 h-4 mr-2" />
-                Preferences
+              <TabsTrigger value="preferences" data-testid="tab-preferences" className="flex items-center justify-center px-2 py-1">
+                <SettingsIcon className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Preferences</span>
+                <span className="sm:hidden text-xs">Prefs</span>
               </TabsTrigger>
-              <TabsTrigger value="integrations" data-testid="tab-integrations">
-                <Globe className="w-4 h-4 mr-2" />
-                Integrations
+              <TabsTrigger value="integrations" data-testid="tab-integrations" className="flex items-center justify-center px-2 py-1">
+                <Globe className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Integrations</span>
+                <span className="sm:hidden text-xs">Integrate</span>
               </TabsTrigger>
             </TabsList>
 
