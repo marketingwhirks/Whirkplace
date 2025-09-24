@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw } from "lucide-react";
+import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw, Calendar, CalendarOff, Clock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,8 +23,11 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { IntegrationsDashboard } from "@/components/IntegrationsDashboard";
 
-import type { User as UserType, Team } from "@shared/schema";
+import type { User as UserType, Team, Vacation } from "@shared/schema";
 import { DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
+import { addWeeks, startOfWeek, format as formatDate, parseISO, isSameWeek } from "date-fns";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // Form schemas
 const profileFormSchema = z.object({
@@ -42,6 +45,8 @@ const notificationFormSchema = z.object({
   slackWinAnnouncements: z.boolean().default(true),
   slackShoutouts: z.boolean().default(true),
   reminderFrequency: z.enum(["daily", "weekly", "biweekly"]).default("weekly"),
+  reminderTime: z.string().default("09:00"), // New field for reminder time
+  reminderTimezone: z.string().default("America/Chicago"), // New field for timezone
 });
 
 const organizationFormSchema = z.object({
@@ -79,12 +84,21 @@ export default function Settings() {
   const [newCompanyValue, setNewCompanyValue] = useState("");
   const [editingValueIndex, setEditingValueIndex] = useState<number | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  const [vacationDatePopoverOpen, setVacationDatePopoverOpen] = useState(false);
+  const [selectedVacationDate, setSelectedVacationDate] = useState<Date | undefined>();
+  const [vacationNote, setVacationNote] = useState("");
 
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   
   // Fetch teams for profile section
   const { data: teams = [] } = useQuery<Team[]>({
     queryKey: ["/api/teams"],
+  });
+  
+  // Fetch vacation weeks for current user
+  const { data: vacations = [], refetch: refetchVacations } = useQuery<Vacation[]>({
+    queryKey: ["/api/vacations", currentUser?.id],
+    enabled: !!currentUser?.id,
   });
 
   // Fetch current organization data for admin users
@@ -120,6 +134,8 @@ export default function Settings() {
       slackWinAnnouncements: true,
       slackShoutouts: true,
       reminderFrequency: "weekly",
+      reminderTime: "09:00",
+      reminderTimezone: "America/Chicago",
     },
   });
 
@@ -349,6 +365,68 @@ export default function Settings() {
     if (!currentUser?.teamId) return null;
     return teams.find(team => team.id === currentUser.teamId);
   };
+  
+  // Add vacation mutation
+  const addVacationMutation = useMutation({
+    mutationFn: async (data: { weekOf: Date; note?: string }) => {
+      const weekStart = startOfWeek(data.weekOf, { weekStartsOn: 1 });
+      return apiRequest("POST", "/api/vacations", {
+        weekOf: weekStart.toISOString(),
+        note: data.note,
+      });
+    },
+    onSuccess: () => {
+      refetchVacations();
+      setSelectedVacationDate(undefined);
+      setVacationNote("");
+      setVacationDatePopoverOpen(false);
+      toast({
+        title: "Vacation week added",
+        description: "Your vacation has been marked successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to add vacation",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Remove vacation mutation
+  const removeVacationMutation = useMutation({
+    mutationFn: async (weekOf: string) => {
+      const weekStart = startOfWeek(parseISO(weekOf), { weekStartsOn: 1 });
+      return apiRequest("DELETE", `/api/vacations/${weekStart.toISOString()}`);
+    },
+    onSuccess: () => {
+      refetchVacations();
+      toast({
+        title: "Vacation removed",
+        description: "Your vacation week has been removed.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to remove vacation",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const handleAddVacation = () => {
+    if (!selectedVacationDate) return;
+    addVacationMutation.mutate({
+      weekOf: selectedVacationDate,
+      note: vacationNote,
+    });
+  };
+  
+  const handleRemoveVacation = (weekOf: string) => {
+    removeVacationMutation.mutate(weekOf);
+  };
 
   if (userLoading) {
     return (
@@ -545,6 +623,121 @@ export default function Settings() {
                         </Badge>
                       </div>
                     </div>
+                  </div>
+                  
+                  {/* Vacation Management */}
+                  <div className="space-y-4 pt-4 border-t">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <CalendarOff className="w-4 h-4" />
+                        Out of Office / Vacation Weeks
+                      </h4>
+                      <Popover open={vacationDatePopoverOpen} onOpenChange={setVacationDatePopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <Button variant="outline" size="sm" data-testid="button-add-vacation">
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add Vacation
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-4" align="end">
+                          <div className="space-y-4">
+                            <div>
+                              <p className="text-sm font-medium mb-2">Select a week</p>
+                              <CalendarComponent
+                                mode="single"
+                                selected={selectedVacationDate}
+                                onSelect={setSelectedVacationDate}
+                                disabled={(date) => date < new Date()}
+                                initialFocus
+                              />
+                            </div>
+                            <div>
+                              <label className="text-sm font-medium">Note (optional)</label>
+                              <Input
+                                value={vacationNote}
+                                onChange={(e) => setVacationNote(e.target.value)}
+                                placeholder="e.g., Family vacation"
+                                className="mt-1"
+                                data-testid="input-vacation-note"
+                              />
+                            </div>
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => {
+                                  setVacationDatePopoverOpen(false);
+                                  setSelectedVacationDate(undefined);
+                                  setVacationNote("");
+                                }}
+                                data-testid="button-cancel-vacation"
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={handleAddVacation}
+                                disabled={!selectedVacationDate || addVacationMutation.isPending}
+                                data-testid="button-confirm-vacation"
+                              >
+                                {addVacationMutation.isPending ? "Adding..." : "Add Week"}
+                              </Button>
+                            </div>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                    
+                    <div className="text-sm text-muted-foreground">
+                      Mark weeks when you'll be out of office. These weeks won't count against your check-in compliance.
+                    </div>
+                    
+                    {vacations.length > 0 ? (
+                      <div className="space-y-2">
+                        {vacations
+                          .sort((a, b) => new Date(b.weekOf).getTime() - new Date(a.weekOf).getTime())
+                          .slice(0, 10)
+                          .map((vacation) => {
+                            const weekStart = startOfWeek(typeof vacation.weekOf === 'string' ? parseISO(vacation.weekOf) : new Date(vacation.weekOf), { weekStartsOn: 1 });
+                            const weekEnd = addWeeks(weekStart, 1);
+                            return (
+                              <div
+                                key={vacation.id}
+                                className="flex items-center justify-between p-3 rounded-lg border bg-muted/50"
+                                data-testid={`vacation-week-${vacation.id}`}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <Calendar className="w-4 h-4 text-muted-foreground" />
+                                  <div>
+                                    <p className="text-sm font-medium">
+                                      Week of {formatDate(weekStart, "MMM dd, yyyy")}
+                                    </p>
+                                    {vacation.note && (
+                                      <p className="text-xs text-muted-foreground">{vacation.note}</p>
+                                    )}
+                                  </div>
+                                </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoveVacation(typeof vacation.weekOf === 'string' ? vacation.weekOf : vacation.weekOf.toISOString())}
+                                  disabled={removeVacationMutation.isPending}
+                                  data-testid={`button-remove-vacation-${vacation.id}`}
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    ) : (
+                      <div className="text-center p-6 border rounded-lg bg-muted/30">
+                        <CalendarOff className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground">
+                          No vacation weeks scheduled
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -753,6 +946,66 @@ export default function Settings() {
                             </FormItem>
                           )}
                         />
+                      </div>
+                      
+                      {/* Reminder Time Preferences */}
+                      <div className="space-y-4">
+                        <h4 className="font-medium flex items-center gap-2">
+                          <Clock className="w-4 h-4" />
+                          Reminder Schedule
+                        </h4>
+                        <p className="text-sm text-muted-foreground">
+                          Note: Currently all reminders are sent at 9:00 AM Central Time on Mondays. Individual time preferences will be available in a future update.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <FormField
+                            control={notificationForm.control}
+                            name="reminderTime"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Preferred Time (Coming Soon)</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="time"
+                                    {...field}
+                                    disabled
+                                    data-testid="input-reminder-time"
+                                  />
+                                </FormControl>
+                                <FormDescription>
+                                  Your preferred time for check-in reminders
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={notificationForm.control}
+                            name="reminderTimezone"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Timezone (Coming Soon)</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value} disabled>
+                                  <FormControl>
+                                    <SelectTrigger data-testid="select-reminder-timezone">
+                                      <SelectValue placeholder="Select timezone" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="America/New_York">Eastern Time</SelectItem>
+                                    <SelectItem value="America/Chicago">Central Time</SelectItem>
+                                    <SelectItem value="America/Denver">Mountain Time</SelectItem>
+                                    <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormDescription>
+                                  Your timezone for reminder scheduling
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
                       </div>
 
                       <div className="flex justify-end">

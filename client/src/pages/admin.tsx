@@ -29,11 +29,16 @@ import {
   Edit,
   Trash2,
   Crown,
-  Plus
+  Plus,
+  Calendar,
+  CalendarOff
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { User as UserType, Team as TeamType } from "@shared/schema";
+import type { User as UserType, Team as TeamType, Vacation } from "@shared/schema";
+import { startOfWeek, addWeeks, format as formatDate, parseISO } from "date-fns";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import RoleSwitcher from "@/components/admin/role-switcher";
 
@@ -103,6 +108,12 @@ export default function Admin() {
   const [selectedTeam, setSelectedTeam] = useState<TeamType | null>(null);
   const [teamToDelete, setTeamToDelete] = useState<TeamType | null>(null);
   const [showCreateTeam, setShowCreateTeam] = useState(false);
+  
+  // Vacation management state
+  const [selectedUserForVacation, setSelectedUserForVacation] = useState<UserType | null>(null);
+  const [vacationDatePopoverOpen, setVacationDatePopoverOpen] = useState(false);
+  const [selectedVacationDate, setSelectedVacationDate] = useState<Date | undefined>();
+  const [vacationNote, setVacationNote] = useState("");
 
   const { data: currentUser, actualUser, canSwitchRoles } = useViewAsRole();
 
@@ -169,6 +180,69 @@ export default function Admin() {
   const { data: teams = [], isLoading: teamsLoading } = useQuery<TeamType[]>({
     queryKey: ["/api/teams"],
     enabled: (actualUser?.role === "admin") || canSwitchRoles,
+  });
+  
+  // Fetch vacations for selected user
+  const { data: userVacations = [], refetch: refetchVacations } = useQuery<Vacation[]>({
+    queryKey: ["/api/vacations", { userId: selectedUserForVacation?.id }],
+    queryFn: async () => {
+      if (!selectedUserForVacation) return [];
+      const response = await fetch(`/api/vacations?userId=${selectedUserForVacation.id}`);
+      if (!response.ok) throw new Error('Failed to fetch vacations');
+      return response.json();
+    },
+    enabled: !!selectedUserForVacation,
+  });
+  
+  // Add vacation mutation for team member
+  const addVacationForUserMutation = useMutation({
+    mutationFn: async ({ userId, weekOf, note }: { userId: string; weekOf: Date; note?: string }) => {
+      const weekStart = startOfWeek(weekOf, { weekStartsOn: 1 });
+      return apiRequest("POST", "/api/admin/vacations", {
+        userId,
+        weekOf: weekStart.toISOString(),
+        note,
+      });
+    },
+    onSuccess: () => {
+      refetchVacations();
+      setSelectedVacationDate(undefined);
+      setVacationNote("");
+      setVacationDatePopoverOpen(false);
+      toast({
+        title: "Vacation week added",
+        description: "Team member's vacation has been marked successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to add vacation",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Remove vacation mutation for team member
+  const removeVacationForUserMutation = useMutation({
+    mutationFn: async ({ userId, weekOf }: { userId: string; weekOf: string }) => {
+      const weekStart = startOfWeek(parseISO(weekOf), { weekStartsOn: 1 });
+      return apiRequest("DELETE", `/api/admin/vacations/${userId}/${weekStart.toISOString()}`);
+    },
+    onSuccess: () => {
+      refetchVacations();
+      toast({
+        title: "Vacation removed",
+        description: "Team member's vacation week has been removed.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to remove vacation",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   // Update user team assignment mutation
@@ -684,6 +758,52 @@ export default function Admin() {
             )}
           </CardContent>
         </Card>
+        
+        {/* Vacation Management */}
+        <Card data-testid="card-vacation-management">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarOff className="w-5 h-5" />
+              Team Vacation Management
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground mb-4">
+              Manage vacation schedules for team members. Vacation weeks are excluded from check-in compliance metrics.
+            </p>
+            <div className="space-y-4">
+              {/* User list with vacation management */}
+              {users.filter(u => u.isActive).map((user) => (
+                <div key={user.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Avatar>
+                      <AvatarImage 
+                        src={user.slackAvatar || user.microsoftAvatar || user.avatar || undefined} 
+                        alt={user.name}
+                      />
+                      <AvatarFallback>
+                        {user.name.split(' ').map(n => n[0]).join('')}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-medium">{user.name}</p>
+                      <p className="text-sm text-muted-foreground">{user.email}</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedUserForVacation(user)}
+                    data-testid={`button-manage-vacation-${user.id}`}
+                  >
+                    <Calendar className="w-4 h-4 mr-2" />
+                    Manage Vacation
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Sync Confirmation Dialog */}
         <Dialog open={showSyncDialog} onOpenChange={setShowSyncDialog}>
@@ -1085,6 +1205,151 @@ export default function Admin() {
                 </div>
               </form>
             </Form>
+          </DialogContent>
+        </Dialog>
+        
+        {/* Vacation Management Dialog */}
+        <Dialog open={!!selectedUserForVacation} onOpenChange={() => {
+          setSelectedUserForVacation(null);
+          setSelectedVacationDate(undefined);
+          setVacationNote("");
+        }}>
+          <DialogContent data-testid="dialog-vacation-management" className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Manage Vacation Schedule</DialogTitle>
+              <DialogDescription>
+                Manage vacation weeks for {selectedUserForVacation?.name}. Vacation weeks are excluded from check-in compliance metrics.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              {/* Add vacation section */}
+              <div className="border rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-medium">Add Vacation Week</h4>
+                  <Popover open={vacationDatePopoverOpen} onOpenChange={setVacationDatePopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" data-testid="button-add-user-vacation">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Week
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-4" align="end">
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-sm font-medium mb-2">Select a week</p>
+                          <CalendarComponent
+                            mode="single"
+                            selected={selectedVacationDate}
+                            onSelect={setSelectedVacationDate}
+                            disabled={(date) => date < new Date()}
+                            initialFocus
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm font-medium">Note (optional)</label>
+                          <Input
+                            value={vacationNote}
+                            onChange={(e) => setVacationNote(e.target.value)}
+                            placeholder="e.g., Annual leave"
+                            className="mt-1"
+                            data-testid="input-user-vacation-note"
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setVacationDatePopoverOpen(false);
+                              setSelectedVacationDate(undefined);
+                              setVacationNote("");
+                            }}
+                            data-testid="button-cancel-user-vacation"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (!selectedVacationDate || !selectedUserForVacation) return;
+                              addVacationForUserMutation.mutate({
+                                userId: selectedUserForVacation.id,
+                                weekOf: selectedVacationDate,
+                                note: vacationNote,
+                              });
+                            }}
+                            disabled={!selectedVacationDate || addVacationForUserMutation.isPending}
+                            data-testid="button-confirm-user-vacation"
+                          >
+                            {addVacationForUserMutation.isPending ? "Adding..." : "Add Week"}
+                          </Button>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                
+                {/* Current vacations */}
+                <div className="space-y-2">
+                  {userVacations.length > 0 ? (
+                    userVacations
+                      .sort((a, b) => new Date(b.weekOf).getTime() - new Date(a.weekOf).getTime())
+                      .map((vacation) => {
+                        const weekStart = startOfWeek(typeof vacation.weekOf === 'string' ? parseISO(vacation.weekOf) : new Date(vacation.weekOf), { weekStartsOn: 1 });
+                        return (
+                          <div
+                            key={vacation.id}
+                            className="flex items-center justify-between p-3 rounded-lg border bg-muted/50"
+                            data-testid={`user-vacation-week-${vacation.id}`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Calendar className="w-4 h-4 text-muted-foreground" />
+                              <div>
+                                <p className="text-sm font-medium">
+                                  Week of {formatDate(weekStart, "MMM dd, yyyy")}
+                                </p>
+                                {vacation.note && (
+                                  <p className="text-xs text-muted-foreground">{vacation.note}</p>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                if (!selectedUserForVacation) return;
+                                removeVacationForUserMutation.mutate({
+                                  userId: selectedUserForVacation.id,
+                                  weekOf: typeof vacation.weekOf === 'string' ? vacation.weekOf : vacation.weekOf.toISOString(),
+                                });
+                              }}
+                              disabled={removeVacationForUserMutation.isPending}
+                              data-testid={`button-remove-user-vacation-${vacation.id}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        );
+                      })
+                  ) : (
+                    <div className="text-center p-4 border rounded-lg bg-muted/30">
+                      <CalendarOff className="w-6 h-6 mx-auto mb-2 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">
+                        No vacation weeks scheduled for {selectedUserForVacation?.name}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end">
+              <Button 
+                onClick={() => setSelectedUserForVacation(null)}
+                data-testid="button-close-vacation-dialog"
+              >
+                Close
+              </Button>
+            </div>
           </DialogContent>
         </Dialog>
       </div>
