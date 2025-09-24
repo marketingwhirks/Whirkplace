@@ -6,8 +6,17 @@ import type { User } from "@shared/schema";
  * Used for role-based access control in the UI
  */
 export function useCurrentUser() {
+  // Get the organization from URL parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const hashParams = window.location.hash.includes('?') 
+    ? new URLSearchParams(window.location.hash.split('?')[1])
+    : new URLSearchParams();
+  
+  // Check both regular URL params and hash params (for hash routing)
+  const orgFromUrl = urlParams.get('org') || hashParams.get('org') || 'default';
+  
   return useQuery<User>({
-    queryKey: ["/api/users/current", { org: "default" }],
+    queryKey: ["/api/users/current", { org: orgFromUrl }],
     queryFn: async () => {
       // Add localStorage auth headers to bypass cookie issues
       const authUserId = localStorage.getItem('auth_user_id');
@@ -20,7 +29,7 @@ export function useCurrentUser() {
       }
 
       // Make actual API call to check current user authentication
-      const response = await fetch('/api/users/current?org=default', {
+      const response = await fetch(`/api/users/current?org=${orgFromUrl}`, {
         method: 'GET',
         credentials: 'include',
         headers
