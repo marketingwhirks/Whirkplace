@@ -573,7 +573,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log('⚠️ Found user with Slack ID in different org:', org.id, org.name);
                 
                 // Check if this user is a super admin - they can access any org
-                if (userInOrg.is_super_admin) {
+                if (userInOrg.isSuperAdmin) {
                   console.log('✅ User is super admin - allowing cross-organization authentication');
                   // Use the user from their original organization
                   existingUser = userInOrg;
@@ -639,7 +639,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const allOrgs = await storage.getAllOrganizations();
             for (const org of allOrgs) {
               const userInOrg = await storage.getUserByEmail(org.id, user.email);
-              if (userInOrg && userInOrg.is_super_admin) {
+              if (userInOrg && userInOrg.isSuperAdmin) {
                 console.log('✅ Found super admin by email in org:', org.id, org.name);
                 // This is a super admin - they can authenticate to any org
                 // We'll link their Slack ID to this account
