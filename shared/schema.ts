@@ -874,19 +874,61 @@ export const userKras = pgTable("user_kras", {
 export const actionItems = pgTable("action_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: varchar("organization_id").notNull(),
-  meetingId: varchar("meeting_id").notNull(), // Reference to one_on_ones
+  meetingId: varchar("meeting_id"), // Reference to one_on_ones (nullable for carry-forward items)
+  oneOnOneId: varchar("one_on_one_id"), // Specific one-on-one meeting this item is associated with
   description: text("description").notNull(),
   assignedTo: varchar("assigned_to").notNull(), // User ID
+  assignedBy: varchar("assigned_by").notNull(), // User ID who assigned the action
   dueDate: timestamp("due_date"),
-  status: text("status").notNull().default("pending"), // pending, completed, overdue, cancelled
+  status: text("status").notNull().default("open"), // open, completed
   notes: text("notes"), // Follow-up notes
+  carryForward: boolean("carry_forward").notNull().default(true), // Persist until completed
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   completedAt: timestamp("completed_at"),
 }, (table) => ({
   meetingIdx: index("action_items_meeting_idx").on(table.meetingId),
-  assignedIdx: index("action_items_assigned_idx").on(table.organizationId, table.assignedTo),
+  oneOnOneIdx: index("action_items_one_on_one_idx").on(table.oneOnOneId),
+  assignedIdx: index("action_items_assigned_idx").on(table.organizationId, table.assignedTo, table.status),
   statusIdx: index("action_items_status_idx").on(table.status),
   dueDateIdx: index("action_items_due_date_idx").on(table.dueDate),
+}));
+
+// KRA Ratings - Track self and supervisor ratings for KRAs
+export const kraRatings = pgTable("kra_ratings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  kraId: varchar("kra_id").notNull(), // Reference to user_kras
+  oneOnOneId: varchar("one_on_one_id"), // Reference to specific meeting (nullable for ad-hoc ratings)
+  raterId: varchar("rater_id").notNull(), // User ID of person giving the rating
+  raterRole: text("rater_role").notNull(), // 'self' or 'supervisor'
+  rating: integer("rating").notNull(), // 1-5 scale
+  note: text("note"), // Optional notes/comments
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  kraIdx: index("kra_ratings_kra_idx").on(table.kraId),
+  oneOnOneIdx: index("kra_ratings_one_on_one_idx").on(table.oneOnOneId),
+  raterIdx: index("kra_ratings_rater_idx").on(table.raterId),
+  kraRaterMeetingUnique: unique("kra_ratings_unique").on(table.kraId, table.oneOnOneId, table.raterId),
+  latestSupervisorIdx: index("kra_ratings_latest_supervisor_idx").on(table.kraId, table.raterRole, table.createdAt),
+}));
+
+// KRA History - Track changes to KRAs over time
+export const kraHistory = pgTable("kra_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  kraId: varchar("kra_id").notNull(), // Reference to user_kras
+  userId: varchar("user_id").notNull(), // User whose KRA was changed
+  changeType: text("change_type").notNull(), // 'create', 'update', 'deactivate'
+  oldValue: jsonb("old_value"), // Previous state
+  newValue: jsonb("new_value"), // New state
+  reason: text("reason"), // Optional reason for change
+  changedById: varchar("changed_by_id").notNull(), // User who made the change
+  changedAt: timestamp("changed_at").notNull().default(sql`now()`),
+}, (table) => ({
+  kraIdx: index("kra_history_kra_idx").on(table.kraId),
+  userIdx: index("kra_history_user_idx").on(table.userId),
+  changedByIdx: index("kra_history_changed_by_idx").on(table.changedById),
+  changedAtIdx: index("kra_history_changed_at_idx").on(table.changedAt),
 }));
 
 // Bug Reports & Support System
@@ -1012,9 +1054,38 @@ export type InsertUserKra = z.infer<typeof insertUserKraSchema>;
 export type UserKra = typeof userKras.$inferSelect;
 
 // Action Item types
-export const insertActionItemSchema = createInsertSchema(actionItems).omit({ id: true, createdAt: true, completedAt: true });
+export const insertActionItemSchema = createInsertSchema(actionItems).omit({ 
+  id: true, 
+  createdAt: true, 
+  completedAt: true 
+}).extend({
+  dueDate: z.coerce.date().optional(),
+  status: z.enum(["open", "completed"]).default("open"),
+  carryForward: z.boolean().default(true),
+});
 export type InsertActionItem = z.infer<typeof insertActionItemSchema>;
 export type ActionItem = typeof actionItems.$inferSelect;
+
+// KRA Rating types
+export const insertKraRatingSchema = createInsertSchema(kraRatings).omit({ 
+  id: true, 
+  createdAt: true 
+}).extend({
+  rating: z.number().int().min(1).max(5),
+  raterRole: z.enum(["self", "supervisor"]),
+});
+export type InsertKraRating = z.infer<typeof insertKraRatingSchema>;
+export type KraRating = typeof kraRatings.$inferSelect;
+
+// KRA History types
+export const insertKraHistorySchema = createInsertSchema(kraHistory).omit({ 
+  id: true, 
+  changedAt: true 
+}).extend({
+  changeType: z.enum(["create", "update", "deactivate"]),
+});
+export type InsertKraHistory = z.infer<typeof insertKraHistorySchema>;
+export type KraHistory = typeof kraHistory.$inferSelect;
 
 export const insertBugReportSchema = createInsertSchema(bugReports).omit({ id: true, createdAt: true, resolvedAt: true });
 export type InsertBugReport = z.infer<typeof insertBugReportSchema>;

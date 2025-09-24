@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare, CalendarDays, MapPin, Repeat } from "lucide-react";
+import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare, CalendarDays, MapPin, Repeat, Star, Target, AlertCircle, FileText, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -107,6 +109,432 @@ const scheduleMeetingSchema = z.object({
 });
 
 type ScheduleMeetingForm = z.infer<typeof scheduleMeetingSchema>;
+
+// Meeting Detail Dialog - Shows KRAs, ratings, flagged check-ins, and action items
+function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; trigger: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("kras");
+  const [kraRatings, setKraRatings] = useState<Record<string, number>>({});
+  const [newActionItem, setNewActionItem] = useState({ description: "", dueDate: "", assignedTo: "" });
+  const { toast } = useToast();
+  const { data: currentUser } = useViewAsRole();
+
+  // Fetch comprehensive agenda (KRAs, check-ins, action items)
+  const { data: agenda, isLoading: agendaLoading, refetch: refetchAgenda } = useQuery({
+    queryKey: [`/api/one-on-ones/${meeting.id}/agenda`],
+    enabled: open,
+  });
+
+  // Submit KRA ratings
+  const submitRatingsMutation = useMutation({
+    mutationFn: (ratings: Array<{ kraId: string; rating: number; note?: string }>) =>
+      apiRequest("POST", `/api/one-on-ones/${meeting.id}/kra-ratings`, ratings),
+    onSuccess: () => {
+      toast({
+        title: "Ratings saved",
+        description: "Your KRA ratings have been saved successfully.",
+      });
+      refetchAgenda();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to save ratings",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Create action item
+  const createActionItemMutation = useMutation({
+    mutationFn: (actionItem: { description: string; dueDate?: string; assignedTo: string; assignedBy: string }) =>
+      apiRequest("POST", `/api/one-on-ones/${meeting.id}/action-items`, {
+        ...actionItem,
+        oneOnOneId: meeting.id,
+        status: "open",
+        carryForward: true,
+      }),
+    onSuccess: () => {
+      toast({
+        title: "Action item created",
+        description: "The action item has been added to the meeting.",
+      });
+      setNewActionItem({ description: "", dueDate: "", assignedTo: "" });
+      refetchAgenda();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to create action item",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update action item status
+  const updateActionItemMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      apiRequest("PUT", `/api/action-items/${id}`, { status }),
+    onSuccess: () => {
+      toast({
+        title: "Action item updated",
+        description: "The action item status has been updated.",
+      });
+      refetchAgenda();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update action item",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSaveRatings = () => {
+    const ratings = Object.entries(kraRatings).map(([kraId, rating]) => ({
+      kraId,
+      rating,
+    }));
+    if (ratings.length > 0) {
+      submitRatingsMutation.mutate(ratings);
+    }
+  };
+
+  const handleCreateActionItem = () => {
+    if (!newActionItem.description || !newActionItem.assignedTo) {
+      toast({
+        title: "Missing information",
+        description: "Please provide a description and assignee for the action item.",
+        variant: "destructive",
+      });
+      return;
+    }
+    createActionItemMutation.mutate({
+      ...newActionItem,
+      assignedBy: currentUser?.id || "",
+    });
+  };
+
+  const renderRatingStars = (kraId: string, currentRating?: number) => {
+    const rating = kraRatings[kraId] || currentRating || 0;
+    return (
+      <div className="flex gap-1">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            onClick={() => setKraRatings({ ...kraRatings, [kraId]: star })}
+            className="p-0 hover:scale-110 transition-transform"
+            type="button"
+            data-testid={`rating-star-${kraId}-${star}`}
+          >
+            <Star
+              className={`w-5 h-5 ${
+                star <= rating
+                  ? "fill-yellow-400 text-yellow-400"
+                  : "text-gray-300"
+              }`}
+            />
+          </button>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
+        <DialogHeader>
+          <DialogTitle>One-on-One Meeting Details</DialogTitle>
+          <DialogDescription>
+            Meeting with {meeting.participant?.name || "Unknown"} on{" "}
+            {format(
+              typeof meeting.scheduledAt === "string"
+                ? parseISO(meeting.scheduledAt)
+                : new Date(meeting.scheduledAt),
+              "PPP"
+            )}
+          </DialogDescription>
+        </DialogHeader>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="kras">
+              <Target className="w-4 h-4 mr-2" />
+              KRAs
+            </TabsTrigger>
+            <TabsTrigger value="checkins">
+              <AlertCircle className="w-4 h-4 mr-2" />
+              Check-ins
+            </TabsTrigger>
+            <TabsTrigger value="actions">
+              <CheckSquare className="w-4 h-4 mr-2" />
+              Actions
+            </TabsTrigger>
+            <TabsTrigger value="notes">
+              <FileText className="w-4 h-4 mr-2" />
+              Notes
+            </TabsTrigger>
+          </TabsList>
+
+          {agendaLoading ? (
+            <div className="p-4 text-center">
+              <p className="text-muted-foreground">Loading meeting details...</p>
+            </div>
+          ) : (
+            <>
+              <TabsContent value="kras" className="space-y-4">
+                <ScrollArea className="h-[400px] pr-4">
+                  {agenda?.kras?.length > 0 ? (
+                    <div className="space-y-4">
+                      {agenda.kras.map((kra: any) => (
+                        <Card key={kra.kra.id} data-testid={`kra-card-${kra.kra.id}`}>
+                          <CardHeader className="pb-3">
+                            <CardTitle className="text-base">{kra.kra.name}</CardTitle>
+                            {kra.kra.description && (
+                              <CardDescription>{kra.kra.description}</CardDescription>
+                            )}
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-3">
+                              <div>
+                                <Label className="text-sm font-medium">Your Rating</Label>
+                                {renderRatingStars(kra.kra.id, kra.currentSelfRating?.rating)}
+                              </div>
+                              {kra.lastSupervisorRating && (
+                                <div className="flex items-center justify-between text-sm">
+                                  <span className="text-muted-foreground">
+                                    Last Supervisor Rating:
+                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="secondary">
+                                      {kra.lastSupervisorRating.rating}/5
+                                    </Badge>
+                                    <span className="text-xs text-muted-foreground">
+                                      {format(
+                                        parseISO(kra.lastSupervisorRating.createdAt),
+                                        "MMM d"
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                      {Object.keys(kraRatings).length > 0 && (
+                        <Button
+                          onClick={handleSaveRatings}
+                          disabled={submitRatingsMutation.isPending}
+                          className="w-full"
+                          data-testid="button-save-ratings"
+                        >
+                          Save Ratings
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <Card>
+                      <CardContent className="py-8 text-center">
+                        <Target className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                        <p className="text-muted-foreground">No KRAs assigned yet</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="checkins" className="space-y-4">
+                <ScrollArea className="h-[400px] pr-4">
+                  {agenda?.flaggedCheckins?.length > 0 ? (
+                    <div className="space-y-3">
+                      {agenda.flaggedCheckins.map((checkin: any) => (
+                        <Card key={checkin.id} data-testid={`checkin-card-${checkin.id}`}>
+                          <CardHeader className="pb-3">
+                            <div className="flex items-start justify-between">
+                              <CardTitle className="text-sm font-medium">
+                                Week of {format(parseISO(checkin.weekOf), "MMM d, yyyy")}
+                              </CardTitle>
+                              <Badge variant="outline" className="ml-2">
+                                <AlertCircle className="w-3 h-3 mr-1" />
+                                Flagged
+                              </Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium">Mood:</span>
+                                <Badge variant={checkin.moodRating >= 4 ? "default" : "secondary"}>
+                                  {checkin.moodRating}/5
+                                </Badge>
+                              </div>
+                              {checkin.flagNotes && (
+                                <p className="text-sm text-muted-foreground">{checkin.flagNotes}</p>
+                              )}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <Card>
+                      <CardContent className="py-8 text-center">
+                        <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                        <p className="text-muted-foreground">No flagged check-ins</p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </ScrollArea>
+              </TabsContent>
+
+              <TabsContent value="actions" className="space-y-4">
+                <div className="space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="New action item..."
+                      value={newActionItem.description}
+                      onChange={(e) =>
+                        setNewActionItem({ ...newActionItem, description: e.target.value })
+                      }
+                      data-testid="input-action-description"
+                    />
+                    <Select
+                      value={newActionItem.assignedTo}
+                      onValueChange={(value) =>
+                        setNewActionItem({ ...newActionItem, assignedTo: value })
+                      }
+                    >
+                      <SelectTrigger className="w-[150px]" data-testid="select-action-assignee">
+                        <SelectValue placeholder="Assignee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={meeting.participantOneId}>
+                          {meeting.participant?.name || "Participant"}
+                        </SelectItem>
+                        <SelectItem value={meeting.participantTwoId}>
+                          {meeting.manager?.name || "Manager"}
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="date"
+                      value={newActionItem.dueDate}
+                      onChange={(e) =>
+                        setNewActionItem({ ...newActionItem, dueDate: e.target.value })
+                      }
+                      className="w-[140px]"
+                      data-testid="input-action-due-date"
+                    />
+                    <Button
+                      onClick={handleCreateActionItem}
+                      disabled={createActionItemMutation.isPending}
+                      data-testid="button-add-action"
+                    >
+                      Add
+                    </Button>
+                  </div>
+
+                  <Separator />
+
+                  <ScrollArea className="h-[350px] pr-4">
+                    {agenda?.actionItems?.length > 0 ? (
+                      <div className="space-y-3">
+                        {agenda.actionItems.map((item: any) => (
+                          <Card
+                            key={item.id}
+                            className={item.status === "completed" ? "opacity-60" : ""}
+                            data-testid={`action-item-${item.id}`}
+                          >
+                            <CardContent className="pt-4">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1 space-y-1">
+                                  <p className="text-sm font-medium">{item.description}</p>
+                                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                    <span>
+                                      Assigned to:{" "}
+                                      {item.assignedTo === meeting.participantOneId
+                                        ? meeting.participant?.name
+                                        : meeting.manager?.name}
+                                    </span>
+                                    {item.dueDate && (
+                                      <span>Due: {format(parseISO(item.dueDate), "MMM d")}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <Button
+                                  variant={item.status === "completed" ? "ghost" : "outline"}
+                                  size="sm"
+                                  onClick={() =>
+                                    updateActionItemMutation.mutate({
+                                      id: item.id,
+                                      status: item.status === "completed" ? "open" : "completed",
+                                    })
+                                  }
+                                  disabled={updateActionItemMutation.isPending}
+                                  data-testid={`button-toggle-${item.id}`}
+                                >
+                                  {item.status === "completed" ? (
+                                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                  ) : (
+                                    <CheckSquare className="w-4 h-4" />
+                                  )}
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <Card>
+                        <CardContent className="py-8 text-center">
+                          <CheckSquare className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                          <p className="text-muted-foreground">No action items yet</p>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </ScrollArea>
+                </div>
+              </TabsContent>
+
+                <TabsContent value="notes" className="space-y-4">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="space-y-4">
+                        {meeting.agenda && (
+                          <div>
+                            <h4 className="text-sm font-medium mb-2">Agenda</h4>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                              {meeting.agenda}
+                            </p>
+                          </div>
+                        )}
+                        {meeting.notes && (
+                          <div>
+                            <h4 className="text-sm font-medium mb-2">Notes</h4>
+                            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                              {meeting.notes}
+                            </p>
+                          </div>
+                        )}
+                        {!meeting.agenda && !meeting.notes && (
+                          <p className="text-center text-muted-foreground py-4">
+                            No notes added yet
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+            </>
+          )}
+        </Tabs>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -670,9 +1098,14 @@ function MeetingCard({ meeting }: { meeting: OneOnOneMeeting }) {
                 <MessageSquare className="w-3 h-3 mr-1" />
                 {sendToSlackMutation.isPending ? "Sending..." : "Send to Slack"}
               </Button>
-              <Button variant="outline" size="sm" data-testid={`button-view-${meeting.id}`}>
-                View Details
-              </Button>
+              <MeetingDetailDialog 
+                meeting={meeting}
+                trigger={
+                  <Button variant="outline" size="sm" data-testid={`button-view-${meeting.id}`}>
+                    View Details
+                  </Button>
+                }
+              />
             </div>
           </div>
         </div>

@@ -13,6 +13,8 @@ import {
   type KraTemplate, type InsertKraTemplate,
   type UserKra, type InsertUserKra,
   type ActionItem, type InsertActionItem,
+  type KraRating, type InsertKraRating,
+  type KraHistory, type InsertKraHistory,
   type BugReport, type InsertBugReport,
   type PartnerApplication, type InsertPartnerApplication,
   type ReviewCheckin, type ReviewStatusType,
@@ -28,7 +30,7 @@ import {
   type DashboardConfig, type InsertDashboardConfig,
   type DashboardWidgetTemplate, type InsertDashboardWidgetTemplate,
   users, teams, checkins, questions, wins, comments, shoutouts, vacations, organizations, partnerFirms,
-  oneOnOnes, kraTemplates, userKras, actionItems, bugReports, partnerApplications,
+  oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   ReviewStatus
@@ -244,8 +246,20 @@ export interface IStorage {
   updateActionItem(organizationId: string, id: string, actionItem: Partial<InsertActionItem>): Promise<ActionItem | undefined>;
   deleteActionItem(organizationId: string, id: string): Promise<boolean>;
   getActionItemsByMeeting(organizationId: string, meetingId: string): Promise<ActionItem[]>;
+  getActionItemsByOneOnOne(organizationId: string, oneOnOneId: string): Promise<ActionItem[]>;
   getActionItemsByUser(organizationId: string, userId: string, statusFilter?: string): Promise<ActionItem[]>;
   getOverdueActionItems(organizationId: string): Promise<ActionItem[]>;
+  carryForwardOpenActionItems(organizationId: string, userId: string, newOneOnOneId: string): Promise<ActionItem[]>;
+  
+  // KRA Ratings
+  createKraRating(organizationId: string, rating: InsertKraRating): Promise<KraRating>;
+  getKraRatingsByOneOnOne(organizationId: string, oneOnOneId: string): Promise<KraRating[]>;
+  getLatestSupervisorRatings(organizationId: string, kraIds: string[]): Promise<Map<string, KraRating>>;
+  upsertKraRatings(organizationId: string, ratings: InsertKraRating[]): Promise<KraRating[]>;
+  
+  // KRA History
+  recordKraHistory(organizationId: string, history: InsertKraHistory): Promise<KraHistory>;
+  getKraHistory(organizationId: string, kraId: string): Promise<KraHistory[]>;
 
   // Bug Reports & Support System
   getBugReport(organizationId: string, id: string): Promise<BugReport | undefined>;
@@ -3002,8 +3016,8 @@ export class DatabaseStorage implements IStorage {
 
   async updateActionItem(organizationId: string, id: string, actionItemUpdate: Partial<InsertActionItem>): Promise<ActionItem | undefined> {
     try {
-      const updateData = { ...actionItemUpdate };
-      if (actionItemUpdate.status === "completed" && !actionItemUpdate.completedAt) {
+      const updateData: any = { ...actionItemUpdate };
+      if (actionItemUpdate.status === "completed") {
         updateData.completedAt = new Date();
       }
       const [updatedActionItem] = await db
@@ -3068,12 +3082,196 @@ export class DatabaseStorage implements IStorage {
         .from(actionItems)
         .where(and(
           eq(actionItems.organizationId, organizationId),
-          eq(actionItems.status, "pending"),
+          eq(actionItems.status, "open"),
           lt(actionItems.dueDate, now)
         ))
         .orderBy(actionItems.dueDate);
     } catch (error) {
       console.error("Failed to fetch overdue action items:", error);
+      throw error;
+    }
+  }
+
+  async getActionItemsByOneOnOne(organizationId: string, oneOnOneId: string): Promise<ActionItem[]> {
+    try {
+      return await db
+        .select()
+        .from(actionItems)
+        .where(and(
+          eq(actionItems.organizationId, organizationId), 
+          eq(actionItems.oneOnOneId, oneOnOneId)
+        ))
+        .orderBy(actionItems.status, actionItems.dueDate);
+    } catch (error) {
+      console.error("Failed to fetch action items by one-on-one:", error);
+      throw error;
+    }
+  }
+
+  async carryForwardOpenActionItems(organizationId: string, userId: string, newOneOnOneId: string): Promise<ActionItem[]> {
+    try {
+      // Find open action items for this user that should be carried forward
+      const openItems = await db
+        .select()
+        .from(actionItems)
+        .where(and(
+          eq(actionItems.organizationId, organizationId),
+          eq(actionItems.assignedTo, userId),
+          eq(actionItems.status, "open"),
+          eq(actionItems.carryForward, true)
+        ));
+
+      // Update them to reference the new one-on-one
+      const updated = [];
+      for (const item of openItems) {
+        const [updatedItem] = await db
+          .update(actionItems)
+          .set({ oneOnOneId: newOneOnOneId })
+          .where(eq(actionItems.id, item.id))
+          .returning();
+        if (updatedItem) {
+          updated.push(updatedItem);
+        }
+      }
+
+      return updated;
+    } catch (error) {
+      console.error("Failed to carry forward action items:", error);
+      throw error;
+    }
+  }
+
+  // KRA Ratings
+  async createKraRating(organizationId: string, rating: InsertKraRating): Promise<KraRating> {
+    try {
+      const [kraRating] = await db
+        .insert(kraRatings)
+        .values({ ...rating, organizationId })
+        .returning();
+      return kraRating;
+    } catch (error) {
+      console.error("Failed to create KRA rating:", error);
+      throw error;
+    }
+  }
+
+  async getKraRatingsByOneOnOne(organizationId: string, oneOnOneId: string): Promise<KraRating[]> {
+    try {
+      return await db
+        .select()
+        .from(kraRatings)
+        .where(and(
+          eq(kraRatings.organizationId, organizationId),
+          eq(kraRatings.oneOnOneId, oneOnOneId)
+        ))
+        .orderBy(kraRatings.kraId, kraRatings.createdAt);
+    } catch (error) {
+      console.error("Failed to fetch KRA ratings by one-on-one:", error);
+      throw error;
+    }
+  }
+
+  async getLatestSupervisorRatings(organizationId: string, kraIds: string[]): Promise<Map<string, KraRating>> {
+    try {
+      if (kraIds.length === 0) return new Map();
+
+      // Get the latest supervisor rating for each KRA
+      const ratings = await db
+        .select()
+        .from(kraRatings)
+        .where(and(
+          eq(kraRatings.organizationId, organizationId),
+          inArray(kraRatings.kraId, kraIds),
+          eq(kraRatings.raterRole, "supervisor")
+        ))
+        .orderBy(desc(kraRatings.createdAt));
+
+      // Map by KRA ID, keeping only the latest rating for each
+      const latestRatings = new Map<string, KraRating>();
+      for (const rating of ratings) {
+        if (!latestRatings.has(rating.kraId)) {
+          latestRatings.set(rating.kraId, rating);
+        }
+      }
+
+      return latestRatings;
+    } catch (error) {
+      console.error("Failed to fetch latest supervisor ratings:", error);
+      throw error;
+    }
+  }
+
+  async upsertKraRatings(organizationId: string, ratings: InsertKraRating[]): Promise<KraRating[]> {
+    try {
+      const upserted = [];
+      
+      for (const rating of ratings) {
+        // Check if a rating already exists for this KRA, rater, and meeting
+        const existing = await db
+          .select()
+          .from(kraRatings)
+          .where(and(
+            eq(kraRatings.organizationId, organizationId),
+            eq(kraRatings.kraId, rating.kraId),
+            eq(kraRatings.raterId, rating.raterId),
+            rating.oneOnOneId ? eq(kraRatings.oneOnOneId, rating.oneOnOneId) : sql`${kraRatings.oneOnOneId} IS NULL`
+          ))
+          .limit(1);
+
+        if (existing.length > 0) {
+          // Update existing rating
+          const [updated] = await db
+            .update(kraRatings)
+            .set({ 
+              rating: rating.rating, 
+              note: rating.note,
+            })
+            .where(eq(kraRatings.id, existing[0].id))
+            .returning();
+          if (updated) upserted.push(updated);
+        } else {
+          // Create new rating
+          const [created] = await db
+            .insert(kraRatings)
+            .values({ ...rating, organizationId })
+            .returning();
+          if (created) upserted.push(created);
+        }
+      }
+
+      return upserted;
+    } catch (error) {
+      console.error("Failed to upsert KRA ratings:", error);
+      throw error;
+    }
+  }
+
+  // KRA History
+  async recordKraHistory(organizationId: string, history: InsertKraHistory): Promise<KraHistory> {
+    try {
+      const [recordedHistory] = await db
+        .insert(kraHistory)
+        .values({ ...history, organizationId })
+        .returning();
+      return recordedHistory;
+    } catch (error) {
+      console.error("Failed to record KRA history:", error);
+      throw error;
+    }
+  }
+
+  async getKraHistory(organizationId: string, kraId: string): Promise<KraHistory[]> {
+    try {
+      return await db
+        .select()
+        .from(kraHistory)
+        .where(and(
+          eq(kraHistory.organizationId, organizationId),
+          eq(kraHistory.kraId, kraId)
+        ))
+        .orderBy(desc(kraHistory.changedAt));
+    } catch (error) {
+      console.error("Failed to fetch KRA history:", error);
       throw error;
     }
   }

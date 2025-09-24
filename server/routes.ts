@@ -8,6 +8,7 @@ import {
   insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema,
   insertVacationSchema, reviewCheckinSchema, ReviewStatus,
   insertOneOnOneSchema, insertKraTemplateSchema, insertUserKraSchema, insertActionItemSchema,
+  insertKraRatingSchema, insertKraHistorySchema,
   insertOrganizationSchema, insertBusinessPlanSchema, insertOrganizationOnboardingSchema, insertUserInvitationSchema,
   insertDashboardConfigSchema, insertDashboardWidgetTemplateSchema, insertBugReportSchema,
   insertPartnerApplicationSchema, insertPartnerFirmSchema,
@@ -5071,6 +5072,235 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("PUT /api/action-items/:id - Error:", error);
       res.status(500).json({ message: "Failed to update action item" });
+    }
+  });
+
+  // One-on-One Agenda endpoint - Get comprehensive agenda with KRAs, ratings, flagged check-ins, and action items
+  app.get("/api/one-on-ones/:id/agenda", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
+    try {
+      const meetingId = req.params.id;
+      
+      // Get the meeting
+      const meeting = await storage.getOneOnOne(req.orgId, meetingId);
+      if (!meeting) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      // Check if user has access to this meeting
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId,
+        req.userId!,
+        req.currentUser!.role,
+        req.currentUser!.teamId,
+        meeting
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Determine which user's KRAs to fetch
+      const targetUserId = req.userId === meeting.participantOneId ? meeting.participantTwoId : meeting.participantOneId;
+      const isSupervisor = req.userId === meeting.participantOneId;
+      
+      // Get user's active KRAs
+      const kras = await storage.getUserKrasByUser(req.orgId, targetUserId, "active");
+      
+      // Get latest supervisor ratings for these KRAs
+      const kraIds = kras.map(kra => kra.id);
+      const supervisorRatings = await storage.getLatestSupervisorRatings(req.orgId, kraIds);
+      
+      // Get ratings for this specific meeting
+      const meetingRatings = await storage.getKraRatingsByOneOnOne(req.orgId, meetingId);
+      
+      // Combine KRA data with ratings
+      const krasWithRatings = kras.map(kra => {
+        const lastSupervisorRating = supervisorRatings.get(kra.id);
+        const thisMeetingRatings = meetingRatings.filter(r => r.kraId === kra.id);
+        const selfRating = thisMeetingRatings.find(r => r.raterRole === "self");
+        const supervisorRating = thisMeetingRatings.find(r => r.raterRole === "supervisor");
+        
+        return {
+          kra,
+          lastSupervisorRating: lastSupervisorRating ? {
+            rating: lastSupervisorRating.rating,
+            note: lastSupervisorRating.note,
+            createdAt: lastSupervisorRating.createdAt
+          } : null,
+          currentSelfRating: selfRating ? {
+            rating: selfRating.rating,
+            note: selfRating.note
+          } : null,
+          currentSupervisorRating: supervisorRating ? {
+            rating: supervisorRating.rating,
+            note: supervisorRating.note
+          } : null
+        };
+      });
+      
+      // Get flagged check-ins since last meeting
+      const lastMeeting = await storage.getPastOneOnOnes(req.orgId, targetUserId, 2);
+      const sinceDate = lastMeeting.length > 1 ? lastMeeting[1].scheduledAt : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+      
+      const checkins = await storage.getCheckinsByUser(req.orgId, targetUserId);
+      const flaggedCheckins = checkins.filter(checkin => 
+        checkin.flaggedForOneOnOne && 
+        checkin.createdAt >= sinceDate
+      );
+      
+      // Get action items for this meeting (including carried forward)
+      const actionItems = await storage.getActionItemsByOneOnOne(req.orgId, meetingId);
+      
+      // Carry forward open action items if this is a new meeting
+      if (meeting.status === "scheduled") {
+        const carriedForward = await storage.carryForwardOpenActionItems(req.orgId, targetUserId, meetingId);
+        actionItems.push(...carriedForward);
+      }
+      
+      // Return comprehensive agenda
+      res.json({
+        meeting,
+        kras: krasWithRatings,
+        flaggedCheckins,
+        actionItems,
+        isSupervisor
+      });
+    } catch (error) {
+      console.error("GET /api/one-on-ones/:id/agenda - Error:", error);
+      res.status(500).json({ message: "Failed to fetch agenda" });
+    }
+  });
+
+  // Submit or update KRA ratings for a one-on-one
+  app.post("/api/one-on-ones/:id/kra-ratings", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
+    try {
+      const meetingId = req.params.id;
+      
+      // Validate request body
+      const validationSchema = z.array(
+        z.object({
+          kraId: z.string(),
+          rating: z.number().int().min(1).max(5),
+          note: z.string().optional()
+        })
+      );
+      
+      const ratings = validationSchema.parse(req.body);
+      
+      // Get the meeting
+      const meeting = await storage.getOneOnOne(req.orgId, meetingId);
+      if (!meeting) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      // Check if user has access to this meeting
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId,
+        req.userId!,
+        req.currentUser!.role,
+        req.currentUser!.teamId,
+        meeting
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Determine rater role
+      const isSupervisor = req.userId === meeting.participantOneId;
+      const raterRole = isSupervisor ? "supervisor" : "self";
+      
+      // Prepare ratings with rater info
+      const ratingsToUpsert = ratings.map(rating => ({
+        ...rating,
+        oneOnOneId: meetingId,
+        raterId: req.userId!,
+        raterRole
+      }));
+      
+      // Upsert ratings
+      const upserted = await storage.upsertKraRatings(req.orgId, ratingsToUpsert);
+      
+      res.json(upserted);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid ratings data", errors: error.errors });
+      }
+      console.error("POST /api/one-on-ones/:id/kra-ratings - Error:", error);
+      res.status(500).json({ message: "Failed to save KRA ratings" });
+    }
+  });
+
+  // Get user's KRAs with latest supervisor ratings
+  app.get("/api/users/:userId/kras", requireAuth(), async (req, res) => {
+    try {
+      const targetUserId = req.params.userId;
+      
+      // Check if user can access this user's KRAs
+      const canAccess = 
+        req.userId === targetUserId || 
+        req.currentUser?.role === "admin" ||
+        (await storage.getUser(req.orgId, targetUserId))?.managerId === req.userId;
+      
+      if (!canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get user's active KRAs
+      const kras = await storage.getUserKrasByUser(req.orgId, targetUserId, "active");
+      
+      // Get latest supervisor ratings
+      const kraIds = kras.map(kra => kra.id);
+      const supervisorRatings = await storage.getLatestSupervisorRatings(req.orgId, kraIds);
+      
+      // Combine KRA data with ratings
+      const krasWithRatings = kras.map(kra => {
+        const lastRating = supervisorRatings.get(kra.id);
+        return {
+          ...kra,
+          lastSupervisorRating: lastRating ? {
+            rating: lastRating.rating,
+            note: lastRating.note,
+            createdAt: lastRating.createdAt
+          } : null
+        };
+      });
+      
+      res.json(krasWithRatings);
+    } catch (error) {
+      console.error("GET /api/users/:userId/kras - Error:", error);
+      res.status(500).json({ message: "Failed to fetch user KRAs" });
+    }
+  });
+
+  // Get KRA history for audit trail
+  app.get("/api/kras/:kraId/history", requireAuth(), async (req, res) => {
+    try {
+      const kraId = req.params.kraId;
+      
+      // Get the KRA to check access
+      const kra = await storage.getUserKra(req.orgId, kraId);
+      if (!kra) {
+        return res.status(404).json({ message: "KRA not found" });
+      }
+      
+      // Check if user can access this KRA's history
+      const canAccess = 
+        req.userId === kra.userId || 
+        req.userId === kra.assignedBy ||
+        req.currentUser?.role === "admin";
+      
+      if (!canAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get history
+      const history = await storage.getKraHistory(req.orgId, kraId);
+      
+      res.json(history);
+    } catch (error) {
+      console.error("GET /api/kras/:kraId/history - Error:", error);
+      res.status(500).json({ message: "Failed to fetch KRA history" });
     }
   });
 
