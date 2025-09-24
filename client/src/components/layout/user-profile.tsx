@@ -138,6 +138,7 @@ export function UserProfile() {
         </DropdownMenuItem>
         <DropdownMenuItem 
           className="cursor-pointer"
+          onClick={() => setLocation('/settings')}
           data-testid="settings-menu-item"
         >
           <Settings className="mr-2 h-4 w-4" />
