@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Progress } from "@/components/ui/progress";
-import type { Checkin, Win, User, Question, ComplianceMetricsResult } from "@shared/schema";
+import type { Checkin, Win, User, Question, ComplianceMetricsResult, Shoutout } from "@shared/schema";
 
 interface DashboardStats {
   averageRating: number;
@@ -128,6 +128,53 @@ export default function Dashboard() {
   const { data: questions = [], isLoading: questionsLoading } = useQuery<Question[]>({
     queryKey: ["/api/questions"],
   });
+
+  // Fetch shoutouts received based on role
+  const { data: shoutoutsReceived = [], isLoading: shoutoutsLoading } = useQuery<Shoutout[]>({
+    queryKey: currentUser.role === "member" 
+      ? ["/api/shoutouts", { userId: currentUser.id, type: "received", limit: 10 }]
+      : ["/api/shoutouts", { type: "received", limit: 50 }],
+  });
+
+  // Calculate shoutout metrics based on role
+  const shoutoutMetrics = useMemo(() => {
+    if (currentUser.role === "admin" && Array.isArray(shoutoutsReceived)) {
+      // For admins, group shoutouts by recipient's team
+      const teamShoutouts = new Map<string, { teamName: string, count: number }>();
+      
+      shoutoutsReceived.forEach(shoutout => {
+        const recipient = users.find(u => u.id === shoutout.toUserId);
+        if (recipient?.teamId) {
+          const team = recipient.teamId; // We could fetch team names if needed
+          if (!teamShoutouts.has(team)) {
+            teamShoutouts.set(team, { teamName: `Team ${team.slice(0, 8)}`, count: 0 });
+          }
+          teamShoutouts.get(team)!.count++;
+        }
+      });
+      
+      return { 
+        totalCount: shoutoutsReceived.length,
+        byTeam: Array.from(teamShoutouts.values()),
+        topTeam: Array.from(teamShoutouts.values()).sort((a, b) => b.count - a.count)[0]
+      };
+    } else if (currentUser.role === "manager" && Array.isArray(shoutoutsReceived)) {
+      // For managers, separate personal and team shoutouts
+      const personal = shoutoutsReceived.filter(s => s.toUserId === currentUser.id);
+      const team = shoutoutsReceived.filter(s => s.toUserId !== currentUser.id);
+      return {
+        personalCount: personal.length,
+        teamCount: team.length,
+        totalCount: shoutoutsReceived.length
+      };
+    } else {
+      // For members, just count their personal shoutouts
+      return {
+        personalCount: shoutoutsReceived.length,
+        totalCount: shoutoutsReceived.length
+      };
+    }
+  }, [shoutoutsReceived, users, currentUser]);
 
   // Get current week check-in
   const { data: currentCheckin } = useQuery<Checkin | null>({
@@ -477,6 +524,46 @@ export default function Dashboard() {
               </CardContent>
             </Card>
           )}
+
+          {/* Shoutouts Received Card */}
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {currentUser.role === "member" 
+                      ? "Your Shoutouts Received" 
+                      : currentUser.role === "manager" 
+                        ? "Team & Personal Shoutouts"
+                        : "Total Shoutouts by Team"}
+                  </p>
+                  {shoutoutsLoading ? (
+                    <Skeleton className="h-8 w-12 my-1" />
+                  ) : (
+                    <p className="text-2xl font-bold text-foreground" data-testid="text-shoutouts-count">
+                      {currentUser.role === "admin" 
+                        ? shoutoutMetrics.totalCount 
+                        : currentUser.role === "manager"
+                          ? shoutoutMetrics.totalCount
+                          : shoutoutMetrics.personalCount}
+                    </p>
+                  )}
+                  <p className="text-xs text-pink-600">
+                    {currentUser.role === "admin" && shoutoutMetrics.topTeam
+                      ? `Top: ${shoutoutMetrics.topTeam.teamName} (${shoutoutMetrics.topTeam.count})`
+                      : currentUser.role === "manager" && shoutoutMetrics.personalCount !== undefined
+                        ? `${shoutoutMetrics.personalCount} personal, ${shoutoutMetrics.teamCount} team`
+                        : currentUser.role === "member" && shoutoutMetrics.personalCount > 0
+                          ? "Recognition received"
+                          : "No shoutouts yet"}
+                  </p>
+                </div>
+                <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center">
+                  <Heart className="w-6 h-6 text-pink-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Main Content Grid */}

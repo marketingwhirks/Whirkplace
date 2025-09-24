@@ -3231,22 +3231,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/shoutouts", requireAuth(), async (req, res) => {
     try {
       const { public: isPublic, userId, type, limit } = req.query;
-      const currentUserId = req.userId!;
+      const currentUser = req.currentUser!;
       let shoutouts;
       
-      if (userId) {
-        shoutouts = await storage.getShoutoutsByUser(req.orgId, userId as string, type as 'received' | 'given' | undefined);
-      } else if (isPublic === "true") {
-        shoutouts = await storage.getPublicShoutouts(req.orgId, limit ? parseInt(limit as string) : undefined);
+      // Apply role-based filtering
+      if (currentUser.role === "admin") {
+        // Admins can see all shoutouts in their organization
+        if (userId) {
+          shoutouts = await storage.getShoutoutsByUser(req.orgId, userId as string, type as 'received' | 'given' | undefined);
+        } else if (isPublic === "true") {
+          shoutouts = await storage.getPublicShoutouts(req.orgId, limit ? parseInt(limit as string) : undefined);
+        } else if (type === 'received' || type === 'given') {
+          // If type is specified without userId, get all shoutouts of that type
+          const allShoutouts = await storage.getRecentShoutouts(req.orgId, limit ? parseInt(limit as string) : undefined);
+          shoutouts = allShoutouts; // Admins see all
+        } else {
+          shoutouts = await storage.getRecentShoutouts(req.orgId, limit ? parseInt(limit as string) : undefined);
+        }
+      } else if (currentUser.role === "manager") {
+        // Managers can see shoutouts for themselves and their team members
+        const directReports = await storage.getUsersByManager(req.orgId, currentUser.id, true);
+        const teamMembers = currentUser.teamId ? await storage.getUsersByTeam(req.orgId, currentUser.teamId, true) : [];
+        
+        // Combine and deduplicate user IDs (including the manager themselves)
+        const authorizedUserIds = new Set([
+          currentUser.id,
+          ...directReports.map(u => u.id),
+          ...teamMembers.map(u => u.id)
+        ]);
+        
+        if (userId && authorizedUserIds.has(userId as string)) {
+          shoutouts = await storage.getShoutoutsByUser(req.orgId, userId as string, type as 'received' | 'given' | undefined);
+        } else if (isPublic === "true") {
+          shoutouts = await storage.getPublicShoutouts(req.orgId, limit ? parseInt(limit as string) : undefined);
+        } else {
+          // Get all recent shoutouts and filter to authorized users
+          const allShoutouts = await storage.getRecentShoutouts(req.orgId, limit ? parseInt(limit as string) * 3 : undefined);
+          shoutouts = allShoutouts.filter(s => 
+            authorizedUserIds.has(s.fromUserId) || 
+            authorizedUserIds.has(s.toUserId)
+          );
+          if (limit) {
+            shoutouts = shoutouts.slice(0, parseInt(limit as string));
+          }
+        }
       } else {
-        shoutouts = await storage.getRecentShoutouts(req.orgId, limit ? parseInt(limit as string) : undefined);
+        // Members can only see their own shoutouts (given or received)
+        // Ignore userId parameter for members - they can only see their own data
+        shoutouts = await storage.getShoutoutsByUser(req.orgId, currentUser.id, type as 'received' | 'given' | undefined);
+        if (limit) {
+          shoutouts = shoutouts.slice(0, parseInt(limit as string));
+        }
       }
       
-      // Filter private shoutouts based on user permissions
-      const filteredShoutouts = shoutouts.filter(k => canAccessShoutouts(k, currentUserId));
-      
-      res.json(filteredShoutouts);
+      res.json(shoutouts);
     } catch (error) {
+      console.error("Failed to fetch shoutouts:", error);
       res.status(500).json({ message: "Failed to fetch shoutouts" });
     }
   });
