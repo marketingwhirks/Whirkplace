@@ -626,11 +626,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        // If still not found by Slack ID, try by email in current org only
+        // If still not found by Slack ID, try by email 
+        // Special handling for super admins: check ALL organizations for super admin accounts by email
         if (!existingUser && user.email) {
           console.log('🔍 Looking for user with email:', user.email, 'in org:', organization.id);
           existingUser = await storage.getUserByEmail(organization.id, user.email);
-          console.log('🔍 Found by email?', existingUser ? 'YES' : 'NO');
+          console.log('🔍 Found by email in current org?', existingUser ? 'YES' : 'NO');
+          
+          // If not found in current org but has email, check if this is a super admin in ANY org
+          if (!existingUser) {
+            console.log('🔍 Checking if email belongs to a super admin in ANY organization...');
+            const allOrgs = await storage.getAllOrganizations();
+            for (const org of allOrgs) {
+              const userInOrg = await storage.getUserByEmail(org.id, user.email);
+              if (userInOrg && userInOrg.is_super_admin) {
+                console.log('✅ Found super admin by email in org:', org.id, org.name);
+                // This is a super admin - they can authenticate to any org
+                // We'll link their Slack ID to this account
+                existingUser = userInOrg;
+                userOrganization = org;
+                break;
+              }
+            }
+          }
         }
       } catch (error) {
         console.error("Failed to check existing user:", error);
