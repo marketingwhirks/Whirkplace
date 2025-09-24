@@ -13,7 +13,7 @@ import { Palette, Eye, RotateCcw } from "lucide-react";
 const themeOnboardingSchema = z.object({
   enableCustomTheme: z.boolean(),
   primaryColor: z.string().optional(),
-  fontFamily: z.string().optional(),
+  fontFamily: z.string().regex(/^[a-zA-Z0-9\s\-_'",]+$/, "Invalid font family format").optional(),
   secondaryColor: z.string().optional(),
   accentColor: z.string().optional(),
 });
@@ -111,27 +111,29 @@ export function ThemeOnboarding({ onComplete, onSkip, isLoading = false, classNa
       existingStyle.remove();
     }
 
-    // Create new style element
-    const cssVariables = Object.entries(themeConfig)
-      .map(([key, value]) => `  ${key}: ${value};`)
-      .join('\n');
-
+    // Create new style element using safe CSS construction
     const styleElement = document.createElement('style');
     styleElement.id = 'signup-theme-preview';
-    styleElement.innerHTML = `
-      :root {
-${cssVariables}
-      }
-      .dark {
-${cssVariables}
-      }
-      ${themeConfig["--font-sans"] ? `
-      body {
-        font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
-      }
-      ` : ''}
-    `;
-
+    
+    // Safely construct CSS text without template literals
+    let cssText = ':root {\n';
+    Object.entries(themeConfig).forEach(([key, value]) => {
+      // Escape CSS property values to prevent injection
+      const escapedValue = value.replace(/['"\\]/g, '\\$&');
+      cssText += `  ${key}: ${escapedValue};\n`;
+    });
+    cssText += '}\n.dark {\n';
+    Object.entries(themeConfig).forEach(([key, value]) => {
+      const escapedValue = value.replace(/['"\\]/g, '\\$&');
+      cssText += `  ${key}: ${escapedValue};\n`;
+    });
+    cssText += '}\n';
+    
+    if (themeConfig["--font-sans"]) {
+      cssText += 'body {\n  font-family: var(--font-sans), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;\n}\n';
+    }
+    
+    styleElement.textContent = cssText;
     document.head.appendChild(styleElement);
   };
 
