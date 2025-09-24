@@ -10,7 +10,7 @@ import {
   insertOneOnOneSchema, insertKraTemplateSchema, insertUserKraSchema, insertActionItemSchema,
   insertOrganizationSchema, insertBusinessPlanSchema, insertOrganizationOnboardingSchema, insertUserInvitationSchema,
   insertDashboardConfigSchema, insertDashboardWidgetTemplateSchema, insertBugReportSchema,
-  insertPartnerApplicationSchema,
+  insertPartnerApplicationSchema, insertPartnerFirmSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType, type Checkin
 } from "@shared/schema";
@@ -20,7 +20,7 @@ import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
-import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser, requireSuperAdmin } from "./middleware/auth";
+import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser, requireSuperAdmin, requirePartnerAdmin } from "./middleware/auth";
 import { generateCSRF, validateCSRF, csrfTokenEndpoint } from "./middleware/csrf";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
 import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } from "./middleware/plan-access";
@@ -1325,6 +1325,235 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       res.status(500).json({ message: "Failed to submit partner application" });
+    }
+  });
+
+  // ========== PARTNER MANAGEMENT ROUTES ==========
+  // These routes handle partner firm management and require authentication
+  
+  // Get all partner firms (super admin only)
+  app.get("/api/partners/firms", requireOrganization(), authenticateUser(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const partners = await storage.getAllPartnerFirms();
+      res.json(partners);
+    } catch (error) {
+      console.error("Error fetching partner firms:", error);
+      res.status(500).json({ message: "Failed to fetch partner firms" });
+    }
+  });
+
+  // Get partner firm by ID
+  app.get("/api/partners/firms/:id", requireOrganization(), authenticateUser(), requirePartnerAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Partner admins can only view their own firm
+      if (!req.currentUser?.isSuperAdmin && (req as any).partnerFirmId !== id) {
+        return res.status(403).json({ message: "Access denied to this partner firm" });
+      }
+      
+      const partner = await storage.getPartnerFirm(id);
+      if (!partner) {
+        return res.status(404).json({ message: "Partner firm not found" });
+      }
+      
+      res.json(partner);
+    } catch (error) {
+      console.error("Error fetching partner firm:", error);
+      res.status(500).json({ message: "Failed to fetch partner firm" });
+    }
+  });
+
+  // Create new partner firm (super admin only)
+  app.post("/api/partners/firms", requireOrganization(), authenticateUser(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const data = insertPartnerFirmSchema.parse(req.body);
+      const partner = await storage.createPartnerFirm(data);
+      res.status(201).json(partner);
+    } catch (error: any) {
+      console.error("Error creating partner firm:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid partner data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create partner firm" });
+    }
+  });
+
+  // Update partner firm
+  app.put("/api/partners/firms/:id", requireOrganization(), authenticateUser(), requirePartnerAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Partner admins can only update their own firm
+      if (!req.currentUser?.isSuperAdmin && (req as any).partnerFirmId !== id) {
+        return res.status(403).json({ message: "Access denied to this partner firm" });
+      }
+      
+      const data = insertPartnerFirmSchema.partial().parse(req.body);
+      const updated = await storage.updatePartnerFirm(id, data);
+      
+      if (!updated) {
+        return res.status(404).json({ message: "Partner firm not found" });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error updating partner firm:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid partner data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to update partner firm" });
+    }
+  });
+
+  // Delete partner firm (super admin only)
+  app.delete("/api/partners/firms/:id", requireOrganization(), authenticateUser(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.deletePartnerFirm(id);
+      
+      if (!success) {
+        return res.status(404).json({ message: "Partner firm not found" });
+      }
+      
+      res.json({ message: "Partner firm deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting partner firm:", error);
+      res.status(500).json({ message: "Failed to delete partner firm" });
+    }
+  });
+
+  // Get organizations belonging to a partner
+  app.get("/api/partners/firms/:id/organizations", requireOrganization(), authenticateUser(), requirePartnerAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Partner admins can only view their own organizations
+      if (!req.currentUser?.isSuperAdmin && (req as any).partnerFirmId !== id) {
+        return res.status(403).json({ message: "Access denied to this partner's organizations" });
+      }
+      
+      const organizations = await storage.getPartnerOrganizations(id);
+      res.json(organizations);
+    } catch (error) {
+      console.error("Error fetching partner organizations:", error);
+      res.status(500).json({ message: "Failed to fetch partner organizations" });
+    }
+  });
+
+  // Attach organization to partner
+  app.post("/api/partners/firms/:partnerId/organizations/:orgId", requireOrganization(), authenticateUser(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { partnerId, orgId } = req.params;
+      const updated = await storage.attachOrganizationToPartner(partnerId, orgId);
+      
+      if (!updated) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error attaching organization to partner:", error);
+      res.status(500).json({ message: "Failed to attach organization to partner" });
+    }
+  });
+
+  // Detach organization from partner
+  app.delete("/api/partners/organizations/:orgId/partner", requireOrganization(), authenticateUser(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { orgId } = req.params;
+      const updated = await storage.detachOrganizationFromPartner(orgId);
+      
+      if (!updated) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error detaching organization from partner:", error);
+      res.status(500).json({ message: "Failed to detach organization from partner" });
+    }
+  });
+
+  // Promote organization to partner firm
+  app.post("/api/partners/promote/:orgId", requireOrganization(), authenticateUser(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { orgId } = req.params;
+      const partnerConfig = insertPartnerFirmSchema.parse(req.body);
+      
+      const partner = await storage.promoteOrganizationToPartner(orgId, partnerConfig);
+      res.status(201).json(partner);
+    } catch (error: any) {
+      console.error("Error promoting organization to partner:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid partner configuration", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to promote organization to partner" });
+    }
+  });
+
+  // Get partner statistics
+  app.get("/api/partners/firms/:id/stats", requireOrganization(), authenticateUser(), requirePartnerAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Partner admins can only view their own stats
+      if (!req.currentUser?.isSuperAdmin && (req as any).partnerFirmId !== id) {
+        return res.status(403).json({ message: "Access denied to this partner's statistics" });
+      }
+      
+      const stats = await storage.getPartnerStats(id);
+      res.json(stats);
+    } catch (error) {
+      console.error("Error fetching partner statistics:", error);
+      res.status(500).json({ message: "Failed to fetch partner statistics" });
+    }
+  });
+
+  // Get users across all partner organizations
+  app.get("/api/partners/firms/:id/users", requireOrganization(), authenticateUser(), requirePartnerAdmin(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      const includeInactive = req.query.includeInactive === 'true';
+      
+      // Partner admins can only view their own users
+      if (!req.currentUser?.isSuperAdmin && (req as any).partnerFirmId !== id) {
+        return res.status(403).json({ message: "Access denied to this partner's users" });
+      }
+      
+      const users = await storage.getPartnerUsers(id, includeInactive);
+      res.json(users);
+    } catch (error) {
+      console.error("Error fetching partner users:", error);
+      res.status(500).json({ message: "Failed to fetch partner users" });
+    }
+  });
+
+  // Move user between partner organizations
+  app.put("/api/partners/firms/:partnerId/users/:userId/move", requireOrganization(), authenticateUser(), requirePartnerAdmin(), async (req, res) => {
+    try {
+      const { partnerId, userId } = req.params;
+      const { targetOrganizationId } = req.body;
+      
+      // Partner admins can only move users within their own partner
+      if (!req.currentUser?.isSuperAdmin && (req as any).partnerFirmId !== partnerId) {
+        return res.status(403).json({ message: "Access denied to this partner's user management" });
+      }
+      
+      if (!targetOrganizationId) {
+        return res.status(400).json({ message: "Target organization ID is required" });
+      }
+      
+      const updated = await storage.moveUserWithinPartner(partnerId, userId, targetOrganizationId);
+      
+      if (!updated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json(updated);
+    } catch (error: any) {
+      console.error("Error moving user:", error);
+      res.status(500).json({ message: error.message || "Failed to move user" });
     }
   });
 
@@ -7130,30 +7359,7 @@ Return the response as a JSON object with this structure:
     }
   });
 
-  // Super Admin middleware
-  const requireSuperAdmin = () => {
-    return async (req: any, res: any, next: any) => {
-      try {
-        // Check if user was already authenticated by requireAuth
-        const user = req.currentUser;
-        
-        if (!user) {
-          return res.status(401).json({ message: "Authentication required" });
-        }
-
-        // Check if user is a super admin (handle both field names)
-        if (!user.isSuperAdmin && !user.is_super_admin) {
-          console.log("Super admin check failed for user:", user.email, "isSuperAdmin:", user.isSuperAdmin, "is_super_admin:", user.is_super_admin);
-          return res.status(403).json({ message: "Super admin access required" });
-        }
-
-        next();
-      } catch (error) {
-        console.error("Super admin check error:", error);
-        res.status(500).json({ message: "Authorization check failed" });
-      }
-    };
-  };
+  // Super Admin middleware is already imported from ./middleware/auth
 
   // Super Admin API Routes
   
