@@ -317,7 +317,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               name: user.name, 
               email: user.email, 
               role: user.role,
-              isSuperAdmin: user.is_super_admin || false
+              isSuperAdmin: user.isSuperAdmin || false
             } 
           });
         });
@@ -7478,7 +7478,7 @@ Return the response as a JSON object with this structure:
         role: role || 'member',
         password: hashedPassword,
         isActive: true,
-        is_super_admin: false
+        isSuperAdmin: false
       });
       
       res.json(user);

@@ -592,7 +592,7 @@ export class DatabaseStorage implements IStorage {
         organizationId: user.organizationId,
         isActive: user.isActive ?? true,
         password: user.password || null,
-        is_super_admin: user.is_super_admin || false
+        isSuperAdmin: user.isSuperAdmin || false
       }).returning();
       
       return newUser;
@@ -613,7 +613,7 @@ export class DatabaseStorage implements IStorage {
       if (userUpdate.teamId !== undefined) updateData.teamId = userUpdate.teamId;
       if (userUpdate.managerId !== undefined) updateData.managerId = userUpdate.managerId;
       if (userUpdate.password !== undefined) updateData.password = userUpdate.password;
-      if (userUpdate.is_super_admin !== undefined) updateData.is_super_admin = userUpdate.is_super_admin;
+      if (userUpdate.isSuperAdmin !== undefined) updateData.isSuperAdmin = userUpdate.isSuperAdmin;
 
       const [updatedUser] = await db
         .update(users)
