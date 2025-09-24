@@ -24,13 +24,34 @@ import type { Checkin, Question, User, InsertCheckin } from "@shared/schema";
 
 // Client-side form schema for check-in submission
 // Only includes fields the user should provide - server computes the rest
-const checkinFormSchema = z.object({
-  overallMood: z.number().min(1, "Please provide a mood rating").max(5, "Rating must be between 1 and 5"),
-  responses: z.record(z.string()).optional().default({}), // Make responses optional since questions might not exist
-  winningNextWeek: z.string().min(1, "Please describe what winning looks like for next week"),
-});
+// Dynamic schema that requires responses when questions exist
+const createCheckinFormSchema = (questions: Question[]) => {
+  const hasQuestions = questions.length > 0;
+  
+  return z.object({
+    overallMood: z.number().min(1, "Please provide a mood rating").max(5, "Rating must be between 1 and 5"),
+    responses: hasQuestions 
+      ? z.record(z.string().min(1, "Please provide a response"))
+          .refine(
+            (responses) => {
+              // Check that all active questions have responses
+              const missingResponses = questions.filter(q => !responses[q.id] || responses[q.id].trim() === '');
+              return missingResponses.length === 0;
+            },
+            {
+              message: "Please answer all questions before submitting"
+            }
+          )
+      : z.record(z.string()).optional().default({}),
+    winningNextWeek: z.string().min(1, "Please describe what winning looks like for next week"),
+  });
+};
 
-type CheckinForm = z.infer<typeof checkinFormSchema>;
+type CheckinForm = {
+  overallMood: number;
+  responses: Record<string, string>;
+  winningNextWeek: string;
+};
 
 export default function Checkins() {
   const { toast } = useToast();
@@ -64,9 +85,12 @@ export default function Checkins() {
     enabled: !!currentUser?.id,
   });
 
-  // Create check-in form
+  // Filter for only active questions
+  const activeQuestions = questions.filter(q => q.isActive);
+  
+  // Create check-in form with dynamic schema based on questions
   const form = useForm<CheckinForm>({
-    resolver: zodResolver(checkinFormSchema),
+    resolver: zodResolver(createCheckinFormSchema(activeQuestions)),
     defaultValues: {
       overallMood: 0,
       responses: {},
@@ -339,16 +363,21 @@ export default function Checkins() {
                         />
 
                         {/* Question Responses */}
-                        {questions.length > 0 ? (
+                        {activeQuestions.length > 0 ? (
                           <div className="space-y-4">
-                            {questions.map((question, index) => (
+                            <div className="text-sm text-muted-foreground mb-2">
+                              <span className="text-red-500">*</span> All questions are required
+                            </div>
+                            {activeQuestions.map((question, index) => (
                               <FormField
                                 key={question.id}
                                 control={form.control}
                                 name={`responses.${question.id}`}
                                 render={({ field }) => (
                                   <FormItem>
-                                    <FormLabel>{question.text}</FormLabel>
+                                    <FormLabel>
+                                      {question.text} <span className="text-red-500">*</span>
+                                    </FormLabel>
                                     <FormControl>
                                       <Textarea
                                         placeholder="Share your thoughts..."
@@ -364,10 +393,13 @@ export default function Checkins() {
                             ))}
                           </div>
                         ) : (
-                          <div className="text-center p-4 bg-muted/50 rounded-lg">
-                            <AlertCircle className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                            <p className="text-sm text-muted-foreground">
-                              No custom questions have been set up yet. You can still submit your mood and goals below.
+                          <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                            <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
+                            <p className="text-sm text-red-600 dark:text-red-400 font-medium">
+                              Check-ins cannot be submitted without questions.
+                            </p>
+                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                              Please contact your administrator to set up check-in questions.
                             </p>
                           </div>
                         )}
@@ -395,7 +427,7 @@ export default function Checkins() {
                         <div className="flex justify-end space-x-3">
                           <Button
                             type="submit"
-                            disabled={createCheckinMutation.isPending}
+                            disabled={createCheckinMutation.isPending || activeQuestions.length === 0}
                             data-testid="button-submit-form"
                           >
                             {createCheckinMutation.isPending ? "Submitting..." : "Submit Check-in"}
@@ -540,16 +572,21 @@ export default function Checkins() {
                   />
 
                   {/* Question Responses */}
-                  {questions.length > 0 ? (
+                  {activeQuestions.length > 0 ? (
                     <div className="space-y-4">
-                      {questions.map((question, index) => (
+                      <div className="text-sm text-muted-foreground mb-2">
+                        <span className="text-red-500">*</span> All questions are required
+                      </div>
+                      {activeQuestions.map((question, index) => (
                         <FormField
                           key={question.id}
                           control={form.control}
                           name={`responses.${question.id}`}
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>{question.text}</FormLabel>
+                              <FormLabel>
+                                {question.text} <span className="text-red-500">*</span>
+                              </FormLabel>
                               <FormControl>
                                 <Textarea
                                   placeholder="Share your thoughts..."
@@ -565,10 +602,13 @@ export default function Checkins() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-center p-4 bg-muted/50 rounded-lg">
-                      <AlertCircle className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground">
-                        No custom questions have been set up yet. You can still submit your mood and goals below.
+                    <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
+                      <p className="text-sm text-red-600 dark:text-red-400 font-medium">
+                        Check-ins cannot be submitted without questions.
+                      </p>
+                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                        Please contact your administrator to set up check-in questions.
                       </p>
                     </div>
                   )}
@@ -604,7 +644,7 @@ export default function Checkins() {
                     </Button>
                     <Button
                       type="submit"
-                      disabled={createCheckinMutation.isPending}
+                      disabled={createCheckinMutation.isPending || activeQuestions.length === 0}
                       data-testid="button-submit-dialog"
                     >
                       {createCheckinMutation.isPending ? "Submitting..." : currentWeekCheckin ? "Update Check-in" : "Submit Check-in"}
