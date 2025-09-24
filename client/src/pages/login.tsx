@@ -156,19 +156,37 @@ export default function LoginPage() {
       // Clear any old authentication data first
       await clearAuthData();
       
-      // This would be the regular user login for Starter plan users
-      const response = await fetch('/api/auth/login', {
+      // Get organization parameter from URL (default to 'whirkplace')
+      const urlParams = new URLSearchParams(window.location.search);
+      const orgParam = urlParams.get('org') || 'whirkplace';
+      
+      // Use local authentication endpoint
+      const response = await fetch(`/auth/local/login?org=${orgParam}`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json'
         },
         credentials: 'include',
-        body: JSON.stringify({ email, password, organizationSlug: 'default' })
+        body: JSON.stringify({ email, password })
       });
       
       if (response.ok) {
         const data = await response.json();
-        toast({ title: "Welcome back!", description: "Login successful" });
+        
+        // Show super admin welcome if applicable
+        if (data.user?.isSuperAdmin) {
+          toast({ 
+            title: "Welcome, Super Admin!", 
+            description: `Logged in as ${data.user.name}` 
+          });
+        } else {
+          toast({ title: "Welcome back!", description: "Login successful" });
+        }
+        
+        // Store user data for client-side use
+        if (data.user) {
+          localStorage.setItem('whirkplace-user', JSON.stringify(data.user));
+        }
         
         // Clear cached data and redirect
         queryClient.clear();
