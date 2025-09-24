@@ -3550,20 +3550,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Analytics & Stats
   app.get("/api/analytics/team-health", requireAuth(), authorizeAnalyticsAccess(), async (req, res) => {
     try {
-      const recentCheckins = await storage.getRecentCheckins(req.orgId, 100);
+      const currentUser = req.currentUser!;
+      let recentCheckins;
+      let relevantUsers;
+      
+      // Filter data based on user role
+      if (currentUser.role === "member") {
+        // Members only see their own data
+        recentCheckins = await storage.getCheckinsByUser(req.orgId, currentUser.id);
+        relevantUsers = [currentUser];
+      } else if (currentUser.role === "manager") {
+        // Managers see their team's data (them + their direct reports)
+        const teamMembers = await storage.getUsersByManager(req.orgId, currentUser.id, true);
+        const teamUserIds = [currentUser.id, ...teamMembers.map(u => u.id)];
+        
+        // Get checkins for all team members
+        const allCheckins = await storage.getRecentCheckins(req.orgId, 1000);
+        recentCheckins = allCheckins.filter(checkin => 
+          teamUserIds.includes(checkin.userId)
+        );
+        
+        // Include self and team members for completion calculation
+        relevantUsers = [currentUser, ...teamMembers].filter(u => u.isActive);
+      } else {
+        // Admins see organization-wide data
+        recentCheckins = await storage.getRecentCheckins(req.orgId, 100);
+        const allUsers = await storage.getAllUsers(req.orgId);
+        relevantUsers = allUsers.filter(user => user.isActive);
+      }
+      
       const totalCheckins = recentCheckins.length;
       
       // Get compliance metrics for the last 30 days
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
+      // Determine compliance scope based on role
+      let complianceScope = 'organization';
+      let complianceId = undefined;
+      
+      if (currentUser.role === "member") {
+        complianceScope = 'user';
+        complianceId = currentUser.id;
+      } else if (currentUser.role === "manager" && currentUser.teamId) {
+        complianceScope = 'team';
+        complianceId = currentUser.teamId;
+      }
+      
       const [checkinCompliance, reviewCompliance] = await Promise.all([
         storage.getCheckinComplianceMetrics(req.orgId, {
-          scope: 'organization',
+          scope: complianceScope as any,
+          entityId: complianceId,
           from: thirtyDaysAgo
         }),
         storage.getReviewComplianceMetrics(req.orgId, {
-          scope: 'organization', 
+          scope: complianceScope as any,
+          entityId: complianceId,
           from: thirtyDaysAgo
         })
       ]);
@@ -3590,9 +3632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sumRatings = recentCheckins.reduce((sum, checkin) => sum + checkin.overallMood, 0);
       const averageRating = sumRatings / totalCheckins;
       
-      // Calculate completion rate for current week
-      const allUsers = await storage.getAllUsers(req.orgId);
-      const activeUsers = allUsers.filter(user => user.isActive);
+      // Calculate completion rate for current week (based on relevant users only)
       const completedThisWeek = recentCheckins.filter(checkin => {
         const weekStart = new Date();
         weekStart.setDate(weekStart.getDate() - weekStart.getDay());
@@ -3600,7 +3640,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return checkin.weekOf >= weekStart && checkin.isComplete;
       }).length;
       
-      const completionRate = Math.round((completedThisWeek / activeUsers.length) * 100);
+      const completionRate = relevantUsers.length > 0 
+        ? Math.round((completedThisWeek / relevantUsers.length) * 100)
+        : 0;
       
       res.json({
         averageRating: Math.round(averageRating * 10) / 10,

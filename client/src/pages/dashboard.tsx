@@ -109,10 +109,14 @@ export default function Dashboard() {
     queryKey: ["/api/analytics/team-health"],
   });
 
+  // Fetch checkins with role-based filtering
   const { data: recentCheckins = [], isLoading: checkinsLoading, error: checkinsError } = useQuery<Checkin[]>({
-    queryKey: ["/api/checkins", { limit: 5 }],
+    queryKey: currentUser.role === "member" 
+      ? ["/api/checkins", { userId: currentUser.id, limit: 5 }]
+      : ["/api/checkins", { limit: 5 }],
   });
 
+  // Fetch wins with appropriate scope
   const { data: recentWins = [], isLoading: winsLoading, error: winsError } = useQuery<Win[]>({
     queryKey: ["/api/wins", { limit: 5 }],
   });
@@ -198,11 +202,18 @@ export default function Dashboard() {
     user: Array.isArray(users) ? users.find(u => u.id === checkin.userId) : undefined,
   })) : [];
 
-  const enrichedWins = Array.isArray(recentWins) ? recentWins.map(win => ({
+  // Filter wins based on role
+  const filteredWins = Array.isArray(recentWins) 
+    ? (currentUser.role === "member" 
+        ? recentWins.filter(win => win.userId === currentUser.id || win.nominatedBy === currentUser.id)
+        : recentWins)
+    : [];
+
+  const enrichedWins = filteredWins.map(win => ({
     ...win,
     user: Array.isArray(users) ? users.find(u => u.id === win.userId) : undefined,
     nominator: win.nominatedBy && Array.isArray(users) ? users.find(u => u.id === win.nominatedBy) : undefined,
-  })) : [];
+  }));
 
   // Team structure (manager's reports) - with proper array guard
   const teamMembers = Array.isArray(users) ? users.filter(user => user.managerId === currentUser.id) : [];
@@ -284,7 +295,9 @@ export default function Dashboard() {
             <CardContent className="p-6">
               <div className="flex items-center">
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Team Health</p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {currentUser.role === "member" ? "Your Mood" : currentUser.role === "manager" ? "Team Health" : "Organization Health"}
+                  </p>
                   {statsLoading ? (
                     <Skeleton className="h-8 w-16 my-1" />
                   ) : (
@@ -293,7 +306,9 @@ export default function Dashboard() {
                     </p>
                   )}
                   <p className="text-xs text-green-600">
-                    {stats?.averageRating && stats.averageRating > 0 ? "+0.3 from last week" : "No data yet"}
+                    {stats?.averageRating && stats.averageRating > 0 
+                      ? currentUser.role === "member" ? "Your average" : "+0.3 from last week" 
+                      : "No data yet"}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -307,16 +322,27 @@ export default function Dashboard() {
             <CardContent className="p-6">
               <div className="flex items-center">
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Check-ins Complete</p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {currentUser.role === "member" ? "Your Check-ins" : "Check-ins Complete"}
+                  </p>
                   {statsLoading ? (
                     <Skeleton className="h-8 w-20 my-1" />
                   ) : (
                     <p className="text-2xl font-bold text-foreground" data-testid="text-checkin-complete">
-                      {stats?.completionRate || 0}%
+                      {currentUser.role === "member" 
+                        ? stats?.totalCheckins || 0
+                        : `${stats?.completionRate || 0}%`
+                      }
                     </p>
                   )}
                   <p className="text-xs text-blue-600">
-                    {stats?.totalCheckins && stats.totalCheckins > 0 ? "12 of 14 team members" : "No check-ins yet"}
+                    {stats?.totalCheckins && stats.totalCheckins > 0 
+                      ? currentUser.role === "member" 
+                        ? "Total submitted" 
+                        : currentUser.role === "manager" 
+                          ? "Team completion"
+                          : "Organization-wide"
+                      : "No check-ins yet"}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -411,7 +437,9 @@ export default function Dashboard() {
               <CardContent className="p-6">
                 <div className="flex items-center">
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-muted-foreground">Wins This Week</p>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      {currentUser.role === "member" ? "Your Wins" : "Wins This Week"}
+                    </p>
                     {winsLoading ? (
                       <Skeleton className="h-8 w-12 my-1" />
                     ) : (
@@ -464,7 +492,9 @@ export default function Dashboard() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>Recent Check-ins</CardTitle>
+                  <CardTitle>
+                    {currentUser.role === "member" ? "Your Check-ins" : currentUser.role === "manager" ? "Team Check-ins" : "Recent Check-ins"}
+                  </CardTitle>
                   <Button variant="link" data-testid="button-view-all-checkins">
                     View All
                   </Button>
@@ -645,7 +675,9 @@ export default function Dashboard() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>Recent Wins 🎉</CardTitle>
+                  <CardTitle>
+                    {currentUser.role === "member" ? "Your Wins 🎉" : currentUser.role === "manager" ? "Team Wins 🎉" : "Recent Wins 🎉"}
+                  </CardTitle>
                   <Button variant="link" data-testid="button-view-all-wins">
                     View All
                   </Button>
