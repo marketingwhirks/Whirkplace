@@ -48,36 +48,21 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
   console.log('  ENV: FORCE_PRODUCTION_OAUTH:', process.env.FORCE_PRODUCTION_OAUTH);
   console.log('  ENV: OAUTH_REDIRECT_BASE_URL:', process.env.OAUTH_REDIRECT_BASE_URL);
   
-  // Check for explicit redirect URIs based on the path
-  if (path.includes('slack')) {
-    // For production, always use the correct domain for Slack
-    if (isProduction) {
-      console.log('  → Forcing Slack production URL');
-      return 'https://whirkplace.com/auth/slack/callback';
-    }
-    // Only use override in development if provided
-    if (process.env.SLACK_REDIRECT_URI_OVERRIDE) {
-      console.log('  → Using Slack override:', process.env.SLACK_REDIRECT_URI_OVERRIDE);
-      return process.env.SLACK_REDIRECT_URI_OVERRIDE;
-    }
+  // Check for explicit redirect URI overrides
+  if (path.includes('slack') && process.env.SLACK_REDIRECT_URI_OVERRIDE) {
+    console.log('  → Using Slack override:', process.env.SLACK_REDIRECT_URI_OVERRIDE);
+    return process.env.SLACK_REDIRECT_URI_OVERRIDE;
   }
-  if (path.includes('microsoft')) {
-    // For production, always use the correct domain for Microsoft
-    if (isProduction) {
-      console.log('  → Forcing Microsoft production URL');
-      return 'https://whirkplace.com/auth/microsoft/callback';
-    }
-    // Only use override in development if provided
-    if (process.env.MICROSOFT_REDIRECT_URI) {
-      console.log('  → Using Microsoft override:', process.env.MICROSOFT_REDIRECT_URI);
-      return process.env.MICROSOFT_REDIRECT_URI;
-    }
+  if (path.includes('microsoft') && process.env.MICROSOFT_REDIRECT_URI) {
+    console.log('  → Using Microsoft override:', process.env.MICROSOFT_REDIRECT_URI);
+    return process.env.MICROSOFT_REDIRECT_URI;
   }
 
-  // For production domains, use the custom domain
-  if (isProduction) {
-    console.log('  → Using production domain');
-    return `https://whirkplace.com${path}`;
+  // For production domains, build from actual request headers to maintain session
+  // This ensures cookies work correctly across the OAuth flow
+  if (isProductionDomain) {
+    console.log('  → Using actual production host from request:', host);
+    return `https://${host}${path}`;
   }
 
   // Use the actual current host for Replit environments
