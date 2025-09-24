@@ -554,12 +554,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         // First try to find by Slack user ID using indexed query
         if (user.sub) {
+          console.log('🔍 Looking for user with Slack ID:', user.sub, 'in org:', organization.id);
           existingUser = await storage.getUserBySlackId(organization.id, user.sub);
+          console.log('🔍 Found by Slack ID?', existingUser ? 'YES' : 'NO');
         }
         
         // If not found by Slack ID, try by email using indexed query
         if (!existingUser && user.email) {
+          console.log('🔍 Looking for user with email:', user.email, 'in org:', organization.id);
           existingUser = await storage.getUserByEmail(organization.id, user.email);
+          console.log('🔍 Found by email?', existingUser ? 'YES' : 'NO');
         }
       } catch (error) {
         console.error("Failed to check existing user:", error);
@@ -676,16 +680,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error("🔴 CRITICAL: Failed to create user from Slack:", error);
           console.error("🔴 User creation attempted for email:", user.email || "unknown");
           console.error("🔴 Full error details:", error instanceof Error ? error.message : error);
-          console.error("🔴 Error stack:", error instanceof Error ? error.stack : "No stack");
-          console.error("🔴 Organization ID:", organization.id);
-          console.error("🔴 User data attempted:", {
-            email: user.email,
-            name: displayName,
-            slackUserId: slackUserId
-          });
           
           const errorMessage = error instanceof Error ? error.message : String(error);
           const errorType = error?.constructor?.name || 'UnknownError';
+          
+          // Handle duplicate key error specifically
+          if (errorMessage.includes('duplicate key value') && errorMessage.includes('slack_user_id_key')) {
+            console.log('🔄 Duplicate Slack ID detected, user already exists with this Slack ID');
+            console.log('🔄 This means the user exists but we failed to find them in the lookup');
+            console.log('🔄 Slack ID:', slackUserId);
+            console.log('🔄 Organization ID we searched:', organization.id);
+            
+            // Since we know the user exists with this Slack ID, the best approach is to
+            // inform the user and suggest they contact support to resolve the account issue
+            return res.status(500).send(`
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <title>Account Exists</title>
+                  <meta name="viewport" content="width=device-width, initial-scale=1">
+                  <style>
+                    body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                    .error { color: #dc3545; }
+                    button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+                    .debug { font-size: 0.9em; color: #666; margin-top: 20px; padding: 10px; background: #f5f5f5; border-radius: 4px; text-align: left; max-width: 600px; margin: 20px auto; word-wrap: break-word; }
+                  </style>
+                </head>
+                <body>
+                  <h1 class="error">⚠️ Account Already Exists</h1>
+                  <p>An account with your Slack ID already exists but we're unable to locate it properly.</p>
+                  <div class="debug">
+                    <strong>What happened:</strong><br>
+                    Your Slack account (${user.email || 'unknown'}) is already registered in our system,
+                    but there's a mismatch preventing proper authentication.<br><br>
+                    <strong>Slack ID:</strong> ${slackUserId}<br>
+                    <strong>Organization:</strong> ${organization.name}
+                  </div>
+                  <p>Please contact your administrator to resolve this account issue.</p>
+                  <button onclick="window.location.href='/'">Back to Home</button>
+                </body>
+              </html>
+            `);
+          } else {
+            // For other errors, show the debug info
+            console.error("🔴 Error stack:", error instanceof Error ? error.stack : "No stack");
+            console.error("🔴 Organization ID:", organization.id);
+            console.error("🔴 User data attempted:", {
+              email: user.email,
+              name: displayName,
+              slackUserId: slackUserId
+            });
+            throw error; // Re-throw to show error page
+          }
+        }
+        
+        // If we recovered from duplicate key error, continue with the authenticated user
+        if (!authenticatedUser) {
+          const errorMessage = 'Failed to create user account';
+          const errorType = 'UserCreationError';
           
           return res.status(500).send(`
             <!DOCTYPE html>
