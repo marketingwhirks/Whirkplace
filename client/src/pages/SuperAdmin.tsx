@@ -48,7 +48,7 @@ export default function SuperAdmin() {
 
   // Organization mutations
   const createOrgMutation = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/super-admin/organizations', 'POST', data),
+    mutationFn: (data: any) => apiRequest('POST', '/api/super-admin/organizations', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/organizations'] });
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/stats'] });
@@ -66,7 +66,7 @@ export default function SuperAdmin() {
   });
 
   const updateOrgMutation = useMutation({
-    mutationFn: (data: any) => apiRequest(`/api/super-admin/organizations/${data.id}`, 'PUT', data),
+    mutationFn: (data: any) => apiRequest('PUT', `/api/super-admin/organizations/${data.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/organizations'] });
       setOrgDialog(false);
@@ -76,7 +76,7 @@ export default function SuperAdmin() {
   });
 
   const deleteOrgMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/api/super-admin/organizations/${id}`, 'DELETE'),
+    mutationFn: (id: string) => apiRequest('DELETE', `/api/super-admin/organizations/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/organizations'] });
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/stats'] });
@@ -86,7 +86,7 @@ export default function SuperAdmin() {
 
   // User mutations
   const createUserMutation = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/super-admin/users', 'POST', data),
+    mutationFn: (data: any) => apiRequest('POST', '/api/super-admin/users', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/users'] });
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/stats'] });
@@ -104,7 +104,7 @@ export default function SuperAdmin() {
   });
 
   const updateUserMutation = useMutation({
-    mutationFn: (data: any) => apiRequest(`/api/super-admin/users/${data.id}`, 'PUT', data),
+    mutationFn: (data: any) => apiRequest('PUT', `/api/super-admin/users/${data.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/users'] });
       setUserDialog(false);
@@ -114,7 +114,7 @@ export default function SuperAdmin() {
   });
 
   const deleteUserMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/api/super-admin/users/${id}`, 'DELETE'),
+    mutationFn: (id: string) => apiRequest('DELETE', `/api/super-admin/users/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/users'] });
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/stats'] });
@@ -124,7 +124,7 @@ export default function SuperAdmin() {
 
   const moveUserMutation = useMutation({
     mutationFn: (data: { userId: string; targetOrganizationId: string }) => 
-      apiRequest(`/api/super-admin/users/${data.userId}/move`, 'POST', { targetOrganizationId: data.targetOrganizationId }),
+      apiRequest('POST', `/api/super-admin/users/${data.userId}/move`, { targetOrganizationId: data.targetOrganizationId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/users'] });
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/organizations'] });
@@ -159,7 +159,7 @@ export default function SuperAdmin() {
 
   // Partner mutations
   const createPartnerMutation = useMutation({
-    mutationFn: (data: any) => apiRequest('/api/partners/firms', 'POST', data),
+    mutationFn: (data: any) => apiRequest('POST', '/api/partners/firms', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
       setPartnerDialog(false);
@@ -176,7 +176,7 @@ export default function SuperAdmin() {
   });
 
   const updatePartnerMutation = useMutation({
-    mutationFn: (data: any) => apiRequest(`/api/partners/firms/${data.id}`, 'PUT', data),
+    mutationFn: (data: any) => apiRequest('PUT', `/api/partners/firms/${data.id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
       setPartnerDialog(false);
@@ -186,7 +186,7 @@ export default function SuperAdmin() {
   });
 
   const deletePartnerMutation = useMutation({
-    mutationFn: (id: string) => apiRequest(`/api/partners/firms/${id}`, 'DELETE'),
+    mutationFn: (id: string) => apiRequest('DELETE', `/api/partners/firms/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
       toast({ title: "Partner firm deleted successfully" });
@@ -195,7 +195,7 @@ export default function SuperAdmin() {
 
   const attachOrgToPartnerMutation = useMutation({
     mutationFn: (data: { partnerId: string; orgId: string }) => 
-      apiRequest(`/api/partners/firms/${data.partnerId}/organizations/${data.orgId}`, 'POST'),
+      apiRequest('POST', `/api/partners/firms/${data.partnerId}/organizations/${data.orgId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/organizations'] });
@@ -206,7 +206,7 @@ export default function SuperAdmin() {
 
   const promoteOrgToPartnerMutation = useMutation({
     mutationFn: (data: { orgId: string; partnerConfig: any }) => 
-      apiRequest(`/api/partners/promote/${data.orgId}`, 'POST', data.partnerConfig),
+      apiRequest('POST', `/api/partners/promote/${data.orgId}`, data.partnerConfig),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
       queryClient.invalidateQueries({ queryKey: ['/api/super-admin/organizations'] });

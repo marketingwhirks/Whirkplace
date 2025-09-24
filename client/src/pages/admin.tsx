@@ -399,9 +399,6 @@ export default function Admin() {
   }
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <Header title="Admin Panel" />
-      
       <div className="flex-1 overflow-auto p-6 space-y-6">
         {/* Role Switcher - Only visible to Matthew Patrick */}
         <RoleSwitcher />
@@ -1091,6 +1088,5 @@ export default function Admin() {
           </DialogContent>
         </Dialog>
       </div>
-    </div>
   );
 }
