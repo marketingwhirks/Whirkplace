@@ -141,6 +141,206 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* App Preview Section */}
+      <section className="py-20 px-4 bg-gray-50 dark:bg-gray-900">
+        <div className="container mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4" data-testid="text-preview-title">
+              See Whirkplace in Action
+            </h2>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto" data-testid="text-preview-description">
+              Get a glimpse of our intuitive interface and powerful features
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+            {/* Dashboard Preview */}
+            <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow" data-testid="card-preview-dashboard">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center space-x-2">
+                      <div className="w-8 h-8 bg-blue-100 rounded-full"></div>
+                      <div className="w-24 h-4 bg-gray-200 rounded"></div>
+                    </div>
+                    <Badge variant="outline">Live</Badge>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="flex space-x-3">
+                      <div className="flex-1 bg-green-50 border border-green-200 rounded-lg p-3">
+                        <div className="text-2xl font-bold text-green-600">92%</div>
+                        <div className="text-xs text-gray-600">Team Health</div>
+                      </div>
+                      <div className="flex-1 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div className="text-2xl font-bold text-blue-600">18/20</div>
+                        <div className="text-xs text-gray-600">Check-ins</div>
+                      </div>
+                    </div>
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <div className="w-full h-20 bg-gradient-to-r from-blue-200 via-green-200 to-blue-200 rounded"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <CardContent className="pt-4">
+                <h3 className="font-semibold mb-2">Real-time Dashboard</h3>
+                <p className="text-sm text-muted-foreground">
+                  Monitor team health, engagement metrics, and trends at a glance
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Check-ins Preview */}
+            <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow" data-testid="card-preview-checkins">
+              <div className="bg-gradient-to-br from-purple-500 to-purple-600 p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <MessageSquare className="w-5 h-5 text-purple-600" />
+                      <span className="font-semibold">Weekly Check-in</span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="bg-gray-50 rounded p-2">
+                        <div className="text-sm font-medium mb-1">How are you feeling?</div>
+                        <div className="flex space-x-1">
+                          {['😔', '😐', '😊', '😄', '🎉'].map((emoji, i) => (
+                            <div key={i} className={`w-8 h-8 flex items-center justify-center rounded ${i === 3 ? 'bg-purple-100 border-2 border-purple-500' : 'bg-white border'}`}>
+                              <span>{emoji}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 rounded p-2">
+                        <div className="text-sm font-medium mb-1">What's your biggest win?</div>
+                        <div className="h-16 bg-white rounded border border-gray-200"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <CardContent className="pt-4">
+                <h3 className="font-semibold mb-2">Smart Check-ins</h3>
+                <p className="text-sm text-muted-foreground">
+                  Customizable wellness surveys with mood tracking and insights
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Analytics Preview */}
+            <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow" data-testid="card-preview-analytics">
+              <div className="bg-gradient-to-br from-green-500 to-green-600 p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center space-x-2">
+                        <BarChart3 className="w-5 h-5 text-green-600" />
+                        <span className="font-semibold">Team Analytics</span>
+                      </div>
+                      <Badge className="bg-green-100 text-green-700">↑ 12%</Badge>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2">
+                        <div className="flex-1">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span>Engagement</span>
+                            <span>89%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div className="bg-green-500 h-2 rounded-full" style={{width: '89%'}}></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="flex-1">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span>Satisfaction</span>
+                            <span>94%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div className="bg-blue-500 h-2 rounded-full" style={{width: '94%'}}></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <div className="flex-1">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span>Wellness</span>
+                            <span>86%</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div className="bg-purple-500 h-2 rounded-full" style={{width: '86%'}}></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <CardContent className="pt-4">
+                <h3 className="font-semibold mb-2">Deep Insights</h3>
+                <p className="text-sm text-muted-foreground">
+                  Track progress, identify trends, and make data-driven decisions
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Recognition Preview */}
+            <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow" data-testid="card-preview-recognition">
+              <div className="bg-gradient-to-br from-orange-500 to-orange-600 p-4">
+                <div className="bg-white dark:bg-gray-800 rounded-lg p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <Star className="w-5 h-5 text-orange-600" />
+                      <span className="font-semibold">Recognition Feed</span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-2">
+                        <div className="flex items-start space-x-2">
+                          <div className="w-8 h-8 bg-orange-200 rounded-full flex-shrink-0"></div>
+                          <div className="flex-1">
+                            <div className="text-xs font-medium">Team Win!</div>
+                            <div className="h-8 bg-white rounded mt-1"></div>
+                            <div className="flex items-center space-x-2 mt-2">
+                              <Badge className="bg-orange-100 text-orange-700 text-xs">Innovation</Badge>
+                              <span className="text-xs text-gray-500">2h ago</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                        <div className="flex items-start space-x-2">
+                          <div className="w-8 h-8 bg-blue-200 rounded-full flex-shrink-0"></div>
+                          <div className="flex-1">
+                            <div className="text-xs font-medium">Kudos!</div>
+                            <div className="h-6 bg-white rounded mt-1"></div>
+                            <div className="flex items-center space-x-2 mt-2">
+                              <Badge className="bg-blue-100 text-blue-700 text-xs">Teamwork</Badge>
+                              <span className="text-xs text-gray-500">5h ago</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <CardContent className="pt-4">
+                <h3 className="font-semibold mb-2">Celebrate Success</h3>
+                <p className="text-sm text-muted-foreground">
+                  Recognize achievements and build a culture of appreciation
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="text-center mt-12">
+            <Button size="lg" onClick={handleSignUp} data-testid="button-preview-cta">
+              Start Building Your Team Culture <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+          </div>
+        </div>
+      </section>
+
       {/* Features Section */}
       <section className="py-20 px-4 bg-white dark:bg-gray-800">
         <div className="container mx-auto">
