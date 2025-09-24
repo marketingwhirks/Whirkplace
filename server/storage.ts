@@ -410,6 +410,29 @@ export class DatabaseStorage implements IStorage {
     if (organizationUpdate.isActive !== undefined) updateData.isActive = organizationUpdate.isActive;
     if (organizationUpdate.themeConfig !== undefined) updateData.themeConfig = organizationUpdate.themeConfig;
     if (organizationUpdate.enableCustomTheme !== undefined) updateData.enableCustomTheme = organizationUpdate.enableCustomTheme;
+    
+    // Onboarding fields
+    if (organizationUpdate.onboardingStatus !== undefined) updateData.onboardingStatus = organizationUpdate.onboardingStatus;
+    if (organizationUpdate.onboardingCurrentStep !== undefined) updateData.onboardingCurrentStep = organizationUpdate.onboardingCurrentStep;
+    if (organizationUpdate.onboardingCompletedAt !== undefined) updateData.onboardingCompletedAt = organizationUpdate.onboardingCompletedAt;
+    if (organizationUpdate.onboardingWorkspaceCompleted !== undefined) updateData.onboardingWorkspaceCompleted = organizationUpdate.onboardingWorkspaceCompleted;
+    if (organizationUpdate.onboardingBillingCompleted !== undefined) updateData.onboardingBillingCompleted = organizationUpdate.onboardingBillingCompleted;
+    if (organizationUpdate.onboardingRolesCompleted !== undefined) updateData.onboardingRolesCompleted = organizationUpdate.onboardingRolesCompleted;
+    if (organizationUpdate.onboardingValuesCompleted !== undefined) updateData.onboardingValuesCompleted = organizationUpdate.onboardingValuesCompleted;
+    if (organizationUpdate.onboardingMembersCompleted !== undefined) updateData.onboardingMembersCompleted = organizationUpdate.onboardingMembersCompleted;
+    if (organizationUpdate.onboardingSettingsCompleted !== undefined) updateData.onboardingSettingsCompleted = organizationUpdate.onboardingSettingsCompleted;
+    
+    // Stripe fields
+    if (organizationUpdate.stripeCustomerId !== undefined) updateData.stripeCustomerId = organizationUpdate.stripeCustomerId;
+    if (organizationUpdate.stripeSubscriptionId !== undefined) updateData.stripeSubscriptionId = organizationUpdate.stripeSubscriptionId;
+    if (organizationUpdate.stripeSubscriptionStatus !== undefined) updateData.stripeSubscriptionStatus = organizationUpdate.stripeSubscriptionStatus;
+    if (organizationUpdate.stripePriceId !== undefined) updateData.stripePriceId = organizationUpdate.stripePriceId;
+    if (organizationUpdate.trialEndsAt !== undefined) updateData.trialEndsAt = organizationUpdate.trialEndsAt;
+    
+    // Settings fields
+    if (organizationUpdate.timezone !== undefined) updateData.timezone = organizationUpdate.timezone;
+    if (organizationUpdate.weeklyCheckInSchedule !== undefined) updateData.weeklyCheckInSchedule = organizationUpdate.weeklyCheckInSchedule;
+    if (organizationUpdate.checkInReminderTime !== undefined) updateData.checkInReminderTime = organizationUpdate.checkInReminderTime;
 
     try {
       const [updatedOrganization] = await db

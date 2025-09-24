@@ -1197,6 +1197,201 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Apply organization middleware to all API routes
   app.use("/api", requireOrganization());
   
+  // ONBOARDING ROUTES (authenticated but accessible during onboarding)
+  // Get current onboarding status
+  app.get("/api/onboarding/status", authenticateUser, async (req, res) => {
+    try {
+      if (!req.userId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({
+        status: organization.onboardingStatus || 'not_started',
+        currentStep: organization.onboardingCurrentStep,
+        completedSteps: {
+          workspace: organization.onboardingWorkspaceCompleted || false,
+          billing: organization.onboardingBillingCompleted || false,
+          roles: organization.onboardingRolesCompleted || false,
+          values: organization.onboardingValuesCompleted || false,
+          members: organization.onboardingMembersCompleted || false,
+          settings: organization.onboardingSettingsCompleted || false
+        },
+        completedAt: organization.onboardingCompletedAt
+      });
+    } catch (error) {
+      console.error("Error getting onboarding status:", error);
+      res.status(500).json({ message: "Failed to get onboarding status" });
+    }
+  });
+  
+  // Update onboarding step completion
+  app.post("/api/onboarding/complete-step", authenticateUser, requireRole("admin"), async (req, res) => {
+    try {
+      const { step } = req.body;
+      const validSteps = ['workspace', 'billing', 'roles', 'values', 'members', 'settings'];
+      
+      if (!validSteps.includes(step)) {
+        return res.status(400).json({ message: "Invalid step" });
+      }
+      
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Build update object
+      const updateData: any = {
+        onboardingCurrentStep: step
+      };
+      
+      // Mark the specific step as completed
+      switch(step) {
+        case 'workspace':
+          updateData.onboardingWorkspaceCompleted = true;
+          updateData.onboardingStatus = 'in_progress';
+          break;
+        case 'billing':
+          updateData.onboardingBillingCompleted = true;
+          break;
+        case 'roles':
+          updateData.onboardingRolesCompleted = true;
+          break;
+        case 'values':
+          updateData.onboardingValuesCompleted = true;
+          break;
+        case 'members':
+          updateData.onboardingMembersCompleted = true;
+          break;
+        case 'settings':
+          updateData.onboardingSettingsCompleted = true;
+          // Check if all steps are complete
+          if (organization.onboardingWorkspaceCompleted && 
+              organization.onboardingBillingCompleted && 
+              organization.onboardingRolesCompleted && 
+              organization.onboardingValuesCompleted && 
+              organization.onboardingMembersCompleted) {
+            updateData.onboardingStatus = 'completed';
+            updateData.onboardingCompletedAt = new Date();
+          }
+          break;
+      }
+      
+      const updated = await storage.updateOrganization(req.orgId, updateData);
+      if (!updated) {
+        return res.status(500).json({ message: "Failed to update onboarding status" });
+      }
+      
+      res.json({ 
+        message: `Step ${step} completed`,
+        status: updated.onboardingStatus,
+        currentStep: updated.onboardingCurrentStep
+      });
+    } catch (error) {
+      console.error("Error completing onboarding step:", error);
+      res.status(500).json({ message: "Failed to complete onboarding step" });
+    }
+  });
+  
+  // Complete entire onboarding
+  app.post("/api/onboarding/complete", authenticateUser, requireRole("admin"), async (req, res) => {
+    try {
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Mark all steps as completed and set status
+      const updated = await storage.updateOrganization(req.orgId, {
+        onboardingStatus: 'completed',
+        onboardingCompletedAt: new Date(),
+        onboardingWorkspaceCompleted: true,
+        onboardingBillingCompleted: true,
+        onboardingRolesCompleted: true,
+        onboardingValuesCompleted: true,
+        onboardingMembersCompleted: true,
+        onboardingSettingsCompleted: true
+      });
+      
+      if (!updated) {
+        return res.status(500).json({ message: "Failed to complete onboarding" });
+      }
+      
+      res.json({ 
+        message: "Onboarding completed successfully",
+        status: 'completed',
+        completedAt: updated.onboardingCompletedAt
+      });
+    } catch (error) {
+      console.error("Error completing onboarding:", error);
+      res.status(500).json({ message: "Failed to complete onboarding" });
+    }
+  });
+  
+  // Create Stripe checkout session for billing step
+  app.post("/api/onboarding/create-checkout", authenticateUser, requireRole("admin"), async (req, res) => {
+    try {
+      if (!stripe) {
+        return res.status(503).json({ message: "Payment processing is not configured" });
+      }
+      
+      const { priceId, successUrl, cancelUrl } = req.body;
+      
+      if (!priceId) {
+        return res.status(400).json({ message: "Price ID is required" });
+      }
+      
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Create or get Stripe customer
+      let stripeCustomerId = organization.stripeCustomerId;
+      if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          name: organization.name,
+          metadata: {
+            organizationId: organization.id
+          }
+        });
+        stripeCustomerId = customer.id;
+        
+        // Save customer ID
+        await storage.updateOrganization(req.orgId, {
+          stripeCustomerId
+        });
+      }
+      
+      // Create checkout session
+      const session = await stripe.checkout.sessions.create({
+        customer: stripeCustomerId,
+        payment_method_types: ['card'],
+        line_items: [
+          {
+            price: priceId,
+            quantity: 1
+          }
+        ],
+        mode: 'subscription',
+        success_url: successUrl || `${req.headers.origin}/onboarding?step=billing&success=true`,
+        cancel_url: cancelUrl || `${req.headers.origin}/onboarding?step=billing&canceled=true`,
+        metadata: {
+          organizationId: organization.id
+        }
+      });
+      
+      res.json({ checkoutUrl: session.url });
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+  
   // PUBLIC BUSINESS SIGNUP ROUTES (no authentication required)
   // Get available business plans
   app.get("/api/business/plans", async (req, res) => {
