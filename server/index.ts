@@ -101,10 +101,14 @@ const sessionStore = new PgSession({
   }
 });
 
-// Session configuration with proper Replit support
+// Session configuration with proper production support
 const isReplit = !!process.env.REPL_SLUG;
 const isProduction = process.env.NODE_ENV === 'production';
 const isSecureEnvironment = isProduction || isReplit;
+
+// For production, we need SameSite=None to work with OAuth redirects
+// This is critical for maintaining sessions across the OAuth flow
+const sameSiteValue = isProduction || isReplit ? 'none' : 'lax';
 
 app.use(session({
   store: sessionStore,
@@ -112,12 +116,12 @@ app.use(session({
   resave: false,
   saveUninitialized: true, // Allow creating sessions for OAuth state storage
   name: 'connect.sid',
-  proxy: true, // Trust proxy for Replit's TLS terminator
+  proxy: true, // Trust proxy for production TLS terminator
   cookie: {
-    secure: isSecureEnvironment, // Use secure for production or Replit environment
+    secure: isSecureEnvironment, // Required when sameSite is 'none'
     httpOnly: true,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    sameSite: isReplit ? 'none' : 'lax', // Use 'none' for Replit cross-site OAuth, 'lax' for local dev
+    sameSite: sameSiteValue, // Must be 'none' for OAuth to work in production
     domain: undefined // Let browser set domain automatically
   }
 }));
