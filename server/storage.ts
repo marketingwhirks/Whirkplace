@@ -8,6 +8,7 @@ import {
   type Shoutout, type InsertShoutout,
   type Vacation, type InsertVacation,
   type Organization, type InsertOrganization,
+  type PartnerFirm, type InsertPartnerFirm,
   type OneOnOne, type InsertOneOnOne,
   type KraTemplate, type InsertKraTemplate,
   type UserKra, type InsertUserKra,
@@ -26,7 +27,7 @@ import {
   type DiscountCodeUsage, type InsertDiscountCodeUsage,
   type DashboardConfig, type InsertDashboardConfig,
   type DashboardWidgetTemplate, type InsertDashboardWidgetTemplate,
-  users, teams, checkins, questions, wins, comments, shoutouts, vacations, organizations,
+  users, teams, checkins, questions, wins, comments, shoutouts, vacations, organizations, partnerFirms,
   oneOnOnes, kraTemplates, userKras, actionItems, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
@@ -296,6 +297,32 @@ export interface IStorage {
   createDashboardWidgetTemplate(organizationId: string, template: InsertDashboardWidgetTemplate): Promise<DashboardWidgetTemplate>;
   updateDashboardWidgetTemplate(organizationId: string, id: string, template: Partial<InsertDashboardWidgetTemplate>): Promise<DashboardWidgetTemplate | undefined>;
   deleteDashboardWidgetTemplate(organizationId: string, id: string): Promise<boolean>;
+
+  // Partner Firm Management Methods
+  getAllPartnerFirms(): Promise<PartnerFirm[]>;
+  getPartnerFirm(id: string): Promise<PartnerFirm | undefined>;
+  getPartnerFirmBySlug(slug: string): Promise<PartnerFirm | undefined>;
+  createPartnerFirm(partnerFirm: InsertPartnerFirm): Promise<PartnerFirm>;
+  updatePartnerFirm(id: string, partnerFirm: Partial<InsertPartnerFirm>): Promise<PartnerFirm | undefined>;
+  deletePartnerFirm(id: string): Promise<boolean>;
+  
+  // Partner-Organization relationships
+  getPartnerOrganizations(partnerId: string): Promise<Organization[]>;
+  attachOrganizationToPartner(partnerId: string, organizationId: string): Promise<Organization | undefined>;
+  detachOrganizationFromPartner(organizationId: string): Promise<Organization | undefined>;
+  promoteOrganizationToPartner(organizationId: string, partnerConfig: InsertPartnerFirm): Promise<PartnerFirm>;
+  
+  // Partner User Management
+  getPartnerUsers(partnerId: string, includeInactive?: boolean): Promise<User[]>;
+  moveUserWithinPartner(partnerId: string, userId: string, targetOrganizationId: string): Promise<User | undefined>;
+  
+  // Partner Statistics
+  getPartnerStats(partnerId: string): Promise<{ 
+    totalOrganizations: number; 
+    totalUsers: number; 
+    activeUsers: number;
+    homeOrganization?: Organization;
+  }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -3648,6 +3675,232 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
   }
+
+  // Partner Firm Management Method Implementations
+  async getAllPartnerFirms(): Promise<PartnerFirm[]> {
+    try {
+      return await db.select().from(partnerFirms).orderBy(partnerFirms.name);
+    } catch (error) {
+      console.error("Failed to fetch partner firms:", error);
+      throw error;
+    }
+  }
+
+  async getPartnerFirm(id: string): Promise<PartnerFirm | undefined> {
+    try {
+      const [partner] = await db.select().from(partnerFirms).where(eq(partnerFirms.id, id));
+      return partner || undefined;
+    } catch (error) {
+      console.error("Failed to fetch partner firm:", error);
+      throw error;
+    }
+  }
+
+  async getPartnerFirmBySlug(slug: string): Promise<PartnerFirm | undefined> {
+    try {
+      const [partner] = await db.select().from(partnerFirms).where(eq(partnerFirms.slug, slug));
+      return partner || undefined;
+    } catch (error) {
+      console.error("Failed to fetch partner firm by slug:", error);
+      throw error;
+    }
+  }
+
+  async createPartnerFirm(partnerFirm: InsertPartnerFirm): Promise<PartnerFirm> {
+    try {
+      const [created] = await db.insert(partnerFirms).values(partnerFirm).returning();
+      return created;
+    } catch (error) {
+      console.error("Failed to create partner firm:", error);
+      throw error;
+    }
+  }
+
+  async updatePartnerFirm(id: string, partnerFirm: Partial<InsertPartnerFirm>): Promise<PartnerFirm | undefined> {
+    try {
+      const [updated] = await db.update(partnerFirms)
+        .set(partnerFirm)
+        .where(eq(partnerFirms.id, id))
+        .returning();
+      return updated || undefined;
+    } catch (error) {
+      console.error("Failed to update partner firm:", error);
+      throw error;
+    }
+  }
+
+  async deletePartnerFirm(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(partnerFirms).where(eq(partnerFirms.id, id));
+      return true;
+    } catch (error) {
+      console.error("Failed to delete partner firm:", error);
+      throw error;
+    }
+  }
+
+  // Partner-Organization relationship implementations
+  async getPartnerOrganizations(partnerId: string): Promise<Organization[]> {
+    try {
+      return await db.select()
+        .from(organizations)
+        .where(eq(organizations.partnerFirmId, partnerId))
+        .orderBy(organizations.name);
+    } catch (error) {
+      console.error("Failed to fetch partner organizations:", error);
+      throw error;
+    }
+  }
+
+  async attachOrganizationToPartner(partnerId: string, organizationId: string): Promise<Organization | undefined> {
+    try {
+      const [updated] = await db.update(organizations)
+        .set({ partnerFirmId: partnerId })
+        .where(eq(organizations.id, organizationId))
+        .returning();
+      return updated || undefined;
+    } catch (error) {
+      console.error("Failed to attach organization to partner:", error);
+      throw error;
+    }
+  }
+
+  async detachOrganizationFromPartner(organizationId: string): Promise<Organization | undefined> {
+    try {
+      const [updated] = await db.update(organizations)
+        .set({ partnerFirmId: null })
+        .where(eq(organizations.id, organizationId))
+        .returning();
+      return updated || undefined;
+    } catch (error) {
+      console.error("Failed to detach organization from partner:", error);
+      throw error;
+    }
+  }
+
+  async promoteOrganizationToPartner(organizationId: string, partnerConfig: InsertPartnerFirm): Promise<PartnerFirm> {
+    try {
+      // Create the partner firm
+      const partner = await this.createPartnerFirm({
+        ...partnerConfig,
+        homeOrganizationId: organizationId
+      });
+
+      // Attach the organization to the partner
+      await this.attachOrganizationToPartner(partner.id, organizationId);
+
+      // Update organization plan to partner
+      await this.updateOrganization(organizationId, { plan: 'partner' });
+
+      return partner;
+    } catch (error) {
+      console.error("Failed to promote organization to partner:", error);
+      throw error;
+    }
+  }
+
+  // Partner User Management implementations
+  async getPartnerUsers(partnerId: string, includeInactive: boolean = false): Promise<User[]> {
+    try {
+      const partnerOrgs = await this.getPartnerOrganizations(partnerId);
+      const orgIds = partnerOrgs.map(org => org.id);
+      
+      if (orgIds.length === 0) return [];
+      
+      let query = db.select()
+        .from(users)
+        .where(inArray(users.organizationId, orgIds));
+        
+      if (!includeInactive) {
+        query = query.where(and(
+          inArray(users.organizationId, orgIds),
+          eq(users.isActive, true)
+        ));
+      }
+      
+      return await query.orderBy(users.name);
+    } catch (error) {
+      console.error("Failed to fetch partner users:", error);
+      throw error;
+    }
+  }
+
+  async moveUserWithinPartner(partnerId: string, userId: string, targetOrganizationId: string): Promise<User | undefined> {
+    try {
+      // Verify target organization belongs to partner
+      const partnerOrgs = await this.getPartnerOrganizations(partnerId);
+      const isValidTarget = partnerOrgs.some(org => org.id === targetOrganizationId);
+      
+      if (!isValidTarget) {
+        throw new Error("Target organization does not belong to this partner");
+      }
+      
+      // Move the user
+      const [updated] = await db.update(users)
+        .set({ organizationId: targetOrganizationId })
+        .where(eq(users.id, userId))
+        .returning();
+        
+      return updated || undefined;
+    } catch (error) {
+      console.error("Failed to move user within partner:", error);
+      throw error;
+    }
+  }
+
+  // Partner Statistics implementations
+  async getPartnerStats(partnerId: string): Promise<{ 
+    totalOrganizations: number; 
+    totalUsers: number; 
+    activeUsers: number;
+    homeOrganization?: Organization;
+  }> {
+    try {
+      // Get partner details
+      const partner = await this.getPartnerFirm(partnerId);
+      
+      // Get partner organizations
+      const partnerOrgs = await this.getPartnerOrganizations(partnerId);
+      const orgIds = partnerOrgs.map(org => org.id);
+      
+      // Get user counts
+      let totalUsers = 0;
+      let activeUsers = 0;
+      
+      if (orgIds.length > 0) {
+        const [totalResult] = await db
+          .select({ count: count() })
+          .from(users)
+          .where(inArray(users.organizationId, orgIds));
+        totalUsers = totalResult?.count || 0;
+        
+        const [activeResult] = await db
+          .select({ count: count() })
+          .from(users)
+          .where(and(
+            inArray(users.organizationId, orgIds),
+            eq(users.isActive, true)
+          ));
+        activeUsers = activeResult?.count || 0;
+      }
+      
+      // Get home organization
+      let homeOrganization;
+      if (partner?.homeOrganizationId) {
+        homeOrganization = await this.getOrganization(partner.homeOrganizationId);
+      }
+      
+      return {
+        totalOrganizations: partnerOrgs.length,
+        totalUsers,
+        activeUsers,
+        homeOrganization
+      };
+    } catch (error) {
+      console.error("Failed to fetch partner stats:", error);
+      throw error;
+    }
+  }
 }
 
 export class MemStorage implements IStorage {
@@ -3660,6 +3913,7 @@ export class MemStorage implements IStorage {
   private shoutoutsMap: Map<string, Shoutout> = new Map();
   private vacations: Map<string, Vacation> = new Map();
   private organizations: Map<string, Organization> = new Map();
+  private partnerFirms: Map<string, PartnerFirm> = new Map();
   private dashboardConfigs: Map<string, DashboardConfig> = new Map();
   private dashboardWidgetTemplates: Map<string, DashboardWidgetTemplate> = new Map();
   private analyticsCache = new AnalyticsCache();
@@ -5413,6 +5667,137 @@ export class MemStorage implements IStorage {
     if (!existing || existing.organizationId !== organizationId) return false;
     
     return this.dashboardWidgetTemplates.delete(id);
+  }
+
+  // Partner Firm Management Methods - MemStorage stubs
+  async getAllPartnerFirms(): Promise<PartnerFirm[]> {
+    return Array.from(this.partnerFirms.values());
+  }
+
+  async getPartnerFirm(id: string): Promise<PartnerFirm | undefined> {
+    return this.partnerFirms.get(id);
+  }
+
+  async getPartnerFirmBySlug(slug: string): Promise<PartnerFirm | undefined> {
+    return Array.from(this.partnerFirms.values()).find(p => p.slug === slug);
+  }
+
+  async createPartnerFirm(partnerFirm: InsertPartnerFirm): Promise<PartnerFirm> {
+    const newPartner: PartnerFirm = {
+      id: randomUUID(),
+      ...partnerFirm,
+      createdAt: new Date(),
+    };
+    this.partnerFirms.set(newPartner.id, newPartner);
+    return newPartner;
+  }
+
+  async updatePartnerFirm(id: string, partnerFirm: Partial<InsertPartnerFirm>): Promise<PartnerFirm | undefined> {
+    const existing = this.partnerFirms.get(id);
+    if (!existing) return undefined;
+
+    const updated: PartnerFirm = {
+      ...existing,
+      ...partnerFirm,
+    };
+    this.partnerFirms.set(id, updated);
+    return updated;
+  }
+
+  async deletePartnerFirm(id: string): Promise<boolean> {
+    return this.partnerFirms.delete(id);
+  }
+
+  async getPartnerOrganizations(partnerId: string): Promise<Organization[]> {
+    return Array.from(this.organizations.values())
+      .filter(org => org.partnerFirmId === partnerId);
+  }
+
+  async attachOrganizationToPartner(partnerId: string, organizationId: string): Promise<Organization | undefined> {
+    const org = this.organizations.get(organizationId);
+    if (!org) return undefined;
+
+    const updated: Organization = {
+      ...org,
+      partnerFirmId: partnerId,
+    };
+    this.organizations.set(organizationId, updated);
+    return updated;
+  }
+
+  async detachOrganizationFromPartner(organizationId: string): Promise<Organization | undefined> {
+    const org = this.organizations.get(organizationId);
+    if (!org) return undefined;
+
+    const updated: Organization = {
+      ...org,
+      partnerFirmId: null,
+    };
+    this.organizations.set(organizationId, updated);
+    return updated;
+  }
+
+  async promoteOrganizationToPartner(organizationId: string, partnerConfig: InsertPartnerFirm): Promise<PartnerFirm> {
+    const partner = await this.createPartnerFirm({
+      ...partnerConfig,
+      homeOrganizationId: organizationId,
+    });
+
+    await this.attachOrganizationToPartner(partner.id, organizationId);
+    await this.updateOrganization(organizationId, { plan: 'partner' });
+
+    return partner;
+  }
+
+  async getPartnerUsers(partnerId: string, includeInactive: boolean = false): Promise<User[]> {
+    const partnerOrgs = await this.getPartnerOrganizations(partnerId);
+    const orgIds = new Set(partnerOrgs.map(org => org.id));
+    
+    return Array.from(this.users.values())
+      .filter(user => orgIds.has(user.organizationId) && (includeInactive || user.isActive));
+  }
+
+  async moveUserWithinPartner(partnerId: string, userId: string, targetOrganizationId: string): Promise<User | undefined> {
+    const partnerOrgs = await this.getPartnerOrganizations(partnerId);
+    const isValidTarget = partnerOrgs.some(org => org.id === targetOrganizationId);
+    
+    if (!isValidTarget) {
+      throw new Error("Target organization does not belong to this partner");
+    }
+    
+    const user = this.users.get(userId);
+    if (!user) return undefined;
+
+    const updated: User = {
+      ...user,
+      organizationId: targetOrganizationId,
+    };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
+  async getPartnerStats(partnerId: string): Promise<{ 
+    totalOrganizations: number; 
+    totalUsers: number; 
+    activeUsers: number;
+    homeOrganization?: Organization;
+  }> {
+    const partner = await this.getPartnerFirm(partnerId);
+    const partnerOrgs = await this.getPartnerOrganizations(partnerId);
+    const partnerUsers = await this.getPartnerUsers(partnerId, true);
+    const activeUsers = partnerUsers.filter(u => u.isActive);
+    
+    let homeOrganization;
+    if (partner?.homeOrganizationId) {
+      homeOrganization = await this.getOrganization(partner.homeOrganizationId);
+    }
+
+    return {
+      totalOrganizations: partnerOrgs.length,
+      totalUsers: partnerUsers.length,
+      activeUsers: activeUsers.length,
+      homeOrganization,
+    };
   }
 }
 
