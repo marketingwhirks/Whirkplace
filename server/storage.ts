@@ -1505,6 +1505,74 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
+  // Notifications
+  async getNotification(organizationId: string, id: string): Promise<Notification | undefined> {
+    const [notification] = await db.select().from(notifications).where(
+      and(eq(notifications.id, id), eq(notifications.organizationId, organizationId))
+    );
+    return notification;
+  }
+
+  async createNotification(organizationId: string, notification: InsertNotification): Promise<Notification> {
+    const [created] = await db
+      .insert(notifications)
+      .values({ ...notification, organizationId })
+      .returning();
+    return created;
+  }
+
+  async markNotificationAsRead(organizationId: string, id: string): Promise<Notification | undefined> {
+    const [updated] = await db
+      .update(notifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(and(eq(notifications.id, id), eq(notifications.organizationId, organizationId)))
+      .returning();
+    return updated;
+  }
+
+  async markAllNotificationsAsRead(organizationId: string, userId: string): Promise<number> {
+    const result = await db
+      .update(notifications)
+      .set({ isRead: true, readAt: new Date() })
+      .where(and(
+        eq(notifications.organizationId, organizationId),
+        eq(notifications.userId, userId),
+        eq(notifications.isRead, false)
+      ));
+    return result.rowCount ?? 0;
+  }
+
+  async deleteNotification(organizationId: string, id: string): Promise<boolean> {
+    const result = await db.delete(notifications).where(
+      and(eq(notifications.id, id), eq(notifications.organizationId, organizationId))
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getNotificationsByUser(organizationId: string, userId: string, limit = 50): Promise<Notification[]> {
+    return await db
+      .select()
+      .from(notifications)
+      .where(and(
+        eq(notifications.organizationId, organizationId),
+        eq(notifications.userId, userId)
+      ))
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit);
+  }
+
+  async getUnreadNotificationCount(organizationId: string, userId: string): Promise<number> {
+    const [result] = await db
+      .select({ count: count() })
+      .from(notifications)
+      .where(and(
+        eq(notifications.organizationId, organizationId),
+        eq(notifications.userId, userId),
+        eq(notifications.isRead, false)
+      ));
+    return result?.count ?? 0;
+  }
+
   // Helper methods for aggregation strategy
   private shouldUseAggregates(from?: Date, to?: Date, period?: string): boolean {
     // Check feature flag first
@@ -4932,6 +5000,70 @@ export class MemStorage implements IStorage {
       .filter(shoutoutRecord => shoutoutRecord.isPublic && shoutoutRecord.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
+  }
+
+  // Notifications - MemStorage implementation
+  private notifications: Map<string, Notification> = new Map();
+
+  async getNotification(organizationId: string, id: string): Promise<Notification | undefined> {
+    const notification = this.notifications.get(id);
+    return notification && notification.organizationId === organizationId ? notification : undefined;
+  }
+
+  async createNotification(organizationId: string, notification: InsertNotification): Promise<Notification> {
+    const id = randomUUID();
+    const newNotification: Notification = {
+      ...notification,
+      id,
+      organizationId,
+      isRead: notification.isRead ?? false,
+      readAt: null,
+      createdAt: new Date(),
+    };
+    this.notifications.set(id, newNotification);
+    return newNotification;
+  }
+
+  async markNotificationAsRead(organizationId: string, id: string): Promise<Notification | undefined> {
+    const notification = this.notifications.get(id);
+    if (!notification || notification.organizationId !== organizationId) return undefined;
+    
+    notification.isRead = true;
+    notification.readAt = new Date();
+    return notification;
+  }
+
+  async markAllNotificationsAsRead(organizationId: string, userId: string): Promise<number> {
+    let count = 0;
+    for (const notification of this.notifications.values()) {
+      if (notification.organizationId === organizationId && 
+          notification.userId === userId && 
+          !notification.isRead) {
+        notification.isRead = true;
+        notification.readAt = new Date();
+        count++;
+      }
+    }
+    return count;
+  }
+
+  async deleteNotification(organizationId: string, id: string): Promise<boolean> {
+    const notification = this.notifications.get(id);
+    if (!notification || notification.organizationId !== organizationId) return false;
+    return this.notifications.delete(id);
+  }
+
+  async getNotificationsByUser(organizationId: string, userId: string, limit = 50): Promise<Notification[]> {
+    return Array.from(this.notifications.values())
+      .filter(n => n.organizationId === organizationId && n.userId === userId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+      .slice(0, limit);
+  }
+
+  async getUnreadNotificationCount(organizationId: string, userId: string): Promise<number> {
+    return Array.from(this.notifications.values())
+      .filter(n => n.organizationId === organizationId && n.userId === userId && !n.isRead)
+      .length;
   }
 
   // Analytics helper methods

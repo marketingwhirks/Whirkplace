@@ -3452,6 +3452,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Notifications
+  app.get("/api/notifications", requireAuth(), async (req, res) => {
+    try {
+      const { limit } = req.query;
+      const notifications = await storage.getNotificationsByUser(
+        req.orgId, 
+        req.userId!, 
+        limit ? parseInt(limit as string) : undefined
+      );
+      res.json(notifications);
+    } catch (error) {
+      console.error("Failed to fetch notifications:", error);
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.get("/api/notifications/unread-count", requireAuth(), async (req, res) => {
+    try {
+      const count = await storage.getUnreadNotificationCount(req.orgId, req.userId!);
+      res.json({ count });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch unread count" });
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", requireAuth(), async (req, res) => {
+    try {
+      // Verify the notification belongs to the current user
+      const notification = await storage.getNotification(req.orgId, req.params.id);
+      if (!notification) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      if (notification.userId !== req.userId) {
+        return res.status(403).json({ message: "Cannot mark another user's notification as read" });
+      }
+
+      const updated = await storage.markNotificationAsRead(req.orgId, req.params.id);
+      if (!updated) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to mark notification as read" });
+    }
+  });
+
+  app.patch("/api/notifications/read-all", requireAuth(), async (req, res) => {
+    try {
+      const count = await storage.markAllNotificationsAsRead(req.orgId, req.userId!);
+      res.json({ count, message: `Marked ${count} notifications as read` });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to mark all notifications as read" });
+    }
+  });
+
+  app.delete("/api/notifications/:id", requireAuth(), async (req, res) => {
+    try {
+      // Verify the notification belongs to the current user
+      const notification = await storage.getNotification(req.orgId, req.params.id);
+      if (!notification) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      if (notification.userId !== req.userId) {
+        return res.status(403).json({ message: "Cannot delete another user's notification" });
+      }
+
+      const deleted = await storage.deleteNotification(req.orgId, req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Notification not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete notification" });
+    }
+  });
+
   // User-specific shoutouts endpoint
   app.get("/api/users/:id/shoutouts", async (req, res) => {
     try {
