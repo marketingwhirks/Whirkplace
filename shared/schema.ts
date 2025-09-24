@@ -167,8 +167,10 @@ export const users = pgTable("users", {
   usernameOrgIdx: unique("users_username_org_unique").on(table.organizationId, table.username),
   // Unique email per organization  
   emailOrgIdx: unique("users_email_org_unique").on(table.organizationId, table.email),
-  // Unique index on Slack user ID for fast lookups
-  slackUserIdIdx: unique("users_slack_user_id_unique").on(table.slackUserId),
+  // Unique Slack user ID per organization (allows same Slack ID in different orgs)
+  slackUserOrgIdx: unique("users_org_slack_unique").on(table.organizationId, table.slackUserId),
+  // Index on Slack user ID for fast lookups
+  slackUserIdIdx: index("users_slack_user_id_idx").on(table.slackUserId),
   // Index on Slack username for tagging functionality
   slackUsernameIdx: index("users_slack_username_idx").on(table.slackUsername),
   // Composite index for workspace-based queries
