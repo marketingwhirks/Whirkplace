@@ -573,14 +573,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // ALWAYS check if user should be super admin based on their email
         // This ensures super admins maintain their status regardless of which org they auth to
         const userEmail = (user.email || user.user?.email || "").toLowerCase();
-        const allowedSuperAdminEmails = [
-          'mpatrick@patrickaccounting.com'  // Matthew Patrick - specific email
-        ];
-        const allowedSuperAdminDomains = ['whirkplace.com']; // Only whirkplace.com domain gets automatic super admin
+        // Only whirkplace.com domain gets automatic super admin
+        const allowedSuperAdminDomains = ['whirkplace.com'];
         
-        // Check if this is a specific allowed email OR from whirkplace.com domain
+        // Check if user is from whirkplace.com domain
         const isAllowedSuperAdmin = 
-          allowedSuperAdminEmails.includes(userEmail) ||
           allowedSuperAdminDomains.some(domain => userEmail.endsWith(`@${domain}`));
         
         console.log('🔐 Super admin check for Slack OAuth:');
@@ -768,13 +765,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // CRITICAL: Check if user should be super admin based on email
           const userEmail = (user.email || user.user?.email || existingUser.email || "").toLowerCase();
-          const allowedSuperAdminEmails = [
-            'mpatrick@patrickaccounting.com'  // Matthew Patrick - specific email
-          ];
+          // Only whirkplace.com domain gets automatic super admin
           const allowedSuperAdminDomains = ['whirkplace.com'];
           
           const shouldBeSuperAdmin = 
-            allowedSuperAdminEmails.includes(userEmail) ||
             allowedSuperAdminDomains.some(domain => userEmail.endsWith(`@${domain}`));
           
           // Update super admin status if they meet the criteria OR preserve existing super admin status
@@ -813,13 +807,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Check if new user should be super admin based on their email
           const newUserEmail = (user.email || user.user?.email || `${slackUserId}@slack.local`).toLowerCase();
-          const allowedSuperAdminEmails = [
-            'mpatrick@patrickaccounting.com'  // Matthew Patrick - specific email
-          ];
+          // Only whirkplace.com domain gets automatic super admin
           const allowedSuperAdminDomains = ['whirkplace.com'];
           
           const shouldBeSuperAdmin = 
-            allowedSuperAdminEmails.includes(newUserEmail) ||
             allowedSuperAdminDomains.some(domain => newUserEmail.endsWith(`@${domain}`));
           
           // Use the email-based check OR the org-based check (from earlier in the function)

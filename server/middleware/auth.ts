@@ -113,16 +113,16 @@ export function validateAuthConfiguration() {
   
   // SECURITY: Require strong backdoor credentials in development if backdoor auth is enabled
   if (isDevelopmentAuthEnabled()) {
-    const backdoorUser = process.env.BACKDOOR_USER || "Matthew";
-    const backdoorKey = process.env.BACKDOOR_KEY || "Dev123";
+    const backdoorUser = process.env.BACKDOOR_USER;
+    const backdoorKey = process.env.BACKDOOR_KEY;
     
-    // Warn about default credentials (but don't block - this is development)
-    if (backdoorUser === "Matthew" && backdoorKey === "Dev123") {
-      console.warn('⚠️  WARNING: Using default backdoor credentials. Set BACKDOOR_USER and BACKDOOR_KEY environment variables for stronger security.');
+    // Require credentials to be set
+    if (!backdoorUser || !backdoorKey) {
+      console.warn('⚠️  WARNING: Backdoor authentication disabled. Set BACKDOOR_USER and BACKDOOR_KEY environment variables to enable.');
+    } else {
+      // Log backdoor configuration for debugging
+      console.log('🔓 Development authentication enabled with backdoor access');
     }
-    
-    // Log backdoor configuration for debugging
-    console.log('🔓 Development authentication enabled with backdoor access');
   }
   
   console.log('✅ Authentication configuration validated');
@@ -144,10 +144,10 @@ function logDevAuthUsage(method: string, details: string) {
  * Helper function to ensure backdoor admin user exists for development
  * 
  * SECURITY: This function is only available in development environments
- * Creates/updates Matthew Patrick's user account and deactivates legacy backdoor-admin user
+ * Creates/updates a backdoor user account based on environment variables
  * 
  * @param organizationId - The organization ID to create the user in
- * @returns Promise<User> - Matthew Patrick's user account
+ * @returns Promise<User> - The backdoor user account
  */
 export async function ensureBackdoorUser(organizationId: string): Promise<User> {
   // SECURITY: Only allow in development environment
@@ -155,11 +155,15 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
     throw new Error("Backdoor user creation not allowed in production");
   }
 
-  // Get backdoor profile from environment variables
-  const profileName = process.env.BACKDOOR_PROFILE_NAME || "Matthew Patrick";
-  const profileEmail = process.env.BACKDOOR_PROFILE_EMAIL || "mpatrick@patrickaccounting.com";
-  const profileUsername = process.env.BACKDOOR_PROFILE_USERNAME || "mpatrick";
+  // Get backdoor profile from environment variables - require them to be set
+  const profileName = process.env.BACKDOOR_PROFILE_NAME;
+  const profileEmail = process.env.BACKDOOR_PROFILE_EMAIL;
+  const profileUsername = process.env.BACKDOOR_PROFILE_USERNAME;
   const profileRole = process.env.BACKDOOR_PROFILE_ROLE || "admin";
+
+  if (!profileName || !profileEmail || !profileUsername) {
+    throw new Error("Backdoor user configuration missing. Please set BACKDOOR_PROFILE_NAME, BACKDOOR_PROFILE_EMAIL, and BACKDOOR_PROFILE_USERNAME environment variables");
+  }
 
   // First, deactivate the legacy backdoor-admin user if it exists
   try {
@@ -175,32 +179,32 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
     console.log("No legacy backdoor-admin user found or error deactivating:", error);
   }
 
-  // Check if Matthew's user already exists by username or email
-  let matthewUser = await storage.getUserByUsername(organizationId, profileUsername);
-  if (!matthewUser) {
-    matthewUser = await storage.getUserByEmail(organizationId, profileEmail);
+  // Check if backdoor user already exists by username or email
+  let backdoorUser = await storage.getUserByUsername(organizationId, profileUsername);
+  if (!backdoorUser) {
+    backdoorUser = await storage.getUserByEmail(organizationId, profileEmail);
   }
 
-  if (matthewUser) {
+  if (backdoorUser) {
     // Update existing user with latest profile info
-    const updatedUser = await storage.updateUser(organizationId, matthewUser.id, {
+    const updatedUser = await storage.updateUser(organizationId, backdoorUser.id, {
       name: profileName,
       email: profileEmail,
       username: profileUsername,
       role: profileRole,
       isActive: true,
-      isSuperAdmin: true,  // Grant super admin privileges to Matthew Patrick
+      isSuperAdmin: true,  // Grant super admin privileges to backdoor user
       authProvider: 'local' as const,
     });
     
     if (!updatedUser) {
-      throw new Error("Failed to update Matthew Patrick's user account");
+      throw new Error("Failed to update backdoor user account");
     }
     
-    console.log(`Updated Matthew Patrick's backdoor user account: ${updatedUser.username}`);
+    console.log(`Updated backdoor user account: ${updatedUser.username}`);
     return updatedUser;
   } else {
-    // Create new user for Matthew Patrick
+    // Create new backdoor user
     const newUser = await storage.createUser(organizationId, {
       username: profileUsername,
       password: 'secure-random-password', // Not used for authentication, just required by schema
@@ -210,10 +214,10 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
       organizationId: organizationId,
       authProvider: 'local' as const,
       isActive: true,
-      isSuperAdmin: true,  // Grant super admin privileges to Matthew Patrick
+      isSuperAdmin: true,  // Grant super admin privileges to backdoor user
     });
     
-    console.log(`Created Matthew Patrick's backdoor user account: ${newUser.username}`);
+    console.log(`Created backdoor user account: ${newUser.username}`);
     return newUser;
   }
 }
