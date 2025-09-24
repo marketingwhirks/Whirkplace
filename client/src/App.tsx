@@ -29,6 +29,7 @@ import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import LandingPage from "@/pages/LandingPage";
 import PartnerPage from "@/pages/PartnerPage";
 import DevLogin from "@/pages/DevLogin";
+import SelectOrganizationPage from "@/pages/select-organization";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
@@ -56,6 +57,7 @@ function Router() {
             <Route path="/settings" component={Settings} />
             <Route path="/admin" component={Admin} />
             <Route path="/super-admin" component={SuperAdmin} />
+            <Route path="/select-organization" component={SelectOrganizationPage} />
             <Route path="/brand-guide" component={BrandGuideViewer} />
             <Route path="/theme-customizer" component={ThemeCustomizer} />
             <Route component={NotFound} />
