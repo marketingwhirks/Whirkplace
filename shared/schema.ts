@@ -127,6 +127,27 @@ export const organizations = pgTable("organizations", {
   // Theme Configuration - Custom branding for each organization
   themeConfig: jsonb("theme_config"), // JSON object storing CSS custom properties
   enableCustomTheme: boolean("enable_custom_theme").notNull().default(false),
+  // Onboarding Status Tracking
+  onboardingStatus: text("onboarding_status").notNull().default("not_started"), // not_started, in_progress, completed
+  onboardingCurrentStep: text("onboarding_current_step"), // workspace, billing, roles, values, members, settings
+  onboardingCompletedAt: timestamp("onboarding_completed_at"),
+  // Onboarding Step Completion Flags
+  onboardingWorkspaceCompleted: boolean("onboarding_workspace_completed").notNull().default(false),
+  onboardingBillingCompleted: boolean("onboarding_billing_completed").notNull().default(false),
+  onboardingRolesCompleted: boolean("onboarding_roles_completed").notNull().default(false),
+  onboardingValuesCompleted: boolean("onboarding_values_completed").notNull().default(false),
+  onboardingMembersCompleted: boolean("onboarding_members_completed").notNull().default(false),
+  onboardingSettingsCompleted: boolean("onboarding_settings_completed").notNull().default(false),
+  // Stripe Billing Information
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripeSubscriptionStatus: text("stripe_subscription_status"), // active, trialing, canceled, past_due, etc.
+  stripePriceId: text("stripe_price_id"), // Which price they're subscribed to
+  trialEndsAt: timestamp("trial_ends_at"),
+  // Organization Settings
+  timezone: text("timezone").notNull().default("America/Chicago"),
+  weeklyCheckInSchedule: text("weekly_check_in_schedule").notNull().default("friday"), // monday, tuesday, etc.
+  checkInReminderTime: text("check_in_reminder_time").notNull().default("09:00"), // 24-hour format
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
