@@ -7141,8 +7141,9 @@ Return the response as a JSON object with this structure:
           return res.status(401).json({ message: "Authentication required" });
         }
 
-        // Check if user is a super admin
-        if (!user.is_super_admin) {
+        // Check if user is a super admin (handle both field names)
+        if (!user.isSuperAdmin && !user.is_super_admin) {
+          console.log("Super admin check failed for user:", user.email, "isSuperAdmin:", user.isSuperAdmin, "is_super_admin:", user.is_super_admin);
           return res.status(403).json({ message: "Super admin access required" });
         }
 
