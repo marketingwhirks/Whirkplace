@@ -671,9 +671,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           authenticatedUser = await storage.createUser(organization.id, userData);
         } catch (error) {
-          console.error("Failed to create user from Slack:", error);
-          console.error("User creation attempted for email:", user.email || "unknown");
-          console.error("Full error details:", error instanceof Error ? error.message : error);
+          console.error("🔴 CRITICAL: Failed to create user from Slack:", error);
+          console.error("🔴 User creation attempted for email:", user.email || "unknown");
+          console.error("🔴 Full error details:", error instanceof Error ? error.message : error);
+          console.error("🔴 Error stack:", error instanceof Error ? error.stack : "No stack");
+          console.error("🔴 Organization ID:", organization.id);
+          console.error("🔴 User data attempted:", {
+            email: user.email,
+            name: displayName,
+            slackUserId: slackUserId
+          });
+          
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const errorType = error?.constructor?.name || 'UnknownError';
+          
           return res.status(500).send(`
             <!DOCTYPE html>
             <html>
@@ -684,11 +695,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
                   .error { color: #dc3545; }
                   button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+                  .debug { font-size: 0.9em; color: #666; margin-top: 20px; padding: 10px; background: #f5f5f5; border-radius: 4px; text-align: left; max-width: 600px; margin: 20px auto; word-wrap: break-word; }
                 </style>
               </head>
               <body>
                 <h1 class="error">❌ Account Creation Failed</h1>
-                <p>Failed to create your user account. Please contact support if this issue persists.</p>
+                <p>Failed to create your user account.</p>
+                <div class="debug">
+                  <strong>Debug Info:</strong><br>
+                  Error Type: ${errorType}<br>
+                  Error: ${errorMessage}<br>
+                  Email: ${user.email || 'unknown'}<br>
+                  Organization: ${organization.name || 'unknown'}
+                </div>
                 <button onclick="window.location.href='/'">Try Again</button>
               </body>
             </html>
