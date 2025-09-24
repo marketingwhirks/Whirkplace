@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { LogOut, User, Settings, AlertTriangle, HelpCircle, CheckCircle2, Lightbulb, MessageSquare } from "lucide-react";
+import { LogOut, User, Settings, AlertTriangle, HelpCircle, CheckCircle2, Lightbulb, MessageSquare, Shield } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -20,13 +20,18 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { queryClient } from "@/lib/queryClient";
 import { SupportReportForm } from "@/components/support/SupportReportForm";
 import { getHelpContent } from "@/lib/helpRegistry";
+import { useRoleSwitch } from "@/hooks/useViewAsRole";
+import RoleSwitcher from "@/components/admin/role-switcher";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export function UserProfile() {
   const { data: currentUser } = useCurrentUser();
   const { toast } = useToast();
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const [isSupportFormOpen, setIsSupportFormOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isRoleSwitcherOpen, setIsRoleSwitcherOpen] = useState(false);
+  const { canSwitchRoles } = useRoleSwitch();
   
   const helpContent = getHelpContent(location);
 
@@ -138,6 +143,16 @@ export function UserProfile() {
           <Settings className="mr-2 h-4 w-4" />
           <span>Settings</span>
         </DropdownMenuItem>
+        {canSwitchRoles && (
+          <DropdownMenuItem 
+            className="cursor-pointer"
+            data-testid="role-switcher-menu-item"
+            onClick={() => setIsRoleSwitcherOpen(true)}
+          >
+            <Shield className="mr-2 h-4 w-4" />
+            <span>Test as Role</span>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem 
           className="cursor-pointer"
           onClick={() => setIsHelpOpen(true)}
@@ -257,6 +272,20 @@ export function UserProfile() {
           </div>
         </SheetContent>
       </Sheet>
+      
+      {/* Role Switcher Dialog for Super Admins */}
+      {canSwitchRoles && (
+        <Dialog open={isRoleSwitcherOpen} onOpenChange={setIsRoleSwitcherOpen}>
+          <DialogContent className="max-w-lg" data-testid="dialog-role-switcher">
+            <DialogHeader>
+              <DialogTitle>Test as Different Role</DialogTitle>
+            </DialogHeader>
+            <div className="mt-4">
+              <RoleSwitcher />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </DropdownMenu>
   );
 }

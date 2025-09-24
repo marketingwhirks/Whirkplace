@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import RoleSwitcher from "@/components/admin/role-switcher";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -207,6 +208,9 @@ export default function SuperAdminPage() {
       </div>
       
       <div className="flex-1 overflow-auto p-6 space-y-6">
+        {/* Role Switcher for testing */}
+        <RoleSwitcher />
+        
         {/* System Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card data-testid="card-total-organizations">
