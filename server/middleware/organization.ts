@@ -36,7 +36,7 @@ export function resolveOrganization() {
       // Method 1: Use org query parameter (for development and explicit org selection)
       if (urlParam) {
         if (urlParam === 'default') {
-          organization = await storage.getOrganizationBySlug('default-org');
+          organization = await storage.getOrganizationBySlug('whirkplace');
         } else {
           organization = await storage.getOrganizationBySlug(urlParam);
         }
@@ -51,8 +51,8 @@ export function resolveOrganization() {
             host.startsWith('localhost') || 
             host.includes('.replit.') ||
             host.includes('.repl.co')) {
-          // Use the default organization for main domain
-          organization = await storage.getOrganizationBySlug('default-org');
+          // Use the enterprise organization for main domain
+          organization = await storage.getOrganizationBySlug('whirkplace');
           console.log(`🏠 Root domain (${host}) - using default org:`, organization ? 'found' : 'not found');
         } else {
           // Extract subdomain for company.whirkplace.com format
@@ -64,22 +64,23 @@ export function resolveOrganization() {
         }
       }
       
-      // Method 3: Fallback to default organization if none found
+      // Method 3: Fallback to enterprise organization if none found
       if (!organization) {
-        console.log('🔄 No organization found, trying default fallback...');
-        organization = await storage.getOrganizationBySlug('default-org');
+        console.log('🔄 No organization found, trying enterprise fallback...');
+        organization = await storage.getOrganizationBySlug('whirkplace');
         if (!organization) {
-          // Create default organization if it doesn't exist
-          console.log('🆕 Creating default organization...');
+          // Create enterprise organization if it doesn't exist
+          console.log('🆕 Creating enterprise organization...');
           organization = await storage.createOrganization({
-            name: "Whirkplace",
-            slug: "default-org",
+            id: "enterprise-whirkplace",
+            name: "Whirkplace Enterprise",
+            slug: "whirkplace",
             plan: "enterprise",
-            customValues: ["Innovation", "Teamwork", "Excellence"],
-            enableSlackIntegration: false,
-            enableMicrosoftAuth: false,
+            customValues: ["Own It", "Challenge It", "Team First", "Empathy for Others", "Passion for Our Purpose"],
+            enableSlackIntegration: true,
+            enableMicrosoftAuth: true,
           });
-          console.log('✅ Default organization created:', organization.name);
+          console.log('✅ Enterprise organization created:', organization.name);
         }
       }
       

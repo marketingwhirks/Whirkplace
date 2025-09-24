@@ -244,6 +244,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Local authentication login for super admin
+  app.post("/auth/local/login", requireOrganization(), async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ 
+          message: "Email and password are required" 
+        });
+      }
+      
+      // Get user by email
+      const user = await storage.getUserByEmail(req.orgId, email);
+      
+      if (!user) {
+        return res.status(401).json({ 
+          message: "Invalid email or password" 
+        });
+      }
+      
+      // Check if user has a password (local auth enabled)
+      if (!user.password) {
+        return res.status(401).json({ 
+          message: "Local authentication not enabled for this account" 
+        });
+      }
+      
+      // Verify password
+      const isValidPassword = await bcrypt.compare(password, user.password);
+      
+      if (!isValidPassword) {
+        return res.status(401).json({ 
+          message: "Invalid email or password" 
+        });
+      }
+      
+      // Check if user is active
+      if (!user.isActive) {
+        return res.status(401).json({ 
+          message: "Account is disabled" 
+        });
+      }
+      
+      // SECURITY: Regenerate session ID to prevent session fixation attacks
+      req.session.regenerate((regenerateErr) => {
+        if (regenerateErr) {
+          console.error('Failed to regenerate session:', regenerateErr);
+          return res.status(500).json({ message: "Session regeneration failed" });
+        }
+        
+        // Set session after regeneration
+        req.session.userId = user.id;
+        req.session.organizationId = req.orgId;
+        
+        // Save session before sending response to ensure persistence
+        req.session.save((err) => {
+          if (err) {
+            console.error('Failed to save session:', err);
+            return res.status(500).json({ message: "Session save failed" });
+          }
+          
+          console.log(`✅ Local login successful for ${user.name} (${user.email})`);
+          
+          res.json({ 
+            message: "Login successful", 
+            user: { 
+              id: user.id, 
+              name: user.name, 
+              email: user.email, 
+              role: user.role,
+              isSuperAdmin: user.is_super_admin || false
+            } 
+          });
+        });
+      });
+    } catch (error) {
+      console.error("Local login error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
   // Backward compatibility: redirect /auth to /login
   app.get("/auth", (req, res) => {
     res.redirect(301, "/login");

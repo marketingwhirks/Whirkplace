@@ -9,9 +9,8 @@ import type { User, Organization } from "@shared/schema";
  */
 
 /**
- * Ensure the default organization exists for development
- * This creates a default organization with ID "default-org" that's used as the
- * hardcoded organization ID in the organization middleware
+ * Ensure the enterprise organization exists for development
+ * This checks for the enterprise organization and returns it if it exists
  */
 export async function ensureDefaultOrganization(): Promise<Organization> {
   // SECURITY: Only allow in development environment
@@ -20,31 +19,31 @@ export async function ensureDefaultOrganization(): Promise<Organization> {
   }
 
   try {
-    // Check if default organization already exists
-    let defaultOrg = await storage.getOrganization("default-org");
+    // Check if enterprise organization already exists
+    let defaultOrg = await storage.getOrganization("enterprise-whirkplace");
     
     if (defaultOrg) {
-      console.log("Default organization already exists:", defaultOrg.id);
+      console.log("Enterprise organization already exists:", defaultOrg.id);
       return defaultOrg;
     }
 
     // Also check by slug in case it exists with a different ID
-    defaultOrg = await storage.getOrganizationBySlug("default");
+    defaultOrg = await storage.getOrganizationBySlug("whirkplace");
     if (defaultOrg) {
-      console.log("Default organization found by slug:", defaultOrg.id);
+      console.log("Enterprise organization found by slug:", defaultOrg.id);
       return defaultOrg;
     }
 
-    // Create default organization with specific ID
+    // Create enterprise organization with specific ID
     defaultOrg = await storage.createOrganization({
-      id: "default-org",
-      name: "Default Organization",
-      slug: "default",
-      plan: "starter",
+      id: "enterprise-whirkplace",
+      name: "Whirkplace Enterprise",
+      slug: "whirkplace",
+      plan: "enterprise",
       isActive: true
     });
 
-    console.log("Created default organization:", defaultOrg.id);
+    console.log("Created enterprise organization:", defaultOrg.id);
     return defaultOrg;
   } catch (error) {
     // If error is due to duplicate key, try to get the existing organization
