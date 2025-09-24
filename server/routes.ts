@@ -1101,16 +1101,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
               appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
             }
             
+            // Check if organization needs onboarding
+            const needsOnboarding = isNewOrganization || 
+              !organization.onboardingStatus || 
+              organization.onboardingStatus === 'not_started' || 
+              organization.onboardingStatus === 'in_progress';
+            
             // For super admin users, redirect to organization selection
+            // For new organizations or those still in onboarding, redirect to onboarding
             // Otherwise, redirect to the specific organization dashboard
-            // If new organization was created, use the actual organization slug
             const actualOrgSlug = organization.slug || organizationSlug;
             const redirectPath = isSuperAdmin 
-              ? `${appUrl}/#/select-organization` 
+              ? `${appUrl}/#/select-organization`
+              : needsOnboarding
+              ? `${appUrl}/#/onboarding?org=${actualOrgSlug}`
               : `${appUrl}/#/dashboard?org=${actualOrgSlug}`;
             
             console.log(`🚀 Redirecting ${isSuperAdmin ? 'super admin' : 'user'} to:`, redirectPath);
-            console.log(`   Organization slug: ${actualOrgSlug} (created new: ${isNewOrganization})`);
+            console.log(`   Organization slug: ${actualOrgSlug} (created new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
             
             res.redirect(redirectPath);
           });
