@@ -860,6 +860,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       console.error("OAuth callback error:", error);
+      console.error("OAuth callback error stack:", error instanceof Error ? error.stack : "No stack trace");
+      
+      // Provide more detailed error information for debugging
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      const isProduction = process.env.NODE_ENV === 'production';
+      
       res.status(500).send(`
         <!DOCTYPE html>
         <html>
@@ -870,11 +876,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
               body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
               .error { color: #dc3545; }
               button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+              .debug { font-size: 0.9em; color: #666; margin-top: 20px; padding: 10px; background: #f5f5f5; border-radius: 4px; text-align: left; max-width: 600px; margin: 20px auto; }
             </style>
           </head>
           <body>
             <h1 class="error">❌ Authentication Failed</h1>
             <p>An unexpected error occurred. Please try logging in again.</p>
+            ${!isProduction ? `<div class="debug"><strong>Debug Info:</strong><br>${errorMessage}</div>` : ''}
             <button onclick="window.location.href='/'">Try Again</button>
           </body>
         </html>
