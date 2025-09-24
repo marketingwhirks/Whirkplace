@@ -36,15 +36,15 @@ export default function LandingPage() {
       return 'whirkplace';
     }
     
-    // For replit dev environments
+    // For replit dev environments - use whirkplace for super admin access
     if (hostname.includes('replit') || hostname.includes('repl.co')) {
-      console.log('Detected replit domain, using default-org');
-      return 'default-org';
+      console.log('Detected replit domain, using whirkplace org for super admin');
+      return 'whirkplace';
     }
     
-    // Otherwise use default org
-    console.log('Using default-org for hostname:', hostname);
-    return 'default-org';
+    // Otherwise use whirkplace org for super admin access
+    console.log('Using whirkplace org for hostname:', hostname);
+    return 'whirkplace';
   };
 
   const redirectToDashboard = () => {

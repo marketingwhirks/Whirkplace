@@ -103,14 +103,14 @@ export default function LoginPage() {
         orgSlug = 'whirkplace';
         console.log('Super admin authentication mode - using whirkplace org');
       } else {
-        // For localhost/dev only, use default org
-        orgSlug = 'default';
+        // For localhost/dev/replit, use whirkplace org for super admin access
+        orgSlug = 'whirkplace';
       }
     }
     
     // Always include the org parameter - never leave it empty
-    const url = `/auth/slack/login?org=${orgSlug || 'default'}`;
-    console.log('Initiating Slack login for org:', orgSlug || 'default');
+    const url = `/auth/slack/login?org=${orgSlug || 'whirkplace'}`;
+    console.log('Initiating Slack login for org:', orgSlug || 'whirkplace');
     window.location.href = url;
   };
   
