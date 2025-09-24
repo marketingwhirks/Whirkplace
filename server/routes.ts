@@ -592,8 +592,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           authenticatedUser = await storage.createUser(organization.id, userData);
         } catch (error) {
           console.error("Failed to create user from Slack:", error);
+          console.error("User data that failed:", userData);
+          console.error("Full error details:", error instanceof Error ? error.message : error);
           return res.status(500).json({ 
-            message: "Failed to create user account" 
+            message: "Failed to create user account",
+            error: error instanceof Error ? error.message : "Unknown error"
           });
         }
       }
