@@ -1,8 +1,7 @@
-import { Bell, Slack } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { MobileSidebarTrigger } from "./sidebar";
 import { UserProfile } from "./user-profile";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import NotificationsDropdown from "./notifications-dropdown";
 
 interface HeaderProps {
   title: string;
@@ -23,27 +22,8 @@ export default function Header({ title, description }: HeaderProps) {
           </div>
         </div>
         <div className="flex items-center space-x-2 md:space-x-4">
-          {/* Slack Integration Button - Hide text on mobile */}
-          <Button
-            variant="secondary"
-            className="flex items-center space-x-2"
-            data-testid="button-slack-integration"
-          >
-            <Slack className="w-4 h-4" />
-            <span className="hidden sm:inline">Connected to Slack</span>
-          </Button>
           {/* Notifications */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative"
-            data-testid="button-notifications"
-          >
-            <Bell className="w-5 h-5" />
-            <span className="absolute -top-1 -right-1 notification-badge bg-primary text-primary-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center">
-              3
-            </span>
-          </Button>
+          <NotificationsDropdown />
           {/* Theme Toggle */}
           <ThemeToggle />
           {/* User Profile */}

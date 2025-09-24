@@ -277,6 +277,25 @@ export const shoutouts = pgTable("shoutouts", {
   orgToUserCreatedAtIdx: index("shoutouts_org_to_user_created_at_idx").on(table.organizationId, table.toUserId, table.createdAt),
 }));
 
+// Notifications table for user notifications
+export const notifications = pgTable("notifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  organizationId: varchar("organization_id").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  type: text("type").notNull().default("info"), // info, success, warning, error, shoutout, checkin
+  relatedEntityType: text("related_entity_type"), // shoutout, checkin, win, etc.
+  relatedEntityId: text("related_entity_id"),
+  isRead: boolean("is_read").notNull().default(false),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgUserIdx: index("notifications_org_user_idx").on(table.organizationId, table.userId),
+  orgUserUnreadIdx: index("notifications_org_user_unread_idx").on(table.organizationId, table.userId, table.isRead),
+  createdAtIdx: index("notifications_created_at_idx").on(table.createdAt),
+}));
+
 export const vacations = pgTable("vacations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: varchar("organization_id").notNull(),
@@ -543,6 +562,16 @@ export const insertShoutoutSchema = createInsertSchema(shoutouts).omit({
   message: z.string().min(1, "Message is required").max(500, "Message too long"),
 });
 
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+  readAt: true,
+}).extend({
+  title: z.string().min(1, "Title is required").max(100, "Title too long"),
+  message: z.string().min(1, "Message is required").max(500, "Message too long"),
+  type: z.enum(["info", "success", "warning", "error", "shoutout", "checkin", "win"]).default("info"),
+});
+
 export const insertVacationSchema = createInsertSchema(vacations).omit({
   id: true,
   createdAt: true,
@@ -678,6 +707,9 @@ export type Win = typeof wins.$inferSelect;
 
 export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Comment = typeof comments.$inferSelect;
+
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;
 
 export type InsertShoutout = z.infer<typeof insertShoutoutSchema>;
 export type Shoutout = typeof shoutouts.$inferSelect;

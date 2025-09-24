@@ -6,6 +6,7 @@ import {
   type Win, type InsertWin,
   type Comment, type InsertComment,
   type Shoutout, type InsertShoutout,
+  type Notification, type InsertNotification,
   type Vacation, type InsertVacation,
   type Organization, type InsertOrganization,
   type PartnerFirm, type InsertPartnerFirm,
@@ -29,7 +30,7 @@ import {
   type DiscountCodeUsage, type InsertDiscountCodeUsage,
   type DashboardConfig, type InsertDashboardConfig,
   type DashboardWidgetTemplate, type InsertDashboardWidgetTemplate,
-  users, teams, checkins, questions, wins, comments, shoutouts, vacations, organizations, partnerFirms,
+  users, teams, checkins, questions, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
@@ -187,6 +188,15 @@ export interface IStorage {
   getShoutoutsByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Shoutout[]>;
   getRecentShoutouts(organizationId: string, limit?: number): Promise<Shoutout[]>;
   getPublicShoutouts(organizationId: string, limit?: number): Promise<Shoutout[]>;
+
+  // Notifications
+  getNotification(organizationId: string, id: string): Promise<Notification | undefined>;
+  createNotification(organizationId: string, notification: InsertNotification): Promise<Notification>;
+  markNotificationAsRead(organizationId: string, id: string): Promise<Notification | undefined>;
+  markAllNotificationsAsRead(organizationId: string, userId: string): Promise<number>;
+  deleteNotification(organizationId: string, id: string): Promise<boolean>;
+  getNotificationsByUser(organizationId: string, userId: string, limit?: number): Promise<Notification[]>;
+  getUnreadNotificationCount(organizationId: string, userId: string): Promise<number>;
 
   // Check-in Review Methods
   getPendingCheckins(organizationId: string, managerId?: string): Promise<Checkin[]>;
