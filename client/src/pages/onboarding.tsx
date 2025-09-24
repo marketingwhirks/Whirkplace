@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { queryClient, apiRequest } from '@lib/queryClient';
-import { useCurrentUser } from '@hooks/useCurrentUser';
+import { queryClient, apiRequest } from '@/lib/queryClient';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useNavigate } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

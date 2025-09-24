@@ -21,7 +21,7 @@ import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { aggregationService } from "./services/aggregation";
 import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
-import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser, requireSuperAdmin, requirePartnerAdmin } from "./middleware/auth";
+import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser, requireSuperAdmin, requirePartnerAdmin, requireOnboarded } from "./middleware/auth";
 import { generateCSRF, validateCSRF, csrfTokenEndpoint } from "./middleware/csrf";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
 import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } from "./middleware/plan-access";
@@ -2103,6 +2103,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Apply CSRF protection and generation after authentication middleware
   app.use("/api", generateCSRF());
+  
+  // Apply onboarding requirement for main app routes (excluding auth, onboarding, and public routes)
+  app.use("/api", (req, res, next) => {
+    // Exempt specific routes from onboarding requirement
+    const exemptPaths = [
+      '/api/csrf-token',
+      '/api/auth/',
+      '/api/onboarding/',
+      '/api/organizations/',
+      '/api/business/',
+      '/api/partner/',
+      '/api/users/current'  // Allow getting current user during onboarding
+    ];
+    
+    // Check if the request path starts with any of the exempt paths
+    const isExempt = exemptPaths.some(path => req.path.startsWith(path));
+    
+    if (isExempt) {
+      return next();
+    }
+    
+    // Apply onboarding requirement for all other routes
+    requireOnboarded()(req, res, next);
+  });
   
   // CSRF token endpoint (requires authentication)
   app.get("/api/csrf-token", csrfTokenEndpoint);

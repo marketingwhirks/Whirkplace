@@ -564,6 +564,43 @@ export function requirePartnerAdmin() {
 }
 
 /**
+ * Middleware to ensure organization has completed onboarding
+ * Blocks access to main app features until onboarding is complete
+ */
+export function requireOnboarded() {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.currentUser) {
+      return res.status(401).json({ 
+        message: "Authentication required" 
+      });
+    }
+
+    // Super admin users bypass onboarding requirement
+    if (req.currentUser.isSuperAdmin) {
+      return next();
+    }
+
+    // Get organization to check onboarding status
+    const organization = await storage.getOrganization(req.currentUser.organizationId);
+    if (!organization) {
+      return res.status(404).json({ 
+        message: "Organization not found" 
+      });
+    }
+
+    // Check if onboarding is complete
+    if (organization.onboardingStatus !== 'completed') {
+      return res.status(403).json({ 
+        message: "Please complete onboarding first",
+        redirectTo: '/onboarding'
+      });
+    }
+    
+    next();
+  };
+}
+
+/**
  * Middleware to require team lead authorization
  * User must be either:
  * - Admin role (can access all)
