@@ -2576,7 +2576,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/checkins", requireAuth(), async (req, res) => {
     try {
+      // First, check if active questions exist
+      const questions = await storage.getActiveQuestions(req.orgId);
+      if (questions.length === 0) {
+        return res.status(400).json({ 
+          message: "Check-ins cannot be submitted without active questions. Please contact your administrator." 
+        });
+      }
+      
+      // Parse and validate check-in data
       const checkinData = insertCheckinSchema.parse(req.body);
+      
+      // Validate that all questions have responses
+      const responses = checkinData.responses as Record<string, string> || {};
+      const missingResponses = questions.filter(q => !responses[q.id] || responses[q.id].trim() === '');
+      
+      if (missingResponses.length > 0) {
+        return res.status(400).json({ 
+          message: "All questions must be answered before submitting the check-in.",
+          missingQuestions: missingResponses.map(q => q.text)
+        });
+      }
+      
       const sanitizedData = sanitizeForOrganization(checkinData, req.orgId);
       const checkin = await storage.createCheckin(req.orgId, sanitizedData);
       
@@ -2651,6 +2672,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const updates = insertCheckinSchema.partial().parse(req.body);
+      
+      // If updating responses, validate that all questions are answered
+      if (updates.responses !== undefined || updates.isComplete === true) {
+        const questions = await storage.getActiveQuestions(req.orgId);
+        if (questions.length === 0) {
+          return res.status(400).json({ 
+            message: "Check-ins cannot be submitted without active questions. Please contact your administrator." 
+          });
+        }
+        
+        // Use existing responses if not provided, merge with new ones
+        const responses = updates.responses || existingCheckin.responses as Record<string, string> || {};
+        const missingResponses = questions.filter(q => !responses[q.id] || responses[q.id].trim() === '');
+        
+        if (missingResponses.length > 0 && updates.isComplete === true) {
+          return res.status(400).json({ 
+            message: "All questions must be answered before submitting the check-in.",
+            missingQuestions: missingResponses.map(q => q.text)
+          });
+        }
+      }
+      
       const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
       
       const checkin = await storage.updateCheckin(req.orgId, req.params.id, sanitizedUpdates);
