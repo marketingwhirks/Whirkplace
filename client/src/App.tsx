@@ -22,7 +22,7 @@ import LeadershipDashboard from "@/pages/leadership-dashboard";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import Admin from "@/pages/admin";
-import SuperAdminPage from "@/pages/super-admin";
+import SuperAdmin from "@/pages/SuperAdmin";
 import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import LandingPage from "@/pages/LandingPage";
@@ -53,7 +53,7 @@ function Router() {
             <Route path="/analytics" component={Analytics} />
             <Route path="/settings" component={Settings} />
             <Route path="/admin" component={Admin} />
-            <Route path="/super-admin" component={SuperAdminPage} />
+            <Route path="/super-admin" component={SuperAdmin} />
             <Route path="/brand-guide" component={BrandGuideViewer} />
             <Route path="/theme-customizer" component={ThemeCustomizer} />
             <Route component={NotFound} />

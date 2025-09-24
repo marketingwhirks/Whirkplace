@@ -6800,99 +6800,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Super Admin Routes - Cross-organization management
-  // These routes allow a super admin to manage all organizations and users globally
-  
-  // Get all organizations for super admin
-  app.get("/api/super-admin/organizations", requireSuperAdmin(), async (req, res) => {
-    try {
-
-      const organizations = await storage.getAllOrganizations();
-      
-      // Get stats for each organization
-      const orgsWithStats = await Promise.all(
-        organizations.map(async (org) => {
-          const stats = await storage.getOrganizationStats(org.id);
-          return { ...org, ...stats };
-        })
-      );
-
-      res.json(orgsWithStats);
-    } catch (error) {
-      console.error("GET /api/super-admin/organizations - Error:", error);
-      res.status(500).json({ message: "Failed to fetch organizations" });
-    }
-  });
-
-  // Get all users globally for super admin
-  app.get("/api/super-admin/users", requireSuperAdmin(), async (req, res) => {
-    try {
-
-      const includeInactive = req.query.includeInactive === 'true';
-      const users = await storage.getAllUsersGlobal(includeInactive);
-      
-      // Get organization names for each user
-      const organizations = await storage.getAllOrganizations();
-      const orgMap = new Map(organizations.map(org => [org.id, org.name]));
-      
-      const usersWithOrgNames = users.map(user => ({
-        ...user,
-        organizationName: orgMap.get(user.organizationId) || 'Unknown'
-      }));
-
-      res.json(usersWithOrgNames);
-    } catch (error) {
-      console.error("GET /api/super-admin/users - Error:", error);
-      res.status(500).json({ message: "Failed to fetch users" });
-    }
-  });
-
-  // Update user globally
-  app.patch("/api/super-admin/users/:id", requireSuperAdmin(), async (req, res) => {
-    try {
-
-      const updates = insertUserSchema.partial().parse(req.body);
-      const updatedUser = await storage.updateUserGlobal(req.params.id, updates);
-      
-      if (!updatedUser) {
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      res.json({ message: "User updated successfully", user: updatedUser });
-    } catch (error) {
-      console.error("PATCH /api/super-admin/users/:id - Error:", error);
-      res.status(400).json({ message: "Invalid user data" });
-    }
-  });
-
-  // Deactivate organization
-  app.patch("/api/super-admin/organizations/:id/deactivate", requireSuperAdmin(), async (req, res) => {
-    try {
-
-      const success = await storage.deactivateOrganization(req.params.id);
-      
-      if (!success) {
-        return res.status(404).json({ message: "Organization not found" });
-      }
-
-      res.json({ message: "Organization deactivated successfully" });
-    } catch (error) {
-      console.error("PATCH /api/super-admin/organizations/:id/deactivate - Error:", error);
-      res.status(500).json({ message: "Failed to deactivate organization" });
-    }
-  });
-
-  // Get system statistics
-  app.get("/api/super-admin/stats", requireSuperAdmin(), async (req, res) => {
-    try {
-
-      const stats = await storage.getSystemStats();
-      res.json(stats);
-    } catch (error) {
-      console.error("GET /api/super-admin/stats - Error:", error);
-      res.status(500).json({ message: "Failed to fetch system statistics" });
-    }
-  });
 
   // Support & Bug Reporting System
   app.post("/api/support/reports", requireAuth(), async (req, res) => {
@@ -7074,167 +6981,6 @@ Return the response as a JSON object with this structure:
     }
   });
 
-  // Super Admin Routes - System-wide management
-  app.get("/api/super-admin/stats", requireSuperAdmin, async (req, res) => {
-    try {
-      const stats = {
-        totalOrganizations: (await storage.getAllOrganizations()).length,
-        totalUsers: (await storage.getAllUsersGlobal()).length,
-        activeDiscountCodes: (await storage.getAllDiscountCodes(true)).length,
-        systemSettings: (await storage.getAllSystemSettings()).length,
-        timestamp: new Date().toISOString()
-      };
-      res.json(stats);
-    } catch (error) {
-      console.error("Failed to fetch super admin stats:", error);
-      res.status(500).json({ message: "Failed to fetch stats" });
-    }
-  });
-
-  // System Settings Management
-  app.get("/api/super-admin/settings", requireSuperAdmin, async (req, res) => {
-    try {
-      const category = req.query.category as string;
-      const settings = await storage.getAllSystemSettings(category);
-      res.json(settings);
-    } catch (error) {
-      console.error("Failed to fetch system settings:", error);
-      res.status(500).json({ message: "Failed to fetch system settings" });
-    }
-  });
-
-  app.post("/api/super-admin/settings", requireSuperAdmin, async (req, res) => {
-    try {
-      const setting = await storage.createSystemSetting(req.body);
-      res.status(201).json(setting);
-    } catch (error) {
-      console.error("Failed to create system setting:", error);
-      res.status(500).json({ message: "Failed to create system setting" });
-    }
-  });
-
-  app.put("/api/super-admin/settings/:id", requireSuperAdmin, async (req, res) => {
-    try {
-      const setting = await storage.updateSystemSetting(req.params.id, req.body);
-      if (!setting) {
-        return res.status(404).json({ message: "System setting not found" });
-      }
-      res.json(setting);
-    } catch (error) {
-      console.error("Failed to update system setting:", error);
-      res.status(500).json({ message: "Failed to update system setting" });
-    }
-  });
-
-  app.delete("/api/super-admin/settings/:id", requireSuperAdmin, async (req, res) => {
-    try {
-      const deleted = await storage.deleteSystemSetting(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ message: "System setting not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Failed to delete system setting:", error);
-      res.status(500).json({ message: "Failed to delete system setting" });
-    }
-  });
-
-  // Pricing Plans Management
-  app.get("/api/super-admin/pricing-plans", requireSuperAdmin, async (req, res) => {
-    try {
-      const activeOnly = req.query.active === 'true';
-      const plans = await storage.getAllPricingPlans(activeOnly);
-      res.json(plans);
-    } catch (error) {
-      console.error("Failed to fetch pricing plans:", error);
-      res.status(500).json({ message: "Failed to fetch pricing plans" });
-    }
-  });
-
-  app.post("/api/super-admin/pricing-plans", requireSuperAdmin, async (req, res) => {
-    try {
-      const plan = await storage.createPricingPlan(req.body);
-      res.status(201).json(plan);
-    } catch (error) {
-      console.error("Failed to create pricing plan:", error);
-      res.status(500).json({ message: "Failed to create pricing plan" });
-    }
-  });
-
-  app.put("/api/super-admin/pricing-plans/:id", requireSuperAdmin, async (req, res) => {
-    try {
-      const plan = await storage.updatePricingPlan(req.params.id, req.body);
-      if (!plan) {
-        return res.status(404).json({ message: "Pricing plan not found" });
-      }
-      res.json(plan);
-    } catch (error) {
-      console.error("Failed to update pricing plan:", error);
-      res.status(500).json({ message: "Failed to update pricing plan" });
-    }
-  });
-
-  app.delete("/api/super-admin/pricing-plans/:id", requireSuperAdmin, async (req, res) => {
-    try {
-      const deleted = await storage.deletePricingPlan(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ message: "Pricing plan not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Failed to delete pricing plan:", error);
-      res.status(500).json({ message: "Failed to delete pricing plan" });
-    }
-  });
-
-  // Discount Codes Management
-  app.get("/api/super-admin/discount-codes", requireSuperAdmin, async (req, res) => {
-    try {
-      const activeOnly = req.query.active === 'true';
-      const codes = await storage.getAllDiscountCodes(activeOnly);
-      res.json(codes);
-    } catch (error) {
-      console.error("Failed to fetch discount codes:", error);
-      res.status(500).json({ message: "Failed to fetch discount codes" });
-    }
-  });
-
-  app.post("/api/super-admin/discount-codes", requireSuperAdmin, async (req, res) => {
-    try {
-      const discountCode = await storage.createDiscountCode(req.body);
-      res.status(201).json(discountCode);
-    } catch (error) {
-      console.error("Failed to create discount code:", error);
-      res.status(500).json({ message: "Failed to create discount code" });
-    }
-  });
-
-  app.put("/api/super-admin/discount-codes/:id", requireSuperAdmin, async (req, res) => {
-    try {
-      const discountCode = await storage.updateDiscountCode(req.params.id, req.body);
-      if (!discountCode) {
-        return res.status(404).json({ message: "Discount code not found" });
-      }
-      res.json(discountCode);
-    } catch (error) {
-      console.error("Failed to update discount code:", error);
-      res.status(500).json({ message: "Failed to update discount code" });
-    }
-  });
-
-  app.delete("/api/super-admin/discount-codes/:id", requireSuperAdmin, async (req, res) => {
-    try {
-      const deleted = await storage.deleteDiscountCode(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ message: "Discount code not found" });
-      }
-      res.status(204).send();
-    } catch (error) {
-      console.error("Failed to delete discount code:", error);
-      res.status(500).json({ message: "Failed to delete discount code" });
-    }
-  });
-
   // Discount Code Validation (publicly accessible for signup)
   app.post("/api/discount-codes/validate", requireOrganization(), async (req, res) => {
     try {
@@ -7244,27 +6990,6 @@ Return the response as a JSON object with this structure:
     } catch (error) {
       console.error("Failed to validate discount code:", error);
       res.status(500).json({ message: "Failed to validate discount code" });
-    }
-  });
-
-  // Organization Management for Super Admin
-  app.get("/api/super-admin/organizations", requireSuperAdmin, async (req, res) => {
-    try {
-      const organizations = await storage.getAllOrganizations();
-      res.json(organizations);
-    } catch (error) {
-      console.error("Failed to fetch organizations:", error);
-      res.status(500).json({ message: "Failed to fetch organizations" });
-    }
-  });
-
-  app.get("/api/super-admin/users", requireSuperAdmin, async (req, res) => {
-    try {
-      const users = await storage.getAllUsersGlobal();
-      res.json(users);
-    } catch (error) {
-      console.error("Failed to fetch users:", error);
-      res.status(500).json({ message: "Failed to fetch users" });
     }
   });
 
@@ -7402,6 +7127,224 @@ Return the response as a JSON object with this structure:
     } catch (error) {
       console.error("Failed to delete widget template:", error);
       res.status(500).json({ message: "Failed to delete widget template" });
+    }
+  });
+
+  // Super Admin middleware
+  const requireSuperAdmin = () => {
+    return async (req: any, res: any, next: any) => {
+      try {
+        const userId = req.userId || req.session?.userId;
+        if (!userId) {
+          return res.status(401).json({ message: "Authentication required" });
+        }
+
+        const user = await storage.getUserGlobal(userId);
+        if (!user || !user.is_super_admin) {
+          return res.status(403).json({ message: "Super admin access required" });
+        }
+
+        next();
+      } catch (error) {
+        console.error("Super admin check error:", error);
+        res.status(500).json({ message: "Authorization check failed" });
+      }
+    };
+  };
+
+  // Super Admin API Routes
+  
+  // Organizations management
+  app.get("/api/super-admin/organizations", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const organizations = await storage.getAllOrganizations();
+      const stats = await Promise.all(
+        organizations.map(async (org) => ({
+          ...org,
+          stats: await storage.getOrganizationStats(org.id)
+        }))
+      );
+      res.json(stats);
+    } catch (error) {
+      console.error("Failed to get organizations:", error);
+      res.status(500).json({ message: "Failed to get organizations" });
+    }
+  });
+
+  app.post("/api/super-admin/organizations", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { name, slug, plan, customValues } = req.body;
+      
+      if (!name || !slug) {
+        return res.status(400).json({ message: "Name and slug are required" });
+      }
+
+      const organization = await storage.createOrganization({
+        id: `org-${Math.random().toString(36).substring(2, 15)}`,
+        name,
+        slug,
+        plan: plan || "starter",
+        customValues: customValues || [],
+        isActive: true
+      });
+      
+      res.json(organization);
+    } catch (error) {
+      console.error("Failed to create organization:", error);
+      res.status(500).json({ message: "Failed to create organization" });
+    }
+  });
+
+  app.put("/api/super-admin/organizations/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const organization = await storage.updateOrganization(req.params.id, req.body);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      res.json(organization);
+    } catch (error) {
+      console.error("Failed to update organization:", error);
+      res.status(500).json({ message: "Failed to update organization" });
+    }
+  });
+
+  app.delete("/api/super-admin/organizations/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      // Don't allow deletion of the main Whirkplace organization
+      if (req.params.id === 'enterprise-whirkplace') {
+        return res.status(400).json({ message: "Cannot delete the main Whirkplace organization" });
+      }
+      
+      const success = await storage.deleteOrganization(req.params.id);
+      if (!success) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      res.json({ success });
+    } catch (error) {
+      console.error("Failed to delete organization:", error);
+      res.status(500).json({ message: "Failed to delete organization" });
+    }
+  });
+
+  // Global users management
+  app.get("/api/super-admin/users", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const includeInactive = req.query.includeInactive === 'true';
+      const users = await storage.getAllUsersGlobal(includeInactive);
+      
+      // Get organization names for each user
+      const orgs = await storage.getAllOrganizations();
+      const orgMap = Object.fromEntries(orgs.map(o => [o.id, o.name]));
+      
+      const usersWithOrg = users.map(user => ({
+        ...user,
+        organizationName: orgMap[user.organizationId] || 'Unknown'
+      }));
+      
+      res.json(usersWithOrg);
+    } catch (error) {
+      console.error("Failed to get users:", error);
+      res.status(500).json({ message: "Failed to get users" });
+    }
+  });
+
+  app.post("/api/super-admin/users", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { name, email, organizationId, role, password } = req.body;
+      
+      if (!name || !email || !organizationId) {
+        return res.status(400).json({ message: "Name, email, and organizationId are required" });
+      }
+
+      // Hash password if provided
+      let hashedPassword = null;
+      if (password) {
+        hashedPassword = await bcrypt.hash(password, 10);
+      }
+
+      const user = await storage.createUserGlobal({
+        name,
+        email,
+        organizationId,
+        role: role || 'member',
+        password: hashedPassword,
+        isActive: true,
+        is_super_admin: false
+      });
+      
+      res.json(user);
+    } catch (error) {
+      console.error("Failed to create user:", error);
+      res.status(500).json({ message: "Failed to create user" });
+    }
+  });
+
+  app.put("/api/super-admin/users/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      // If password is being updated, hash it first
+      const updateData = { ...req.body };
+      if (updateData.password) {
+        updateData.password = await bcrypt.hash(updateData.password, 10);
+      }
+      
+      const user = await storage.updateUserGlobal(req.params.id, updateData);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      console.error("Failed to update user:", error);
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  app.delete("/api/super-admin/users/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      // Don't allow deletion of self
+      if (req.params.id === req.userId) {
+        return res.status(400).json({ message: "Cannot delete your own account" });
+      }
+      
+      const success = await storage.deleteUserGlobal(req.params.id);
+      if (!success) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json({ success });
+    } catch (error) {
+      console.error("Failed to delete user:", error);
+      res.status(500).json({ message: "Failed to delete user" });
+    }
+  });
+
+  // Move user between organizations
+  app.post("/api/super-admin/users/:id/move", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { targetOrganizationId } = req.body;
+      
+      if (!targetOrganizationId) {
+        return res.status(400).json({ message: "Target organization ID is required" });
+      }
+
+      const user = await storage.moveUserToOrganization(req.params.id, targetOrganizationId);
+      if (!user) {
+        return res.status(400).json({ message: "Failed to move user. User or organization not found." });
+      }
+      
+      res.json(user);
+    } catch (error) {
+      console.error("Failed to move user:", error);
+      res.status(500).json({ message: "Failed to move user" });
+    }
+  });
+
+  // System statistics
+  app.get("/api/super-admin/stats", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const stats = await storage.getSystemStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Failed to get system stats:", error);
+      res.status(500).json({ message: "Failed to get system stats" });
     }
   });
 

@@ -111,6 +111,7 @@ export interface IStorage {
   createUserGlobal(user: InsertUser & { organizationId: string }): Promise<User>;
   updateUserGlobal(userId: string, user: Partial<InsertUser>): Promise<User | undefined>;
   deleteUserGlobal(userId: string): Promise<boolean>;
+  moveUserToOrganization(userId: string, targetOrganizationId: string): Promise<User | undefined>;
   deactivateOrganization(organizationId: string): Promise<boolean>;
   deleteOrganization(organizationId: string): Promise<boolean>;
   getOrganizationStats(organizationId: string): Promise<{ userCount: number; teamCount: number; activeUsers: number }>;
@@ -613,6 +614,41 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async moveUserToOrganization(userId: string, targetOrganizationId: string): Promise<User | undefined> {
+    try {
+      // Verify target organization exists
+      const [targetOrg] = await db
+        .select()
+        .from(organizations)
+        .where(eq(organizations.id, targetOrganizationId));
+      
+      if (!targetOrg) {
+        console.error("Target organization not found:", targetOrganizationId);
+        return undefined;
+      }
+
+      // Update user's organization and clear team/manager (as they may not exist in new org)
+      const [updatedUser] = await db
+        .update(users)
+        .set({
+          organizationId: targetOrganizationId,
+          teamId: null, // Clear team assignment as it won't be valid in new org
+          managerId: null // Clear manager as they may not exist in new org
+        })
+        .where(eq(users.id, userId))
+        .returning();
+      
+      if (updatedUser) {
+        console.log(`✅ User ${userId} moved to organization ${targetOrg.name}`);
+      }
+      
+      return updatedUser || undefined;
+    } catch (error) {
+      console.error("Failed to move user to organization:", error);
+      return undefined;
+    }
+  }
+
   async deactivateOrganization(organizationId: string): Promise<boolean> {
     try {
       const result = await db
@@ -623,6 +659,30 @@ export class DatabaseStorage implements IStorage {
       return (result.rowCount ?? 0) > 0;
     } catch (error) {
       console.error("Failed to deactivate organization:", error);
+      return false;
+    }
+  }
+
+  async deleteOrganization(organizationId: string): Promise<boolean> {
+    try {
+      // First delete all users in the organization
+      await db
+        .delete(users)
+        .where(eq(users.organizationId, organizationId));
+      
+      // Then delete all teams in the organization
+      await db
+        .delete(teams)
+        .where(eq(teams.organizationId, organizationId));
+      
+      // Finally delete the organization
+      const result = await db
+        .delete(organizations)
+        .where(eq(organizations.id, organizationId));
+      
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error("Failed to delete organization:", error);
       return false;
     }
   }
