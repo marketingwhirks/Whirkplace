@@ -24,6 +24,7 @@ import Settings from "@/pages/settings";
 import Admin from "@/pages/admin";
 import SuperAdmin from "@/pages/SuperAdmin";
 import LoginPage from "@/pages/login";
+import SignupPage from "@/pages/signup";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import LandingPage from "@/pages/LandingPage";
 import PartnerPage from "@/pages/PartnerPage";
@@ -102,7 +103,8 @@ function App() {
           <RoleSwitchProvider>
             <Toaster />
             <Switch>
-              <Route path="/signup" component={BusinessSignupPage} />
+              <Route path="/signup" component={SignupPage} />
+              <Route path="/business-signup" component={BusinessSignupPage} />
               <Route path="/login" component={LoginPage} />
               <Route path="/partners" component={PartnerPage} />
               <Route path="/dev-login" component={DevLogin} />

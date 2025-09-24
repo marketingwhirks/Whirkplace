@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Heart, Users } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
@@ -16,6 +17,7 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSignUpMode, setIsSignUpMode] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
 
   // Check if this is sign-up mode from URL parameters
@@ -70,80 +72,79 @@ export default function LoginPage() {
   };
   
   const handleSlackLogin = () => {
-    // Get organization from subdomain or URL parameter
+    // Get organization from URL parameter or subdomain
     const hostname = window.location.hostname;
     let orgSlug = '';
     
     // Check if there's an org parameter in the URL first
     const urlParams = new URLSearchParams(window.location.search);
     const orgParam = urlParams.get('org');
-    const superAdminMode = urlParams.get('superadmin');
+    const isNewOrg = urlParams.get('new') === 'true';
     
     if (orgParam) {
       orgSlug = orgParam;
-    } else if (superAdminMode === 'true') {
-      // Special super admin mode for testing on localhost
-      orgSlug = 'whirkplace';
-      console.log('🔑 Super admin authentication mode - using whirkplace org');
+    } else if (isNewOrg) {
+      // User is creating a new organization
+      // Will handle this in the OAuth callback
+      orgSlug = 'new';
     } else {
       // Check if we're on a specific organization's subdomain
-      if (hostname !== 'localhost' && 
-          hostname !== 'whirkplace.com' && 
-          hostname !== 'www.whirkplace.com' &&
-          hostname !== 'app.whirkplace.com' &&
-          !hostname.includes('replit')) {
+      // e.g., acme.whirkplace.com -> org = acme
+      if (hostname.includes('.whirkplace.com') && 
+          !hostname.startsWith('www.') && 
+          !hostname.startsWith('app.')) {
         const subdomain = hostname.split('.')[0];
-        if (subdomain) {
+        if (subdomain && subdomain !== 'whirkplace') {
           orgSlug = subdomain;
         }
-      } else if (hostname === 'whirkplace.com' || 
-                 hostname === 'www.whirkplace.com' || 
-                 hostname === 'app.whirkplace.com') {
-        // For the main whirkplace.com domain, use whirkplace org
-        orgSlug = 'whirkplace';
-        console.log('Super admin authentication mode - using whirkplace org');
-      } else {
-        // For localhost/dev/replit, use whirkplace org for super admin access
-        orgSlug = 'whirkplace';
       }
     }
     
-    // Always include the org parameter - never leave it empty
-    const url = `/auth/slack/login?org=${orgSlug || 'whirkplace'}`;
-    console.log('Initiating Slack login for org:', orgSlug || 'whirkplace');
+    // If no org is determined, redirect to organization selection
+    if (!orgSlug) {
+      // Redirect to a page where user can choose to create new org or join existing
+      setLocation('/choose-organization?action=slack');
+      return;
+    }
+    
+    // Include the org parameter in the Slack auth URL
+    const url = `/auth/slack/login?org=${orgSlug}`;
+    console.log('Initiating Slack login for org:', orgSlug);
     window.location.href = url;
   };
   
   const handleMicrosoftLogin = () => {
-    // Get organization from subdomain or use default
+    // Get organization from URL parameter or subdomain
     const hostname = window.location.hostname;
-    let orgSlug = 'default';
+    let orgSlug = '';
     
     // Check if there's an org parameter in the URL first
     const urlParams = new URLSearchParams(window.location.search);
     const orgParam = urlParams.get('org');
+    const isNewOrg = urlParams.get('new') === 'true';
+    
     if (orgParam) {
       orgSlug = orgParam;
+    } else if (isNewOrg) {
+      // User is creating a new organization
+      orgSlug = 'new';
     } else {
-      // Determine org based on hostname
-      if (hostname === 'whirkplace.com' || 
-          hostname === 'www.whirkplace.com' || 
-          hostname === 'app.whirkplace.com') {
-        // For the main whirkplace.com domain, use whirkplace org for super admin
-        orgSlug = 'whirkplace';
-        console.log('Microsoft super admin authentication mode - using whirkplace org');
-      } else if (hostname !== 'localhost' && 
-                 !hostname.includes('127.0.0.1') &&
-                 !hostname.includes('replit')) {
-        // If we're on a subdomain, use that as the org slug
+      // Check if we're on a specific organization's subdomain
+      if (hostname.includes('.whirkplace.com') && 
+          !hostname.startsWith('www.') && 
+          !hostname.startsWith('app.')) {
         const subdomain = hostname.split('.')[0];
-        if (subdomain) {
+        if (subdomain && subdomain !== 'whirkplace') {
           orgSlug = subdomain;
         }
-      } else {
-        // For localhost/dev, use default org
-        orgSlug = 'default';
       }
+    }
+    
+    // If no org is determined, redirect to organization selection
+    if (!orgSlug) {
+      // Redirect to a page where user can choose to create new org or join existing
+      setLocation('/choose-organization?action=microsoft');
+      return;
     }
     
     // Redirect to the Microsoft OAuth endpoint with organization parameter

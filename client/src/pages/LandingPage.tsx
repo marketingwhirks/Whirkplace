@@ -21,55 +21,97 @@ export default function LandingPage() {
     setIsAuthenticated(!!user);
   }, [user]);
 
-  // Determine organization based on hostname
+  // Determine organization based on hostname or URL params
   const getOrgSlug = () => {
     const hostname = window.location.hostname.toLowerCase();
+    const urlParams = new URLSearchParams(window.location.search);
+    const orgParam = urlParams.get('org');
     
     // Debug logging to see what hostname we're getting
     console.log('Landing page hostname:', hostname);
     
-    // If on whirkplace.com domain (including www.whirkplace.com, app.whirkplace.com, etc.)
+    // If org is specified in URL params, use that
+    if (orgParam) {
+      console.log('Using org from URL param:', orgParam);
+      return orgParam;
+    }
+    
+    // Check if we're on a specific organization's subdomain
+    // e.g., acme.whirkplace.com -> org = acme
+    if (hostname.includes('.whirkplace.com') && 
+        !hostname.startsWith('www.') && 
+        !hostname.startsWith('app.')) {
+      const subdomain = hostname.split('.')[0];
+      if (subdomain && subdomain !== 'whirkplace') {
+        console.log('Using org from subdomain:', subdomain);
+        return subdomain;
+      }
+    }
+    
+    // For main whirkplace.com domain, don't default to any org
+    // This allows users to create new organizations
     if (hostname === 'whirkplace.com' || 
         hostname === 'www.whirkplace.com' || 
-        hostname.endsWith('.whirkplace.com')) {
-      console.log('Detected whirkplace.com domain, using whirkplace org');
-      return 'whirkplace';
+        hostname === 'app.whirkplace.com') {
+      console.log('Main whirkplace.com domain - no default org');
+      return null;
     }
     
-    // For replit dev environments - use whirkplace for super admin access
+    // For replit dev environments during testing
     if (hostname.includes('replit') || hostname.includes('repl.co')) {
-      console.log('Detected replit domain, using whirkplace org for super admin');
-      return 'whirkplace';
+      console.log('Detected replit domain - no default org for signup');
+      return null;
     }
     
-    // Otherwise use whirkplace org for super admin access
-    console.log('Using whirkplace org for hostname:', hostname);
-    return 'whirkplace';
+    // No default org - allow user to choose
+    console.log('No org determined for hostname:', hostname);
+    return null;
   };
 
   const redirectToDashboard = () => {
     const orgSlug = getOrgSlug();
-    setLocation(`/?org=${orgSlug}`);
+    if (orgSlug) {
+      setLocation(`/?org=${orgSlug}`);
+    } else {
+      setLocation(`/`);
+    }
   };
 
   const handleSignIn = () => {
     const orgSlug = getOrgSlug();
-    setLocation(`/login?org=${orgSlug}`);
+    if (orgSlug) {
+      setLocation(`/login?org=${orgSlug}`);
+    } else {
+      setLocation(`/login`);
+    }
   };
 
   const handleSignUp = () => {
     const orgSlug = getOrgSlug();
-    setLocation(`/login?org=${orgSlug}&signup=true`);
+    if (orgSlug) {
+      setLocation(`/login?org=${orgSlug}&signup=true`);
+    } else {
+      // Go to signup page for creating new organization
+      setLocation(`/signup`);
+    }
   };
 
   const handleStarterSignUp = () => {
     const orgSlug = getOrgSlug();
-    setLocation(`/login?org=${orgSlug}&signup=true&plan=starter`);
+    if (orgSlug) {
+      setLocation(`/login?org=${orgSlug}&signup=true&plan=starter`);
+    } else {
+      setLocation(`/signup?plan=starter`);
+    }
   };
 
   const handleProfessionalSignUp = () => {
     const orgSlug = getOrgSlug();
-    setLocation(`/login?org=${orgSlug}&signup=true&plan=professional`);
+    if (orgSlug) {
+      setLocation(`/login?org=${orgSlug}&signup=true&plan=professional`);
+    } else {
+      setLocation(`/signup?plan=professional`);
+    }
   };
 
   // If user is authenticated, redirect to dashboard
