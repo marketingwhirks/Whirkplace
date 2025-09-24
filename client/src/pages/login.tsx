@@ -183,9 +183,12 @@ export default function LoginPage() {
           toast({ title: "Welcome back!", description: "Login successful" });
         }
         
-        // Store user data for client-side use
+        // Store user data for client-side use including auth token for session persistence
         if (data.user) {
           localStorage.setItem('whirkplace-user', JSON.stringify(data.user));
+          // Store auth data for session persistence in Replit environment
+          localStorage.setItem('auth_user_id', data.user.id);
+          localStorage.setItem('auth_user_data', JSON.stringify(data.user));
         }
         
         // Clear cached data and redirect
