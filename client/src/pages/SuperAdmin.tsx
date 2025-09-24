@@ -11,7 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { Building2, Users, Edit, Trash2, Plus, MoveRight, Shield } from "lucide-react";
+import { Building2, Users, Edit, Trash2, Plus, MoveRight, Shield, Briefcase, Link2, TrendingUp } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 
 export default function SuperAdmin() {
   const { toast } = useToast();
@@ -19,10 +21,15 @@ export default function SuperAdmin() {
   const [orgDialog, setOrgDialog] = useState(false);
   const [userDialog, setUserDialog] = useState(false);
   const [moveUserDialog, setMoveUserDialog] = useState(false);
+  const [partnerDialog, setPartnerDialog] = useState(false);
+  const [attachOrgDialog, setAttachOrgDialog] = useState(false);
   const [editingOrg, setEditingOrg] = useState<any>(null);
   const [editingUser, setEditingUser] = useState<any>(null);
+  const [editingPartner, setEditingPartner] = useState<any>(null);
   const [movingUser, setMovingUser] = useState<any>(null);
   const [targetOrgId, setTargetOrgId] = useState("");
+  const [selectedPartnerId, setSelectedPartnerId] = useState("");
+  const [selectedPartner, setSelectedPartner] = useState<any>(null);
 
   // System stats
   const { data: stats } = useQuery({
@@ -135,6 +142,78 @@ export default function SuperAdmin() {
     }
   });
 
+  // Partner queries
+  const { data: partners, isLoading: partnersLoading } = useQuery({
+    queryKey: ['/api/partners/firms'],
+  });
+
+  const { data: partnerStats } = useQuery({
+    queryKey: ['/api/partners/firms', selectedPartnerId, 'stats'],
+    enabled: !!selectedPartnerId,
+  });
+
+  const { data: partnerOrgs } = useQuery({
+    queryKey: ['/api/partners/firms', selectedPartnerId, 'organizations'],
+    enabled: !!selectedPartnerId,
+  });
+
+  // Partner mutations
+  const createPartnerMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('/api/partners/firms', 'POST', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
+      setPartnerDialog(false);
+      setEditingPartner(null);
+      toast({ title: "Partner firm created successfully" });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Failed to create partner firm", 
+        description: error.message,
+        variant: "destructive" 
+      });
+    }
+  });
+
+  const updatePartnerMutation = useMutation({
+    mutationFn: (data: any) => apiRequest(`/api/partners/firms/${data.id}`, 'PUT', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
+      setPartnerDialog(false);
+      setEditingPartner(null);
+      toast({ title: "Partner firm updated successfully" });
+    }
+  });
+
+  const deletePartnerMutation = useMutation({
+    mutationFn: (id: string) => apiRequest(`/api/partners/firms/${id}`, 'DELETE'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
+      toast({ title: "Partner firm deleted successfully" });
+    }
+  });
+
+  const attachOrgToPartnerMutation = useMutation({
+    mutationFn: (data: { partnerId: string; orgId: string }) => 
+      apiRequest(`/api/partners/firms/${data.partnerId}/organizations/${data.orgId}`, 'POST'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/super-admin/organizations'] });
+      setAttachOrgDialog(false);
+      toast({ title: "Organization attached to partner successfully" });
+    }
+  });
+
+  const promoteOrgToPartnerMutation = useMutation({
+    mutationFn: (data: { orgId: string; partnerConfig: any }) => 
+      apiRequest(`/api/partners/promote/${data.orgId}`, 'POST', data.partnerConfig),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/super-admin/organizations'] });
+      toast({ title: "Organization promoted to partner successfully" });
+    }
+  });
+
   const handleOrgSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -190,6 +269,40 @@ export default function SuperAdmin() {
     }
   };
 
+  const handlePartnerSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
+    const data = {
+      name: formData.get('name'),
+      slug: formData.get('slug'),
+      description: formData.get('description'),
+      logoUrl: formData.get('logoUrl'),
+      primaryColor: formData.get('primaryColor'),
+      websiteUrl: formData.get('websiteUrl'),
+      contactEmail: formData.get('contactEmail'),
+      contactPhone: formData.get('contactPhone'),
+      commissionRate: parseFloat(formData.get('commissionRate') as string) || 20,
+      isActive: formData.get('isActive') === 'true'
+    };
+
+    if (editingPartner) {
+      updatePartnerMutation.mutate({ ...data, id: editingPartner.id });
+    } else {
+      createPartnerMutation.mutate(data);
+    }
+  };
+
+  const handlePromoteToPartner = (org: any) => {
+    const partnerConfig = {
+      name: org.name,
+      slug: org.slug,
+      description: `Partner firm: ${org.name}`,
+      commissionRate: 20,
+      isActive: true
+    };
+    promoteOrgToPartnerMutation.mutate({ orgId: org.id, partnerConfig });
+  };
+
   return (
     <div className="container mx-auto py-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -237,6 +350,10 @@ export default function SuperAdmin() {
           <TabsTrigger value="organizations">
             <Building2 className="w-4 h-4 mr-2" />
             Organizations
+          </TabsTrigger>
+          <TabsTrigger value="partners">
+            <Briefcase className="w-4 h-4 mr-2" />
+            Partners
           </TabsTrigger>
           <TabsTrigger value="users">
             <Users className="w-4 h-4 mr-2" />
@@ -380,6 +497,353 @@ export default function SuperAdmin() {
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="partners" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Partner Firms</h2>
+            <Dialog open={partnerDialog} onOpenChange={setPartnerDialog}>
+              <DialogTrigger asChild>
+                <Button onClick={() => setEditingPartner(null)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add Partner
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>{editingPartner ? 'Edit' : 'Add'} Partner Firm</DialogTitle>
+                  <DialogDescription>
+                    Partner firms can resell Whirkplace under a co-branded model
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handlePartnerSubmit}>
+                  <div className="space-y-4 max-h-[60vh] overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="name">Partner Name</Label>
+                        <Input 
+                          id="name" 
+                          name="name" 
+                          defaultValue={editingPartner?.name} 
+                          required 
+                          placeholder="Patrick Accounting"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="slug">URL Slug</Label>
+                        <Input 
+                          id="slug" 
+                          name="slug" 
+                          defaultValue={editingPartner?.slug} 
+                          required 
+                          pattern="[a-z0-9-]+"
+                          placeholder="patrick-accounting"
+                          title="Lowercase letters, numbers, and hyphens only"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <Label htmlFor="description">Description</Label>
+                      <Textarea 
+                        id="description" 
+                        name="description" 
+                        defaultValue={editingPartner?.description} 
+                        placeholder="Full-service accounting and advisory firm..."
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="logoUrl">Logo URL</Label>
+                        <Input 
+                          id="logoUrl" 
+                          name="logoUrl" 
+                          type="url"
+                          defaultValue={editingPartner?.logoUrl} 
+                          placeholder="https://example.com/logo.png"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="primaryColor">Primary Color</Label>
+                        <Input 
+                          id="primaryColor" 
+                          name="primaryColor" 
+                          defaultValue={editingPartner?.primaryColor || '#000000'} 
+                          placeholder="#000000"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="websiteUrl">Website</Label>
+                        <Input 
+                          id="websiteUrl" 
+                          name="websiteUrl" 
+                          type="url"
+                          defaultValue={editingPartner?.websiteUrl} 
+                          placeholder="https://patrickaccounting.com"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="contactEmail">Contact Email</Label>
+                        <Input 
+                          id="contactEmail" 
+                          name="contactEmail" 
+                          type="email"
+                          defaultValue={editingPartner?.contactEmail} 
+                          placeholder="contact@patrickaccounting.com"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="contactPhone">Contact Phone</Label>
+                        <Input 
+                          id="contactPhone" 
+                          name="contactPhone" 
+                          defaultValue={editingPartner?.contactPhone} 
+                          placeholder="+1 (555) 123-4567"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="commissionRate">Commission Rate (%)</Label>
+                        <Input 
+                          id="commissionRate" 
+                          name="commissionRate" 
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          defaultValue={editingPartner?.commissionRate || 20} 
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="isActive">Status</Label>
+                      <Select name="isActive" defaultValue={editingPartner?.isActive?.toString() || 'true'}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="true">Active</SelectItem>
+                          <SelectItem value="false">Inactive</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <DialogFooter className="mt-4">
+                    <Button type="submit">
+                      {editingPartner ? 'Update' : 'Create'} Partner
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {/* Partner Firms Table */}
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Slug</TableHead>
+                    <TableHead>Organizations</TableHead>
+                    <TableHead>Commission</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {partnersLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center">Loading...</TableCell>
+                    </TableRow>
+                  ) : partners?.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center">No partner firms yet</TableCell>
+                    </TableRow>
+                  ) : partners?.map((partner: any) => (
+                    <TableRow key={partner.id} 
+                      className={selectedPartnerId === partner.id ? "bg-muted" : ""}
+                      onClick={() => {
+                        setSelectedPartnerId(partner.id);
+                        setSelectedPartner(partner);
+                      }}
+                    >
+                      <TableCell className="font-medium">
+                        {partner.name}
+                        {partner.logoUrl && (
+                          <img src={partner.logoUrl} alt={partner.name} className="h-6 w-auto mt-1" />
+                        )}
+                      </TableCell>
+                      <TableCell>{partner.slug}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">
+                          {partnerOrgs?.filter((o: any) => o.partnerFirmId === partner.id).length || 0} orgs
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{partner.commissionRate}%</TableCell>
+                      <TableCell>
+                        <Badge variant={partner.isActive ? "default" : "secondary"}>
+                          {partner.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingPartner(partner);
+                              setPartnerDialog(true);
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm(`Delete partner ${partner.name}? This will detach all organizations.`)) {
+                                deletePartnerMutation.mutate(partner.id);
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {/* Partner Details */}
+          {selectedPartner && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Briefcase className="w-5 h-5" />
+                  {selectedPartner.name} Details
+                </CardTitle>
+                <CardDescription>
+                  Partner statistics and organization management
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {/* Partner Stats */}
+                {partnerStats && (
+                  <div className="grid gap-4 md:grid-cols-3 mb-6">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardDescription>Organizations</CardDescription>
+                        <CardTitle>{partnerStats.totalOrganizations}</CardTitle>
+                      </CardHeader>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardDescription>Total Users</CardDescription>
+                        <CardTitle>{partnerStats.totalUsers}</CardTitle>
+                      </CardHeader>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardDescription>Active Users</CardDescription>
+                        <CardTitle>{partnerStats.activeUsers}</CardTitle>
+                      </CardHeader>
+                    </Card>
+                  </div>
+                )}
+
+                {/* Partner Organizations */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Partner Organizations</h3>
+                  {partnerOrgs?.length === 0 ? (
+                    <p className="text-muted-foreground">No organizations attached to this partner</p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Organization</TableHead>
+                          <TableHead>Plan</TableHead>
+                          <TableHead>Users</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {partnerOrgs?.map((org: any) => (
+                          <TableRow key={org.id}>
+                            <TableCell>{org.name}</TableCell>
+                            <TableCell>
+                              <Badge>{org.plan}</Badge>
+                            </TableCell>
+                            <TableCell>{org.stats?.userCount || 0}</TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  if (confirm(`Detach ${org.name} from ${selectedPartner.name}?`)) {
+                                    apiRequest(`/api/partners/organizations/${org.id}/partner`, 'DELETE')
+                                      .then(() => {
+                                        queryClient.invalidateQueries({ queryKey: ['/api/partners/firms'] });
+                                        toast({ title: "Organization detached successfully" });
+                                      });
+                                  }
+                                }}
+                              >
+                                Detach
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Promote Organization to Partner */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Promote Organization to Partner</CardTitle>
+              <CardDescription>
+                Convert an existing organization into a partner firm that can resell Whirkplace
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {organizations?.filter((org: any) => !org.partnerFirmId && org.plan !== 'partner')
+                  .map((org: any) => (
+                    <div key={org.id} className="flex items-center justify-between p-3 border rounded">
+                      <div>
+                        <p className="font-medium">{org.name}</p>
+                        <p className="text-sm text-muted-foreground">{org.slug}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => handlePromoteToPartner(org)}
+                      >
+                        <TrendingUp className="w-4 h-4 mr-2" />
+                        Promote to Partner
+                      </Button>
+                    </div>
+                  ))}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
