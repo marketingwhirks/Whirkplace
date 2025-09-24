@@ -550,16 +550,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Check if user already exists by Slack ID or email (using efficient lookups)
+      // IMPORTANT: Due to multiple organizations, we need to check across ALL orgs for Slack ID uniqueness
       let existingUser;
       try {
-        // First try to find by Slack user ID using indexed query
+        // First try to find by Slack user ID in the CURRENT organization
         if (user.sub) {
           console.log('🔍 Looking for user with Slack ID:', user.sub, 'in org:', organization.id);
           existingUser = await storage.getUserBySlackId(organization.id, user.sub);
-          console.log('🔍 Found by Slack ID?', existingUser ? 'YES' : 'NO');
+          console.log('🔍 Found by Slack ID in current org?', existingUser ? 'YES' : 'NO');
+          
+          // If not found in current org, check if user exists in ANY org (for duplicate prevention)
+          if (!existingUser) {
+            console.log('🔍 Checking if Slack ID exists in ANY organization...');
+            // Try to find user with this Slack ID in ANY organization
+            // This prevents duplicate key errors
+            const allOrgs = await storage.getAllOrganizations();
+            for (const org of allOrgs) {
+              const userInOrg = await storage.getUserBySlackId(org.id, user.sub);
+              if (userInOrg) {
+                console.log('⚠️ Found user with Slack ID in different org:', org.id, org.name);
+                // Update the existing user instead of creating a new one
+                existingUser = userInOrg;
+                break;
+              }
+            }
+          }
         }
         
-        // If not found by Slack ID, try by email using indexed query
+        // If still not found by Slack ID, try by email in current org only
         if (!existingUser && user.email) {
           console.log('🔍 Looking for user with email:', user.email, 'in org:', organization.id);
           existingUser = await storage.getUserByEmail(organization.id, user.email);
