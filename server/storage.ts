@@ -396,6 +396,17 @@ export class DatabaseStorage implements IStorage {
     const [user] = await db.select().from(users).where(
       and(eq(users.slackUserId, slackUserId), eq(users.organizationId, organizationId))
     );
+    
+    // Debug logging to understand field name mapping
+    if (user && slackUserId === 'U35EH2TDL') {
+      console.log('🔍 DEBUG - User fetched from DB for U35EH2TDL:');
+      console.log('  - has isSuperAdmin field?', 'isSuperAdmin' in user);
+      console.log('  - has is_super_admin field?', 'is_super_admin' in user);
+      console.log('  - isSuperAdmin value:', (user as any).isSuperAdmin);
+      console.log('  - is_super_admin value:', (user as any).is_super_admin);
+      console.log('  - All user keys:', Object.keys(user));
+    }
+    
     return user || undefined;
   }
 
