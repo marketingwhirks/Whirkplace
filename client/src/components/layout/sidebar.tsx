@@ -109,17 +109,17 @@ function SidebarContent() {
   return (
     <div className="h-full bg-card border-r border-border flex flex-col">
       {/* Logo/Brand */}
-      <div className="p-6 border-b border-border">
+      <div className="p-4 border-b border-border">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{backgroundColor: '#1b365d'}}>
+          <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{backgroundColor: '#1b365d'}}>
             <Heart className="w-4 h-4 fill-accent stroke-accent" strokeWidth="2" />
           </div>
-          <h1 className="text-xl font-bold text-[#1b365d] dark:text-white">Whirkplace</h1>
+          <h1 className="text-lg font-bold text-[#1b365d] dark:text-white">Whirkplace</h1>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-4 space-y-2">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {userLoading ? (
           // Loading skeleton for navigation
           <div className="space-y-2">
@@ -139,19 +139,19 @@ function SidebarContent() {
                 key={item.name}
                 href={item.href}
                 className={cn(
-                  "sidebar-link flex items-center space-x-3 p-3 rounded-lg transition-colors",
+                  "sidebar-link flex items-center space-x-2 p-2 rounded-lg transition-colors text-sm",
                   isActive
                     ? "bg-accent text-accent-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent"
                 )}
                 data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
               >
-                <item.icon className="w-5 h-5" />
-                <span className={cn("font-medium", isActive && "font-medium")}>
+                <item.icon className="w-4 h-4 flex-shrink-0" />
+                <span className={cn("text-sm", isActive && "font-medium")}>
                   {item.name}
                 </span>
                 {showBadge && (
-                  <span className="ml-auto notification-badge bg-primary text-primary-foreground text-xs rounded-full px-2 py-1">
+                  <span className="ml-auto notification-badge bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5">
                     {badgeCount}
                   </span>
                 )}
@@ -168,7 +168,7 @@ function SidebarContent() {
       </nav>
 
       {/* User Profile */}
-      <div className="p-4 border-t border-border">
+      <div className="p-3 border-t border-border">
         {userLoading ? (
           <div className="flex items-center space-x-3">
             <Skeleton className="w-10 h-10 rounded-full" />
@@ -179,22 +179,22 @@ function SidebarContent() {
             <Skeleton className="w-4 h-4" />
           </div>
         ) : currentUser ? (
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
             {currentUser.avatar ? (
               <img
                 src={currentUser.avatar}
                 alt="User avatar"
-                className="w-10 h-10 rounded-full"
+                className="w-8 h-8 rounded-full"
               />
             ) : (
-              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-                <span className="text-primary-foreground font-medium">
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                <span className="text-primary-foreground text-xs font-medium">
                   {currentUser.name?.[0] || "U"}
                 </span>
               </div>
             )}
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">
+              <p className="text-xs font-medium text-foreground truncate">
                 {currentUser.name}
               </p>
               <p className="text-xs text-muted-foreground truncate capitalize">
@@ -228,7 +228,7 @@ export function MobileSidebarTrigger() {
           <span className="sr-only">Open menu</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-64 p-0">
+      <SheetContent side="left" className="w-64 p-0 overflow-y-auto">
         <SidebarContent />
       </SheetContent>
     </Sheet>
