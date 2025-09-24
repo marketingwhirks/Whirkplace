@@ -3029,6 +3029,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const overfetchLimit = requestedLimit * 5;
       const allWins = await storage.getRecentWins(req.orgId, overfetchLimit);
       
+      // Handle super admin users who don't have regular user records
+      if (req.currentUser?.isSuperAdmin) {
+        // Super admins can see all wins
+        const limitedWins = allWins.slice(0, requestedLimit);
+        return res.json(limitedWins);
+      }
+      
       // Get current user
       const viewer = await storage.getUser(req.orgId, req.userId!);
       if (!viewer) {
