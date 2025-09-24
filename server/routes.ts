@@ -329,17 +329,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check for OAuth errors from Slack
       if (oauthError) {
         console.error("Slack OAuth error:", oauthError);
-        return res.status(400).json({ 
-          message: `OAuth error: ${oauthError}` 
-        });
+        return res.status(400).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Authentication Error</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #dc3545; }
+                button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+              </style>
+            </head>
+            <body>
+              <h1 class="error">❌ Authentication Error</h1>
+              <p>OAuth error: ${oauthError}</p>
+              <button onclick="window.close()">Close Window</button>
+            </body>
+          </html>
+        `);
       }
       
       // Validate required parameters
       if (!code || !state || typeof code !== 'string' || typeof state !== 'string') {
         console.error('❌ Invalid callback parameters:', { hasCode: !!code, hasState: !!state });
-        return res.status(400).json({ 
-          message: "Invalid OAuth callback parameters" 
-        });
+        return res.status(400).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Authentication Error</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #dc3545; }
+                button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+              </style>
+            </head>
+            <body>
+              <h1 class="error">❌ Invalid Request</h1>
+              <p>Invalid OAuth callback parameters. Please try logging in again.</p>
+              <button onclick="window.location.href='/'">Try Again</button>
+            </body>
+          </html>
+        `);
       }
       
       console.log('📋 Session data before validation:', {
@@ -356,9 +388,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const organizationSlug = validateOAuthState(state, req.session);
       if (!organizationSlug) {
         console.error('❌ OAuth state validation failed');
-        return res.status(400).json({ 
-          message: "Invalid or expired OAuth state. Please try again." 
-        });
+        return res.status(400).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Authentication Error</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #dc3545; }
+                button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+              </style>
+            </head>
+            <body>
+              <h1 class="error">❌ Session Expired</h1>
+              <p>Your authentication session has expired. Please try logging in again.</p>
+              <button onclick="window.location.href='/'">Try Again</button>
+            </body>
+          </html>
+        `);
       }
       
       console.log('✅ OAuth state validation successful, org:', organizationSlug);
@@ -368,18 +416,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tokenResponse = await exchangeOIDCCode(code, dynamicRedirectUri);
       if (!tokenResponse.ok || !tokenResponse.id_token) {
         console.error("OIDC token exchange failed:", tokenResponse.error);
-        return res.status(400).json({ 
-          message: "Failed to exchange OAuth code for tokens" 
-        });
+        return res.status(400).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Authentication Error</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #dc3545; }
+                button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+              </style>
+            </head>
+            <body>
+              <h1 class="error">❌ Authentication Failed</h1>
+              <p>Failed to authenticate with Slack. Please try again.</p>
+              <button onclick="window.location.href='/'">Try Again</button>
+            </body>
+          </html>
+        `);
       }
       
       // Validate and decode the ID token
       const userInfoResponse = await validateOIDCToken(tokenResponse.id_token);
       if (!userInfoResponse.ok || !userInfoResponse.user) {
         console.error("Failed to validate ID token:", userInfoResponse.error);
-        return res.status(400).json({ 
-          message: userInfoResponse.error || "Failed to validate user identity token" 
-        });
+        return res.status(400).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Authentication Error</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #dc3545; }
+                button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+              </style>
+            </head>
+            <body>
+              <h1 class="error">❌ Authentication Failed</h1>
+              <p>${userInfoResponse.error || "Failed to validate user identity. Please try again."}</p>
+              <button onclick="window.location.href='/'">Try Again</button>
+            </body>
+          </html>
+        `);
       }
       
       const user = userInfoResponse.user;
@@ -594,17 +674,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.error("Failed to create user from Slack:", error);
           console.error("User data that failed:", userData);
           console.error("Full error details:", error instanceof Error ? error.message : error);
-          return res.status(500).json({ 
-            message: "Failed to create user account",
-            error: error instanceof Error ? error.message : "Unknown error"
-          });
+          return res.status(500).send(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Authentication Error</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <style>
+                  body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                  .error { color: #dc3545; }
+                  button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+                </style>
+              </head>
+              <body>
+                <h1 class="error">❌ Account Creation Failed</h1>
+                <p>Failed to create your user account. Please contact support if this issue persists.</p>
+                <button onclick="window.location.href='/'">Try Again</button>
+              </body>
+            </html>
+          `);
         }
       }
       
       if (!authenticatedUser) {
-        return res.status(500).json({ 
-          message: "Failed to authenticate user" 
-        });
+        return res.status(500).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Authentication Error</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #dc3545; }
+                button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+              </style>
+            </head>
+            <body>
+              <h1 class="error">❌ Authentication Failed</h1>
+              <p>Failed to authenticate your account. Please try again.</p>
+              <button onclick="window.location.href='/'">Try Again</button>
+            </body>
+          </html>
+        `);
       }
       
       // Establish authentication session
@@ -613,7 +724,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.session.regenerate((regenerateErr) => {
           if (regenerateErr) {
             console.error('Failed to regenerate session:', regenerateErr);
-            return res.status(500).json({ message: "Session regeneration failed" });
+            return res.status(500).send(`
+              <!DOCTYPE html>
+              <html>
+                <head>
+                  <title>Authentication Error</title>
+                  <meta name="viewport" content="width=device-width, initial-scale=1">
+                  <style>
+                    body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                    .error { color: #dc3545; }
+                    button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+                  </style>
+                </head>
+                <body>
+                  <h1 class="error">❌ Session Error</h1>
+                  <p>Failed to establish authentication session. Please try again.</p>
+                  <button onclick="window.location.href='/'">Try Again</button>
+                </body>
+              </html>
+            `);
           }
           
           // CRITICAL: Set session for production authentication 
@@ -627,7 +756,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           req.session.save((sessionErr) => {
             if (sessionErr) {
               console.error('Failed to save session:', sessionErr);
-              return res.status(500).json({ message: "Session save failed" });
+              return res.status(500).send(`
+                <!DOCTYPE html>
+                <html>
+                  <head>
+                    <title>Authentication Error</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                      body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                      .error { color: #dc3545; }
+                      button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+                    </style>
+                  </head>
+                  <body>
+                    <h1 class="error">❌ Session Error</h1>
+                    <p>Failed to save authentication session. Please try again.</p>
+                    <button onclick="window.location.href='/'">Try Again</button>
+                  </body>
+                </html>
+              `);
             }
             
             // Set HTTP-only secure cookies for authentication fallback
@@ -691,13 +838,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       } catch (error) {
         console.error("Failed to establish session:", error);
-        res.status(500).json({ message: "Authentication failed" });
+        res.status(500).send(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Authentication Error</title>
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <style>
+                body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                .error { color: #dc3545; }
+                button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+              </style>
+            </head>
+            <body>
+              <h1 class="error">❌ Authentication Failed</h1>
+              <p>An error occurred during authentication. Please try again.</p>
+              <button onclick="window.location.href='/'">Try Again</button>
+            </body>
+          </html>
+        `);
       }
     } catch (error) {
       console.error("OAuth callback error:", error);
-      res.status(500).json({ 
-        message: "Authentication failed. Please try again." 
-      });
+      res.status(500).send(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Authentication Error</title>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+              body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+              .error { color: #dc3545; }
+              button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+            </style>
+          </head>
+          <body>
+            <h1 class="error">❌ Authentication Failed</h1>
+            <p>An unexpected error occurred. Please try logging in again.</p>
+            <button onclick="window.location.href='/'">Try Again</button>
+          </body>
+        </html>
+      `);
     }
   });
   
