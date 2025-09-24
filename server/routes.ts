@@ -859,12 +859,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         `);
       }
     } catch (error) {
-      console.error("OAuth callback error:", error);
-      console.error("OAuth callback error stack:", error instanceof Error ? error.stack : "No stack trace");
+      console.error("🔴 CRITICAL OAuth callback error:", error);
+      console.error("🔴 Error type:", error?.constructor?.name);
+      console.error("🔴 Error message:", error instanceof Error ? error.message : String(error));
+      console.error("🔴 Error stack:", error instanceof Error ? error.stack : "No stack trace");
+      console.error("🔴 Request headers:", req.headers);
+      console.error("🔴 Session ID:", req.sessionID);
+      console.error("🔴 Session data:", req.session);
       
-      // Provide more detailed error information for debugging
-      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      // Provide detailed error information for debugging
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorType = error?.constructor?.name || 'UnknownError';
       const isProduction = process.env.NODE_ENV === 'production';
+      
+      // TEMPORARILY enable debug info in production to diagnose the issue
+      const showDebug = true; // Always show debug info until we fix this
       
       res.status(500).send(`
         <!DOCTYPE html>
@@ -876,13 +885,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
               body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
               .error { color: #dc3545; }
               button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
-              .debug { font-size: 0.9em; color: #666; margin-top: 20px; padding: 10px; background: #f5f5f5; border-radius: 4px; text-align: left; max-width: 600px; margin: 20px auto; }
+              .debug { font-size: 0.9em; color: #666; margin-top: 20px; padding: 10px; background: #f5f5f5; border-radius: 4px; text-align: left; max-width: 600px; margin: 20px auto; word-wrap: break-word; }
             </style>
           </head>
           <body>
             <h1 class="error">❌ Authentication Failed</h1>
             <p>An unexpected error occurred. Please try logging in again.</p>
-            ${!isProduction ? `<div class="debug"><strong>Debug Info:</strong><br>${errorMessage}</div>` : ''}
+            ${showDebug ? `
+              <div class="debug">
+                <strong>Debug Info:</strong><br>
+                Error Type: ${errorType}<br>
+                Error Message: ${errorMessage}<br>
+                Session ID: ${req.sessionID || 'No session'}<br>
+                Environment: ${process.env.NODE_ENV || 'unknown'}
+              </div>
+            ` : ''}
             <button onclick="window.location.href='/'">Try Again</button>
           </body>
         </html>
