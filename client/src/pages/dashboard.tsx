@@ -129,11 +129,12 @@ export default function Dashboard() {
     queryKey: ["/api/questions"],
   });
 
-  // Fetch shoutouts received based on role
+  // Fetch shoutouts received based on role (server derives scope from session)
   const { data: shoutoutsReceived = [], isLoading: shoutoutsLoading } = useQuery<Shoutout[]>({
-    queryKey: currentUser.role === "member" 
-      ? ["/api/shoutouts", { userId: currentUser.id, type: "received", limit: 10 }]
-      : ["/api/shoutouts", { type: "received", limit: 50 }],
+    queryKey: ["/api/shoutouts", { 
+      type: "received", 
+      limit: currentUser.role === "admin" ? 100 : 50 
+    }],
   });
 
   // Calculate shoutout metrics based on role
@@ -141,22 +142,35 @@ export default function Dashboard() {
     if (currentUser.role === "admin" && Array.isArray(shoutoutsReceived)) {
       // For admins, group shoutouts by recipient's team
       const teamShoutouts = new Map<string, { teamName: string, count: number }>();
+      const unassignedShoutouts = { teamName: "Unassigned", count: 0 };
       
       shoutoutsReceived.forEach(shoutout => {
         const recipient = users.find(u => u.id === shoutout.toUserId);
-        if (recipient?.teamId) {
-          const team = recipient.teamId; // We could fetch team names if needed
-          if (!teamShoutouts.has(team)) {
-            teamShoutouts.set(team, { teamName: `Team ${team.slice(0, 8)}`, count: 0 });
+        if (!recipient) {
+          unassignedShoutouts.count++;
+        } else if (recipient.teamId) {
+          const teamId = recipient.teamId;
+          if (!teamShoutouts.has(teamId)) {
+            // Try to find a team name from other users or use generic label
+            const teamUser = users.find(u => u.teamId === teamId && u.team);
+            const teamName = teamUser?.team?.name || `Team ${teamId.slice(0, 8)}`;
+            teamShoutouts.set(teamId, { teamName, count: 0 });
           }
-          teamShoutouts.get(team)!.count++;
+          teamShoutouts.get(teamId)!.count++;
+        } else {
+          unassignedShoutouts.count++;
         }
       });
       
+      const byTeam = Array.from(teamShoutouts.values());
+      if (unassignedShoutouts.count > 0) {
+        byTeam.push(unassignedShoutouts);
+      }
+      
       return { 
         totalCount: shoutoutsReceived.length,
-        byTeam: Array.from(teamShoutouts.values()),
-        topTeam: Array.from(teamShoutouts.values()).sort((a, b) => b.count - a.count)[0]
+        byTeam,
+        topTeam: byTeam.sort((a, b) => b.count - a.count)[0]
       };
     } else if (currentUser.role === "manager" && Array.isArray(shoutoutsReceived)) {
       // For managers, separate personal and team shoutouts
@@ -530,7 +544,7 @@ export default function Dashboard() {
             <CardContent className="p-6">
               <div className="flex items-center">
                 <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">
+                  <p className="text-sm font-medium text-muted-foreground" data-testid="text-shoutouts-label">
                     {currentUser.role === "member" 
                       ? "Your Shoutouts Received" 
                       : currentUser.role === "manager" 
@@ -548,7 +562,7 @@ export default function Dashboard() {
                           : shoutoutMetrics.personalCount}
                     </p>
                   )}
-                  <p className="text-xs text-pink-600">
+                  <p className="text-xs text-pink-600" data-testid="text-shoutouts-detail">
                     {currentUser.role === "admin" && shoutoutMetrics.topTeam
                       ? `Top: ${shoutoutMetrics.topTeam.teamName} (${shoutoutMetrics.topTeam.count})`
                       : currentUser.role === "manager" && shoutoutMetrics.personalCount !== undefined
