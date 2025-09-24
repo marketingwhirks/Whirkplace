@@ -339,15 +339,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /auth/slack/login - Initiate Slack OAuth flow
   app.get("/auth/slack/login", async (req, res) => {
     try {
-      const { org } = req.query;
+      const { org, action } = req.query;
       
-      // For super admin users, allow authentication without organization
-      // They will select organization after authentication
-      const organizationSlug = org || 'whirkplace';
+      // Handle different authentication scenarios
+      let organizationSlug = org as string;
       
-      // If no org specified, we're authenticating as super admin
+      // If no org specified, redirect to organization selection
       if (!org) {
-        console.log('🔐 Super admin authentication initiated via Slack');
+        console.log('❌ No organization specified for Slack login');
+        return res.redirect('/signup');
+      }
+      
+      // Handle new organization creation
+      if (org === 'new') {
+        console.log('🆕 New organization creation via Slack');
+        organizationSlug = 'new';
+      } else {
+        console.log('🔐 Slack authentication for organization:', organizationSlug);
       }
       
       try {
@@ -566,6 +574,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Note: We need to manually resolve the organization here since we're before the org middleware
       let organization;
       let isSuperAdmin = false;
+      let isNewOrganization = false;
       
       try {
         const allOrgs = await storage.getAllOrganizations();
@@ -585,8 +594,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('  Email:', userEmail);
         console.log('  Is allowed super admin:', isAllowedSuperAdmin);
         
-        // Check if this is a super admin authentication to whirkplace org
-        if (organizationSlug === 'whirkplace') {
+        // Check if this is a new organization creation
+        if (organizationSlug === 'new') {
+          isNewOrganization = true;
+          console.log('🆕 Creating new organization for user:', userEmail);
+          
+          // Generate organization slug from email domain or company name
+          const emailDomain = userEmail.split('@')[1] || 'company';
+          const companyName = emailDomain.split('.')[0];
+          
+          // Create a unique slug
+          let baseSlug = companyName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+          let finalSlug = baseSlug;
+          let counter = 1;
+          
+          // Check if slug already exists and make it unique
+          while (allOrgs.find(org => org.slug === finalSlug)) {
+            finalSlug = `${baseSlug}-${counter}`;
+            counter++;
+          }
+          
+          // Create the new organization
+          organization = await storage.createOrganization({
+            name: team?.name || `${companyName.charAt(0).toUpperCase()}${companyName.slice(1)}`,
+            slug: finalSlug,
+            plan: 'starter',
+            isActive: true,
+            customValues: ['Innovation', 'Teamwork', 'Excellence'],
+            enableSlackIntegration: true,
+            slackWorkspaceId: team?.id || null,
+            enableMicrosoftAuth: false
+          });
+          
+          console.log('✅ Created new organization:', organization.id, organization.slug);
+        } else if (organizationSlug === 'whirkplace') {
           // Look for the whirkplace super admin organization
           organization = allOrgs.find(org => org.id === 'whirkplace' || org.slug === 'whirkplace');
           
@@ -644,7 +685,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log('🔍 Found by Slack ID in current org?', existingUser ? 'YES' : 'NO');
           
           // If not found in current org, check if user exists in ANY org (for duplicate prevention)
-          if (!existingUser) {
+          // BUT allow creating new organizations even if Slack ID exists elsewhere
+          if (!existingUser && !isNewOrganization) {
             console.log('🔍 Checking if Slack ID exists in ANY organization...');
             // Try to find user with this Slack ID in ANY organization
             // This prevents duplicate key errors
@@ -662,7 +704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   userOrganization = org; // Update organization context to the user's actual org
                   break;
                 } else {
-                  // Regular users cannot cross organizations
+                  // Regular users cannot cross organizations unless creating a new org
                   console.log('❌ Regular user trying to access wrong organization');
                   // User exists in a different organization!
                   // Return error page explaining the situation
@@ -1061,11 +1103,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // For super admin users, redirect to organization selection
             // Otherwise, redirect to the specific organization dashboard
+            // If new organization was created, use the actual organization slug
+            const actualOrgSlug = organization.slug || organizationSlug;
             const redirectPath = isSuperAdmin 
               ? `${appUrl}/#/select-organization` 
-              : `${appUrl}/#/dashboard?org=${organizationSlug}`;
+              : `${appUrl}/#/dashboard?org=${actualOrgSlug}`;
             
             console.log(`🚀 Redirecting ${isSuperAdmin ? 'super admin' : 'user'} to:`, redirectPath);
+            console.log(`   Organization slug: ${actualOrgSlug} (created new: ${isNewOrganization})`);
             
             res.redirect(redirectPath);
           });
