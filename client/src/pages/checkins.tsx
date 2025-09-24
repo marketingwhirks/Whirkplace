@@ -5,8 +5,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow, startOfWeek, addWeeks, isSameWeek } from "date-fns";
 import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle } from "lucide-react";
-
-import Header from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -191,24 +189,17 @@ export default function Checkins() {
 
   if (userLoading) {
     return (
-      <>
-        <Header title="Check-ins" description="View and manage your weekly check-ins" />
-        <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-6">
           <div className="space-y-6">
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-64 w-full" />
           </div>
-        </main>
-      </>
+      </main>
     );
   }
 
   return (
     <>
-      <Header
-        title="Check-ins"
-        description="Submit and track your weekly check-ins"
-      />
 
       <main className="flex-1 overflow-auto p-6 space-y-6">
         {/* Current Week Status */}

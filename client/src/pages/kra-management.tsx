@@ -43,7 +43,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import Header from "@/components/layout/header";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
@@ -989,26 +988,15 @@ export default function KraManagementPage() {
   // Show upgrade prompt if user doesn't have access to KRA Management
   if (!canAccessKraManagement) {
     return (
-      <>
-        <Header
-          title="KRA Management"
-          description="Manage Key Result Areas for your team members"
-        />
         <UpgradePrompt
         feature="kra_management"
         title="KRA Management"
         description="Unlock comprehensive Key Result Area management to set clear goals, track performance, and drive accountability across your organization."
       />
-      </>
     );
   }
   
   return (
-    <>
-      <Header
-        title="KRA Management"
-        description="Manage Key Result Areas templates and track team progress"
-      />
       <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
         <div className="flex items-center justify-between">
           <div>
@@ -1060,6 +1048,5 @@ export default function KraManagementPage() {
         </TabsContent>
       </Tabs>
     </div>
-    </>
   );
 }

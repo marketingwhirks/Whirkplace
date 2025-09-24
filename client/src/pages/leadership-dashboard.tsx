@@ -5,7 +5,6 @@ import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Users, Filter,
   Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer
 } from "lucide-react";
-import Header from "@/components/layout/header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -316,12 +315,7 @@ export default function LeadershipDashboard() {
   // Show access denied for non-admins
   if (!userLoading && currentUser && currentUser.role !== "admin") {
     return (
-      <>
-        <Header
-          title="Leadership Dashboard"
-          description="Access Denied"
-        />
-        <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-6">
           <Card>
             <CardContent className="p-6 text-center">
               <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
@@ -332,32 +326,23 @@ export default function LeadershipDashboard() {
             </CardContent>
           </Card>
         </main>
-      </>
     );
   }
 
   if (userLoading) {
     return (
-      <>
-        <Header title="Leadership Dashboard" description="Loading..." />
-        <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-6">
           <div className="space-y-6">
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-48 w-full" />
           </div>
         </main>
-      </>
     );
   }
 
   return (
     <>
-      <Header
-        title="Leadership Dashboard"
-        description="Organization-wide check-in analytics and review management"
-      />
-
-      <main className="flex-1 overflow-auto p-6 space-y-6">
+    <main className="flex-1 overflow-auto p-6 space-y-6">
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>

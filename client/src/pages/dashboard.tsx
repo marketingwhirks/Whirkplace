@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import Header from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -37,12 +36,7 @@ export default function Dashboard() {
   // Handle loading and error states for authentication
   if (userLoading) {
     return (
-      <>
-        <Header
-          title="Dashboard"
-          description="Welcome back! Here's what's happening with your team."
-        />
-        <main className="flex-1 overflow-auto p-6 space-y-6">
+      <main className="flex-1 overflow-auto p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[...Array(4)].map((_, i) => (
               <Card key={i}>
@@ -89,19 +83,13 @@ export default function Dashboard() {
               </Card>
             </div>
           </div>
-        </main>
-      </>
+      </main>
     );
   }
 
   if (userError || !currentUser) {
     return (
-      <>
-        <Header
-          title="Dashboard"
-          description="Please log in to access your dashboard."
-        />
-        <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-6">
           <Card className="max-w-md mx-auto">
             <CardContent className="p-6 text-center">
               <p className="text-muted-foreground mb-4">
@@ -112,8 +100,7 @@ export default function Dashboard() {
               </Button>
             </CardContent>
           </Card>
-        </main>
-      </>
+      </main>
     );
   }
 
@@ -290,11 +277,6 @@ export default function Dashboard() {
 
   return (
     <>
-      <Header
-        title="Dashboard"
-        description="Welcome back! Here's what's happening with your team."
-      />
-
       <main className="flex-1 overflow-auto p-6 space-y-6">
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

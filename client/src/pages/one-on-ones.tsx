@@ -27,7 +27,6 @@ import {
 } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Skeleton } from "@/components/ui/skeleton";
-import Header from "@/components/layout/header";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { useFeatureAccess } from "@/hooks/useFeatureAccess";
@@ -903,26 +902,15 @@ export default function OneOnOnesPage() {
   // Show upgrade prompt if user doesn't have access to One-on-Ones
   if (!canAccessOneOnOnes) {
     return (
-      <>
-        <Header
-          title="One-on-One Meetings"
-          description="Schedule and manage one-on-one meetings with your team"
-        />
         <UpgradePrompt
         feature="one_on_ones"
         title="One-on-One Meetings"
         description="Unlock powerful 1:1 meeting management to build stronger relationships with your team members and track their professional development."
       />
-      </>
     );
   }
   
   return (
-    <>
-      <Header
-        title="One-on-One Meetings"
-        description="Manage your one-on-one meetings and track progress with your team"
-      />
       <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
         <div className="flex items-center justify-between">
           <div>
@@ -962,6 +950,5 @@ export default function OneOnOnesPage() {
         </TabsContent>
       </Tabs>
     </div>
-    </>
   );
 }

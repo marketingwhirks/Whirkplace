@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import Header from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -291,7 +290,6 @@ export default function Team() {
   if (currentUser?.role !== "admin") {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header title="Team Management" />
         <div className="flex-1 flex items-center justify-center">
           <Card className="w-96">
             <CardHeader className="text-center">
@@ -310,13 +308,7 @@ export default function Team() {
   }
 
   return (
-    <>
-      <Header
-        title="Team"
-        description="Manage your team structure and members"
-      />
-
-      <main className="flex-1 overflow-auto p-6 space-y-6">
+    <main className="flex-1 overflow-auto p-6 space-y-6">
         {/* Quick Actions */}
         <div className="flex justify-between items-center">
           <div>
@@ -768,6 +760,5 @@ export default function Team() {
           </Card>
         )}
       </main>
-    </>
   );
 }

@@ -6,7 +6,6 @@ import { z } from "zod";
 import { formatDistanceToNow } from "date-fns";
 import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle, Check } from "lucide-react";
 
-import Header from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -234,13 +233,7 @@ export default function Wins() {
   };
 
   return (
-    <>
-      <Header
-        title="Wins"
-        description="Celebrate team achievements and successes"
-      />
-
-      <main className="flex-1 overflow-auto p-4 md:p-6">
+    <main className="flex-1 overflow-auto p-4 md:p-6">
         <div className="space-y-6">
           {/* Actions Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -725,6 +718,5 @@ export default function Wins() {
           </AlertDialog>
         </div>
       </main>
-    </>
   );
 }

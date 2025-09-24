@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { CheckCircle, XCircle, Clock, Eye, MessageSquare, Filter, Calendar, User } from "lucide-react";
-import Header from "@/components/layout/header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -135,12 +134,7 @@ export default function Reviews() {
   // Show access denied for non-managers/admins
   if (!userLoading && currentUser && currentUser.role === "member") {
     return (
-      <>
-        <Header
-          title="Reviews"
-          description="Access Denied"
-        />
-        <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-6">
           <Card>
             <CardContent className="p-6 text-center">
               <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
@@ -151,32 +145,23 @@ export default function Reviews() {
             </CardContent>
           </Card>
         </main>
-      </>
     );
   }
 
   if (userLoading) {
     return (
-      <>
-        <Header title="Reviews" description="Loading..." />
-        <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-6">
           <div className="space-y-6">
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-48 w-full" />
           </div>
         </main>
-      </>
     );
   }
 
   return (
     <>
-      <Header
-        title="Check-in Reviews"
-        description="Review and track team member check-ins"
-      />
-
-      <main className="flex-1 overflow-auto p-6 space-y-6">
+    <main className="flex-1 overflow-auto p-6 space-y-6">
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>

@@ -5,7 +5,6 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { z } from "zod";
 import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff, Send, XCircle, Search, BookOpen, Users, Heart, Briefcase, TrendingUp, MessageCircle, Target, Sparkles, Wand2, Lightbulb } from "lucide-react";
 
-import Header from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -301,12 +300,7 @@ export default function Questions() {
   // Show access denied for non-managers/admins
   if (!userLoading && currentUser && (currentUser as any).role === "member") {
     return (
-      <>
-        <Header
-          title="Questions"
-          description="Access Denied"
-        />
-        <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-6">
           <Card>
             <CardContent className="p-6 text-center">
               <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
@@ -317,32 +311,22 @@ export default function Questions() {
             </CardContent>
           </Card>
         </main>
-      </>
     );
   }
 
   if (userLoading) {
     return (
-      <>
-        <Header title="Questions" description="Loading..." />
-        <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-6">
           <div className="space-y-6">
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-48 w-full" />
           </div>
         </main>
-      </>
     );
   }
 
   return (
-    <>
-      <Header
-        title="Questions"
-        description="Manage check-in questions for your team"
-      />
-
-      <main className="flex-1 overflow-auto p-6">
+    <main className="flex-1 overflow-auto p-6">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Question Management</h1>
@@ -817,6 +801,5 @@ export default function Questions() {
           </div>
         )}
       </main>
-    </>
   );
 }

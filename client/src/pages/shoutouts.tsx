@@ -6,7 +6,6 @@ import { z } from "zod";
 import { formatDistanceToNow } from "date-fns";
 import { Plus, Edit, Trash2, Users, Lock, Unlock, Heart, Star, MessageCircle, Send, Gift, Check, ChevronsUpDown, X } from "lucide-react";
 
-import Header from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -218,12 +217,7 @@ export default function ShoutoutsPage() {
   // No client-side filtering needed - server handles all filtering based on API parameters
 
   return (
-    <div className="flex flex-col min-h-screen bg-background">
-      <Header 
-        title="Team Shout Outs"
-        description="Recognize your teammates and celebrate wins together"
-      />
-      <div className="flex-1 container mx-auto px-4 py-6">
+    <div className="flex-1 container mx-auto px-4 py-6">
         <div className="max-w-6xl mx-auto space-y-6">
           {/* Header */}
           <div className="flex items-center justify-between">
@@ -635,6 +629,5 @@ export default function ShoutoutsPage() {
           </AlertDialogContent>
         </AlertDialog>
       </div>
-    </div>
   );
 }

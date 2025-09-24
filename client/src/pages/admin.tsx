@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import Header from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -383,9 +382,7 @@ export default function Admin() {
   // Allow access if user is actually admin OR if user can switch roles (Matthew Patrick only)
   if (actualUser?.role !== "admin" && !canSwitchRoles) {
     return (
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header title="Admin Panel" />
-        <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center">
           <Card className="w-96">
             <CardHeader className="text-center">
               <AlertCircle className="w-12 h-12 mx-auto text-orange-500 mb-2" />
@@ -397,7 +394,6 @@ export default function Admin() {
               </p>
             </CardContent>
           </Card>
-        </div>
       </div>
     );
   }

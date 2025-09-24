@@ -6,7 +6,6 @@ import { z } from "zod";
 import { format } from "date-fns";
 import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw } from "lucide-react";
 
-import Header from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
@@ -353,9 +352,7 @@ export default function Settings() {
 
   if (userLoading) {
     return (
-      <>
-        <Header title="Settings" description="Configure your TeamPulse preferences" />
-        <main className="flex-1 overflow-auto p-6">
+      <main className="flex-1 overflow-auto p-6">
           <div className="space-y-6">
             {[1, 2, 3].map((i) => (
               <Card key={i}>
@@ -370,18 +367,12 @@ export default function Settings() {
             ))}
           </div>
         </main>
-      </>
     );
   }
 
   return (
     <>
-      <Header
-        title="Settings"
-        description="Configure your TeamPulse preferences"
-      />
-
-      <main className="flex-1 overflow-auto p-4 md:p-6">
+    <main className="flex-1 overflow-auto p-4 md:p-6">
         <div className="max-w-4xl mx-auto space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="grid w-full grid-cols-6" data-testid="tabs-settings">

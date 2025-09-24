@@ -21,7 +21,6 @@ import {
 } from "recharts";
 import { format, subDays, subWeeks, subMonths, subYears } from "date-fns";
 
-import Header from "@/components/layout/header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
@@ -975,11 +974,6 @@ export default function Analytics() {
   // Show loading state while user data is being fetched
   if (userLoading || !currentUser) {
     return (
-      <>
-        <Header
-          title="Analytics"
-          description="View team performance insights and trends"
-        />
         <main className="flex-1 overflow-auto p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -992,17 +986,10 @@ export default function Analytics() {
           </div>
           <TableSkeleton />
         </main>
-      </>
     );
   }
 
   return (
-    <>
-      <Header
-        title="Analytics"
-        description="View team performance insights and trends"
-      />
-
       <main className="flex-1 overflow-auto p-6 space-y-6">
         {/* User Role Badge */}
         {currentUser && (
@@ -1043,6 +1030,5 @@ export default function Analytics() {
         {/* Leaderboard */}
         <Leaderboard filters={filtersWithDefaults} />
       </main>
-    </>
   );
 }
