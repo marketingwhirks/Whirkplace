@@ -47,7 +47,7 @@ export default function DevLogin() {
         
         // Redirect to dashboard
         setTimeout(() => {
-          setLocation('/dashboard');
+          setLocation('/');
         }, 500);
       } else {
         const error = await response.json();
