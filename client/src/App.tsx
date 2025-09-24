@@ -27,6 +27,7 @@ import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import LandingPage from "@/pages/LandingPage";
 import PartnerPage from "@/pages/PartnerPage";
+import DevLogin from "@/pages/DevLogin";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
@@ -104,6 +105,7 @@ function App() {
               <Route path="/signup" component={BusinessSignupPage} />
               <Route path="/login" component={LoginPage} />
               <Route path="/partners" component={PartnerPage} />
+              <Route path="/dev-login" component={DevLogin} />
               <Route component={AuthenticatedApp} />
             </Switch>
           </RoleSwitchProvider>
