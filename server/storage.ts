@@ -108,8 +108,11 @@ export interface IStorage {
   // Super Admin Methods - Cross-organization access
   getAllUsersGlobal(includeInactive?: boolean): Promise<User[]>;
   getUserGlobal(userId: string): Promise<User | undefined>;
+  createUserGlobal(user: InsertUser & { organizationId: string }): Promise<User>;
   updateUserGlobal(userId: string, user: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUserGlobal(userId: string): Promise<boolean>;
   deactivateOrganization(organizationId: string): Promise<boolean>;
+  deleteOrganization(organizationId: string): Promise<boolean>;
   getOrganizationStats(organizationId: string): Promise<{ userCount: number; teamCount: number; activeUsers: number }>;
   getSystemStats(): Promise<{ totalOrganizations: number; totalUsers: number; activeOrganizations: number; activeUsers: number }>;
   
@@ -547,6 +550,30 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async createUserGlobal(user: InsertUser & { organizationId: string }): Promise<User> {
+    try {
+      const userId = user.id || `user-${Math.random().toString(36).substring(2, 15)}`;
+      const [newUser] = await db.insert(users).values({
+        id: userId,
+        name: user.name,
+        email: user.email,
+        username: user.username || user.email.split('@')[0],
+        role: user.role || 'member',
+        teamId: user.teamId || null,
+        managerId: user.managerId || null,
+        organizationId: user.organizationId,
+        isActive: user.isActive ?? true,
+        password: user.password || null,
+        is_super_admin: user.is_super_admin || false
+      }).returning();
+      
+      return newUser;
+    } catch (error) {
+      console.error("Failed to create user globally:", error);
+      throw error;
+    }
+  }
+
   async updateUserGlobal(userId: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
     try {
       const updateData: Partial<typeof users.$inferInsert> = {};
@@ -557,6 +584,8 @@ export class DatabaseStorage implements IStorage {
       if (userUpdate.isActive !== undefined) updateData.isActive = userUpdate.isActive;
       if (userUpdate.teamId !== undefined) updateData.teamId = userUpdate.teamId;
       if (userUpdate.managerId !== undefined) updateData.managerId = userUpdate.managerId;
+      if (userUpdate.password !== undefined) updateData.password = userUpdate.password;
+      if (userUpdate.is_super_admin !== undefined) updateData.is_super_admin = userUpdate.is_super_admin;
 
       const [updatedUser] = await db
         .update(users)
@@ -568,6 +597,19 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error("Failed to update user globally:", error);
       return undefined;
+    }
+  }
+
+  async deleteUserGlobal(userId: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(users)
+        .where(eq(users.id, userId));
+      
+      return (result.rowCount ?? 0) > 0;
+    } catch (error) {
+      console.error("Failed to delete user globally:", error);
+      return false;
     }
   }
 

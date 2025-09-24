@@ -256,13 +256,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Get user by email
+      console.log(`🔐 Local login attempt for ${email} in org ${req.orgId}`);
       const user = await storage.getUserByEmail(req.orgId, email);
       
       if (!user) {
+        console.log(`❌ User not found: ${email} in org ${req.orgId}`);
         return res.status(401).json({ 
           message: "Invalid email or password" 
         });
       }
+      console.log(`✅ User found: ${user.email}, has password: ${!!user.password}`);
       
       // Check if user has a password (local auth enabled)
       if (!user.password) {
