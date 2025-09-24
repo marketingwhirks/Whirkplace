@@ -423,8 +423,17 @@ export class DatabaseStorage implements IStorage {
       slackEmail: insertUser.slackEmail ?? null,
       slackAvatar: insertUser.slackAvatar ?? null,
       slackWorkspaceId: insertUser.slackWorkspaceId ?? null,
+      microsoftUserId: insertUser.microsoftUserId ?? null,
+      microsoftUserPrincipalName: insertUser.microsoftUserPrincipalName ?? null,
+      microsoftDisplayName: insertUser.microsoftDisplayName ?? null,
+      microsoftEmail: insertUser.microsoftEmail ?? null,
+      microsoftAvatar: insertUser.microsoftAvatar ?? null,
+      microsoftTenantId: insertUser.microsoftTenantId ?? null,
+      microsoftAccessToken: insertUser.microsoftAccessToken ?? null,
+      microsoftRefreshToken: insertUser.microsoftRefreshToken ?? null,
       authProvider: insertUser.authProvider ?? "local",
       isActive: insertUser.isActive ?? true,
+      isSuperAdmin: insertUser.isSuperAdmin ?? false,
     };
 
     const [user] = await db
