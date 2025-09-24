@@ -7134,13 +7134,15 @@ Return the response as a JSON object with this structure:
   const requireSuperAdmin = () => {
     return async (req: any, res: any, next: any) => {
       try {
-        const userId = req.userId || req.session?.userId;
-        if (!userId) {
+        // Check if user was already authenticated by requireAuth
+        const user = req.currentUser;
+        
+        if (!user) {
           return res.status(401).json({ message: "Authentication required" });
         }
 
-        const user = await storage.getUserGlobal(userId);
-        if (!user || !user.is_super_admin) {
+        // Check if user is a super admin
+        if (!user.is_super_admin) {
           return res.status(403).json({ message: "Super admin access required" });
         }
 
