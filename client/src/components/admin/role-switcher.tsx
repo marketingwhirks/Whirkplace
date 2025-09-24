@@ -15,7 +15,7 @@ export default function RoleSwitcher() {
     clearRoleSwitch,
   } = useRoleSwitch();
 
-  // Only show to Matthew Patrick
+  // Only show to super admins
   if (!canSwitchRoles) {
     return null;
   }
@@ -56,7 +56,7 @@ export default function RoleSwitcher() {
         <CardTitle className="flex items-center gap-2 text-base">
           <AlertTriangle className="w-5 h-5 text-orange-500" />
           Role Testing Mode
-          <Badge variant="outline" className="text-xs">Matthew Patrick Only</Badge>
+          <Badge variant="outline" className="text-xs">Super Admin Only</Badge>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">

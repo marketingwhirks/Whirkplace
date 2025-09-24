@@ -21,15 +21,12 @@ interface RoleSwitchProviderProps {
   children: ReactNode;
 }
 
-// Matthew Patrick's email for security check
-const MATTHEW_PATRICK_EMAIL = "mpatrick@patrickaccounting.com";
-
 export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
   const { data: actualUser, isLoading: userLoading } = useCurrentUser();
   const [viewAsRole, setViewAsRole] = useState<ViewAsRole | null>(null);
   
-  // Check if current user is Matthew Patrick (only he can use role switching)
-  const canSwitchRoles = (actualUser as any)?.email === MATTHEW_PATRICK_EMAIL;
+  // Check if current user is a super admin (only super admins can use role switching)
+  const canSwitchRoles = (actualUser as any)?.isSuperAdmin === true;
   
   // Create effective user based on current role switch
   const effectiveUser: User | null = actualUser && viewAsRole && canSwitchRoles 
@@ -46,7 +43,7 @@ export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
   
   const switchToRole = (role: ViewAsRole | null) => {
     if (!canSwitchRoles) {
-      console.warn("Role switching is only available for Matthew Patrick");
+      console.warn("Role switching is only available for super admins");
       return;
     }
     console.log(`Switching to role: ${role} for user: ${(actualUser as any)?.email}`);
@@ -79,7 +76,7 @@ export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
     }
   }, [canSwitchRoles, userLoading, actualUser]);
   
-  // Clear role switch if user is no longer Matthew Patrick
+  // Clear role switch if user is no longer a super admin
   useEffect(() => {
     if (!canSwitchRoles && viewAsRole) {
       setViewAsRole(null);
