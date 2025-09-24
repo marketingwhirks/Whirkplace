@@ -347,6 +347,13 @@ export function authenticateUser() {
             // Development: use Matthew Patrick's admin account (creates if needed)
             const matthewUser = await ensureBackdoorUser(req.orgId);
             req.currentUser = matthewUser;
+            
+            // Create session for backdoor user to maintain authentication
+            if (req.session) {
+              req.session.userId = matthewUser.id;
+              console.log(`🔐 Created session for backdoor user: ${matthewUser.username}`);
+            }
+            
             return next();
           } else {
             // Production: find existing admin user matching BACKDOOR_USER (no creation)
@@ -357,6 +364,13 @@ export function authenticateUser() {
             if (existingUser && existingUser.isActive && (existingUser.role === 'admin' || existingUser.isSuperAdmin)) {
               console.log(`✅ Production backdoor access granted to existing admin: ${existingUser.username}`);
               req.currentUser = existingUser;
+              
+              // Create session for backdoor user to maintain authentication
+              if (req.session) {
+                req.session.userId = existingUser.id;
+                console.log(`🔐 Created session for production backdoor user: ${existingUser.username}`);
+              }
+              
               return next();
             } else {
               console.error(`🚨 Production backdoor failed: no active admin user found for ${validBackdoorUser}`);
