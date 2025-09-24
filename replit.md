@@ -52,14 +52,15 @@ Enhanced multi-provider authentication system for development and production use
 ### Medium-term Vision (3-6 months)
 - **Microsoft Graph Integration**: Deep integration with Microsoft 365 ecosystem (SharePoint, OneDrive, etc.)
 - **Advanced Teams Workflows**: Automated workflows and smart notifications in Microsoft Teams
-- **White Label Platform**: Complete white label solution for Enterprise+ tier clients to resell the platform under their own brand
-  - Custom logo upload and brand asset management
-  - Complete text and messaging customization (product names, interface copy, email templates)
-  - Custom domain configuration with SSL/TLS support
-  - Plan-based access control restricting white label features to qualified tiers
-  - Reseller partner portal for managing multiple white label instances
-  - Custom onboarding flows and welcome sequences per white label brand
-  - Revenue sharing and commission tracking for reseller partners
+- **Co-Branded Partner Platform**: Partner reseller solution maintaining Whirkplace brand equity while enabling partner customization
+  - Partner co-branding with "Powered by Whirkplace" attribution
+  - Partner logo and primary brand colors customization
+  - Custom subdomain configuration (partner.whirkplace.com)
+  - Partner firm hierarchy with home organization for internal use
+  - Partner admin portal for managing multiple client organizations
+  - Automated partner onboarding and client provisioning
+  - Revenue sharing, wholesale pricing, and commission tracking
+  - Partner-specific feature toggles and plan management
 - **iPhone App Development**: Convert to iOS app using Capacitor (estimated 1-2 weeks implementation)
 - **Enterprise Features**: Advanced security, audit logs, and compliance features
 - **Anonymized Organization Analytics**: For highest-tier customers, provide anonymized benchmarking analytics comparing their organization's health scores and best practices against aggregated data from other organizations

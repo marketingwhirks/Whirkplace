@@ -46,6 +46,7 @@ export const Plan = {
   STARTER: "starter",
   PROFESSIONAL: "professional", 
   ENTERPRISE: "enterprise",
+  PARTNER: "partner", // Special plan for partner firms
 } as const;
 
 export type PlanType = typeof Plan[keyof typeof Plan];
@@ -64,7 +65,37 @@ export const PlanFeatures = {
     maxUsers: -1, // unlimited
     features: ["checkins", "wins", "shoutouts", "analytics", "teams", "reviews", "one_on_ones", "kra_management", "advanced_analytics", "slack_integration", "teams_integration"],
   },
+  [Plan.PARTNER]: {
+    maxUsers: -1, // unlimited
+    features: ["checkins", "wins", "shoutouts", "analytics", "teams", "reviews", "one_on_ones", "kra_management", "advanced_analytics", "slack_integration", "teams_integration", "partner_admin", "client_management", "co_branding", "commission_tracking"],
+  },
 } as const;
+
+// Partner Firms table for reseller partners
+export const partnerFirms = pgTable("partner_firms", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(), // for URL routing: partner.whirkplace.com
+  // Co-branding configuration
+  brandingConfig: jsonb("branding_config"), // JSON object with partner branding (logo, colors, tagline)
+  plan: text("plan").notNull().default("partner"), // Partner plan type
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  homeOrganizationId: varchar("home_organization_id"), // Reference to their internal organization
+  // Partner billing and commission
+  wholesaleRate: integer("wholesale_rate").notNull().default(70), // Partner gets this % of revenue
+  stripeAccountId: text("stripe_account_id"), // For automated commission payouts
+  billingEmail: text("billing_email"),
+  // Partner configuration
+  enableCobranding: boolean("enable_cobranding").notNull().default(true),
+  maxClientOrganizations: integer("max_client_organizations").notNull().default(-1), // -1 = unlimited
+  customDomain: text("custom_domain"), // partner.whirkplace.com or custom
+}, (table) => ({
+  // Index for partner slug lookups (slug is already unique at column level)
+  slugIdx: index("partner_firms_slug_idx").on(table.slug),
+  // Index for home organization lookups
+  homeOrgIdx: index("partner_firms_home_org_idx").on(table.homeOrganizationId),
+}));
 
 // Organizations table for multi-tenancy
 export const organizations = pgTable("organizations", {
@@ -73,6 +104,7 @@ export const organizations = pgTable("organizations", {
   slug: text("slug").notNull().unique(), // for URL routing: company.whirkplace.com
   customValues: text("custom_values").array().notNull().default(defaultCompanyValuesArray),
   plan: text("plan").notNull().default("starter"), // starter, professional, enterprise
+  partnerFirmId: varchar("partner_firm_id"), // Reference to partner firm if managed by a partner
   // Slack Integration - Per Organization OAuth Configuration
   slackClientId: text("slack_client_id"), // Organization's Slack app client ID
   slackClientSecret: text("slack_client_secret"), // Organization's Slack app client secret
@@ -105,7 +137,7 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   name: text("name").notNull(),
   email: text("email").notNull(),
-  role: text("role").notNull().default("member"), // member, admin, manager
+  role: text("role").notNull().default("member"), // member, admin, manager, partner_admin
   organizationId: varchar("organization_id").notNull(),
   teamId: varchar("team_id"),
   managerId: varchar("manager_id"),
@@ -938,6 +970,13 @@ export const userInvitations = pgTable("user_invitations", {
 }));
 
 // Organization types
+export const insertPartnerFirmSchema = createInsertSchema(partnerFirms).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPartnerFirm = z.infer<typeof insertPartnerFirmSchema>;
+export type PartnerFirm = typeof partnerFirms.$inferSelect;
+
 export const insertOrganizationSchema = createInsertSchema(organizations);
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 export type Organization = typeof organizations.$inferSelect;
