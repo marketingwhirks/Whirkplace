@@ -491,6 +491,61 @@ export function requireRole(roles: string[] | string) {
 }
 
 /**
+ * Middleware to require partner admin privileges
+ * Use this on routes that need partner firm management access
+ */
+export function requirePartnerAdmin() {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.currentUser) {
+      return res.status(401).json({ 
+        message: "Authentication required" 
+      });
+    }
+
+    // Super admin users bypass partner restrictions
+    if (req.currentUser.isSuperAdmin) {
+      return next();
+    }
+
+    // Check if user has partner_admin role
+    if (req.currentUser.role !== 'partner_admin') {
+      return res.status(403).json({ 
+        message: "Partner admin access required" 
+      });
+    }
+
+    // Get the user's organization to find their partner firm
+    const organization = await storage.getOrganization(req.currentUser.organizationId);
+    if (!organization) {
+      return res.status(403).json({ 
+        message: "Organization not found" 
+      });
+    }
+
+    // Check if organization belongs to a partner firm
+    if (!organization.partnerFirmId) {
+      return res.status(403).json({ 
+        message: "User organization is not associated with a partner firm" 
+      });
+    }
+
+    // Get the partner firm details
+    const partnerFirm = await storage.getPartnerFirm(organization.partnerFirmId);
+    if (!partnerFirm || !partnerFirm.isActive) {
+      return res.status(403).json({ 
+        message: "Partner firm not found or inactive" 
+      });
+    }
+
+    // Attach partner firm info to request for use in routes
+    (req as any).partnerFirm = partnerFirm;
+    (req as any).partnerFirmId = partnerFirm.id;
+    
+    next();
+  };
+}
+
+/**
  * Middleware to require team lead authorization
  * User must be either:
  * - Admin role (can access all)
