@@ -2299,12 +2299,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
         }
-      } else {
-        // Non-admin users: Get authorized user IDs they can view (include inactive for historical data)
+      } else if (currentUser.role === "manager") {
+        // Managers can see check-ins from their direct reports and team members
         const directReports = await storage.getUsersByManager(req.orgId, currentUser.id, true);
         const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, currentUser.id, true);
         
-        // Include the current user's own ID and combine with authorized users
+        // Include the manager's own ID and combine with authorized users
         const authorizedUserIds = new Set([
           currentUser.id,
           ...directReports.map(u => u.id),
@@ -2331,6 +2331,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Default: get recent check-ins but filter to authorized users only
           const allRecentCheckins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
           checkins = allRecentCheckins.filter(checkin => authorizedUserIds.has(checkin.userId));
+        }
+      } else {
+        // Members can only see their own check-ins
+        // Ignore any userId or managerId parameters - members can only see their own data
+        checkins = await storage.getCheckinsByUser(req.orgId, currentUser.id);
+        if (limit) {
+          checkins = checkins.slice(0, parseInt(limit as string));
         }
       }
       
@@ -3168,24 +3175,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Helper function to get direct reports as a Set for efficient lookup
+  // Helper function to get direct reports and team members as a Set for efficient lookup
   const getDirectReportsSet = async (orgId: string, managerId: string): Promise<Set<string>> => {
     const directReports = await storage.getUsersByManager(orgId, managerId);
-    return new Set(directReports.map(user => user.id));
+    const manager = await storage.getUser(orgId, managerId);
+    const teamMembers = manager?.teamId ? await storage.getUsersByTeam(orgId, manager.teamId) : [];
+    
+    // Combine and deduplicate user IDs
+    const allAuthorizedUsers = [...directReports, ...teamMembers];
+    return new Set(allAuthorizedUsers.map(user => user.id));
   };
 
   // Helper function to check if user can view a win
   const canViewWin = (win: any, viewer: any, directReportsSet: Set<string>): boolean => {
-    // Public wins are always accessible
-    if (win.isPublic) return true;
+    // Role-based access control for wins
     
-    // Private wins are accessible to:
-    // 1. The win owner (userId)
-    // 2. Their manager (if viewer is a manager and win owner is their direct report)
-    // 3. Admins (full access)
-    if (win.userId === viewer.id) return true;
-    if (viewer.role === 'admin' || viewer.role === 'super admin') return true;
-    if ((viewer.role === 'manager' || viewer.role === 'admin') && directReportsSet.has(win.userId)) return true;
+    // Admins and super admins can see all wins
+    if (viewer.role === 'admin' || viewer.role === 'super admin') {
+      return true;
+    }
+    
+    // Managers can see wins from their direct reports and team members
+    if (viewer.role === 'manager') {
+      // Can see their own wins
+      if (win.userId === viewer.id || win.nominatedBy === viewer.id) return true;
+      // Can see direct reports' wins
+      if (directReportsSet.has(win.userId) || (win.nominatedBy && directReportsSet.has(win.nominatedBy))) return true;
+      // Public wins are visible to managers
+      if (win.isPublic) return true;
+      return false;
+    }
+    
+    // Members can only see their own wins (as user or nominator) 
+    if (viewer.role === 'member' || !viewer.role) {
+      // Can see wins where they are the user or nominator
+      return win.userId === viewer.id || win.nominatedBy === viewer.id;
+    }
     
     return false;
   };

@@ -202,18 +202,12 @@ export default function Dashboard() {
     user: Array.isArray(users) ? users.find(u => u.id === checkin.userId) : undefined,
   })) : [];
 
-  // Filter wins based on role
-  const filteredWins = Array.isArray(recentWins) 
-    ? (currentUser.role === "member" 
-        ? recentWins.filter(win => win.userId === currentUser.id || win.nominatedBy === currentUser.id)
-        : recentWins)
-    : [];
-
-  const enrichedWins = filteredWins.map(win => ({
+  // Trust server-side filtering - no client-side filtering needed
+  const enrichedWins = Array.isArray(recentWins) ? recentWins.map(win => ({
     ...win,
     user: Array.isArray(users) ? users.find(u => u.id === win.userId) : undefined,
     nominator: win.nominatedBy && Array.isArray(users) ? users.find(u => u.id === win.nominatedBy) : undefined,
-  }));
+  })) : [];
 
   // Team structure (manager's reports) - with proper array guard
   const teamMembers = Array.isArray(users) ? users.filter(user => user.managerId === currentUser.id) : [];
