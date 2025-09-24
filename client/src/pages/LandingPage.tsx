@@ -95,7 +95,7 @@ export default function LandingPage() {
             <div className="w-8 h-8 rounded-lg border-2 flex items-center justify-center" style={{backgroundColor: '#1b365d', borderColor: '#1b365d'}}>
               <Heart className="w-4 h-4" style={{fill: '#84ae56', stroke: '#84ae56'}} strokeWidth="2" />
             </div>
-            <span className="text-xl font-bold" style={{color: '#1b365d'}}>Whirkplace</span>
+            <span className="text-xl font-bold text-[#1b365d] dark:text-white">Whirkplace</span>
           </div>
           
           <div className="flex items-center space-x-3">
@@ -340,7 +340,7 @@ export default function LandingPage() {
             <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{backgroundColor: '#1b365d'}}>
               <Heart className="w-3 h-3" style={{fill: '#84ae56', stroke: '#84ae56'}} strokeWidth="2" />
             </div>
-            <span className="text-lg font-semibold" style={{color: '#1b365d'}}>Whirkplace</span>
+            <span className="text-lg font-semibold text-[#1b365d] dark:text-white">Whirkplace</span>
           </div>
           <p className="text-muted-foreground" data-testid="text-footer">
             Building stronger teams, one connection at a time.
