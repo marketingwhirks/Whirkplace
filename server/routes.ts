@@ -629,11 +629,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       } else {
         // Create new user with Slack OIDC data
+        // Define variables outside try block so they're accessible in catch block
+        const slackUserId = user.sub;
+        const displayName = user.name || user.given_name || slackUserId;
+        
         try {
           // Generate secure random password for Slack users (never used for login)
           const securePassword = randomBytes(32).toString('hex');
-          const slackUserId = user.sub;
-          const displayName = user.name || user.given_name || slackUserId;
           
           // Check if new user should be super admin based on their email
           const newUserEmail = (user.email || user.user?.email || `${slackUserId}@slack.local`).toLowerCase();
