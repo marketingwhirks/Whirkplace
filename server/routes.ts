@@ -552,6 +552,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user already exists by Slack ID or email (using efficient lookups)
       // IMPORTANT: Due to multiple organizations, we need to check across ALL orgs for Slack ID uniqueness
       let existingUser;
+      let userOrganization = organization; // Track which org the user belongs to
+      
       try {
         // First try to find by Slack user ID in the CURRENT organization
         if (user.sub) {
@@ -569,9 +571,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const userInOrg = await storage.getUserBySlackId(org.id, user.sub);
               if (userInOrg) {
                 console.log('⚠️ Found user with Slack ID in different org:', org.id, org.name);
-                // Update the existing user instead of creating a new one
-                existingUser = userInOrg;
-                break;
+                
+                // Check if this user is a super admin - they can access any org
+                if (userInOrg.is_super_admin) {
+                  console.log('✅ User is super admin - allowing cross-organization authentication');
+                  // Use the user from their original organization
+                  existingUser = userInOrg;
+                  userOrganization = org; // Update organization context to the user's actual org
+                  break;
+                } else {
+                  // Regular users cannot cross organizations
+                  console.log('❌ Regular user trying to access wrong organization');
+                  // User exists in a different organization!
+                  // Return error page explaining the situation
+                  return res.status(400).send(`
+                    <!DOCTYPE html>
+                    <html>
+                      <head>
+                        <title>Account Organization Mismatch</title>
+                        <style>
+                          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; text-align: center; padding: 50px; background: #f5f5f5; }
+                          h1 { color: #d73502; }
+                          .error { color: #d73502; font-size: 1.2em; }
+                          .info { background: white; padding: 20px; border-radius: 8px; max-width: 600px; margin: 20px auto; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                          .details { text-align: left; margin-top: 20px; padding: 15px; background: #f9f9f9; border-radius: 4px; }
+                          .details strong { color: #333; }
+                          button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 4px; }
+                          button:hover { background: #0056b3; }
+                          .warning-icon { font-size: 3em; margin-bottom: 20px; }
+                        </style>
+                      </head>
+                      <body>
+                        <div class="warning-icon">⚠️</div>
+                        <h1>Wrong Organization</h1>
+                        <div class="info">
+                          <p class="error">Your account belongs to a different organization.</p>
+                          <div class="details">
+                            <p><strong>What happened:</strong><br>
+                            Your Slack account (${user.email || 'unknown'}) is registered with the "${org.name}" organization,
+                            but you're trying to access a different organization.</p>
+                            
+                            <p><strong>Slack ID:</strong> ${user.sub}<br>
+                            <strong>Your Organization:</strong> ${org.name}</p>
+                          </div>
+                          <p>Please use the correct organization URL or contact your administrator.</p>
+                          <button onclick="window.location.href='/'">Back to Home</button>
+                        </div>
+                      </body>
+                    </html>
+                  `);
+                }
               }
             }
           }
@@ -642,7 +691,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           // If user already has Microsoft auth, don't overwrite - they can use either method
           
-          authenticatedUser = await storage.updateUser(organization.id, existingUser.id, updateData);
+          authenticatedUser = await storage.updateUser(userOrganization.id, existingUser.id, updateData);
         } catch (error) {
           console.error("Failed to update user with Slack data:", error);
           return res.status(500).json({ 
