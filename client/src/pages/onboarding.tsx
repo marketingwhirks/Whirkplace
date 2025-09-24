@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
-import { useNavigate } from 'wouter';
+import { useLocation } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -42,7 +42,7 @@ const STEPS = [
 
 export function OnboardingPage() {
   const { toast } = useToast();
-  const [navigate] = useNavigate();
+  const [location, setLocation] = useLocation();
   const { currentUser, loading: userLoading } = useCurrentUser();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [formData, setFormData] = useState<any>({
@@ -93,7 +93,7 @@ export function OnboardingPage() {
         title: 'Welcome aboard!',
         description: 'Onboarding completed successfully'
       });
-      navigate('/dashboard');
+      setLocation('/dashboard');
     }
   });
 
@@ -113,7 +113,7 @@ export function OnboardingPage() {
   useEffect(() => {
     if (onboardingStatus) {
       if (onboardingStatus.status === 'completed') {
-        navigate('/dashboard');
+        setLocation('/dashboard');
         return;
       }
 
@@ -406,7 +406,7 @@ export function OnboardingPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => navigate('/dashboard')}>
+            <Button onClick={() => setLocation('/dashboard')}>
               Return to Dashboard
             </Button>
           </CardContent>
