@@ -183,41 +183,38 @@ export default function SignupPage() {
             <div className="space-y-4">
               {/* Quick signup with providers */}
               <div className="space-y-2">
-                <Button 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    // Force navigation bypassing React router completely
-                    const url = window.location.origin + '/auth/slack/login?org=new&action=create';
-                    window.location.assign(url);
-                  }}
-                  className="w-full"
-                  variant="outline"
-                  data-testid="button-slack-signup"
-                >
-                  <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
-                  </svg>
-                  Sign up with Slack
-                </Button>
+                {/* Use a form to bypass React router completely */}
+                <form action="/auth/slack/login" method="get" className="w-full">
+                  <input type="hidden" name="org" value="new" />
+                  <input type="hidden" name="action" value="create" />
+                  <Button 
+                    type="submit"
+                    className="w-full"
+                    variant="outline"
+                    data-testid="button-slack-signup"
+                  >
+                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
+                    </svg>
+                    Sign up with Slack
+                  </Button>
+                </form>
                 
-                <Button 
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    // Force navigation bypassing React router completely
-                    const url = window.location.origin + '/auth/microsoft?org=new&action=create';
-                    window.location.assign(url);
-                  }}
-                  className="w-full"
-                  variant="outline"
-                  data-testid="button-microsoft-signup"
-                >
-                  <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M11.4 11.4H0V0h11.4v11.4ZM24 11.4H12.6V0H24v11.4ZM11.4 24H0V12.6h11.4V24Zm12.6 0H12.6V12.6H24V24Z"/>
-                  </svg>
-                  Sign up with Microsoft 365
-                </Button>
+                <form action="/auth/microsoft" method="get" className="w-full">
+                  <input type="hidden" name="org" value="new" />
+                  <input type="hidden" name="action" value="create" />
+                  <Button 
+                    type="submit"
+                    className="w-full"
+                    variant="outline"
+                    data-testid="button-microsoft-signup"
+                  >
+                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M11.4 11.4H0V0h11.4v11.4ZM24 11.4H12.6V0H24v11.4ZM11.4 24H0V12.6h11.4V24Zm12.6 0H12.6V12.6H24V24Z"/>
+                    </svg>
+                    Sign up with Microsoft 365
+                  </Button>
+                </form>
               </div>
 
               <div className="relative">

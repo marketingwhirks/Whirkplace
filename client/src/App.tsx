@@ -114,11 +114,6 @@ function App() {
               <Route path="/dev-login" component={DevLogin} />
               <Route path="/onboarding" component={OnboardingPage} />
               <Route path="/oauth-callback" component={OAuthCallbackPage} />
-              {/* OAuth routes should not be handled by the React app - they need to reach the server */}
-              <Route path="/auth/slack/login" component={() => { window.location.href = '/auth/slack/login' + window.location.search; return null; }} />
-              <Route path="/auth/microsoft" component={() => { window.location.href = '/auth/microsoft' + window.location.search; return null; }} />
-              <Route path="/auth/slack/callback" component={() => { window.location.href = '/auth/slack/callback' + window.location.search; return null; }} />
-              <Route path="/auth/microsoft/callback" component={() => { window.location.href = '/auth/microsoft/callback' + window.location.search; return null; }} />
               <Route component={AuthenticatedApp} />
             </Switch>
           </RoleSwitchProvider>
