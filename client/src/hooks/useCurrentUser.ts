@@ -19,7 +19,7 @@ export function useCurrentUser() {
     queryKey: ["/api/users/current", { org: orgFromUrl }],
     queryFn: async () => {
       // Add localStorage auth headers to bypass cookie issues
-      const authUserId = localStorage.getItem('auth_user_id');
+      const authUserId = localStorage.getItem('x-auth-user-id');
       const headers: Record<string, string> = {
         'Content-Type': 'application/json'
       };

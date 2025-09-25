@@ -17,9 +17,10 @@ export default function OAuthCallbackPage() {
       
       if (userId) {
         // Store auth info in localStorage for immediate recognition
-        localStorage.setItem('auth_user_id', userId);
+        // Use the same key that the auth middleware expects
+        localStorage.setItem('x-auth-user-id', userId);
         if (orgId) {
-          localStorage.setItem('auth_org_id', orgId);
+          localStorage.setItem('x-auth-org-id', orgId);
         }
         
         // Redirect to the appropriate page

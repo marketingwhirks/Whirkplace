@@ -400,10 +400,21 @@ export function OnboardingPage() {
   });
 
   // Get organization details - try by slug first (for new orgs), then by user's org ID
-  const { data: organization } = useQuery({
+  const { data: organization, error: orgError } = useQuery({
     queryKey: orgSlug ? [`/api/organizations/by-slug/${orgSlug}`] : [`/api/organizations/${currentUser?.organizationId}`],
-    enabled: !!orgSlug || !!currentUser?.organizationId
+    enabled: !!orgSlug || !!currentUser?.organizationId,
+    retry: 2
   });
+  
+  // Log organization fetch status for debugging
+  useEffect(() => {
+    if (orgError) {
+      console.error('Failed to fetch organization:', orgError);
+    }
+    if (organization) {
+      console.log('Organization fetched:', organization);
+    }
+  }, [organization, orgError]);
 
   // Create smart steps based on auth context
   const getSmartSteps = () => {

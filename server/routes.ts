@@ -680,8 +680,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           // Create the new organization
+          const orgName = team?.name || `${companyName.charAt(0).toUpperCase()}${companyName.slice(1)}`;
+          console.log('📦 Creating new organization with data:', {
+            teamName: team?.name,
+            teamId: team?.id,
+            hasTeamData: !!team,
+            fallbackName: `${companyName.charAt(0).toUpperCase()}${companyName.slice(1)}`,
+            finalName: orgName
+          });
+          
           organization = await storage.createOrganization({
-            name: team?.name || `${companyName.charAt(0).toUpperCase()}${companyName.slice(1)}`,
+            name: orgName,
             slug: finalSlug,
             plan: 'starter',
             isActive: true,
@@ -691,7 +700,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             enableMicrosoftAuth: false
           });
           
-          console.log('✅ Created new organization:', organization.id, organization.slug);
+          console.log('✅ Created new organization:', {
+            id: organization.id,
+            slug: organization.slug,
+            name: organization.name,
+            slackWorkspaceId: organization.slackWorkspaceId
+          });
         } else if (organizationSlug === 'whirkplace') {
           // Look for the whirkplace super admin organization
           organization = allOrgs.find(org => org.id === 'whirkplace' || org.slug === 'whirkplace');
