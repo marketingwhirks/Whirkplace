@@ -14,7 +14,7 @@ export async function apiRequest(
   data?: unknown | undefined,
 ): Promise<Response> {
   // Add localStorage auth headers to bypass cookie issues
-  const authUserId = localStorage.getItem('x-auth-user-id');
+  const authUserId = localStorage.getItem('auth_user_id');
   const headers: Record<string, string> = {
     ...(data ? { "Content-Type": "application/json" } : {}),
   };
@@ -67,7 +67,7 @@ export const getQueryFn: <T>(options: {
     }
 
     // Add localStorage auth headers to bypass cookie issues
-    const authUserId = localStorage.getItem('x-auth-user-id');
+    const authUserId = localStorage.getItem('auth_user_id');
     const headers: Record<string, string> = {};
     
     if (authUserId) {
