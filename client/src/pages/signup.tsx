@@ -63,12 +63,16 @@ export default function SignupPage() {
 
   const handleSlackSignup = () => {
     // For new org creation via Slack
-    window.location.href = `/auth/slack/login?org=new&action=create`;
+    // Use absolute URL to ensure it hits the server endpoint
+    const baseUrl = window.location.origin;
+    window.location.href = `${baseUrl}/auth/slack/login?org=new&action=create`;
   };
 
   const handleMicrosoftSignup = () => {
-    // For new org creation via Microsoft
-    window.location.href = `/auth/microsoft?org=new&action=create`;
+    // For new org creation via Microsoft  
+    // Use absolute URL to ensure it hits the server endpoint
+    const baseUrl = window.location.origin;
+    window.location.href = `${baseUrl}/auth/microsoft?org=new&action=create`;
   };
 
   const urlParams = new URLSearchParams(window.location.search);
