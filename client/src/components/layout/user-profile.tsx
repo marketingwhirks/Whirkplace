@@ -72,7 +72,7 @@ export function UserProfile() {
       
       // Force redirect to login page instead of invalidating queries
       // This prevents race conditions and runtime errors
-      window.location.href = "/login?org=default";
+      window.location.href = "/login";
       
       toast({
         title: "Logged out successfully",
