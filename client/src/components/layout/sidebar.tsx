@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { 
   Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu, Gift, 
-  ClipboardCheck, Shield, Crown, Calendar, Target, Lock
+  ClipboardCheck, Shield, Crown, Calendar, Target, Lock, Rocket
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -45,6 +45,7 @@ const baseNavigation = [
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Admin Panel", href: "/admin", icon: Shield, roles: ["admin"] },
   { name: "Super Admin", href: "/super-admin", icon: Lock, roles: ["admin"] },
+  { name: "Onboarding", href: "/onboarding", icon: Rocket, roles: [], isSuperAdminOnly: true },
   { name: "Settings", href: "/settings", icon: Settings, roles: ["member", "manager", "admin"] },
 ];
 
@@ -76,6 +77,10 @@ function SidebarContent() {
         }
         // Special exception: Super Admin only for users with isSuperAdmin flag
         if (item.name === "Super Admin" && currentUser.isSuperAdmin) {
+          return true;
+        }
+        // Special exception: Onboarding only for users with isSuperAdmin flag
+        if (item.name === "Onboarding" && currentUser.isSuperAdmin) {
           return true;
         }
         return false;
