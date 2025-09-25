@@ -3,6 +3,7 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { z } from "zod";
 import { storage } from "./storage";
+import { db } from "./db";
 import { 
   insertUserSchema, insertTeamSchema, insertCheckinSchema, 
   insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema,
@@ -63,7 +64,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`🔑 Fresh login attempt: ${username} for org: ${orgSlug}`);
       
       // Look up the organization
-      const org = await req.db
+      const org = await db
         .select()
         .from(organizations)
         .where(eq(organizations.slug, orgSlug))
