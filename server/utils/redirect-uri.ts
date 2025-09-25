@@ -5,13 +5,6 @@ import type { Request } from 'express';
  * Supports development, Replit dev, and production (whirkplace.com) environments
  */
 export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft/callback'): string {
-  // CRITICAL FIX: Check for override environment variable first
-  if (process.env.OAUTH_REDIRECT_BASE_URL) {
-    const baseUrl = process.env.OAUTH_REDIRECT_BASE_URL.replace(/\/$/, ''); // Remove trailing slash
-    console.log('🔒 Using OAUTH_REDIRECT_BASE_URL override:', baseUrl);
-    return `${baseUrl}${path}`;
-  }
-  
   // Determine host from headers (for proxied environments) or request
   // Handle comma-separated hosts from multiple proxies
   const rawHost = (req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000')
@@ -19,10 +12,17 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
     .trim()
     .toLowerCase();
   
+  // Get full host with port for development environments
+  const fullHost = rawHost;
   // Strip port for cleaner comparison
   const host = rawHost.split(':')[0];
   
   const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
+  
+  // Check if this is a development environment (Replit dev)
+  const isDevelopmentEnvironment = fullHost.includes('.replit.dev') || 
+                                   fullHost.includes('repl.co') ||
+                                   fullHost.includes('localhost');
   
   // Better production domain detection - check if it ends with whirkplace.com
   const isProductionDomain = host === 'whirkplace.com' || 
@@ -35,6 +35,24 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
                        process.env.FORCE_PRODUCTION === 'true' ||
                        process.env.FORCE_PRODUCTION_OAUTH === 'true' ||
                        isProductionDomain;
+  
+  // Smart detection: Use dev URL for dev environments, production URL for production
+  if (isDevelopmentEnvironment && !process.env.FORCE_PRODUCTION_OAUTH) {
+    // Development environment - use the actual host
+    console.log('🔧 Development environment detected, using actual host:', fullHost);
+    return `${protocol}://${fullHost}${path}`;
+  } else if (isProduction || process.env.OAUTH_REDIRECT_BASE_URL === 'https://whirkplace.com/') {
+    // Production environment - always use whirkplace.com
+    console.log('🚀 Production environment detected, using whirkplace.com');
+    return `https://whirkplace.com${path}`;
+  }
+  
+  // Fallback to OAUTH_REDIRECT_BASE_URL if set (for custom configurations)
+  if (process.env.OAUTH_REDIRECT_BASE_URL) {
+    const baseUrl = process.env.OAUTH_REDIRECT_BASE_URL.replace(/\/$/, ''); // Remove trailing slash
+    console.log('🔒 Using OAUTH_REDIRECT_BASE_URL override:', baseUrl);
+    return `${baseUrl}${path}`;
+  }
   
   // Debug logging
   console.log('🔍 Redirect URI resolution:');
