@@ -26,13 +26,13 @@ export default function OAuthCallbackPage() {
           isSuperAdmin
         });
         
-        localStorage.setItem('x-auth-user-id', userId);
+        localStorage.setItem('auth_user_id', userId);
         if (orgId) {
-          localStorage.setItem('x-auth-org-id', orgId);
+          localStorage.setItem('auth_org_id', orgId);
         }
         
         // Verify localStorage was set
-        const verifyUserId = localStorage.getItem('x-auth-user-id');
+        const verifyUserId = localStorage.getItem('auth_user_id');
         console.log('OAuth callback - Verified localStorage:', {
           storedUserId: verifyUserId,
           matches: verifyUserId === userId

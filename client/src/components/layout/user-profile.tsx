@@ -62,24 +62,23 @@ export function UserProfile() {
     },
     onSuccess: () => {
       // Clear ALL localStorage items related to authentication
-      localStorage.removeItem('x-auth-user-id');  // This is the key that matters
-      localStorage.removeItem('auth_user_id');  // Clear old key too
+      localStorage.removeItem('auth_user_id');  // Primary auth key used by queryClient
+      localStorage.removeItem('x-auth-user-id');  // Legacy key - clear just in case
       localStorage.removeItem('auth_org_id');
+      localStorage.removeItem('x-auth-org-id');  // Legacy key
       localStorage.removeItem('auth_session_token');
       localStorage.removeItem('auth_user_data');
       localStorage.removeItem('whirkplace-user');
       localStorage.removeItem('roleSwitch');
       
+      // Clear any session storage as well
+      sessionStorage.clear();
+      
       // Clear all cached data
       queryClient.clear();
       
       // Force a hard redirect to fully clear client state
-      window.location.replace("/");  // Go to home page instead of login
-      
-      toast({
-        title: "Logged out successfully",
-        description: "You have been signed out of your account",
-      });
+      window.location.href = "/login";
     },
     onError: (error) => {
       toast({
