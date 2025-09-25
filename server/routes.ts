@@ -2192,7 +2192,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       '/organizations/',
       '/business/',
       '/partner/',
-      '/users/current'  // Allow getting current user during onboarding
+      '/users/current',  // Allow getting current user during onboarding
+      '/organizations/by-slug/'  // Allow fetching org by slug during onboarding
     ];
     
     // Check if the request path starts with any of the exempt paths
@@ -6242,6 +6243,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Organization management endpoints
+  
+  // Get organization by slug - used during onboarding after Slack OAuth
+  app.get("/api/organizations/by-slug/:slug", requireAuth(), async (req, res) => {
+    try {
+      const slug = req.params.slug;
+      
+      // Find organization by slug
+      const allOrgs = await storage.getAllOrganizations();
+      const organization = allOrgs.find(org => org.slug === slug);
+      
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Allow access if user belongs to this organization
+      if (req.currentUser?.organizationId !== organization.id) {
+        return res.status(403).json({ message: "You can only access your own organization" });
+      }
+      
+      res.json(organization);
+    } catch (error) {
+      console.error("GET /api/organizations/by-slug/:slug - Error:", error);
+      res.status(500).json({ message: "Failed to fetch organization by slug" });
+    }
+  });
+  
   app.get("/api/organizations/:id", requireAuth(), async (req, res) => {
     try {
       // Allow users to access their own organization even if the domain context is different

@@ -54,16 +54,20 @@ export function OnboardingPage() {
     settings: {}
   });
 
+  // Get org slug from query parameters
+  const urlParams = new URLSearchParams(window.location.search);
+  const orgSlug = urlParams.get('org');
+
   // Get onboarding status
   const { data: onboardingStatus, isLoading: statusLoading } = useQuery<OnboardingStatus>({
     queryKey: ['/api/onboarding/status'],
     enabled: !!currentUser
   });
 
-  // Get organization details
+  // Get organization details - try by slug first (for new orgs), then by user's org ID
   const { data: organization } = useQuery({
-    queryKey: [`/api/organizations/${currentUser?.organizationId}`],
-    enabled: !!currentUser?.organizationId
+    queryKey: orgSlug ? [`/api/organizations/by-slug/${orgSlug}`] : [`/api/organizations/${currentUser?.organizationId}`],
+    enabled: !!orgSlug || !!currentUser?.organizationId
   });
 
   // Complete step mutation
