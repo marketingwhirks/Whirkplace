@@ -40,7 +40,8 @@ if (process.env.STRIPE_SECRET_KEY) {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // NEW: Fresh backdoor endpoint with proper Replit cookie handling
-  app.post("/auth/dev-login-fresh", requireOrganization(), async (req, res) => {
+  // NOTE: This endpoint does NOT use requireOrganization() since it needs to work without authentication
+  app.post("/api/auth/dev-login-fresh", async (req, res) => {
     console.log("🚀 FRESH DEV LOGIN REQUEST RECEIVED:", JSON.stringify(req.body, null, 2));
     console.log("🌐 Request headers:", JSON.stringify(req.headers, null, 2));
     
