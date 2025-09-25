@@ -2696,6 +2696,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Provider not found" });
       }
       
+      // If disabling a provider, ensure at least one provider remains enabled
+      if (req.body.enabled === false) {
+        const allProviders = await storage.getOrganizationAuthProviders(orgId);
+        const enabledProviders = allProviders.filter(p => p.enabled && p.id !== providerId);
+        if (enabledProviders.length === 0) {
+          return res.status(400).json({ 
+            message: "Cannot disable the last enabled authentication provider" 
+          });
+        }
+      }
+      
       // Update the provider
       const updatedProvider = await storage.updateOrganizationAuthProvider(orgId, providerId, req.body);
       
@@ -2708,7 +2719,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         provider: {
           id: updatedProvider.id,
           provider: updatedProvider.provider,
-          enabled: updatedProvider.enabled
+          enabled: updatedProvider.enabled,
+          hasCredentials: !!updatedProvider.clientId
         }
       });
     } catch (error) {
@@ -2729,11 +2741,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Provider not found" });
       }
       
-      // Don't allow disconnecting the last auth provider
+      // Don't allow disconnecting the last enabled provider
       const providers = await storage.getOrganizationAuthProviders(orgId);
-      if (providers.length <= 1) {
+      const enabledProviders = providers.filter(p => p.enabled);
+      
+      // If this is an enabled provider and it's the only enabled one, prevent deletion
+      if (provider.enabled && enabledProviders.length <= 1) {
         return res.status(400).json({ 
-          message: "Cannot disconnect the last authentication provider" 
+          message: "Cannot disconnect the last enabled authentication provider. Please enable another provider first." 
         });
       }
       

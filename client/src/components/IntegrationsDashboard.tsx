@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { 
   Slack, 
   Calendar, 
@@ -25,7 +27,11 @@ import {
   HelpCircle,
   Shield,
   Globe,
-  Building
+  Building,
+  Key,
+  Link,
+  Unlink,
+  Plus
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -65,10 +71,360 @@ interface MicrosoftTestResult {
   domain?: string;
 }
 
+// Component for managing authentication providers
+function AuthProviderManagement({ organizationSlug }: { organizationSlug: string }) {
+  const { toast } = useToast();
+  const [isAddingProvider, setIsAddingProvider] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [showSecret, setShowSecret] = useState(false);
+  
+  // Fetch available auth providers
+  const { data: authProviders = [], isLoading, refetch } = useQuery({
+    queryKey: ["/api/auth/providers"],
+  });
+  
+  // Fetch user's linked identities 
+  const { data: userIdentities = [] } = useQuery({
+    queryKey: ["/api/auth/identities"],
+  });
+  
+  // Connect a new auth provider
+  const connectProviderMutation = useMutation({
+    mutationFn: async (data: { provider: string; clientId?: string; clientSecret?: string; config?: any }) => {
+      return apiRequest("POST", "/api/auth/providers/connect", data);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Provider connected",
+        description: "Authentication provider has been connected successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/providers"] });
+      setIsAddingProvider(false);
+      setSelectedProvider("");
+      setClientId("");
+      setClientSecret("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to connect provider",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Toggle provider enabled status
+  const toggleProviderMutation = useMutation({
+    mutationFn: async ({ providerId, enabled }: { providerId: string; enabled: boolean }) => {
+      return apiRequest("PATCH", `/api/auth/providers/${providerId}`, { enabled });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Provider updated",
+        description: "Authentication provider status has been updated.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/providers"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update provider",
+        description: error.message || "Cannot disable the last authentication provider.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Disconnect an auth provider
+  const disconnectProviderMutation = useMutation({
+    mutationFn: async (providerId: string) => {
+      return apiRequest("DELETE", `/api/auth/providers/${providerId}`);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Provider disconnected",
+        description: "Authentication provider has been disconnected.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/providers"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to disconnect provider",
+        description: error.message || "Cannot disconnect the last enabled authentication provider.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const handleConnectProvider = () => {
+    if (!selectedProvider) return;
+    
+    const data: any = { provider: selectedProvider };
+    
+    // Only send OAuth credentials for OAuth providers
+    if (selectedProvider !== 'local') {
+      if (clientId) data.clientId = clientId;
+      if (clientSecret) data.clientSecret = clientSecret;
+    }
+    
+    connectProviderMutation.mutate(data);
+  };
+  
+  const getProviderIcon = (provider: string) => {
+    switch (provider) {
+      case 'slack':
+        return <Slack className="w-4 h-4" />;
+      case 'microsoft':
+        return <Building className="w-4 h-4" />;
+      case 'google':
+        return <Globe className="w-4 h-4" />;
+      case 'local':
+        return <Key className="w-4 h-4" />;
+      default:
+        return <Shield className="w-4 h-4" />;
+    }
+  };
+  
+  const getProviderName = (provider: string) => {
+    switch (provider) {
+      case 'slack': return 'Slack';
+      case 'microsoft': return 'Microsoft 365';
+      case 'google': return 'Google Workspace';
+      case 'local': return 'Email/Password';
+      default: return provider;
+    }
+  };
+  
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  
+  return (
+    <div className="space-y-6">
+      {/* Available Providers */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-sm font-medium">Available Authentication Methods</h4>
+          {authProviders.length < 4 && (
+            <Button 
+              size="sm" 
+              variant="outline"
+              onClick={() => setIsAddingProvider(true)}
+              data-testid="button-add-provider"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Provider
+            </Button>
+          )}
+        </div>
+        
+        <div className="grid gap-4">
+          {authProviders.map((provider: any) => (
+            <Card key={provider.provider} className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {getProviderIcon(provider.provider)}
+                  <div>
+                    <p className="font-medium">{getProviderName(provider.provider)}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {provider.hasCredentials ? 'Configured' : 'Not Configured'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {/* Enable/Disable toggle */}
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={provider.enabled}
+                      onCheckedChange={(checked) => {
+                        // Don't allow disabling last enabled provider
+                        const enabledCount = authProviders.filter((p: any) => p.enabled).length;
+                        if (!checked && enabledCount <= 1) {
+                          toast({
+                            title: "Cannot disable",
+                            description: "At least one authentication method must remain enabled.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        toggleProviderMutation.mutate({ providerId: provider.id, enabled: checked });
+                      }}
+                      data-testid={`switch-enable-${provider.provider}`}
+                      aria-label={`Enable/disable ${provider.provider} authentication`}
+                    />
+                    <Label className="text-xs" data-testid={`label-enabled-${provider.provider}`}>Enabled</Label>
+                  </div>
+                  
+                  {/* Disconnect button - only show for configured providers */}
+                  {provider.id && provider.hasCredentials && authProviders.length > 1 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        const enabledCount = authProviders.filter((p: any) => p.enabled).length;
+                        if (provider.enabled && enabledCount <= 1) {
+                          toast({
+                            title: "Cannot disconnect",
+                            description: "Please enable another provider before disconnecting the last enabled one.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        disconnectProviderMutation.mutate(provider.id);
+                      }}
+                      data-testid={`button-disconnect-${provider.provider}`}
+                    >
+                      <Unlink className="w-4 h-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+      
+      {/* User's Linked Accounts */}
+      {userIdentities.length > 0 && (
+        <div className="space-y-4">
+          <h4 className="text-sm font-medium">Your Linked Accounts</h4>
+          <div className="grid gap-3">
+            {userIdentities.map((identity: any) => (
+              <div key={identity.provider} className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="flex items-center gap-3">
+                  {getProviderIcon(identity.provider)}
+                  <div>
+                    <p className="text-sm font-medium">{getProviderName(identity.provider)}</p>
+                    <p className="text-xs text-muted-foreground">{identity.providerEmail || identity.providerDisplayName}</p>
+                  </div>
+                </div>
+                <Badge variant="outline">
+                  <Link className="w-3 h-3 mr-1" />
+                  Linked
+                </Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Add Provider Dialog */}
+      <Dialog open={isAddingProvider} onOpenChange={setIsAddingProvider}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Authentication Provider</DialogTitle>
+            <DialogDescription>
+              Choose an authentication method to enable for your organization.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Provider Type</Label>
+              <Select value={selectedProvider} onValueChange={setSelectedProvider}>
+                <SelectTrigger data-testid="select-provider">
+                  <SelectValue placeholder="Select a provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {!authProviders.find((p: any) => p.provider === 'slack') && (
+                    <SelectItem value="slack">Slack</SelectItem>
+                  )}
+                  {!authProviders.find((p: any) => p.provider === 'microsoft') && (
+                    <SelectItem value="microsoft">Microsoft 365</SelectItem>
+                  )}
+                  {!authProviders.find((p: any) => p.provider === 'google') && (
+                    <SelectItem value="google">Google Workspace</SelectItem>
+                  )}
+                  {!authProviders.find((p: any) => p.provider === 'local') && (
+                    <SelectItem value="local">Email/Password</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {selectedProvider && selectedProvider !== 'local' && (
+              <>
+                <Alert>
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    You'll need to register an OAuth application with {getProviderName(selectedProvider)} and provide the client credentials.
+                  </AlertDescription>
+                </Alert>
+                
+                <div className="space-y-2">
+                  <Label>Client ID</Label>
+                  <Input 
+                    value={clientId}
+                    onChange={(e) => setClientId(e.target.value)}
+                    placeholder="Enter OAuth client ID"
+                    data-testid="input-client-id"
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Client Secret</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      type={showSecret ? "text" : "password"}
+                      value={clientSecret}
+                      onChange={(e) => setClientSecret(e.target.value)}
+                      placeholder="Enter OAuth client secret"
+                      data-testid="input-client-secret"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setShowSecret(!showSecret)}
+                    >
+                      {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+            
+            {selectedProvider === 'local' && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Email/password authentication will be enabled immediately. Users can sign up and log in with their email addresses.
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            <div className="flex justify-end gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setIsAddingProvider(false)}
+                data-testid="button-cancel-provider"
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleConnectProvider}
+                disabled={!selectedProvider || (selectedProvider !== 'local' && (!clientId || !clientSecret))}
+                data-testid="button-connect-provider"
+                aria-label="Connect authentication provider"
+              >
+                Connect Provider
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export function IntegrationsDashboard() {
   const { toast } = useToast();
   const { data: currentUser } = useCurrentUser();
-  const [activeTab, setActiveTab] = useState("slack");
+  const [activeTab, setActiveTab] = useState("authentication");
   const [showSlackToken, setShowSlackToken] = useState(false);
   const [showMicrosoftSecret, setShowMicrosoftSecret] = useState(false);
   const [slackSetupStep, setSlackSetupStep] = useState(1);
@@ -326,7 +682,11 @@ export function IntegrationsDashboard() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="authentication" data-testid="tab-authentication">
+            <Key className="w-4 h-4 mr-2" />
+            Authentication
+          </TabsTrigger>
           <TabsTrigger value="slack" data-testid="tab-slack">
             <Slack className="w-4 h-4 mr-2" />
             Slack Workspace
@@ -340,6 +700,24 @@ export function IntegrationsDashboard() {
             Calendar
           </TabsTrigger>
         </TabsList>
+
+        {/* Authentication Providers Tab */}
+        <TabsContent value="authentication" className="space-y-6">
+          <Card data-testid="card-auth-providers">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Key className="w-5 h-5" />
+                Authentication Providers
+              </CardTitle>
+              <CardDescription>
+                Manage how users can log in to your organization. Enable or disable different authentication methods.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <AuthProviderManagement organizationSlug={orgIntegrations?.name?.toLowerCase().replace(/\s+/g, '-') || "whirkplace"} />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Slack Integration Tab */}
         <TabsContent value="slack" className="space-y-6">
