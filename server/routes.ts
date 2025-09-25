@@ -1701,6 +1701,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Logout endpoint - MUST come before requireOrganization middleware
+  // This endpoint doesn't need authentication since we're logging out
+  app.post("/api/auth/logout", (req, res) => {
+    if (req.session) {
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Session destroy error:", err);
+          return res.status(500).json({ message: "Failed to logout" });
+        }
+        // Clear session cookie with matching attributes from session config
+        res.clearCookie('connect.sid', {
+          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+          httpOnly: true,
+          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
+          path: '/'
+        });
+        // Also clear auth cookies used by cookie-based authentication
+        // SECURITY FIX: Must match exact same attributes used when setting cookies
+        res.clearCookie('auth_user_id', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
+          path: '/'
+        });
+        res.clearCookie('auth_org_id', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
+          path: '/'
+        });
+        res.clearCookie('auth_session_token', {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
+          path: '/'
+        });
+        res.json({ message: "Logged out successfully" });
+      });
+    } else {
+      // If no session exists, just clear cookies and respond
+      res.clearCookie('connect.sid', {
+        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+        httpOnly: true,
+        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
+        path: '/'
+      });
+      res.clearCookie('auth_user_id', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
+        path: '/'
+      });
+      res.clearCookie('auth_org_id', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
+        path: '/'
+      });
+      res.clearCookie('auth_session_token', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
+        path: '/'
+      });
+      res.json({ message: "Logged out successfully" });
+    }
+  });
+  
   // Apply organization middleware to all API routes AFTER onboarding routes
   // This ensures onboarding endpoints remain accessible during initial setup
   app.use("/api", requireOrganization());
@@ -2435,74 +2503,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // CSRF token endpoint (requires authentication)
   app.get("/api/csrf-token", csrfTokenEndpoint);
   
-  // Authentication endpoints that must be exempt from CSRF (placed before CSRF validation)
-  app.post("/api/auth/logout", (req, res) => {
-    if (req.session) {
-      req.session.destroy((err) => {
-        if (err) {
-          console.error("Session destroy error:", err);
-          return res.status(500).json({ message: "Failed to logout" });
-        }
-        // Clear session cookie with matching attributes from session config
-        res.clearCookie('connect.sid', {
-          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-          httpOnly: true,
-          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-          path: '/'
-        });
-        // Also clear auth cookies used by cookie-based authentication
-        // SECURITY FIX: Must match exact same attributes used when setting cookies
-        res.clearCookie('auth_user_id', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-          path: '/'
-        });
-        res.clearCookie('auth_org_id', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-          path: '/'
-        });
-        res.clearCookie('auth_session_token', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-          path: '/'
-        });
-        res.json({ message: "Logged out successfully" });
-      });
-    } else {
-      // If no session exists, just clear cookies and respond
-      res.clearCookie('connect.sid', {
-        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-        httpOnly: true,
-        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-        path: '/'
-      });
-      res.clearCookie('auth_user_id', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-        path: '/'
-      });
-      res.clearCookie('auth_org_id', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-        path: '/'
-      });
-      res.clearCookie('auth_session_token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-        path: '/'
-      });
-      res.json({ message: "Logged out successfully" });
-    }
-  });
-  
-  // Apply CSRF validation to all remaining API routes (after logout exemption)
+  // Apply CSRF validation to all remaining API routes
   app.use("/api", validateCSRF());
   
   // Apply authentication middleware to all other API routes
