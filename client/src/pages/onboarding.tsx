@@ -174,6 +174,12 @@ export function OnboardingPage() {
     }
   };
 
+  const handleBack = () => {
+    if (currentStepIndex > 0) {
+      setCurrentStepIndex(currentStepIndex - 1);
+    }
+  };
+
   const renderStepContent = () => {
     const step = STEPS[currentStepIndex];
     
@@ -185,7 +191,7 @@ export function OnboardingPage() {
               <Label htmlFor="org-name">Organization Name</Label>
               <Input
                 id="org-name"
-                value={formData.workspace.name || (organization as any)?.name || ''}
+                value={formData.workspace.name || ''}
                 onChange={(e) => setFormData({
                   ...formData,
                   workspace: { ...formData.workspace, name: e.target.value }
@@ -519,13 +525,23 @@ export function OnboardingPage() {
             {renderStepContent()}
           </CardContent>
           <div className="p-6 pt-0 flex justify-between">
-            <Button
-              variant="ghost"
-              onClick={handleSkip}
-              disabled={currentStepIndex === STEPS.length - 1}
-            >
-              Skip for now
-            </Button>
+            <div className="flex gap-2">
+              {currentStepIndex > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                >
+                  Back
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                onClick={handleSkip}
+                disabled={currentStepIndex === STEPS.length - 1}
+              >
+                Skip for now
+              </Button>
+            </div>
             <Button
               onClick={handleNext}
               disabled={completeStepMutation.isPending}
