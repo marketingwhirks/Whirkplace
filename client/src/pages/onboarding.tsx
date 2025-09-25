@@ -18,6 +18,7 @@ import {
   Search, X, UserCheck, Building2
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import type { Organization } from '@shared/schema';
 
 interface OnboardingStatus {
   status: 'not_started' | 'in_progress' | 'completed';
@@ -448,7 +449,7 @@ export function OnboardingPage() {
   const [location, setLocation] = useLocation();
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [formData, setFormData] = useState<any>({
+  const [formData, setFormData] = useState<{workspace: {name: string; industry: string; customIndustry?: string}; billing: Record<string, any>; roles: Record<string, any>; values: string[]; members: any[]; settings: Record<string, any>}>({
     workspace: { name: '', industry: '' },
     billing: {},
     roles: {},
@@ -474,7 +475,7 @@ export function OnboardingPage() {
   });
 
   // Get organization details - try by slug first (for new orgs), then by user's org ID
-  const { data: organization, error: orgError } = useQuery({
+  const { data: organization, error: orgError } = useQuery<Organization>({
     queryKey: orgSlug ? [`/api/organizations/by-slug/${orgSlug}`] : [`/api/organizations/${currentUser?.organizationId}`],
     enabled: !!orgSlug || !!currentUser?.organizationId,
     retry: 2
@@ -609,7 +610,7 @@ export function OnboardingPage() {
 
   // Update organization mutation
   const updateOrganizationMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, any>) => {
       const res = await apiRequest('PATCH', `/api/organizations/${currentUser?.organizationId}`, data);
       return res.json();
     },
@@ -639,17 +640,17 @@ export function OnboardingPage() {
   // Pre-populate form data from organization data (e.g., from Slack OAuth)
   useEffect(() => {
     if (organization) {
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         workspace: {
           ...prev.workspace,
           // Pre-fill organization name if it exists and form is empty
-          name: prev.workspace.name || organization.name || '',
+          name: prev.workspace.name || organization?.name || '',
           // Pre-fill industry if it exists and form is empty
-          industry: prev.workspace.industry || organization.industry || ''
+          industry: prev.workspace.industry || ''
         },
         // Pre-fill company values if they exist
-        values: prev.values.length > 0 ? prev.values : (organization.customValues || [])
+        values: prev.values.length > 0 ? prev.values : (organization?.customValues || [])
       }));
     }
   }, [organization]);

@@ -45,7 +45,7 @@ const baseNavigation = [
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Admin Panel", href: "/admin", icon: Shield, roles: ["admin"] },
   { name: "Super Admin", href: "/super-admin", icon: Lock, roles: ["admin"] },
-  { name: "Onboarding", href: "/onboarding", icon: Rocket, roles: [], isSuperAdminOnly: true },
+  { name: "Onboarding", href: "/onboarding", icon: Rocket, roles: [] as ("member" | "manager" | "admin")[], isSuperAdminOnly: true },
   { name: "Settings", href: "/settings", icon: Settings, roles: ["member", "manager", "admin"] },
 ];
 
@@ -69,7 +69,7 @@ function SidebarContent() {
     }
     return baseNavigation.filter(item => {
       // Normal role-based filtering
-      if (!item.roles.includes(currentUser.role)) {
+      if (!item.roles.includes(currentUser.role as "member" | "manager" | "admin")) {
         // Special exception: Allow Admin Panel access for users who can switch roles
         // This ensures Matthew Patrick can always access the role switcher
         if (item.name === "Admin Panel" && canSwitchRoles) {

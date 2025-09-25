@@ -2440,6 +2440,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Get available auth providers for an organization (read-only, before CSRF)
+  app.get("/api/auth/providers/:orgSlug", async (req, res) => {
+    try {
+      const { orgSlug } = req.params;
+      
+      // Get organization by slug
+      const organization = await storage.getOrganizationBySlug(orgSlug);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Get configured auth providers
+      const providers = await storage.getOrganizationAuthProviders(organization.id);
+      
+      // Transform for frontend consumption
+      const availableProviders = providers.map(p => ({
+        id: p.id,
+        provider: p.provider,
+        name: p.providerOrgName || p.provider,
+        enabled: p.enabled,
+        connectedAt: p.createdAt
+      }));
+      
+      // Always include local/email provider
+      if (!availableProviders.find(p => p.provider === 'local')) {
+        availableProviders.push({
+          id: 'local',
+          provider: 'local',
+          name: 'Email & Password',
+          enabled: true,
+          connectedAt: organization.createdAt
+        });
+      }
+      
+      res.json({ providers: availableProviders });
+    } catch (error) {
+      console.error("Failed to fetch auth providers:", error);
+      res.status(500).json({ message: "Failed to fetch authentication providers" });
+    }
+  });
+  
   // Apply CSRF protection and generation after authentication middleware
   app.use("/api", generateCSRF());
   
@@ -2556,6 +2597,243 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const date = new Date(val);
       return !isNaN(date.getTime());
     }, "Invalid 'weekOf' date format").transform(val => new Date(val)),
+  });
+
+  // Auth Provider Management validation schemas
+  const connectProviderSchema = z.object({
+    provider: z.enum(["slack", "microsoft", "google", "okta", "local"]),
+    clientId: z.string().optional(),
+    clientSecret: z.string().optional(),
+    config: z.record(z.any()).default({})
+  });
+
+  const linkIdentitySchema = z.object({
+    provider: z.enum(["local", "slack", "microsoft", "google", "okta"]),
+    providerUserId: z.string().min(1, "Provider user ID is required"),
+    providerEmail: z.string().email().optional(),
+    providerDisplayName: z.string().optional(),
+    profile: z.record(z.any()).default({})
+  });
+
+  // Auth Provider Management Routes (protected by CSRF and authentication)
+  
+  // Get user's connected identities
+  app.get("/api/auth/identities", requireAuth(), async (req, res) => {
+    try {
+      const userId = req.currentUser!.id;
+      const identities = await storage.getUserIdentities(userId);
+      
+      res.json({ 
+        identities: identities.map(i => ({
+          provider: i.provider,
+          providerUserId: i.providerUserId,
+          providerEmail: i.providerEmail,
+          providerDisplayName: i.providerDisplayName,
+          connectedAt: i.createdAt
+        }))
+      });
+    } catch (error) {
+      console.error("Failed to fetch user identities:", error);
+      res.status(500).json({ message: "Failed to fetch connected accounts" });
+    }
+  });
+  
+  // Connect a new auth provider to organization (admin only)
+  app.post("/api/auth/providers/connect", requireAuth(), requireRole(["admin"]), async (req, res) => {
+    try {
+      // Validate request body
+      const validationResult = connectProviderSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request data", 
+          errors: validationResult.error.errors 
+        });
+      }
+
+      const { provider, clientId, clientSecret, config } = validationResult.data;
+      const orgId = req.orgId;
+      
+      // Check if provider is already connected
+      const existing = await storage.getOrganizationAuthProviders(orgId);
+      if (existing.find(p => p.provider === provider)) {
+        return res.status(400).json({ message: "Provider is already connected" });
+      }
+      
+      // Create new auth provider
+      // TODO: Encrypt clientSecret before storing
+      const newProvider = await storage.createOrganizationAuthProvider({
+        organizationId: orgId,
+        provider,
+        clientId,
+        clientSecret, // WARNING: Should be encrypted in production
+        config,
+        enabled: true
+      });
+      
+      res.status(201).json({ 
+        message: "Authentication provider connected successfully",
+        provider: {
+          id: newProvider.id,
+          provider: newProvider.provider,
+          enabled: newProvider.enabled
+        }
+      });
+    } catch (error) {
+      console.error("Failed to connect auth provider:", error);
+      res.status(500).json({ message: "Failed to connect authentication provider" });
+    }
+  });
+  
+  // Update an auth provider configuration (admin only)
+  app.patch("/api/auth/providers/:providerId", requireAuth(), requireRole(["admin"]), async (req, res) => {
+    try {
+      const { providerId } = req.params;
+      const orgId = req.orgId;
+      
+      // Verify provider belongs to this organization
+      const provider = await storage.getOrganizationAuthProvider(orgId, providerId);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+      
+      // Update the provider
+      const updatedProvider = await storage.updateOrganizationAuthProvider(orgId, providerId, req.body);
+      
+      if (!updatedProvider) {
+        return res.status(404).json({ message: "Failed to update provider" });
+      }
+      
+      res.json({ 
+        message: "Provider updated successfully",
+        provider: {
+          id: updatedProvider.id,
+          provider: updatedProvider.provider,
+          enabled: updatedProvider.enabled
+        }
+      });
+    } catch (error) {
+      console.error("Failed to update auth provider:", error);
+      res.status(500).json({ message: "Failed to update authentication provider" });
+    }
+  });
+  
+  // Disconnect an auth provider from organization (admin only)
+  app.delete("/api/auth/providers/:providerId", requireAuth(), requireRole(["admin"]), async (req, res) => {
+    try {
+      const { providerId } = req.params;
+      const orgId = req.orgId;
+      
+      // Verify provider belongs to this organization
+      const provider = await storage.getOrganizationAuthProvider(orgId, providerId);
+      if (!provider) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+      
+      // Don't allow disconnecting the last auth provider
+      const providers = await storage.getOrganizationAuthProviders(orgId);
+      if (providers.length <= 1) {
+        return res.status(400).json({ 
+          message: "Cannot disconnect the last authentication provider" 
+        });
+      }
+      
+      // Delete the provider
+      const deleted = await storage.deleteOrganizationAuthProvider(orgId, providerId);
+      
+      if (!deleted) {
+        return res.status(404).json({ message: "Provider not found" });
+      }
+      
+      res.json({ message: "Authentication provider disconnected successfully" });
+    } catch (error) {
+      console.error("Failed to disconnect auth provider:", error);
+      res.status(500).json({ message: "Failed to disconnect authentication provider" });
+    }
+  });
+  
+  // Link a new identity to current user
+  app.post("/api/auth/identities/link", requireAuth(), async (req, res) => {
+    try {
+      // Validate request body
+      const validationResult = linkIdentitySchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request data", 
+          errors: validationResult.error.errors 
+        });
+      }
+
+      const { provider, providerUserId, providerEmail, providerDisplayName, profile } = validationResult.data;
+      const userId = req.currentUser!.id;
+      const orgId = req.orgId;
+      
+      // Check if identity already exists for this user
+      const existing = await storage.getUserIdentity(userId, provider);
+      if (existing) {
+        return res.status(400).json({ 
+          message: "This account is already linked to your profile" 
+        });
+      }
+      
+      // Check if this provider identity is already linked to another user
+      const existingUser = await storage.findUserByProviderIdentity(orgId, provider, providerUserId);
+      if (existingUser && existingUser.id !== userId) {
+        return res.status(400).json({ 
+          message: "This account is already linked to another user" 
+        });
+      }
+      
+      // Create new identity link
+      const newIdentity = await storage.createUserIdentity({
+        userId,
+        organizationId: orgId,
+        provider,
+        providerUserId,
+        providerEmail,
+        providerDisplayName,
+        profile
+      });
+      
+      res.status(201).json({ 
+        message: "Account linked successfully",
+        identity: {
+          provider: newIdentity.provider,
+          providerEmail: newIdentity.providerEmail,
+          connectedAt: newIdentity.createdAt
+        }
+      });
+    } catch (error) {
+      console.error("Failed to link identity:", error);
+      res.status(500).json({ message: "Failed to link account" });
+    }
+  });
+  
+  // Unlink an identity from current user
+  app.delete("/api/auth/identities/:provider", requireAuth(), async (req, res) => {
+    try {
+      const { provider } = req.params;
+      const userId = req.currentUser!.id;
+      
+      // Don't allow unlinking the last identity
+      const identities = await storage.getUserIdentities(userId);
+      if (identities.length <= 1) {
+        return res.status(400).json({ 
+          message: "Cannot unlink your last authentication method" 
+        });
+      }
+      
+      // Delete the identity
+      const deleted = await storage.deleteUserIdentity(userId, provider);
+      
+      if (!deleted) {
+        return res.status(404).json({ message: "Identity not found" });
+      }
+      
+      res.json({ message: "Account unlinked successfully" });
+    } catch (error) {
+      console.error("Failed to unlink identity:", error);
+      res.status(500).json({ message: "Failed to unlink account" });
+    }
   });
   
   // Users

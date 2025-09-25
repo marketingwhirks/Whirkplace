@@ -30,7 +30,10 @@ import {
   type DiscountCodeUsage, type InsertDiscountCodeUsage,
   type DashboardConfig, type InsertDashboardConfig,
   type DashboardWidgetTemplate, type InsertDashboardWidgetTemplate,
+  type OrganizationAuthProvider, type InsertOrganizationAuthProvider,
+  type UserIdentity, type InsertUserIdentity,
   users, teams, checkins, questions, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
+  organizationAuthProviders, userIdentities,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
@@ -347,6 +350,20 @@ export interface IStorage {
     activeUsers: number;
     homeOrganization?: Organization;
   }>;
+
+  // Auth Provider Management
+  getOrganizationAuthProviders(organizationId: string): Promise<OrganizationAuthProvider[]>;
+  getOrganizationAuthProvider(organizationId: string, providerId: string): Promise<OrganizationAuthProvider | undefined>;
+  createOrganizationAuthProvider(provider: InsertOrganizationAuthProvider): Promise<OrganizationAuthProvider>;
+  updateOrganizationAuthProvider(organizationId: string, providerId: string, provider: Partial<InsertOrganizationAuthProvider>): Promise<OrganizationAuthProvider | undefined>;
+  deleteOrganizationAuthProvider(organizationId: string, providerId: string): Promise<boolean>;
+  
+  // User Identity Management
+  getUserIdentities(userId: string): Promise<UserIdentity[]>;
+  getUserIdentity(userId: string, provider: string): Promise<UserIdentity | undefined>;
+  createUserIdentity(identity: InsertUserIdentity): Promise<UserIdentity>;
+  deleteUserIdentity(userId: string, provider: string): Promise<boolean>;
+  findUserByProviderIdentity(organizationId: string, provider: string, providerUserId: string): Promise<User | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4200,6 +4217,160 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
   }
+
+  // Auth Provider Management
+  async getOrganizationAuthProviders(organizationId: string): Promise<OrganizationAuthProvider[]> {
+    try {
+      return await db
+        .select()
+        .from(organizationAuthProviders)
+        .where(eq(organizationAuthProviders.organizationId, organizationId));
+    } catch (error) {
+      console.error("Failed to fetch organization auth providers:", error);
+      throw error;
+    }
+  }
+
+  async getOrganizationAuthProvider(organizationId: string, providerId: string): Promise<OrganizationAuthProvider | undefined> {
+    try {
+      const [provider] = await db
+        .select()
+        .from(organizationAuthProviders)
+        .where(and(
+          eq(organizationAuthProviders.organizationId, organizationId),
+          eq(organizationAuthProviders.id, providerId)
+        ));
+      return provider || undefined;
+    } catch (error) {
+      console.error("Failed to fetch organization auth provider:", error);
+      throw error;
+    }
+  }
+
+  async createOrganizationAuthProvider(provider: InsertOrganizationAuthProvider): Promise<OrganizationAuthProvider> {
+    try {
+      const [newProvider] = await db
+        .insert(organizationAuthProviders)
+        .values(provider)
+        .returning();
+      return newProvider;
+    } catch (error) {
+      console.error("Failed to create organization auth provider:", error);
+      throw error;
+    }
+  }
+
+  async updateOrganizationAuthProvider(organizationId: string, providerId: string, provider: Partial<InsertOrganizationAuthProvider>): Promise<OrganizationAuthProvider | undefined> {
+    try {
+      const [updatedProvider] = await db
+        .update(organizationAuthProviders)
+        .set({
+          ...provider,
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(organizationAuthProviders.organizationId, organizationId),
+          eq(organizationAuthProviders.id, providerId)
+        ))
+        .returning();
+      return updatedProvider || undefined;
+    } catch (error) {
+      console.error("Failed to update organization auth provider:", error);
+      throw error;
+    }
+  }
+
+  async deleteOrganizationAuthProvider(organizationId: string, providerId: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(organizationAuthProviders)
+        .where(and(
+          eq(organizationAuthProviders.organizationId, organizationId),
+          eq(organizationAuthProviders.id, providerId)
+        ));
+      return true;
+    } catch (error) {
+      console.error("Failed to delete organization auth provider:", error);
+      return false;
+    }
+  }
+
+  // User Identity Management
+  async getUserIdentities(userId: string): Promise<UserIdentity[]> {
+    try {
+      return await db
+        .select()
+        .from(userIdentities)
+        .where(eq(userIdentities.userId, userId));
+    } catch (error) {
+      console.error("Failed to fetch user identities:", error);
+      throw error;
+    }
+  }
+
+  async getUserIdentity(userId: string, provider: string): Promise<UserIdentity | undefined> {
+    try {
+      const [identity] = await db
+        .select()
+        .from(userIdentities)
+        .where(and(
+          eq(userIdentities.userId, userId),
+          eq(userIdentities.provider, provider)
+        ));
+      return identity || undefined;
+    } catch (error) {
+      console.error("Failed to fetch user identity:", error);
+      throw error;
+    }
+  }
+
+  async createUserIdentity(identity: InsertUserIdentity): Promise<UserIdentity> {
+    try {
+      const [newIdentity] = await db
+        .insert(userIdentities)
+        .values(identity)
+        .returning();
+      return newIdentity;
+    } catch (error) {
+      console.error("Failed to create user identity:", error);
+      throw error;
+    }
+  }
+
+  async deleteUserIdentity(userId: string, provider: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(userIdentities)
+        .where(and(
+          eq(userIdentities.userId, userId),
+          eq(userIdentities.provider, provider)
+        ));
+      return true;
+    } catch (error) {
+      console.error("Failed to delete user identity:", error);
+      return false;
+    }
+  }
+
+  async findUserByProviderIdentity(organizationId: string, provider: string, providerUserId: string): Promise<User | undefined> {
+    try {
+      const [identity] = await db
+        .select()
+        .from(userIdentities)
+        .where(and(
+          eq(userIdentities.organizationId, organizationId),
+          eq(userIdentities.provider, provider),
+          eq(userIdentities.providerUserId, providerUserId)
+        ));
+      
+      if (!identity) return undefined;
+      
+      return await this.getUser(organizationId, identity.userId);
+    } catch (error) {
+      console.error("Failed to find user by provider identity:", error);
+      throw error;
+    }
+  }
 }
 
 export class MemStorage implements IStorage {
@@ -6161,6 +6332,48 @@ export class MemStorage implements IStorage {
       activeUsers: activeUsers.length,
       homeOrganization,
     };
+  }
+
+  // Auth Provider Management - Stub implementations for MemStorage
+  async getOrganizationAuthProviders(organizationId: string): Promise<OrganizationAuthProvider[]> {
+    return [];
+  }
+
+  async getOrganizationAuthProvider(organizationId: string, providerId: string): Promise<OrganizationAuthProvider | undefined> {
+    return undefined;
+  }
+
+  async createOrganizationAuthProvider(provider: InsertOrganizationAuthProvider): Promise<OrganizationAuthProvider> {
+    throw new Error("Auth provider management not implemented in MemStorage");
+  }
+
+  async updateOrganizationAuthProvider(organizationId: string, providerId: string, provider: Partial<InsertOrganizationAuthProvider>): Promise<OrganizationAuthProvider | undefined> {
+    throw new Error("Auth provider management not implemented in MemStorage");
+  }
+
+  async deleteOrganizationAuthProvider(organizationId: string, providerId: string): Promise<boolean> {
+    return false;
+  }
+
+  // User Identity Management - Stub implementations for MemStorage
+  async getUserIdentities(userId: string): Promise<UserIdentity[]> {
+    return [];
+  }
+
+  async getUserIdentity(userId: string, provider: string): Promise<UserIdentity | undefined> {
+    return undefined;
+  }
+
+  async createUserIdentity(identity: InsertUserIdentity): Promise<UserIdentity> {
+    throw new Error("User identity management not implemented in MemStorage");
+  }
+
+  async deleteUserIdentity(userId: string, provider: string): Promise<boolean> {
+    return false;
+  }
+
+  async findUserByProviderIdentity(organizationId: string, provider: string, providerUserId: string): Promise<User | undefined> {
+    return undefined;
   }
 }
 
