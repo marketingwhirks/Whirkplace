@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Heart, Users } from "lucide-react";
+import { Heart, Users, Building2, ArrowRight } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +17,10 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSignUpMode, setIsSignUpMode] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [organizationSlug, setOrganizationSlug] = useState('');
+  const [authProviders, setAuthProviders] = useState<any[]>([]);
+  const [loginStep, setLoginStep] = useState<'organization' | 'auth'>('organization');
+  const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -31,12 +35,73 @@ export default function LoginPage() {
     const plan = urlParams.get('plan');
     setSelectedPlan(plan);
     
+    // Get organization from URL or subdomain
+    const orgParam = urlParams.get('org');
+    if (orgParam) {
+      setOrganizationSlug(orgParam);
+      fetchAuthProviders(orgParam);
+    } else {
+      // Check subdomain
+      const hostname = window.location.hostname;
+      if (hostname.includes('.whirkplace.com') && 
+          !hostname.startsWith('www.') && 
+          !hostname.startsWith('app.')) {
+        const subdomain = hostname.split('.')[0];
+        if (subdomain && subdomain !== 'whirkplace') {
+          setOrganizationSlug(subdomain);
+          fetchAuthProviders(subdomain);
+        }
+      }
+    }
+    
     // Only clear auth if explicitly logging out
     if (urlParams.get('logout') === 'true') {
       clearOldAuthTokens();
     }
   }, []);
   
+  const fetchAuthProviders = async (slug: string) => {
+    setIsLoadingProviders(true);
+    try {
+      const response = await fetch(`/api/auth/providers/${slug}`);
+      if (response.ok) {
+        const data = await response.json();
+        setAuthProviders(data.providers || []);
+        setLoginStep('auth');
+      } else {
+        // Organization not found or error
+        toast({ 
+          title: "Organization not found", 
+          description: "Please check your organization name and try again",
+          variant: "destructive" 
+        });
+      }
+    } catch (error) {
+      console.error('Failed to fetch auth providers:', error);
+      toast({ 
+        title: "Error", 
+        description: "Failed to load authentication options",
+        variant: "destructive" 
+      });
+    } finally {
+      setIsLoadingProviders(false);
+    }
+  };
+
+  const handleOrganizationSubmit = () => {
+    const normalizedSlug = organizationSlug.trim().toLowerCase();
+    if (!normalizedSlug) {
+      toast({ 
+        title: "Organization required", 
+        description: "Please enter your organization name",
+        variant: "destructive" 
+      });
+      return;
+    }
+    setOrganizationSlug(normalizedSlug);
+    fetchAuthProviders(normalizedSlug);
+  };
+
   const clearOldAuthTokens = () => {
     // Clear any old authentication tokens from localStorage
     const itemsToRemove = [
@@ -74,84 +139,16 @@ export default function LoginPage() {
   };
   
   const handleSlackLogin = () => {
-    // Get organization from URL parameter or subdomain
-    const hostname = window.location.hostname;
-    let orgSlug = '';
-    
-    // Check if there's an org parameter in the URL first
-    const urlParams = new URLSearchParams(window.location.search);
-    const orgParam = urlParams.get('org');
-    const isNewOrg = urlParams.get('new') === 'true';
-    
-    if (orgParam) {
-      orgSlug = orgParam;
-    } else if (isNewOrg) {
-      // User is creating a new organization
-      // Will handle this in the OAuth callback
-      orgSlug = 'new';
-    } else {
-      // Check if we're on a specific organization's subdomain
-      // e.g., acme.whirkplace.com -> org = acme
-      if (hostname.includes('.whirkplace.com') && 
-          !hostname.startsWith('www.') && 
-          !hostname.startsWith('app.')) {
-        const subdomain = hostname.split('.')[0];
-        if (subdomain && subdomain !== 'whirkplace') {
-          orgSlug = subdomain;
-        }
-      }
-    }
-    
-    // If no org is determined, redirect to organization selection
-    if (!orgSlug) {
-      // Redirect to a page where user can choose to create new org or join existing
-      setLocation('/choose-organization?action=slack');
-      return;
-    }
-    
     // Include the org parameter in the Slack auth URL
-    const url = `/auth/slack/login?org=${orgSlug}`;
-    console.log('Initiating Slack login for org:', orgSlug);
+    const url = `/auth/slack/login?org=${organizationSlug}`;
+    console.log('Initiating Slack login for org:', organizationSlug);
     window.location.href = url;
   };
   
   const handleMicrosoftLogin = () => {
-    // Get organization from URL parameter or subdomain
-    const hostname = window.location.hostname;
-    let orgSlug = '';
-    
-    // Check if there's an org parameter in the URL first
-    const urlParams = new URLSearchParams(window.location.search);
-    const orgParam = urlParams.get('org');
-    const isNewOrg = urlParams.get('new') === 'true';
-    
-    if (orgParam) {
-      orgSlug = orgParam;
-    } else if (isNewOrg) {
-      // User is creating a new organization
-      orgSlug = 'new';
-    } else {
-      // Check if we're on a specific organization's subdomain
-      if (hostname.includes('.whirkplace.com') && 
-          !hostname.startsWith('www.') && 
-          !hostname.startsWith('app.')) {
-        const subdomain = hostname.split('.')[0];
-        if (subdomain && subdomain !== 'whirkplace') {
-          orgSlug = subdomain;
-        }
-      }
-    }
-    
-    // If no org is determined, redirect to organization selection
-    if (!orgSlug) {
-      // Redirect to a page where user can choose to create new org or join existing
-      setLocation('/choose-organization?action=microsoft');
-      return;
-    }
-    
     // Redirect to the Microsoft OAuth endpoint with organization parameter
-    console.log('Initiating Microsoft login for org:', orgSlug);
-    window.location.href = `/auth/microsoft?org=${orgSlug}`;
+    console.log('Initiating Microsoft login for org:', organizationSlug);
+    window.location.href = `/auth/microsoft?org=${organizationSlug}`;
   };
   
   const handleSimpleLogin = async () => {
@@ -159,12 +156,8 @@ export default function LoginPage() {
       // Clear any old authentication data first
       await clearAuthData();
       
-      // Get organization parameter from URL (default to 'whirkplace')
-      const urlParams = new URLSearchParams(window.location.search);
-      const orgParam = urlParams.get('org') || 'whirkplace';
-      
       // Use local authentication endpoint
-      const response = await fetch(`/auth/local/login?org=${orgParam}`, {
+      const response = await fetch(`/auth/local/login?org=${organizationSlug}`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json'
@@ -262,9 +255,9 @@ export default function LoginPage() {
   const handleBackdoorLogin = async () => {
     try {
       console.log("🔄 Starting FRESH backdoor login with:", { username: backdoorUser, key: backdoorKey.substring(0, 3) + "***" });
-      console.log("🌐 Making request to:", `${window.location.origin}/auth/dev-login-fresh?org=default-org`);
+      console.log("🌐 Making request to:", `${window.location.origin}/api/auth/dev-login-fresh?org=${organizationSlug || 'whirkplace'}`);
       
-      const response = await fetch('/auth/dev-login-fresh?org=default-org', {
+      const response = await fetch(`/api/auth/dev-login-fresh?org=${organizationSlug || 'whirkplace'}`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -346,145 +339,201 @@ export default function LoginPage() {
         {/* Login Card */}
         <Card className="w-full">
           <CardHeader className="text-center">
-            <CardTitle>{isSignUpMode ? 'Create Your Account' : 'Sign In to Whirkplace'}</CardTitle>
+            <CardTitle>
+              {isSignUpMode ? 'Create Your Account' : 
+               loginStep === 'organization' ? 'Welcome to Whirkplace' : 
+               'Sign In to Whirkplace'}
+            </CardTitle>
             <CardDescription>
-              {isSignUpMode ? 'Get started with your team culture platform' : 'Sign in with your work account or email'}
+              {isSignUpMode ? 'Get started with your team culture platform' : 
+               loginStep === 'organization' ? 'Enter your organization to continue' :
+               `Signing in to ${organizationSlug}`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {!isBackdoorLogin ? (
-              <>
-                {/* SSO Options - Hidden for Starter plan */}
-                {selectedPlan !== 'starter' && (
+              loginStep === 'organization' ? (
+                /* Step 1: Organization Selection */
+                <>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="organization">Organization Name</Label>
+                      <div className="flex space-x-2">
+                        <Input 
+                          id="organization"
+                          type="text"
+                          value={organizationSlug}
+                          onChange={(e) => setOrganizationSlug(e.target.value)}
+                          placeholder="e.g., acme-corp or acme"
+                          onKeyDown={(e) => e.key === 'Enter' && handleOrganizationSubmit()}
+                          data-testid="input-organization"
+                        />
+                        <Button 
+                          onClick={handleOrganizationSubmit}
+                          disabled={!organizationSlug || isLoadingProviders}
+                          data-testid="button-continue"
+                        >
+                          {isLoadingProviders ? 'Loading...' : <ArrowRight className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Enter your company or team name as provided by your administrator
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Sign up option */}
+                  <div className="text-center text-sm text-muted-foreground pt-4 border-t">
+                    <span>
+                      New to Whirkplace?{' '}
+                      <button 
+                        type="button"
+                        onClick={() => setLocation('/signup')}
+                        className="underline hover:no-underline text-primary"
+                        data-testid="link-signup"
+                      >
+                        Create a new organization
+                      </button>
+                    </span>
+                  </div>
+                </>
+              ) : (
+                /* Step 2: Authentication Methods */
+                <>
+                  {/* Show available auth providers */}
                   <div className="space-y-3">
-                    <Button 
-                      onClick={handleSlackLogin}
-                      className="w-full flex items-center justify-center space-x-2 bg-[#4A154B] hover:bg-[#350d36] text-white border-[#4A154B]"
-                      size="lg"
-                      data-testid="slack-login-button"
-                    >
-                      <svg 
-                        viewBox="0 0 24 24" 
-                        className="w-5 h-5" 
-                        fill="white"
+                    {/* Slack login option */}
+                    {authProviders.find(p => p.provider === 'slack' && p.enabled) && (
+                      <Button 
+                        onClick={handleSlackLogin}
+                        className="w-full flex items-center justify-center space-x-2 bg-[#4A154B] hover:bg-[#350d36] text-white border-[#4A154B]"
+                        size="lg"
+                        data-testid="slack-login-button"
                       >
-                        <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52-2.523c0-1.398 1.13-2.528 2.52-2.528h2.52v2.528c0 1.393-1.122 2.523-2.52 2.523Zm0 0a2.528 2.528 0 0 1-2.52 2.523c0-1.398 1.13-2.528 2.52-2.528v2.528h2.52c1.398 0 2.528-1.13 2.528-2.523a2.528 2.528 0 0 1-2.528-2.52H5.042v2.52Z"/>
-                        <path d="M8.958 8.835a2.528 2.528 0 0 1 2.523-2.52c1.398 0 2.528 1.13 2.528 2.52v2.52h-2.528a2.528 2.528 0 0 1-2.523-2.52Zm0 0a2.528 2.528 0 0 1-2.523-2.52c1.398 0 2.528 1.13 2.528 2.52H8.958v2.52c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523-2.528v-2.52Z"/>
-                        <path d="M15.165 18.958a2.528 2.528 0 0 1 2.523 2.52c0-1.398 1.13-2.528 2.523-2.528a2.528 2.528 0 0 1-2.523-2.52v-2.52h2.523c1.398 0 2.528 1.13 2.528 2.20a2.528 2.528 0 0 1-2.528 2.523h-2.523v2.523Z"/>
-                        <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
-                      </svg>
-                      <span>{isSignUpMode ? 'Sign up with Slack' : 'Continue with Slack'}</span>
-                    </Button>
-                    
-                    <Button 
-                      onClick={handleMicrosoftLogin}
-                      className="w-full flex items-center justify-center space-x-2"
-                      variant="outline"
-                      size="lg"
-                      data-testid="microsoft-login-button"
-                    >
-                      <svg 
-                        viewBox="0 0 24 24" 
-                        className="w-5 h-5" 
-                        fill="currentColor"
-                      >
-                        <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
-                      </svg>
-                      <span>{isSignUpMode ? 'Sign up with Microsoft' : 'Continue with Microsoft'}</span>
-                    </Button>
-                  </div>
-                )}
+                        <svg 
+                          viewBox="0 0 24 24" 
+                          className="w-5 h-5" 
+                          fill="white"
+                        >
+                          <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52-2.523c0-1.398 1.13-2.528 2.52-2.528h2.52v2.528c0 1.393-1.122 2.523-2.52 2.523Zm0 0a2.528 2.528 0 0 1-2.52 2.523c0-1.398 1.13-2.528 2.52-2.528v2.528h2.52c1.398 0 2.528-1.13 2.528-2.523a2.528 2.528 0 0 1-2.528-2.52H5.042v2.52Z"/>
+                          <path d="M8.958 8.835a2.528 2.528 0 0 1 2.523-2.52c1.398 0 2.528 1.13 2.528 2.52v2.52h-2.528a2.528 2.528 0 0 1-2.523-2.52Zm0 0a2.528 2.528 0 0 1-2.523-2.52c1.398 0 2.528 1.13 2.528 2.52H8.958v2.52c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523-2.528v-2.52Z"/>
+                          <path d="M15.165 18.958a2.528 2.528 0 0 1 2.523 2.52c0-1.398 1.13-2.528 2.523-2.528a2.528 2.528 0 0 1-2.523-2.52v-2.52h2.523c1.398 0 2.528 1.13 2.528 2.52a2.528 2.528 0 0 1-2.528 2.523h-2.523v2.523Z"/>
+                          <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
+                        </svg>
+                        <span>Continue with Slack</span>
+                      </Button>
+                    )}
 
-                {/* Divider - Only show if SSO options are visible */}
-                {selectedPlan !== 'starter' && (
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">{isSignUpMode ? 'Or sign up with email' : 'Or sign in with email'}</span>
-                    </div>
-                  </div>
-                )}
+                    {/* Microsoft login option */}
+                    {authProviders.find(p => p.provider === 'microsoft' && p.enabled) && (
+                      <Button 
+                        onClick={handleMicrosoftLogin}
+                        className="w-full flex items-center justify-center space-x-2"
+                        variant="outline"
+                        size="lg"
+                        data-testid="microsoft-login-button"
+                      >
+                        <svg 
+                          viewBox="0 0 24 24" 
+                          className="w-5 h-5" 
+                          fill="currentColor"
+                        >
+                          <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
+                        </svg>
+                        <span>Continue with Microsoft</span>
+                      </Button>
+                    )}
 
-                {/* Email/Password Login */}
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="email">Email</Label>
-                    <Input 
-                      id="email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your email"
-                      data-testid="input-email"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="password">Password</Label>
-                    <Input 
-                      id="password"
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder={isSignUpMode ? "Create a password" : "Enter your password"}
-                      data-testid="input-password"
-                    />
-                  </div>
-                  {isSignUpMode && (
-                    <div>
-                      <Label htmlFor="confirmPassword">Confirm Password</Label>
-                      <Input 
-                        id="confirmPassword"
-                        type="password"
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirm your password"
-                        data-testid="input-confirm-password"
-                      />
-                    </div>
-                  )}
-                </div>
-                
-                <Button 
-                  onClick={isSignUpMode ? handleSignUp : handleSimpleLogin}
-                  className="w-full"
-                  size="lg"
-                  disabled={!email || !password || (isSignUpMode && !confirmPassword)}
-                  data-testid={isSignUpMode ? "button-sign-up" : "button-simple-login"}
-                >
-                  {isSignUpMode ? 'Create Account' : 'Sign In'}
-                </Button>
-                
-                <div className="text-center text-sm text-muted-foreground">
-                  {isSignUpMode ? (
-                    <span>
-                      Already have an account?{' '}
-                      <button 
-                        type="button"
-                        onClick={() => setIsSignUpMode(false)}
-                        className="underline hover:no-underline text-primary"
-                        data-testid="switch-to-signin"
+                    {/* Google login option */}
+                    {authProviders.find(p => p.provider === 'google' && p.enabled) && (
+                      <Button 
+                        onClick={() => window.location.href = `/auth/google?org=${organizationSlug}`}
+                        className="w-full flex items-center justify-center space-x-2"
+                        variant="outline"
+                        size="lg"
+                        data-testid="google-login-button"
                       >
-                        Sign in here
-                      </button>
-                    </span>
-                  ) : (
-                    <span>
-                      Don't have an account?{' '}
-                      <button 
-                        type="button"
-                        onClick={() => setIsSignUpMode(true)}
-                        className="underline hover:no-underline text-primary"
-                        data-testid="switch-to-signup"
+                        <svg viewBox="0 0 24 24" className="w-5 h-5">
+                          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                        </svg>
+                        <span>Continue with Google</span>
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Show email/password login if local provider is enabled */}
+                  {authProviders.find(p => p.provider === 'local' && p.enabled) && (
+                    <>
+                      {/* Divider if there are other auth providers */}
+                      {authProviders.filter(p => p.enabled && p.provider !== 'local').length > 0 && (
+                        <div className="relative">
+                          <div className="absolute inset-0 flex items-center">
+                            <span className="w-full border-t" />
+                          </div>
+                          <div className="relative flex justify-center text-xs uppercase">
+                            <span className="bg-background px-2 text-muted-foreground">Or sign in with email</span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Email/Password Login */}
+                      <div className="space-y-3">
+                        <div>
+                          <Label htmlFor="email">Email</Label>
+                          <Input 
+                            id="email"
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            placeholder="Enter your email"
+                            data-testid="input-email"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="password">Password</Label>
+                          <Input 
+                            id="password"
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Enter your password"
+                            data-testid="input-password"
+                          />
+                        </div>
+                      </div>
+                      
+                      <Button 
+                        onClick={handleSimpleLogin}
+                        className="w-full"
+                        size="lg"
+                        disabled={!email || !password}
+                        data-testid="button-simple-login"
                       >
-                        Sign up here
-                      </button>
-                    </span>
+                        Sign In
+                      </Button>
+                    </>
                   )}
-                </div>
-                
-              </>
+
+                  {/* Back to organization selection */}
+                  <div className="text-center text-sm text-muted-foreground pt-4 border-t">
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setLoginStep('organization');
+                        setAuthProviders([]);
+                        setOrganizationSlug('');
+                      }}
+                      className="underline hover:no-underline"
+                      data-testid="back-to-org-selection"
+                    >
+                      ← Use a different organization
+                    </button>
+                  </div>
+                </>
+              )
             ) : (
               <>
                 <div className="space-y-3">
