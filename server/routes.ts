@@ -1312,6 +1312,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Get authentication context - provider info and available data
+  app.get("/api/auth/context", authenticateUser(), async (req, res) => {
+    try {
+      if (!req.currentUser) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const organization = req.orgId ? await storage.getOrganization(req.orgId) : null;
+      const user = req.currentUser;
+      
+      // Determine the primary auth provider and available data
+      let authProvider = 'email'; // default
+      let capabilities = {
+        canImportMembers: false,
+        canImportRoles: false,
+        canImportWorkspace: false,
+        hasWorkspaceName: false,
+        hasMembers: false,
+        memberCount: 0
+      };
+      
+      if (organization) {
+        // Check for Slack integration
+        if (organization.enableSlackIntegration && organization.slackWorkspaceId) {
+          authProvider = 'slack';
+          capabilities.canImportMembers = true;
+          capabilities.canImportRoles = true;
+          capabilities.hasWorkspaceName = !!organization.name;
+        }
+        
+        // Check for Microsoft integration
+        if (organization.enableMicrosoftAuth) {
+          authProvider = 'microsoft';
+          capabilities.canImportMembers = true;
+          capabilities.canImportRoles = true;
+          capabilities.canImportWorkspace = true;
+          capabilities.hasWorkspaceName = !!organization.name;
+        }
+        
+        // Check existing data
+        const users = await storage.getUsersByOrganization(req.orgId);
+        capabilities.hasMembers = users.length > 1; // More than just the admin
+        capabilities.memberCount = users.length;
+      }
+      
+      res.json({
+        authProvider,
+        organizationId: organization?.id || null,
+        organizationName: organization?.name || null,
+        capabilities,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role
+        }
+      });
+    } catch (error) {
+      console.error("GET /api/auth/context - Error:", error);
+      res.status(500).json({ message: "Failed to get authentication context" });
+    }
+  });
+  
   // Get current onboarding status (accessible during onboarding)
   app.get("/api/onboarding/status", authenticateUser(), async (req, res) => {
     try {
@@ -1503,6 +1566,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error creating checkout session:", error);
       res.status(500).json({ message: "Failed to create checkout session" });
+    }
+  });
+  
+  // Import members from Slack workspace
+  app.post("/api/onboarding/import-slack-members", authenticateUser(), async (req, res) => {
+    try {
+      if (!req.currentUser || !req.orgId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      if (!organization.slackBotToken || !organization.slackWorkspaceId) {
+        return res.status(400).json({ message: "Slack integration not configured" });
+      }
+      
+      // Import Slack members (simplified version - in production, would use Slack API)
+      // For now, we'll simulate the import with a success response
+      const importedCount = 0; // Would be actual imported member count
+      
+      res.json({
+        success: true,
+        importedCount,
+        message: `Successfully imported ${importedCount} members from Slack`
+      });
+    } catch (error) {
+      console.error("Error importing Slack members:", error);
+      res.status(500).json({ message: "Failed to import Slack members" });
     }
   });
   

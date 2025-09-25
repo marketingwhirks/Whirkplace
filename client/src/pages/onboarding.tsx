@@ -14,8 +14,9 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Building, CreditCard, Users, Heart, UserPlus, Settings, 
-  Check, ChevronRight, Loader2, AlertCircle 
+  Check, ChevronRight, Loader2, AlertCircle, Slack, Mail, Download
 } from 'lucide-react';
+import { SiMicrosoft, SiGoogle } from 'react-icons/si';
 
 interface OnboardingStatus {
   status: 'not_started' | 'in_progress' | 'completed';
@@ -31,7 +32,41 @@ interface OnboardingStatus {
   completedAt?: string;
 }
 
-const STEPS = [
+interface AuthContext {
+  authProvider: 'slack' | 'microsoft' | 'google' | 'email';
+  organizationId: string | null;
+  organizationName: string | null;
+  capabilities: {
+    canImportMembers: boolean;
+    canImportRoles: boolean;
+    canImportWorkspace: boolean;
+    hasWorkspaceName: boolean;
+    hasMembers: boolean;
+    memberCount: number;
+  };
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+  };
+}
+
+// Step interface with smart onboarding properties
+interface Step {
+  id: string;
+  title: string;
+  icon: any;
+  description: string;
+  skipped?: boolean;
+  skipReason?: string;
+  canImport?: boolean;
+  importProvider?: string;
+  canAutoImport?: boolean;
+}
+
+// Static steps for reference - actual steps will be filtered based on auth context
+const ALL_STEPS: Step[] = [
   { id: 'workspace', title: 'Workspace', icon: Building, description: 'Confirm your workspace details' },
   { id: 'billing', title: 'Billing', icon: CreditCard, description: 'Set up your subscription' },
   { id: 'roles', title: 'Roles', icon: Users, description: 'Configure team roles and permissions' },
@@ -39,6 +74,30 @@ const STEPS = [
   { id: 'members', title: 'Team', icon: UserPlus, description: 'Import or invite team members' },
   { id: 'settings', title: 'Settings', icon: Settings, description: 'Configure check-in schedules' },
 ];
+
+// Provider icon component
+const ProviderIcon = ({ provider }: { provider: string }) => {
+  switch(provider) {
+    case 'slack':
+      return <Slack className="h-4 w-4" />;
+    case 'microsoft':
+      return <SiMicrosoft className="h-4 w-4" />;
+    case 'google':
+      return <SiGoogle className="h-4 w-4" />;
+    default:
+      return <Mail className="h-4 w-4" />;
+  }
+};
+
+// Provider name helper
+const getProviderName = (provider: string) => {
+  switch(provider) {
+    case 'slack': return 'Slack';
+    case 'microsoft': return 'Microsoft';
+    case 'google': return 'Google Workspace';
+    default: return 'Email';
+  }
+};
 
 export function OnboardingPage() {
   const { toast } = useToast();
@@ -58,6 +117,12 @@ export function OnboardingPage() {
   const urlParams = new URLSearchParams(window.location.search);
   const orgSlug = urlParams.get('org');
 
+  // Get authentication context for smart onboarding
+  const { data: authContext } = useQuery<AuthContext>({
+    queryKey: ['/api/auth/context'],
+    enabled: !!currentUser
+  });
+
   // Get onboarding status
   const { data: onboardingStatus, isLoading: statusLoading } = useQuery<OnboardingStatus>({
     queryKey: ['/api/onboarding/status'],
@@ -69,6 +134,42 @@ export function OnboardingPage() {
     queryKey: orgSlug ? [`/api/organizations/by-slug/${orgSlug}`] : [`/api/organizations/${currentUser?.organizationId}`],
     enabled: !!orgSlug || !!currentUser?.organizationId
   });
+
+  // Create smart steps based on auth context
+  const getSmartSteps = () => {
+    if (!authContext) return ALL_STEPS;
+    
+    const steps = [...ALL_STEPS];
+    
+    // Mark steps that can be skipped based on auth provider
+    return steps.map(step => {
+      const stepCopy = { ...step };
+      
+      // Workspace step - skip if data already imported
+      if (step.id === 'workspace' && authContext.capabilities.hasWorkspaceName) {
+        return { ...stepCopy, skipped: true, skipReason: `Imported from ${getProviderName(authContext.authProvider)}` };
+      }
+      
+      // Roles step - skip if can be imported
+      if (step.id === 'roles' && authContext.capabilities.canImportRoles && authContext.authProvider !== 'email') {
+        return { ...stepCopy, canAutoImport: true };
+      }
+      
+      // Members step - modify if can import
+      if (step.id === 'members') {
+        if (authContext.capabilities.hasMembers) {
+          return { ...stepCopy, skipped: true, skipReason: `${authContext.capabilities.memberCount} members already imported` };
+        }
+        if (authContext.capabilities.canImportMembers) {
+          return { ...stepCopy, canImport: true, importProvider: authContext.authProvider };
+        }
+      }
+      
+      return stepCopy;
+    }).filter(step => !step.skipped); // Remove skipped steps
+  };
+  
+  const STEPS = getSmartSteps();
 
   // Complete step mutation
   const completeStepMutation = useMutation({
@@ -377,19 +478,47 @@ export function OnboardingPage() {
         );
 
       case 'members':
+        const currentStep = STEPS[currentStepIndex];
+        const canImport = currentStep?.canImport;
+        const importProvider = currentStep?.importProvider;
+        
         return (
           <div className="space-y-4">
             <div className="text-center p-6 border rounded-lg">
               <UserPlus className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <h3 className="font-semibold mb-2">Import Your Team</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Connect Slack to automatically import team members
+                {canImport && importProvider
+                  ? `Import team members from ${getProviderName(importProvider)}`
+                  : 'Add team members to your organization'}
               </p>
-              <Button variant="outline" className="mb-2">
-                Connect Slack
-              </Button>
+              {canImport && importProvider && (
+                <Button 
+                  variant="default" 
+                  className="mb-2"
+                  onClick={async () => {
+                    try {
+                      const res = await apiRequest('POST', '/api/onboarding/import-slack-members');
+                      const data = await res.json();
+                      toast({
+                        title: 'Import started',
+                        description: data.message || 'Importing team members...'
+                      });
+                    } catch (error) {
+                      toast({
+                        title: 'Import failed',
+                        description: 'Unable to import members at this time',
+                        variant: 'destructive'
+                      });
+                    }
+                  }}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Import from {getProviderName(importProvider)}
+                </Button>
+              )}
               <p className="text-xs text-muted-foreground">
-                or manually invite members later
+                {canImport ? 'or manually invite members later' : 'You can add members after completing setup'}
               </p>
             </div>
           </div>
@@ -496,9 +625,19 @@ export function OnboardingPage() {
       <div className="container max-w-4xl mx-auto p-6">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Welcome to Whirkplace!</h1>
+          <div className="flex items-center justify-between mb-2">
+            <h1 className="text-3xl font-bold">Welcome to Whirkplace!</h1>
+            {authContext && authContext.authProvider !== 'email' && (
+              <Badge variant="secondary" className="flex items-center gap-1.5">
+                <ProviderIcon provider={authContext.authProvider} />
+                {getProviderName(authContext.authProvider)} Setup
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">
-            Let's get your workspace set up in just a few steps
+            {authContext && authContext.authProvider !== 'email' 
+              ? `Setting up your workspace with ${getProviderName(authContext.authProvider)} - this will only take a moment`
+              : 'Let\'s get your workspace set up in just a few steps'}
           </p>
         </div>
 
