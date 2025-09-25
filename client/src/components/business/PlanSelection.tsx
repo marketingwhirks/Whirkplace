@@ -90,7 +90,7 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
       <div className="text-center space-y-4">
         <h2 className="text-3xl font-bold">Choose Your Plan</h2>
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-          Select the perfect plan for your team. All plans include our core features with different limits and integrations.
+          Select monthly or annual billing. Save up to 22% with annual plans. All plans include a 10-day free trial.
         </p>
         
         {/* Billing Toggle */}
@@ -109,7 +109,7 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
           </Label>
           {billingCycle === 'annual' && (
             <Badge variant="secondary" className="ml-2">
-              Save up to 17%
+              Save up to 22%
             </Badge>
           )}
         </div>

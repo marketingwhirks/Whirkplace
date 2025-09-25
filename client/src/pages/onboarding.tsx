@@ -69,7 +69,7 @@ interface Step {
 // Static steps for reference - actual steps will be filtered based on auth context
 const ALL_STEPS: Step[] = [
   { id: 'workspace', title: 'Workspace', icon: Building, description: 'Confirm your workspace details' },
-  { id: 'billing', title: 'Billing', icon: CreditCard, description: 'Set up your subscription' },
+  { id: 'billing', title: 'Billing', icon: CreditCard, description: 'Choose monthly or annual billing' },
   { id: 'roles', title: 'Roles', icon: Users, description: 'Configure team roles and permissions' },
   { id: 'values', title: 'Values', icon: Heart, description: 'Define your company values' },
   { id: 'members', title: 'Team', icon: UserPlus, description: 'Import or invite team members' },
@@ -723,13 +723,13 @@ export function OnboardingPage() {
               <CreditCard className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <h3 className="font-semibold mb-2">Choose Your Plan</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Select a subscription plan that works for your team
+                Choose monthly or annual billing. Save up to 22% with annual plans.
               </p>
               <div className="grid gap-4 mt-6">
                 <Card className="cursor-pointer hover:border-primary">
                   <CardHeader>
                     <CardTitle>Starter</CardTitle>
-                    <CardDescription>$9/month</CardDescription>
+                    <CardDescription>$8/month or $75/year (save 22%)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
@@ -742,7 +742,7 @@ export function OnboardingPage() {
                 <Card className="cursor-pointer hover:border-primary">
                   <CardHeader>
                     <CardTitle>Professional</CardTitle>
-                    <CardDescription>$29/month</CardDescription>
+                    <CardDescription>$15/month or $145/year (save 19%)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
