@@ -2184,14 +2184,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Apply onboarding requirement for main app routes (excluding auth, onboarding, and public routes)
   app.use("/api", (req, res, next) => {
     // Exempt specific routes from onboarding requirement
+    // Note: req.path doesn't include the '/api' prefix since we're mounted on '/api'
     const exemptPaths = [
-      '/api/csrf-token',
-      '/api/auth/',
-      '/api/onboarding/',
-      '/api/organizations/',
-      '/api/business/',
-      '/api/partner/',
-      '/api/users/current'  // Allow getting current user during onboarding
+      '/csrf-token',
+      '/auth/',
+      '/onboarding/',
+      '/organizations/',
+      '/business/',
+      '/partner/',
+      '/users/current'  // Allow getting current user during onboarding
     ];
     
     // Check if the request path starts with any of the exempt paths
