@@ -23,26 +23,25 @@ export default function DevLogin() {
       const urlParams = new URLSearchParams(window.location.search);
       const org = urlParams.get('org') || 'whirkplace';
       
-      // Make a request with backdoor headers
-      const response = await fetch(`/api/users/current?org=${org}`, {
-        method: 'GET',
+      // Use the proper backdoor login endpoint that creates a session
+      const response = await fetch(`/api/auth/dev-login-fresh?org=${org}`, {
+        method: 'POST',
         headers: {
-          'x-backdoor-user': backdoorUser,
-          'x-backdoor-key': backdoorKey,
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          username: backdoorUser,
+          key: backdoorKey
+        }),
+        credentials: 'include' // Important for cookies
       });
 
       if (response.ok) {
         const userData = await response.json();
         
-        // Store user data in localStorage
-        localStorage.setItem('currentUser', JSON.stringify(userData));
-        localStorage.setItem('x-auth-user-id', userData.id);
-        
         toast({
           title: "Login successful!",
-          description: `Welcome back, ${userData.name}!`,
+          description: `Welcome back, ${userData.user.name}!`,
         });
         
         // Redirect to dashboard - use window.location to force page reload
