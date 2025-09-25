@@ -25,7 +25,6 @@ interface OnboardingStatus {
   completedSteps: {
     workspace: boolean;
     billing: boolean;
-    roles: boolean;
     values: boolean;
     members: boolean;
     settings: boolean;
@@ -70,7 +69,6 @@ interface Step {
 const ALL_STEPS: Step[] = [
   { id: 'workspace', title: 'Workspace', icon: Building, description: 'Confirm your workspace details' },
   { id: 'billing', title: 'Billing', icon: CreditCard, description: 'Choose monthly or annual billing' },
-  { id: 'roles', title: 'Roles', icon: Users, description: 'Configure team roles and permissions' },
   { id: 'values', title: 'Values', icon: Heart, description: 'Define your company values' },
   { id: 'members', title: 'Team', icon: UserPlus, description: 'Import or invite team members' },
   { id: 'settings', title: 'Settings', icon: Settings, description: 'Configure check-in schedules' },
@@ -109,6 +107,8 @@ interface ImportUser {
   title?: string;
   avatar?: string | null;
   alreadyImported: boolean;
+  role?: 'admin' | 'manager' | 'member';
+  teamId?: string;
 }
 
 // User Import Selector Component
@@ -119,26 +119,54 @@ function UserImportSelector({ provider, onImportComplete }: { provider: string; 
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+  const [userRoles, setUserRoles] = useState<Record<string, 'admin' | 'manager' | 'member'>>({});
+  const [userTeams, setUserTeams] = useState<Record<string, string>>({});
+  const [teams, setTeams] = useState<Array<{id: string, name: string}>>([]);
   const { toast } = useToast();
   
-  // Fetch available users
+  // Fetch available users and teams
   useEffect(() => {
-    const fetchUsers = async () => {
+    const fetchData = async () => {
       try {
-        const res = await apiRequest('GET', '/api/onboarding/available-users');
-        const data = await res.json();
-        setAvailableUsers(data.users || []);
+        // Fetch users
+        const usersRes = await apiRequest('GET', '/api/onboarding/available-users');
+        const usersData = await usersRes.json();
+        setAvailableUsers(usersData.users || []);
         
-        // Pre-select non-imported users
-        const initialSelected = new Set(
-          data.users
-            .filter((u: ImportUser) => !u.alreadyImported)
-            .map((u: ImportUser) => u.id)
-        );
+        // Fetch teams
+        const teamsRes = await apiRequest('GET', '/api/teams');
+        const teamsData = await teamsRes.json();
+        setTeams(teamsData || []);
+        
+        // Pre-select non-imported users and set default roles
+        const initialSelected = new Set<string>();
+        const initialRoles: Record<string, 'admin' | 'manager' | 'member'> = {};
+        const initialTeams: Record<string, string> = {};
+        
+        usersData.users.forEach((u: ImportUser) => {
+          if (!u.alreadyImported) {
+            initialSelected.add(u.id);
+            // Set default role based on title or default to member
+            if (u.title?.toLowerCase().includes('ceo') || u.title?.toLowerCase().includes('president') || u.title?.toLowerCase().includes('owner')) {
+              initialRoles[u.id] = 'admin';
+            } else if (u.title?.toLowerCase().includes('manager') || u.title?.toLowerCase().includes('director') || u.title?.toLowerCase().includes('lead')) {
+              initialRoles[u.id] = 'manager';
+            } else {
+              initialRoles[u.id] = 'member';
+            }
+            // Set default team if teams exist
+            if (teamsData && teamsData.length > 0) {
+              initialTeams[u.id] = teamsData[0].id;
+            }
+          }
+        });
+        
         setSelectedUsers(initialSelected);
+        setUserRoles(initialRoles);
+        setUserTeams(initialTeams);
       } catch (error) {
         toast({
-          title: 'Failed to load users',
+          title: 'Failed to load data',
           description: 'Unable to fetch team members from ' + getProviderName(provider),
           variant: 'destructive'
         });
@@ -147,7 +175,7 @@ function UserImportSelector({ provider, onImportComplete }: { provider: string; 
       }
     };
     
-    fetchUsers();
+    fetchData();
   }, [provider, toast]);
   
   // Get unique departments for filter
@@ -189,7 +217,7 @@ function UserImportSelector({ provider, onImportComplete }: { provider: string; 
     setSelectedUsers(newSelected);
   };
   
-  // Handle import
+  // Handle import with roles and teams
   const handleImport = async () => {
     if (selectedUsers.size === 0) {
       toast({
@@ -202,8 +230,15 @@ function UserImportSelector({ provider, onImportComplete }: { provider: string; 
     
     setImporting(true);
     try {
+      // Prepare users with their assigned roles and teams
+      const usersToImport = Array.from(selectedUsers).map(userId => ({
+        userId,
+        role: userRoles[userId] || 'member',
+        teamId: userTeams[userId]
+      }));
+      
       const res = await apiRequest('POST', '/api/onboarding/import-selected-users', {
-        userIds: Array.from(selectedUsers)
+        users: usersToImport
       });
       const data = await res.json();
       
@@ -241,7 +276,7 @@ function UserImportSelector({ provider, onImportComplete }: { provider: string; 
         <div>
           <h3 className="font-semibold">Select Team Members to Import</h3>
           <p className="text-sm text-muted-foreground">
-            Choose which team members to add to Whirkplace
+            Choose team members and assign their roles and teams
           </p>
         </div>
         <Badge variant="outline" className="flex items-center gap-1">
@@ -323,6 +358,45 @@ function UserImportSelector({ provider, onImportComplete }: { provider: string; 
                   </div>
                 )}
               </div>
+              {!user.alreadyImported && selectedUsers.has(user.id) && (
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={userRoles[user.id] || 'member'}
+                    onValueChange={(value) => {
+                      setUserRoles({...userRoles, [user.id]: value as 'admin' | 'manager' | 'member'});
+                    }}
+                    disabled={user.alreadyImported}
+                  >
+                    <SelectTrigger className="w-[110px] h-8" onClick={(e) => e.stopPropagation()}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="manager">Manager</SelectItem>
+                      <SelectItem value="member">Member</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {teams.length > 0 && (
+                    <Select
+                      value={userTeams[user.id] || ''}
+                      onValueChange={(value) => {
+                        setUserTeams({...userTeams, [user.id]: value});
+                      }}
+                      disabled={user.alreadyImported}
+                    >
+                      <SelectTrigger className="w-[130px] h-8" onClick={(e) => e.stopPropagation()}>
+                        <SelectValue placeholder="Select team" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">No team</SelectItem>
+                        {teams.map(team => (
+                          <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+              )}
               {user.alreadyImported && (
                 <Badge variant="secondary" className="flex items-center gap-1">
                   <UserCheck className="h-3 w-3" />
@@ -757,32 +831,6 @@ export function OnboardingPage() {
                 Set Up Payment Later
               </Button>
             </div>
-          </div>
-        );
-
-      case 'roles':
-        return (
-          <div className="space-y-4">
-            <div className="border rounded-lg p-4">
-              <h3 className="font-semibold mb-3">Default Roles</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span>Admin</span>
-                  <Badge>Full Access</Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Manager</span>
-                  <Badge variant="secondary">Team Management</Badge>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Member</span>
-                  <Badge variant="outline">Basic Access</Badge>
-                </div>
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              You can customize roles and permissions after setup
-            </p>
           </div>
         );
 
