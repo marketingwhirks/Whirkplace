@@ -803,7 +803,7 @@ export function OnboardingPage() {
                 <Card className="cursor-pointer hover:border-primary">
                   <CardHeader>
                     <CardTitle>Starter</CardTitle>
-                    <CardDescription>$5/month or $4/month paid annually (save 20%)</CardDescription>
+                    <CardDescription>$5/month per user or $4/month per user paid annually (save 20%)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
@@ -816,7 +816,7 @@ export function OnboardingPage() {
                 <Card className="cursor-pointer hover:border-primary">
                   <CardHeader>
                     <CardTitle>Professional</CardTitle>
-                    <CardDescription>$10/month or $8/month paid annually (save 20%)</CardDescription>
+                    <CardDescription>$10/month per user or $8/month per user paid annually (save 20%)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
