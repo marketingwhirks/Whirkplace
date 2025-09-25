@@ -1756,8 +1756,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: "starter",
           displayName: "Starter",
           description: "Perfect for small teams getting started",
-          monthlyPrice: 800, // $8.00 in cents
-          annualPrice: 7500, // $75.00 in cents (21.9% off when paid annually)
+          monthlyPrice: 500,  // $5/month per user
+          annualPrice: 4800,  // $48/year per user ($4/month, 20% off)
           maxUsers: 10,
           features: [
             "Up to 10 team members",
@@ -1776,8 +1776,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: "professional",
           displayName: "Professional",
           description: "Advanced features for growing teams",
-          monthlyPrice: 1500, // $15.00 in cents
-          annualPrice: 14500, // $145.00 in cents (19.4% off when paid annually)
+          monthlyPrice: 1000,  // $10/month per user
+          annualPrice: 9600,  // $96/year per user ($8/month, 20% off)
           maxUsers: 100,
           features: [
             "Everything in Starter",

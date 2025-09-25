@@ -723,13 +723,13 @@ export function OnboardingPage() {
               <CreditCard className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <h3 className="font-semibold mb-2">Choose Your Plan</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Choose monthly or annual billing. Save up to 22% with annual plans.
+                Choose monthly or annual billing. Save 20% with annual plans.
               </p>
               <div className="grid gap-4 mt-6">
                 <Card className="cursor-pointer hover:border-primary">
                   <CardHeader>
                     <CardTitle>Starter</CardTitle>
-                    <CardDescription>$8/month or $75/year (save 22%)</CardDescription>
+                    <CardDescription>$5/month or $4/month paid annually (save 20%)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
@@ -742,7 +742,7 @@ export function OnboardingPage() {
                 <Card className="cursor-pointer hover:border-primary">
                   <CardHeader>
                     <CardTitle>Professional</CardTitle>
-                    <CardDescription>$15/month or $145/year (save 19%)</CardDescription>
+                    <CardDescription>$10/month or $8/month paid annually (save 20%)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
