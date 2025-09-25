@@ -42,9 +42,18 @@ export function UserProfile() {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
+      // Add localStorage auth headers for proper authentication
+      const authUserId = localStorage.getItem('auth_user_id');
+      const headers: Record<string, string> = {};
+      
+      if (authUserId) {
+        headers['x-auth-user-id'] = authUserId;
+      }
+      
       const response = await fetch('/api/auth/logout', {
         method: 'POST',
-        credentials: 'include'
+        credentials: 'include',
+        headers
       });
       if (!response.ok) {
         throw new Error('Logout failed');
@@ -52,6 +61,12 @@ export function UserProfile() {
       return response.json();
     },
     onSuccess: () => {
+      // Clear localStorage auth data
+      localStorage.removeItem('auth_user_id');
+      localStorage.removeItem('auth_org_id');
+      localStorage.removeItem('auth_session_token');
+      localStorage.removeItem('roleSwitch'); // Clear role switch as well
+      
       // Clear all cached data
       queryClient.clear();
       

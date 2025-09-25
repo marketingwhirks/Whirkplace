@@ -64,6 +64,13 @@ export default function SignupPage() {
   const handleSlackSignup = async () => {
     // For new org creation via Slack - use endpoint to get OAuth URL then redirect
     console.log('Starting Slack signup process...');
+    
+    // Clear any existing authentication to ensure clean OAuth flow
+    localStorage.removeItem('auth_user_id');
+    localStorage.removeItem('auth_org_id');
+    localStorage.removeItem('auth_session_token');
+    localStorage.removeItem('roleSwitch');
+    
     try {
       // Use /auth/slack/oauth-url (no /api prefix) to avoid authentication middleware
       const response = await fetch('/auth/slack/oauth-url?org=new&action=create');
