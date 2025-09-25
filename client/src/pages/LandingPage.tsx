@@ -267,7 +267,7 @@ export default function LandingPage() {
               Simple, transparent pricing
             </h2>
             <p className="text-xl text-muted-foreground" data-testid="text-pricing-description">
-              Annual billing per team member, cancel renewal anytime
+              Choose monthly or annual billing • Save up to 22% with annual plans
             </p>
           </div>
 
@@ -279,8 +279,8 @@ export default function LandingPage() {
             >
               <CardHeader>
                 <CardTitle>Starter</CardTitle>
-                <div className="text-3xl font-bold">$6<span className="text-sm font-normal">/member/month</span></div>
-                <div className="text-sm text-muted-foreground">Billed annually ($72/year)</div>
+                <div className="text-3xl font-bold">$8<span className="text-sm font-normal">/member/month</span></div>
+                <div className="text-sm text-muted-foreground">or $75/year (save 22%)</div>
                 <CardDescription>Perfect for small teams getting started</CardDescription>
               </CardHeader>
               <CardContent>
@@ -301,8 +301,8 @@ export default function LandingPage() {
               <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2">Most Popular</Badge>
               <CardHeader>
                 <CardTitle>Professional</CardTitle>
-                <div className="text-3xl font-bold">$10<span className="text-sm font-normal">/member/month</span></div>
-                <div className="text-sm text-muted-foreground">Billed annually ($120/year)</div>
+                <div className="text-3xl font-bold">$15<span className="text-sm font-normal">/member/month</span></div>
+                <div className="text-sm text-muted-foreground">or $145/year (save 19%)</div>
                 <CardDescription>Advanced features for growing teams</CardDescription>
               </CardHeader>
               <CardContent>
