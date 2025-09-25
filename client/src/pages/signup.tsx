@@ -63,6 +63,10 @@ export default function SignupPage() {
 
   const handleSlackSignup = () => {
     // For new org creation via Slack
+    // Clear any existing authentication to allow new org creation
+    localStorage.removeItem('auth_user_id');
+    localStorage.removeItem('auth_org_id');
+    
     // Use absolute URL to ensure it hits the server endpoint
     const baseUrl = window.location.origin;
     window.location.href = `${baseUrl}/auth/slack/login?org=new&action=create`;
@@ -70,6 +74,10 @@ export default function SignupPage() {
 
   const handleMicrosoftSignup = () => {
     // For new org creation via Microsoft  
+    // Clear any existing authentication to allow new org creation
+    localStorage.removeItem('auth_user_id');
+    localStorage.removeItem('auth_org_id');
+    
     // Use absolute URL to ensure it hits the server endpoint
     const baseUrl = window.location.origin;
     window.location.href = `${baseUrl}/auth/microsoft?org=new&action=create`;
