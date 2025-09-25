@@ -218,6 +218,18 @@ app.use((req, res, next) => {
     });
     console.log('✅ Global error handler configured');
 
+    // CRITICAL: Add terminal catch-all for /auth and /api routes BEFORE Vite
+    // This prevents these routes from falling through to Vite's catch-all
+    app.all(['/auth/*', '/api/*'], (req, res) => {
+      console.log(`🚫 Unmatched route: ${req.method} ${req.path}`);
+      res.status(404).json({ 
+        message: 'Route not found',
+        path: req.path,
+        method: req.method 
+      });
+    });
+    console.log('✅ Terminal catch-alls configured for /auth/* and /api/*');
+
     // Setup Vite or static serving
     console.log('📦 Setting up frontend serving...');
     if (app.get("env") === "development") {

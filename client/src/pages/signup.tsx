@@ -62,12 +62,13 @@ export default function SignupPage() {
   };
 
   const handleSlackSignup = async () => {
-    // For new org creation via Slack - use API to get OAuth URL then redirect
+    // For new org creation via Slack - use endpoint to get OAuth URL then redirect
     try {
-      const response = await fetch('/api/auth/slack/oauth-url?org=new&action=create');
+      // Use /auth/slack/oauth-url (no /api prefix) to avoid authentication middleware
+      const response = await fetch('/auth/slack/oauth-url?org=new&action=create');
       const data = await response.json();
       if (data.url) {
-        // Use window.location.href for a full page navigation
+        // Navigate directly to Slack OAuth page
         window.location.href = data.url;
       } else {
         console.error('No OAuth URL returned');

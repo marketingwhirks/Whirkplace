@@ -360,10 +360,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.redirect(301, "/login");
   });
 
-  // OAuth endpoints (before organization middleware as they need to work without org context)
+  // OAuth endpoints - MUST be registered BEFORE auth middleware to be accessible
+  // These endpoints handle their own authentication flow
   
-  // GET /api/auth/slack/oauth-url - Return OAuth URL as JSON for client-side redirect
-  app.get("/api/auth/slack/oauth-url", async (req, res) => {
+  // GET /auth/slack/oauth-url - Return OAuth URL as JSON (NO /api prefix to avoid auth middleware)
+  app.get("/auth/slack/oauth-url", async (req, res) => {
     try {
       const { org, action } = req.query;
       
