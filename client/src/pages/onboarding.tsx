@@ -408,13 +408,22 @@ export function OnboardingPage() {
   
   // Log organization fetch status for debugging
   useEffect(() => {
+    const authUserId = localStorage.getItem('x-auth-user-id');
+    console.log('Onboarding page auth status:', {
+      hasAuthUserId: !!authUserId,
+      authUserId,
+      orgSlug,
+      currentUserId: currentUser?.id,
+      currentUserOrgId: currentUser?.organizationId
+    });
+    
     if (orgError) {
       console.error('Failed to fetch organization:', orgError);
     }
     if (organization) {
       console.log('Organization fetched:', organization);
     }
-  }, [organization, orgError]);
+  }, [organization, orgError, currentUser, orgSlug]);
 
   // Create smart steps based on auth context
   const getSmartSteps = () => {
@@ -685,8 +694,9 @@ export function OnboardingPage() {
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
-                      <li>Up to 10 users</li>
-                      <li>Basic features</li>
+                      <li>✓ Weekly check-ins</li>
+                      <li>✓ Shout outs & recognition</li>
+                      <li>✓ Wins board</li>
                     </ul>
                   </CardContent>
                 </Card>
@@ -697,9 +707,9 @@ export function OnboardingPage() {
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
-                      <li>Up to 50 users</li>
-                      <li>Advanced analytics</li>
-                      <li>Slack integration</li>
+                      <li>✓ One-on-ones</li>
+                      <li>✓ KRA management</li>
+                      <li>✓ Advanced analytics</li>
                     </ul>
                   </CardContent>
                 </Card>

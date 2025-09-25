@@ -18,25 +18,44 @@ export default function OAuthCallbackPage() {
       if (userId) {
         // Store auth info in localStorage for immediate recognition
         // Use the same key that the auth middleware expects
+        console.log('OAuth callback - Setting auth in localStorage:', {
+          userId,
+          orgId,
+          orgSlug,
+          needsOnboarding,
+          isSuperAdmin
+        });
+        
         localStorage.setItem('x-auth-user-id', userId);
         if (orgId) {
           localStorage.setItem('x-auth-org-id', orgId);
         }
         
-        // Redirect to the appropriate page
-        if (isSuperAdmin) {
-          // Super admins go to organization selection
-          setLocation('/select-organization');
-        } else if (needsOnboarding && orgSlug) {
-          // New organizations go to onboarding
-          setLocation(`/onboarding?org=${orgSlug}`);
-        } else if (orgSlug) {
-          // Existing organizations go to dashboard
-          setLocation(`/dashboard?org=${orgSlug}`);
-        } else {
-          // Fallback to dashboard
-          setLocation('/dashboard');
-        }
+        // Verify localStorage was set
+        const verifyUserId = localStorage.getItem('x-auth-user-id');
+        console.log('OAuth callback - Verified localStorage:', {
+          storedUserId: verifyUserId,
+          matches: verifyUserId === userId
+        });
+        
+        // Small delay to ensure localStorage is committed before redirect
+        setTimeout(() => {
+          // Redirect to the appropriate page
+          if (isSuperAdmin) {
+            // Super admins go to organization selection
+            setLocation('/select-organization');
+          } else if (needsOnboarding && orgSlug) {
+            // New organizations go to onboarding
+            console.log(`OAuth callback - Redirecting to onboarding with org: ${orgSlug}`);
+            setLocation(`/onboarding?org=${orgSlug}`);
+          } else if (orgSlug) {
+            // Existing organizations go to dashboard
+            setLocation(`/dashboard?org=${orgSlug}`);
+          } else {
+            // Fallback to dashboard
+            setLocation('/dashboard');
+          }
+        }, 100); // 100ms delay to ensure localStorage is committed
       } else {
         // No user ID, something went wrong
         console.error('OAuth callback missing user_id');
