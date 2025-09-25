@@ -551,13 +551,14 @@ export default function LoginPage() {
         <div className="text-center text-sm text-muted-foreground space-y-2">
           <p>By signing in, you agree to our terms of service</p>
           <p>
-            <a 
-              href="/" 
+            <button 
+              onClick={() => window.location.href = "/"} 
               className="underline hover:no-underline text-primary"
               data-testid="link-home"
+              type="button"
             >
               ← Back to Home
-            </a>
+            </button>
           </p>
         </div>
       </div>

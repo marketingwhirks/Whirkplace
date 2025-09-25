@@ -61,18 +61,19 @@ export function UserProfile() {
       return response.json();
     },
     onSuccess: () => {
-      // Clear localStorage auth data
+      // Clear ALL localStorage items related to authentication
       localStorage.removeItem('auth_user_id');
       localStorage.removeItem('auth_org_id');
       localStorage.removeItem('auth_session_token');
-      localStorage.removeItem('roleSwitch'); // Clear role switch as well
+      localStorage.removeItem('auth_user_data');
+      localStorage.removeItem('whirkplace-user');
+      localStorage.removeItem('roleSwitch');
       
       // Clear all cached data
       queryClient.clear();
       
-      // Force redirect to login page instead of invalidating queries
-      // This prevents race conditions and runtime errors
-      window.location.href = "/login";
+      // Force a hard redirect to fully clear client state
+      window.location.replace("/");  // Go to home page instead of login
       
       toast({
         title: "Logged out successfully",
