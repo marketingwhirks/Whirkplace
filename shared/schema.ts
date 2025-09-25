@@ -504,6 +504,58 @@ export const onboardingProgress = pgTable("onboarding_progress", {
   assignmentItemUnique: unique("onboarding_progress_assignment_item_unique").on(table.assignmentId, table.templateItemId),
 }));
 
+// Organization Auth Providers - Stores configured auth providers per organization
+export const organizationAuthProviders = pgTable("organization_auth_providers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  provider: text("provider").notNull(), // slack, microsoft, google, okta, etc.
+  providerOrgId: text("provider_org_id"), // Provider's organization ID (e.g., Slack workspace ID)
+  providerOrgName: text("provider_org_name"), // Provider's organization name
+  clientId: text("client_id"), // OAuth client ID (if org-specific)
+  clientSecret: text("client_secret"), // OAuth client secret (encrypted in production)
+  accessToken: text("access_token"), // Organization-level access token
+  refreshToken: text("refresh_token"), // Organization-level refresh token
+  tokenExpiresAt: timestamp("token_expires_at"),
+  config: jsonb("config").notNull().default({}), // Additional provider-specific configuration
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgProviderIdx: index("org_auth_providers_org_provider_idx").on(table.organizationId, table.provider),
+  providerOrgIdIdx: index("org_auth_providers_provider_org_id_idx").on(table.providerOrgId),
+  orgEnabledIdx: index("org_auth_providers_org_enabled_idx").on(table.organizationId, table.enabled),
+  // Unique constraint: one config per provider per organization
+  orgProviderUnique: unique("org_auth_providers_org_provider_unique").on(table.organizationId, table.provider),
+}));
+
+// User Identities - Links users to multiple auth providers
+export const userIdentities = pgTable("user_identities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  organizationId: varchar("organization_id").notNull(),
+  provider: text("provider").notNull(), // local, slack, microsoft, google, etc.
+  providerUserId: text("provider_user_id").notNull(), // User ID from the provider
+  providerEmail: text("provider_email"), // Email from provider
+  providerUsername: text("provider_username"), // Username from provider
+  providerDisplayName: text("provider_display_name"), // Display name from provider
+  providerAvatar: text("provider_avatar"), // Avatar URL from provider
+  profile: jsonb("profile").notNull().default({}), // Full profile data from provider
+  accessToken: text("access_token"), // User-specific OAuth token
+  refreshToken: text("refresh_token"), // User-specific refresh token
+  tokenExpiresAt: timestamp("token_expires_at"),
+  lastLoginAt: timestamp("last_login_at"),
+  createdAt: timestamp("created_at").notNull().default(sql`gen_random_uuid()`),
+}, (table) => ({
+  userProviderIdx: index("user_identities_user_provider_idx").on(table.userId, table.provider),
+  orgProviderUserIdx: index("user_identities_org_provider_user_idx").on(table.organizationId, table.provider, table.providerUserId),
+  providerEmailIdx: index("user_identities_provider_email_idx").on(table.providerEmail),
+  lastLoginIdx: index("user_identities_last_login_idx").on(table.lastLoginAt),
+  // Unique constraint: one identity per provider per user
+  userProviderUnique: unique("user_identities_user_provider_unique").on(table.userId, table.provider),
+  // Unique constraint: provider user ID must be unique within organization and provider
+  orgProviderUserUnique: unique("user_identities_org_provider_user_unique").on(table.organizationId, table.provider, table.providerUserId),
+}));
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -706,9 +758,38 @@ export const reviewCheckinSchema = z.object({
   // reviewedBy and reviewedAt are set automatically server-side
 });
 
+// Insert schemas for auth provider tables
+export const insertOrganizationAuthProviderSchema = createInsertSchema(organizationAuthProviders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  provider: z.enum(["slack", "microsoft", "google", "okta", "local"]),
+  providerOrgId: z.string().optional(),
+  providerOrgName: z.string().optional(),
+  config: z.record(z.any()).default({}),
+  enabled: z.boolean().default(true),
+});
+
+export const insertUserIdentitySchema = createInsertSchema(userIdentities).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  provider: z.enum(["local", "slack", "microsoft", "google", "okta"]),
+  providerUserId: z.string().min(1, "Provider user ID is required"),
+  providerEmail: z.string().email().optional(),
+  profile: z.record(z.any()).default({}),
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+export type InsertOrganizationAuthProvider = z.infer<typeof insertOrganizationAuthProviderSchema>;
+export type OrganizationAuthProvider = typeof organizationAuthProviders.$inferSelect;
+
+export type InsertUserIdentity = z.infer<typeof insertUserIdentitySchema>;
+export type UserIdentity = typeof userIdentities.$inferSelect;
 
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
 export type Team = typeof teams.$inferSelect;
