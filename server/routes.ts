@@ -1279,11 +1279,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register authentication diagnostic routes
   registerAuthDiagnosticRoutes(app);
   
-  // Apply organization middleware to all API routes
-  app.use("/api", requireOrganization());
+  // ONBOARDING ROUTES - These must come BEFORE requireOrganization() middleware
+  // to allow access during the initial onboarding flow after OAuth signup
   
-  // ONBOARDING ROUTES (authenticated but accessible during onboarding)
-  // Get current onboarding status
+  // Get organization by slug - used during onboarding after Slack OAuth
+  // This MUST be accessible during onboarding to fetch org data for form population
+  app.get("/api/organizations/by-slug/:slug", authenticateUser(), async (req, res) => {
+    try {
+      const slug = req.params.slug;
+      
+      // Find organization by slug
+      const allOrgs = await storage.getAllOrganizations();
+      const organization = allOrgs.find(org => org.slug === slug);
+      
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Allow access if user belongs to this organization OR if it's a new user
+      // during onboarding (who doesn't have an organizationId yet)
+      const isUserOrg = req.currentUser?.organizationId === organization.id;
+      const isNewUserOnboarding = !req.currentUser?.organizationId && req.currentUser?.id;
+      
+      if (!isUserOrg && !isNewUserOnboarding) {
+        return res.status(403).json({ message: "You can only access your own organization" });
+      }
+      
+      res.json(organization);
+    } catch (error) {
+      console.error("GET /api/organizations/by-slug/:slug - Error:", error);
+      res.status(500).json({ message: "Failed to fetch organization by slug" });
+    }
+  });
+  
+  // Get current onboarding status (accessible during onboarding)
   app.get("/api/onboarding/status", authenticateUser(), async (req, res) => {
     try {
       if (!req.currentUser) {
@@ -1476,6 +1505,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to create checkout session" });
     }
   });
+  
+  // Apply organization middleware to all API routes AFTER onboarding routes
+  // This ensures onboarding endpoints remain accessible during initial setup
+  app.use("/api", requireOrganization());
   
   // PUBLIC BUSINESS SIGNUP ROUTES (no authentication required)
   // Get available business plans
@@ -6243,31 +6276,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Organization management endpoints
-  
-  // Get organization by slug - used during onboarding after Slack OAuth
-  app.get("/api/organizations/by-slug/:slug", requireAuth(), async (req, res) => {
-    try {
-      const slug = req.params.slug;
-      
-      // Find organization by slug
-      const allOrgs = await storage.getAllOrganizations();
-      const organization = allOrgs.find(org => org.slug === slug);
-      
-      if (!organization) {
-        return res.status(404).json({ message: "Organization not found" });
-      }
-      
-      // Allow access if user belongs to this organization
-      if (req.currentUser?.organizationId !== organization.id) {
-        return res.status(403).json({ message: "You can only access your own organization" });
-      }
-      
-      res.json(organization);
-    } catch (error) {
-      console.error("GET /api/organizations/by-slug/:slug - Error:", error);
-      res.status(500).json({ message: "Failed to fetch organization by slug" });
-    }
-  });
   
   app.get("/api/organizations/:id", requireAuth(), async (req, res) => {
     try {
