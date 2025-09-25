@@ -1148,18 +1148,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`User ${authenticatedUser.name} (${authenticatedUser.email}) successfully authenticated via Slack OAuth for organization ${organization.name}`);
             
             // Redirect to the organization's dashboard
-            // Use the same logic as OAuth redirect to determine the correct domain
+            // Determine the correct domain based on environment
             let appUrl = 'http://localhost:5000';
             
-            // Check for production override first
-            if (process.env.OAUTH_REDIRECT_BASE_URL) {
-              // Extract just the base URL without the /auth/slack/callback path
-              appUrl = process.env.OAUTH_REDIRECT_BASE_URL.replace(/\/auth\/.*$/, '');
-            } else if (process.env.NODE_ENV === 'production' || process.env.FORCE_PRODUCTION_OAUTH === 'true') {
-              // In production, the app is hosted at the root domain
+            // Get the host from the request
+            const host = req.get('host') || 'localhost:5000';
+            const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
+            
+            // Check if this is a development environment first (Replit dev, localhost, etc)
+            const isDevelopmentEnvironment = host.includes('.replit.dev') || 
+                                           host.includes('repl.co') ||
+                                           host.includes('localhost');
+            
+            if (isDevelopmentEnvironment && !process.env.FORCE_PRODUCTION_OAUTH) {
+              // Development environment - use the actual host
+              appUrl = `${protocol}://${host}`;
+            } else if (process.env.NODE_ENV === 'production' || process.env.FORCE_PRODUCTION_OAUTH === 'true' || process.env.OAUTH_REDIRECT_BASE_URL === 'https://whirkplace.com/') {
+              // Production environment
               appUrl = 'https://whirkplace.com';
-            } else if (process.env.REPL_URL || process.env.REPLIT_URL) {
-              appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
+            } else if (process.env.OAUTH_REDIRECT_BASE_URL) {
+              // Custom configured base URL (for special deployments)
+              appUrl = process.env.OAUTH_REDIRECT_BASE_URL.replace(/\/auth\/.*$/, '').replace(/\/$/, '');
             }
             
             // Check if organization needs onboarding
