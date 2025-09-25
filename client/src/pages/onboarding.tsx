@@ -406,6 +406,45 @@ export function OnboardingPage() {
     retry: 2
   });
   
+  // Handle OAuth authentication parameters from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authUserIdFromUrl = params.get('auth_user_id');
+    const authOrgIdFromUrl = params.get('auth_org_id');
+    const authSessionFromUrl = params.get('auth_session');
+    
+    // If we have auth params in URL, set them in localStorage and clean the URL
+    if (authUserIdFromUrl) {
+      console.log('Setting authentication from OAuth redirect:', {
+        userId: authUserIdFromUrl,
+        orgId: authOrgIdFromUrl,
+        hasSession: !!authSessionFromUrl,
+        orgSlug
+      });
+      
+      // Set auth in localStorage
+      localStorage.setItem('x-auth-user-id', authUserIdFromUrl);
+      if (authOrgIdFromUrl) {
+        localStorage.setItem('x-auth-org-id', authOrgIdFromUrl);
+      }
+      if (authSessionFromUrl) {
+        localStorage.setItem('auth_session_token', authSessionFromUrl);
+      }
+      
+      // Clean URL by removing auth params but keeping org param
+      const cleanParams = new URLSearchParams();
+      if (orgSlug) {
+        cleanParams.set('org', orgSlug);
+      }
+      const cleanUrl = window.location.pathname + (cleanParams.toString() ? '?' + cleanParams.toString() : '');
+      window.history.replaceState({}, '', cleanUrl);
+      
+      // Reload to pick up the new auth
+      window.location.reload();
+      return;
+    }
+  }, [orgSlug]);
+  
   // Log organization fetch status for debugging
   useEffect(() => {
     const authUserId = localStorage.getItem('x-auth-user-id');

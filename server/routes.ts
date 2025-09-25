@@ -1202,20 +1202,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Otherwise, redirect to the specific organization dashboard
             const actualOrgSlug = organization.slug || organizationSlug;
             
-            // Redirect to client-side OAuth callback handler to set localStorage
-            // This ensures the React app immediately recognizes the authentication
-            const callbackParams = new URLSearchParams({
-              user_id: authenticatedUser.id,
-              org_id: organization.id,
-              org: actualOrgSlug,
-              onboarding: needsOnboarding ? 'true' : 'false',
-              super_admin: isSuperAdmin ? 'true' : 'false'
+            // Redirect directly to the appropriate page with auth params
+            // The page will handle setting up localStorage authentication
+            const authParams = new URLSearchParams({
+              auth_user_id: authenticatedUser.id,
+              auth_org_id: organization.id,
+              auth_session: sessionToken
             });
             
-            const redirectPath = `${appUrl}/oauth-callback?${callbackParams.toString()}`;
+            let redirectPath: string;
+            if (isSuperAdmin) {
+              // Super admins go to organization selection
+              redirectPath = `${appUrl}/select-organization?${authParams.toString()}`;
+            } else if (needsOnboarding) {
+              // New organizations go to onboarding with org slug and auth
+              authParams.append('org', actualOrgSlug);
+              redirectPath = `${appUrl}/onboarding?${authParams.toString()}`;
+            } else {
+              // Existing organizations go to dashboard
+              authParams.append('org', actualOrgSlug);
+              redirectPath = `${appUrl}/dashboard?${authParams.toString()}`;
+            }
             
-            console.log(`🚀 Redirecting to OAuth callback handler`);
-            console.log(`   Organization slug: ${actualOrgSlug} (created new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
+            console.log(`🚀 Redirecting after OAuth authentication`);
+            console.log(`   User: ${authenticatedUser.email}`);
+            console.log(`   Organization: ${actualOrgSlug} (new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
+            console.log(`   Redirect: ${redirectPath.replace(/auth_session=[^&]+/, 'auth_session=[REDACTED]')}`);
             
             res.redirect(redirectPath);
           });
