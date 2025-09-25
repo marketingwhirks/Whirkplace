@@ -148,6 +148,7 @@ export const organizations = pgTable("organizations", {
   timezone: text("timezone").notNull().default("America/Chicago"),
   weeklyCheckInSchedule: text("weekly_check_in_schedule").notNull().default("friday"), // monday, tuesday, etc.
   checkInReminderTime: text("check_in_reminder_time").notNull().default("09:00"), // 24-hour format
+  reviewReminderTime: text("review_reminder_time").notNull().default("16:00"), // 24-hour format for manager review reminders
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });

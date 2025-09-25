@@ -910,8 +910,9 @@ export function OnboardingPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label htmlFor="checkin-time">Reminder Time</Label>
+            
+            <div className="space-y-2">
+              <Label htmlFor="checkin-time">Check-in Reminder Time</Label>
               <Input
                 id="checkin-time"
                 type="time"
@@ -921,7 +922,27 @@ export function OnboardingPage() {
                   settings: { ...formData.settings, checkInReminderTime: e.target.value }
                 })}
               />
+              <p className="text-xs text-muted-foreground">
+                Reminder sent only if check-in not yet submitted
+              </p>
             </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="review-time">Review Reminder Time</Label>
+              <Input
+                id="review-time"
+                type="time"
+                value={formData.settings.reviewReminderTime || '16:00'}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  settings: { ...formData.settings, reviewReminderTime: e.target.value }
+                })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Managers reminded to review pending check-ins
+              </p>
+            </div>
+            
             <div>
               <Label htmlFor="timezone">Timezone</Label>
               <Select
