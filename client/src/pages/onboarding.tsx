@@ -128,6 +128,24 @@ export function OnboardingPage() {
     }
   }, [onboardingStatus, setLocation]);
 
+  // Pre-populate form data from organization data (e.g., from Slack OAuth)
+  useEffect(() => {
+    if (organization) {
+      setFormData(prev => ({
+        ...prev,
+        workspace: {
+          ...prev.workspace,
+          // Pre-fill organization name if it exists and form is empty
+          name: prev.workspace.name || organization.name || '',
+          // Pre-fill industry if it exists and form is empty
+          industry: prev.workspace.industry || organization.industry || ''
+        },
+        // Pre-fill company values if they exist
+        values: prev.values.length > 0 ? prev.values : (organization.customValues || [])
+      }));
+    }
+  }, [organization]);
+
   const handleNext = async () => {
     const currentStep = STEPS[currentStepIndex];
     
