@@ -392,7 +392,7 @@ export function OnboardingPage() {
     );
   }
 
-  if (!currentUser || currentUser.role !== 'admin') {
+  if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'super_admin')) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <Card className="max-w-md">
@@ -400,7 +400,7 @@ export function OnboardingPage() {
             <AlertCircle className="w-8 h-8 text-destructive mb-2" />
             <CardTitle>Access Denied</CardTitle>
             <CardDescription>
-              Only administrators can complete the onboarding process
+              Only administrators and super administrators can complete the onboarding process
             </CardDescription>
           </CardHeader>
           <CardContent>
