@@ -31,8 +31,10 @@ export default function LoginPage() {
     const plan = urlParams.get('plan');
     setSelectedPlan(plan);
     
-    // Clear any old localStorage authentication tokens that might be causing conflicts
-    clearOldAuthTokens();
+    // Only clear auth if explicitly logging out
+    if (urlParams.get('logout') === 'true') {
+      clearOldAuthTokens();
+    }
   }, []);
   
   const clearOldAuthTokens = () => {

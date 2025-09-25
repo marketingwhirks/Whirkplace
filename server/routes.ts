@@ -111,6 +111,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Set session after regeneration
         req.session.userId = matthewUser.id;
+        req.session.organizationId = organizationId;
+        req.session.roles = matthewUser.roles || ['member'];
         
         // Save session before sending response to ensure persistence
         req.session.save((err) => {
@@ -141,7 +143,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
         });
         
-        res.cookie('auth_org_id', req.orgId, {
+        res.cookie('auth_org_id', organizationId, {
           httpOnly: true,
           secure: useSecure,
           sameSite: useSameSiteNone ? 'none' : 'lax',
