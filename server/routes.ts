@@ -13,8 +13,10 @@ import {
   insertDashboardConfigSchema, insertDashboardWidgetTemplateSchema, insertBugReportSchema,
   insertPartnerApplicationSchema, insertPartnerFirmSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
-  type ReviewStatusType, type Checkin
+  type ReviewStatusType, type Checkin,
+  organizations
 } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo } from "./services/slack";
 import { randomBytes } from "crypto";
@@ -55,7 +57,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const { username, key } = req.body;
-      console.log(`🔑 Fresh login attempt: ${username} in org ${req.orgId}`);
+      
+      // Get organization ID from query param or use default
+      const orgSlug = req.query.org as string || 'whirkplace';
+      console.log(`🔑 Fresh login attempt: ${username} for org: ${orgSlug}`);
+      
+      // Look up the organization
+      const org = await req.db
+        .select()
+        .from(organizations)
+        .where(eq(organizations.slug, orgSlug))
+        .limit(1);
+      
+      if (!org || org.length === 0) {
+        console.log(`❌ Organization not found: ${orgSlug}`);
+        return res.status(404).json({ 
+          message: "Organization not found" 
+        });
+      }
+      
+      const organizationId = org[0].id;
+      console.log(`✅ Found organization: ${org[0].name} (${organizationId})`);
       
       // Verify backdoor credentials - use defaults for development if env vars not set
       const validUsername = process.env.BACKDOOR_USER || "Matthew";
@@ -74,7 +96,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Ensure Matthew Patrick's backdoor user exists
-      const matthewUser = await ensureBackdoorUser(req.orgId);
+      const matthewUser = await ensureBackdoorUser(organizationId);
       console.log(`✅ Fresh backdoor user confirmed: ${matthewUser.name} (${matthewUser.email})`);
       
       // SECURITY: Regenerate session ID to prevent session fixation attacks
