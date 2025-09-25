@@ -45,9 +45,10 @@ export default function DevLogin() {
           description: `Welcome back, ${userData.name}!`,
         });
         
-        // Redirect to dashboard
+        // Redirect to dashboard - use window.location to force page reload
+        // This ensures authentication state is properly refreshed
         setTimeout(() => {
-          setLocation('/');
+          window.location.href = '/';
         }, 500);
       } else {
         const error = await response.json();
