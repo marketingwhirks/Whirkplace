@@ -620,7 +620,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('📊 Slack OAuth team data:', {
         teamId: team?.id,
         teamName: team?.name,
-        hasTeamData: !!team
+        hasTeamData: !!team,
+        fullTeamObject: team,
+        userInfoResponseKeys: Object.keys(userInfoResponse),
+        userKeys: user ? Object.keys(user) : [],
+        rawUserInfo: JSON.stringify(userInfoResponse.user, null, 2)
       });
       
       // Try to fetch actual email from Slack API if we have an access token

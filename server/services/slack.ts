@@ -324,11 +324,17 @@ export async function validateOIDCToken(idToken: string): Promise<{ ok: boolean;
     console.log('🔍 Full payload:', JSON.stringify(payload, null, 2));
 
     // Extract user information from verified token
+    console.log('🔍 Team fields in JWT:', {
+      team_id: payload['https://slack.com/team_id'],
+      team_name: payload['https://slack.com/team_name'],
+      team_domain: payload['https://slack.com/team_domain']
+    });
+    
     const userInfo: SlackOIDCUserInfo = {
       sub: payload.sub!,
       team: {
         id: payload['https://slack.com/team_id'] as string,
-        name: payload['https://slack.com/team_name'] as string
+        name: payload['https://slack.com/team_name'] as string || payload['https://slack.com/team_domain'] as string
       },
       user: {
         id: payload['https://slack.com/user_id'] as string,
