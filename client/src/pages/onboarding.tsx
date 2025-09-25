@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -43,10 +43,10 @@ const STEPS = [
 export function OnboardingPage() {
   const { toast } = useToast();
   const [location, setLocation] = useLocation();
-  const { currentUser, loading: userLoading } = useCurrentUser();
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [formData, setFormData] = useState<any>({
-    workspace: {},
+    workspace: { name: '', industry: '' },
     billing: {},
     roles: {},
     values: [],
@@ -68,11 +68,10 @@ export function OnboardingPage() {
 
   // Complete step mutation
   const completeStepMutation = useMutation({
-    mutationFn: (step: string) => 
-      apiRequest(`/api/onboarding/complete-step`, {
-        method: 'POST',
-        body: JSON.stringify({ step })
-      }),
+    mutationFn: async (step: string) => {
+      const res = await apiRequest('POST', '/api/onboarding/complete-step', { step });
+      return res.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/onboarding/status'] });
       toast({
@@ -84,10 +83,10 @@ export function OnboardingPage() {
 
   // Complete onboarding mutation
   const completeOnboardingMutation = useMutation({
-    mutationFn: () => 
-      apiRequest('/api/onboarding/complete', {
-        method: 'POST'
-      }),
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/onboarding/complete');
+      return res.json();
+    },
     onSuccess: () => {
       toast({
         title: 'Welcome aboard!',
@@ -99,11 +98,10 @@ export function OnboardingPage() {
 
   // Update organization mutation
   const updateOrganizationMutation = useMutation({
-    mutationFn: (data: any) => 
-      apiRequest(`/api/organizations/${currentUser?.organizationId}`, {
-        method: 'PATCH',
-        body: JSON.stringify(data)
-      }),
+    mutationFn: async (data: any) => {
+      const res = await apiRequest('PATCH', `/api/organizations/${currentUser?.organizationId}`, data);
+      return res.json();
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/organizations/${currentUser?.organizationId}`] });
     }
@@ -125,7 +123,7 @@ export function OnboardingPage() {
         setCurrentStepIndex(incompleteSteIndex);
       }
     }
-  }, [onboardingStatus, navigate]);
+  }, [onboardingStatus, setLocation]);
 
   const handleNext = async () => {
     const currentStep = STEPS[currentStepIndex];
@@ -181,7 +179,7 @@ export function OnboardingPage() {
               <Label htmlFor="org-name">Organization Name</Label>
               <Input
                 id="org-name"
-                value={formData.workspace.name || organization?.name || ''}
+                value={formData.workspace.name || (organization as any)?.name || ''}
                 onChange={(e) => setFormData({
                   ...formData,
                   workspace: { ...formData.workspace, name: e.target.value }
