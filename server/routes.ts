@@ -924,7 +924,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             password: securePassword, // Secure random password for Slack users
             name: displayName,
             email: newUserEmail !== `${slackUserId}@slack.local` ? newUserEmail : `${slackUserId}@slack.local`,
-            role: finalSuperAdmin ? "admin" : "member",  // Super admins get admin role
+            role: (finalSuperAdmin || isNewOrganization) ? "admin" : "member",  // Super admins and org founders get admin role
             isSuperAdmin: finalSuperAdmin,  // Set super admin flag based on email check
             organizationId: organization.id,
             slackUserId: slackUserId,
