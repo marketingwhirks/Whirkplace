@@ -2403,9 +2403,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Apply authentication middleware to all other API routes
-  app.use("/api", authenticateUser());
-  
   // Apply CSRF protection and generation after authentication middleware
   app.use("/api", generateCSRF());
   
