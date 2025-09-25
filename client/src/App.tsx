@@ -31,6 +31,7 @@ import PartnerPage from "@/pages/PartnerPage";
 import DevLogin from "@/pages/DevLogin";
 import SelectOrganizationPage from "@/pages/select-organization";
 import { OnboardingPage } from "@/pages/onboarding";
+import OAuthCallbackPage from "@/pages/oauth-callback";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
@@ -112,6 +113,7 @@ function App() {
               <Route path="/partners" component={PartnerPage} />
               <Route path="/dev-login" component={DevLogin} />
               <Route path="/onboarding" component={OnboardingPage} />
+              <Route path="/oauth-callback" component={OAuthCallbackPage} />
               <Route component={AuthenticatedApp} />
             </Switch>
           </RoleSwitchProvider>

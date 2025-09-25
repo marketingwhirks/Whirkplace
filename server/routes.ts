@@ -1120,8 +1120,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // Check for production override first
             if (process.env.OAUTH_REDIRECT_BASE_URL) {
-              appUrl = process.env.OAUTH_REDIRECT_BASE_URL;
+              // Extract just the base URL without the /auth/slack/callback path
+              appUrl = process.env.OAUTH_REDIRECT_BASE_URL.replace(/\/auth\/.*$/, '');
             } else if (process.env.NODE_ENV === 'production' || process.env.FORCE_PRODUCTION_OAUTH === 'true') {
+              // In production, the app is hosted at the root domain
               appUrl = 'https://whirkplace.com';
             } else if (process.env.REPL_URL || process.env.REPLIT_URL) {
               appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
@@ -1137,13 +1139,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // For new organizations or those still in onboarding, redirect to onboarding
             // Otherwise, redirect to the specific organization dashboard
             const actualOrgSlug = organization.slug || organizationSlug;
-            const redirectPath = isSuperAdmin 
-              ? `${appUrl}/#/select-organization`
-              : needsOnboarding
-              ? `${appUrl}/#/onboarding?org=${actualOrgSlug}`
-              : `${appUrl}/#/dashboard?org=${actualOrgSlug}`;
             
-            console.log(`🚀 Redirecting ${isSuperAdmin ? 'super admin' : 'user'} to:`, redirectPath);
+            // Redirect to client-side OAuth callback handler to set localStorage
+            // This ensures the React app immediately recognizes the authentication
+            const callbackParams = new URLSearchParams({
+              user_id: authenticatedUser.id,
+              org_id: organization.id,
+              org: actualOrgSlug,
+              onboarding: needsOnboarding ? 'true' : 'false',
+              super_admin: isSuperAdmin ? 'true' : 'false'
+            });
+            
+            const redirectPath = `${appUrl}/#/oauth-callback?${callbackParams.toString()}`;
+            
+            console.log(`🚀 Redirecting to OAuth callback handler`);
             console.log(`   Organization slug: ${actualOrgSlug} (created new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
             
             res.redirect(redirectPath);
