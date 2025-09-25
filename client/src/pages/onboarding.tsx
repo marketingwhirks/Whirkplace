@@ -15,9 +15,8 @@ import { useToast } from '@/hooks/use-toast';
 import { 
   Building, CreditCard, Users, Heart, UserPlus, Settings, 
   Check, ChevronRight, Loader2, AlertCircle, Slack, Mail, Download,
-  Search, X, UserCheck
+  Search, X, UserCheck, Building2
 } from 'lucide-react';
-import { SiMicrosoft, SiGoogle } from 'react-icons/si';
 import { Checkbox } from '@/components/ui/checkbox';
 
 interface OnboardingStatus {
@@ -83,9 +82,9 @@ const ProviderIcon = ({ provider }: { provider: string }) => {
     case 'slack':
       return <Slack className="h-4 w-4" />;
     case 'microsoft':
-      return <SiMicrosoft className="h-4 w-4" />;
+      return <Building2 className="h-4 w-4" />;
     case 'google':
-      return <SiGoogle className="h-4 w-4" />;
+      return <Building className="h-4 w-4" />;
     default:
       return <Mail className="h-4 w-4" />;
   }
