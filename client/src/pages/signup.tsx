@@ -58,15 +58,16 @@ export default function SignupPage() {
 
   const createOrgMutation = useMutation({
     mutationFn: async (data: typeof orgData) => {
-      return await apiRequest('/api/business/signup', 'POST', data);
+      const response = await apiRequest('POST', '/api/business/signup', data);
+      return await response.json();
     },
     onSuccess: (data) => {
       // Store authentication in localStorage
       if (data.userId) {
-        localStorage.setItem('x-auth-user-id', data.userId);
+        localStorage.setItem('auth_user_id', data.userId);
       }
       if (data.organizationId) {
-        localStorage.setItem('x-auth-org-id', data.organizationId);
+        localStorage.setItem('auth_org_id', data.organizationId);
       }
       
       toast({
