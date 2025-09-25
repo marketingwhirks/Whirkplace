@@ -363,7 +363,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // OAuth endpoints (before organization middleware as they need to work without org context)
   
   // GET /auth/slack/login - Initiate Slack OAuth flow
-  app.get("/auth/slack/login", async (req, res) => {
+  // Also expose at /api/auth/slack/login to bypass Vite middleware
+  app.get(["/auth/slack/login", "/api/auth/slack/login"], async (req, res) => {
     try {
       const { org, action } = req.query;
       

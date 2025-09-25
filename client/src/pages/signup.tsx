@@ -183,12 +183,13 @@ export default function SignupPage() {
             <div className="space-y-4">
               {/* Quick signup with providers */}
               <div className="space-y-2">
-                {/* Use a form to bypass React router completely */}
-                <form action="/auth/slack/login" method="get" className="w-full">
-                  <input type="hidden" name="org" value="new" />
-                  <input type="hidden" name="action" value="create" />
+                {/* Use /api/ prefix to bypass Vite middleware */}
+                <a 
+                  href="/api/auth/slack/login?org=new&action=create" 
+                  className="block"
+                  style={{ textDecoration: 'none' }}
+                >
                   <Button 
-                    type="submit"
                     className="w-full"
                     variant="outline"
                     data-testid="button-slack-signup"
@@ -198,7 +199,7 @@ export default function SignupPage() {
                     </svg>
                     Sign up with Slack
                   </Button>
-                </form>
+                </a>
                 
                 <form action="/auth/microsoft" method="get" className="w-full">
                   <input type="hidden" name="org" value="new" />
