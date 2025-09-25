@@ -63,24 +63,20 @@ export default function SignupPage() {
 
   const handleSlackSignup = () => {
     // For new org creation via Slack
-    // Clear any existing authentication to allow new org creation
-    localStorage.removeItem('auth_user_id');
-    localStorage.removeItem('auth_org_id');
-    
-    // Use absolute URL to ensure it hits the server endpoint
+    // Navigate directly to the server endpoint without clearing auth
+    // The server will handle creating a new org even if user is authenticated
     const baseUrl = window.location.origin;
-    window.location.href = `${baseUrl}/auth/slack/login?org=new&action=create`;
+    // Use replace to prevent back button issues
+    window.location.replace(`${baseUrl}/auth/slack/login?org=new&action=create`);
   };
 
   const handleMicrosoftSignup = () => {
     // For new org creation via Microsoft  
-    // Clear any existing authentication to allow new org creation
-    localStorage.removeItem('auth_user_id');
-    localStorage.removeItem('auth_org_id');
-    
-    // Use absolute URL to ensure it hits the server endpoint
+    // Navigate directly to the server endpoint without clearing auth
+    // The server will handle creating a new org even if user is authenticated
     const baseUrl = window.location.origin;
-    window.location.href = `${baseUrl}/auth/microsoft?org=new&action=create`;
+    // Use replace to prevent back button issues
+    window.location.replace(`${baseUrl}/auth/microsoft?org=new&action=create`);
   };
 
   const urlParams = new URLSearchParams(window.location.search);
