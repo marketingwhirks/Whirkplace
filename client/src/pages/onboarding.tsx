@@ -78,6 +78,14 @@ export function OnboardingPage() {
         title: 'Step completed',
         description: 'Progress saved successfully'
       });
+    },
+    onError: (error: any) => {
+      console.error('Complete step error:', error);
+      toast({
+        title: 'Error completing step',
+        description: error.message || 'Failed to save progress',
+        variant: 'destructive'
+      });
     }
   });
 
@@ -127,36 +135,44 @@ export function OnboardingPage() {
 
   const handleNext = async () => {
     const currentStep = STEPS[currentStepIndex];
+    console.log('handleNext - Current step:', currentStep.id);
     
     // Save current step data
     try {
       switch(currentStep.id) {
         case 'workspace':
+          console.log('Updating workspace with:', formData.workspace);
           await updateOrganizationMutation.mutateAsync(formData.workspace);
           break;
         case 'values':
+          console.log('Updating values with:', formData.values);
           await updateOrganizationMutation.mutateAsync({ 
             customValues: formData.values 
           });
           break;
         case 'settings':
+          console.log('Updating settings with:', formData.settings);
           await updateOrganizationMutation.mutateAsync(formData.settings);
           break;
       }
 
       // Mark step as completed
+      console.log('Marking step as completed:', currentStep.id);
       await completeStepMutation.mutateAsync(currentStep.id);
 
       // Move to next step or complete
       if (currentStepIndex === STEPS.length - 1) {
+        console.log('Completing entire onboarding');
         await completeOnboardingMutation.mutateAsync();
       } else {
+        console.log('Moving to next step');
         setCurrentStepIndex(currentStepIndex + 1);
       }
-    } catch (error) {
+    } catch (error: any) {
+      console.error('handleNext error:', error);
       toast({
         title: 'Error',
-        description: 'Failed to save progress',
+        description: error.message || 'Failed to save progress',
         variant: 'destructive'
       });
     }
