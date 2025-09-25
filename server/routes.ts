@@ -6244,8 +6244,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Organization management endpoints
   app.get("/api/organizations/:id", requireAuth(), async (req, res) => {
     try {
-      // Verify the organization ID matches the authenticated user's organization
-      if (req.params.id !== req.orgId) {
+      // Allow users to access their own organization even if the domain context is different
+      // This is needed for onboarding after Slack OAuth creates a new organization
+      const userCanAccess = req.params.id === req.orgId || 
+                          req.params.id === req.currentUser?.organizationId;
+      
+      if (!userCanAccess) {
         return res.status(403).json({ message: "You can only access your own organization" });
       }
       
