@@ -362,6 +362,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // OAuth endpoints (before organization middleware as they need to work without org context)
   
+  // GET /api/auth/slack/oauth-url - Return OAuth URL as JSON for client-side redirect
+  app.get("/api/auth/slack/oauth-url", async (req, res) => {
+    try {
+      const { org, action } = req.query;
+      
+      let organizationSlug = org as string;
+      
+      if (!org) {
+        return res.status(400).json({ error: 'No organization specified' });
+      }
+      
+      // Generate OAuth URL and save state to session
+      const orgSlugString = typeof organizationSlug === 'string' ? organizationSlug : String(organizationSlug);
+      const oauthUrl = generateOAuthURL(orgSlugString, req.session, req);
+      
+      // Save session AFTER setting the state
+      req.session.save((err) => {
+        if (err) {
+          console.error('Failed to save session:', err);
+          return res.status(500).json({ error: "Session error" });
+        }
+        
+        // Return the OAuth URL as JSON
+        res.json({ url: oauthUrl });
+      });
+    } catch (error) {
+      console.error("OAuth URL generation error:", error);
+      res.status(500).json({ error: "Failed to generate OAuth URL" });
+    }
+  });
+  
   // GET /auth/slack/login - Initiate Slack OAuth flow
   // Also expose at /api/auth/slack/login to bypass Vite middleware
   app.get(["/auth/slack/login", "/api/auth/slack/login"], async (req, res) => {
