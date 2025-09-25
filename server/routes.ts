@@ -1192,7 +1192,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               super_admin: isSuperAdmin ? 'true' : 'false'
             });
             
-            const redirectPath = `${appUrl}/#/oauth-callback?${callbackParams.toString()}`;
+            const redirectPath = `${appUrl}/oauth-callback?${callbackParams.toString()}`;
             
             console.log(`🚀 Redirecting to OAuth callback handler`);
             console.log(`   Organization slug: ${actualOrgSlug} (created new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
