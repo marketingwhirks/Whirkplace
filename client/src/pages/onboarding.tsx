@@ -135,24 +135,42 @@ export function OnboardingPage() {
     try {
       switch(currentStep.id) {
         case 'workspace':
-          const workspaceData = formData.workspace.industry === 'other' && formData.workspace.customIndustry
-            ? { ...formData.workspace, industry: formData.workspace.customIndustry }
-            : formData.workspace;
-          await updateOrganizationMutation.mutateAsync(workspaceData);
+          // Only send data if fields are filled
+          const hasData = formData.workspace.name || formData.workspace.industry;
+          if (hasData) {
+            const workspaceData: any = {};
+            if (formData.workspace.name) workspaceData.name = formData.workspace.name;
+            if (formData.workspace.industry === 'other' && formData.workspace.customIndustry) {
+              workspaceData.industry = formData.workspace.customIndustry;
+            } else if (formData.workspace.industry && formData.workspace.industry !== 'other') {
+              workspaceData.industry = formData.workspace.industry;
+            }
+            
+            // Only call API if we have data to send
+            if (Object.keys(workspaceData).length > 0) {
+              await updateOrganizationMutation.mutateAsync(workspaceData);
+            }
+          }
           break;
         case 'values':
-          await updateOrganizationMutation.mutateAsync({ 
-            customValues: formData.values 
-          });
+          if (formData.values && formData.values.length > 0) {
+            await updateOrganizationMutation.mutateAsync({ 
+              customValues: formData.values 
+            });
+          }
           break;
         case 'settings':
-          await updateOrganizationMutation.mutateAsync(formData.settings);
+          // Only send settings that have been changed
+          const settingsData: any = {};
+          if (formData.settings.checkinFrequency) settingsData.checkinFrequency = formData.settings.checkinFrequency;
+          if (formData.settings.notificationsEnabled !== undefined) settingsData.notificationsEnabled = formData.settings.notificationsEnabled;
+          
+          if (Object.keys(settingsData).length > 0) {
+            await updateOrganizationMutation.mutateAsync(settingsData);
+          }
           break;
       }
 
-      // Skip step tracking for now - just move to next step
-      // The backend endpoint has permission issues we'll fix later
-      
       // Move to next step or complete
       if (currentStepIndex === STEPS.length - 1) {
         // For now, just redirect to dashboard when done
@@ -165,6 +183,7 @@ export function OnboardingPage() {
         setCurrentStepIndex(currentStepIndex + 1);
       }
     } catch (error: any) {
+      console.error('Onboarding error:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to save progress',
