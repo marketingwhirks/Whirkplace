@@ -204,6 +204,12 @@ export function OnboardingPage() {
                   <SelectItem value="finance">Finance</SelectItem>
                   <SelectItem value="healthcare">Healthcare</SelectItem>
                   <SelectItem value="retail">Retail</SelectItem>
+                  <SelectItem value="accounting">Accounting Firm</SelectItem>
+                  <SelectItem value="law">Law Firm</SelectItem>
+                  <SelectItem value="home_care">Home Care</SelectItem>
+                  <SelectItem value="restaurant">Restaurant</SelectItem>
+                  <SelectItem value="fitness">Fitness</SelectItem>
+                  <SelectItem value="home_services">Home Services</SelectItem>
                   <SelectItem value="other">Other</SelectItem>
                 </SelectContent>
               </Select>
