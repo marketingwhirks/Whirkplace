@@ -63,18 +63,38 @@ export default function SignupPage() {
 
   const handleSlackSignup = async () => {
     // For new org creation via Slack - use endpoint to get OAuth URL then redirect
+    console.log('Starting Slack signup process...');
     try {
       // Use /auth/slack/oauth-url (no /api prefix) to avoid authentication middleware
       const response = await fetch('/auth/slack/oauth-url?org=new&action=create');
+      console.log('OAuth response status:', response.status);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const data = await response.json();
+      console.log('OAuth response data:', data);
+      
       if (data.url) {
+        console.log('Redirecting to Slack OAuth URL:', data.url);
         // Navigate directly to Slack OAuth page
         window.location.href = data.url;
       } else {
-        console.error('No OAuth URL returned');
+        console.error('No OAuth URL returned in response:', data);
+        toast({
+          title: "OAuth Error",
+          description: "Failed to get OAuth URL from server",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error('Failed to get OAuth URL:', error);
+      toast({
+        title: "Connection Error",  
+        description: "Failed to connect to OAuth service. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
