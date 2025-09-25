@@ -39,6 +39,11 @@ export default function DevLogin() {
       if (response.ok) {
         const userData = await response.json();
         
+        // Save user ID to localStorage as fallback
+        if (userData.user && userData.user.id) {
+          localStorage.setItem('auth_user_id', userData.user.id);
+        }
+        
         toast({
           title: "Login successful!",
           description: `Welcome back, ${userData.user.name}!`,
