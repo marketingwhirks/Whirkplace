@@ -41,7 +41,7 @@ export default function DevLogin() {
         
         // Save user ID to localStorage as fallback
         if (userData.user && userData.user.id) {
-          localStorage.setItem('auth_user_id', userData.user.id);
+          localStorage.setItem('x-auth-user-id', userData.user.id);
         }
         
         toast({

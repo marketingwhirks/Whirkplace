@@ -190,7 +190,7 @@ export default function LoginPage() {
         if (data.user) {
           localStorage.setItem('whirkplace-user', JSON.stringify(data.user));
           // Store auth data for session persistence in Replit environment
-          localStorage.setItem('auth_user_id', data.user.id);
+          localStorage.setItem('x-auth-user-id', data.user.id);
           localStorage.setItem('auth_user_data', JSON.stringify(data.user));
         }
         
@@ -296,7 +296,7 @@ export default function LoginPage() {
         console.log("🚀 Login successful! Storing user data...");
         
         // BYPASS COOKIE ISSUES: Store authentication in localStorage for immediate access
-        localStorage.setItem('auth_user_id', data.user.id);
+        localStorage.setItem('x-auth-user-id', data.user.id);
         localStorage.setItem('auth_user_data', JSON.stringify(data.user));
         
         // Clear cached queries and redirect immediately

@@ -62,7 +62,8 @@ export function UserProfile() {
     },
     onSuccess: () => {
       // Clear ALL localStorage items related to authentication
-      localStorage.removeItem('auth_user_id');
+      localStorage.removeItem('x-auth-user-id');  // This is the key that matters
+      localStorage.removeItem('auth_user_id');  // Clear old key too
       localStorage.removeItem('auth_org_id');
       localStorage.removeItem('auth_session_token');
       localStorage.removeItem('auth_user_data');
