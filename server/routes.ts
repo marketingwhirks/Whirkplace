@@ -1756,15 +1756,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: "starter",
           displayName: "Starter",
           description: "Perfect for small teams getting started",
-          monthlyPrice: 900, // $9.00 in cents
-          annualPrice: 9000, // $90.00 in cents (2 months free)
+          monthlyPrice: 600, // $6.00 in cents
+          annualPrice: 7200, // $72.00 in cents (annual billing)
           maxUsers: 10,
           features: [
             "Up to 10 team members",
-            "Basic check-ins and mood tracking",
-            "Win celebrations",
-            "Team shoutouts",
-            "Basic analytics",
+            "Essential team features",
+            "Basic check-ins & surveys",
+            "Basic team reports",
             "Email support"
           ],
           hasSlackIntegration: false,
@@ -1777,41 +1776,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: "professional",
           displayName: "Professional",
           description: "Advanced features for growing teams",
-          monthlyPrice: 2900, // $29.00 in cents
-          annualPrice: 29000, // $290.00 in cents
+          monthlyPrice: 1000, // $10.00 in cents
+          annualPrice: 12000, // $120.00 in cents (annual billing)
           maxUsers: 100,
           features: [
-            "Up to 100 team members",
-            "Advanced team hierarchy",
-            "One-on-One meeting management",
-            "KRA (Key Result Area) tracking",
-            "360-degree feedback system",
-            "Advanced analytics and insights",
+            "Everything in Starter",
+            "Up to 100 team members", 
+            "Slack integration",
+            "Microsoft 365 integration",
+            "Advanced analytics",
+            "Custom questions",
             "Priority support"
           ],
           hasSlackIntegration: true,
-          hasMicrosoftIntegration: false,
+          hasMicrosoftIntegration: true,
           hasAdvancedAnalytics: true,
           hasApiAccess: false,
         },
         {
-          id: "enterprise",
-          name: "enterprise",
-          displayName: "Enterprise",
-          description: "Full-featured solution for large organizations",
-          monthlyPrice: 4900, // $49.00 in cents
-          annualPrice: 49000, // $490.00 in cents
+          id: "partner",
+          name: "partner",
+          displayName: "Partner Program",
+          description: "Resell Whirkplace and maximize your margins",
+          monthlyPrice: 0, // Contact for tiered wholesale pricing
+          annualPrice: 0, // Contact for tiered wholesale pricing
           maxUsers: -1, // Unlimited
           features: [
-            "Unlimited team members",
-            "Microsoft Teams integration",
-            "Slack workspace integration",
-            "Microsoft Calendar sync",
-            "SSO with Microsoft 365",
-            "Advanced role management",
-            "Custom integrations & API access",
-            "Dedicated account manager",
-            "24/7 priority support"
+            "More customers = lower cost per seat",
+            "50-70% profit margins",
+            "First 50 seats free to start",
+            "Partner dashboard & management tools",
+            "White-label options available",
+            "Dedicated partner success manager",
+            "Sales & marketing support"
           ],
           hasSlackIntegration: true,
           hasMicrosoftIntegration: true,
