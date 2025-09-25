@@ -615,7 +615,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const user = userInfoResponse.user;
-      const team = tokenResponse.team;
+      const team = userInfoResponse.user.team; // Team data comes from the JWT, not token response
+      
+      console.log('📊 Slack OAuth team data:', {
+        teamId: team?.id,
+        teamName: team?.name,
+        hasTeamData: !!team
+      });
       
       // Try to fetch actual email from Slack API if we have an access token
       if (tokenResponse.access_token && user.user?.id) {
