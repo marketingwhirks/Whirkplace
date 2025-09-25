@@ -14,9 +14,11 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Building, CreditCard, Users, Heart, UserPlus, Settings, 
-  Check, ChevronRight, Loader2, AlertCircle, Slack, Mail, Download
+  Check, ChevronRight, Loader2, AlertCircle, Slack, Mail, Download,
+  Search, X, UserCheck
 } from 'lucide-react';
 import { SiMicrosoft, SiGoogle } from 'react-icons/si';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface OnboardingStatus {
   status: 'not_started' | 'in_progress' | 'completed';
@@ -98,6 +100,275 @@ const getProviderName = (provider: string) => {
     default: return 'Email';
   }
 };
+
+// User type for import selection
+interface ImportUser {
+  id: string;
+  email: string;
+  name: string;
+  department?: string;
+  title?: string;
+  avatar?: string | null;
+  alreadyImported: boolean;
+}
+
+// User Import Selector Component
+function UserImportSelector({ provider, onImportComplete }: { provider: string; onImportComplete: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
+  const [availableUsers, setAvailableUsers] = useState<ImportUser[]>([]);
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+  const { toast } = useToast();
+  
+  // Fetch available users
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const res = await apiRequest('GET', '/api/onboarding/available-users');
+        const data = await res.json();
+        setAvailableUsers(data.users || []);
+        
+        // Pre-select non-imported users
+        const initialSelected = new Set(
+          data.users
+            .filter((u: ImportUser) => !u.alreadyImported)
+            .map((u: ImportUser) => u.id)
+        );
+        setSelectedUsers(initialSelected);
+      } catch (error) {
+        toast({
+          title: 'Failed to load users',
+          description: 'Unable to fetch team members from ' + getProviderName(provider),
+          variant: 'destructive'
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchUsers();
+  }, [provider, toast]);
+  
+  // Get unique departments for filter
+  const departments = Array.from(new Set(availableUsers.map(u => u.department).filter(Boolean)));
+  
+  // Filter users based on search and department
+  const filteredUsers = availableUsers.filter(user => {
+    const matchesSearch = !searchQuery || 
+      user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      user.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesDepartment = departmentFilter === 'all' || user.department === departmentFilter;
+    return matchesSearch && matchesDepartment;
+  });
+  
+  // Handle select all/none
+  const handleSelectAll = () => {
+    const newSelected = new Set(
+      filteredUsers
+        .filter(u => !u.alreadyImported)
+        .map(u => u.id)
+    );
+    setSelectedUsers(newSelected);
+  };
+  
+  const handleSelectNone = () => {
+    setSelectedUsers(new Set());
+  };
+  
+  // Handle user selection
+  const toggleUser = (userId: string, alreadyImported: boolean) => {
+    if (alreadyImported) return;
+    
+    const newSelected = new Set(selectedUsers);
+    if (newSelected.has(userId)) {
+      newSelected.delete(userId);
+    } else {
+      newSelected.add(userId);
+    }
+    setSelectedUsers(newSelected);
+  };
+  
+  // Handle import
+  const handleImport = async () => {
+    if (selectedUsers.size === 0) {
+      toast({
+        title: 'No users selected',
+        description: 'Please select at least one user to import',
+        variant: 'destructive'
+      });
+      return;
+    }
+    
+    setImporting(true);
+    try {
+      const res = await apiRequest('POST', '/api/onboarding/import-selected-users', {
+        userIds: Array.from(selectedUsers)
+      });
+      const data = await res.json();
+      
+      toast({
+        title: 'Import successful',
+        description: data.message
+      });
+      
+      // Call the completion callback
+      onImportComplete();
+    } catch (error) {
+      toast({
+        title: 'Import failed',
+        description: 'Unable to import selected users',
+        variant: 'destructive'
+      });
+    } finally {
+      setImporting(false);
+    }
+  };
+  
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <Loader2 className="h-8 w-8 animate-spin" />
+        <span className="ml-2">Loading team members from {getProviderName(provider)}...</span>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold">Select Team Members to Import</h3>
+          <p className="text-sm text-muted-foreground">
+            Choose which team members to add to Whirkplace
+          </p>
+        </div>
+        <Badge variant="outline" className="flex items-center gap-1">
+          <ProviderIcon provider={provider} />
+          {availableUsers.length} available
+        </Badge>
+      </div>
+      
+      {/* Filters */}
+      <div className="flex gap-2">
+        <div className="flex-1 relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search by name or email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+        {departments.length > 0 && (
+          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Departments</SelectItem>
+              {departments.map(dept => (
+                <SelectItem key={dept} value={dept || 'unknown'}>{dept}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
+      
+      {/* Quick actions */}
+      <div className="flex justify-between items-center border-b pb-2">
+        <div className="text-sm text-muted-foreground">
+          {selectedUsers.size} of {filteredUsers.filter(u => !u.alreadyImported).length} selected
+        </div>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={handleSelectAll}>
+            Select All
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleSelectNone}>
+            Select None
+          </Button>
+        </div>
+      </div>
+      
+      {/* User list */}
+      <div className="max-h-[400px] overflow-y-auto space-y-2 border rounded-lg p-2">
+        {filteredUsers.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            No users found matching your criteria
+          </div>
+        ) : (
+          filteredUsers.map(user => (
+            <div 
+              key={user.id}
+              className={`flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer ${
+                user.alreadyImported ? 'opacity-50' : ''
+              }`}
+              onClick={() => toggleUser(user.id, user.alreadyImported)}
+            >
+              <Checkbox
+                checked={user.alreadyImported || selectedUsers.has(user.id)}
+                disabled={user.alreadyImported}
+                onCheckedChange={() => toggleUser(user.id, user.alreadyImported)}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <div className="flex-1">
+                <div className="font-medium">{user.name}</div>
+                <div className="text-sm text-muted-foreground">{user.email}</div>
+                {(user.department || user.title) && (
+                  <div className="text-xs text-muted-foreground">
+                    {user.title && <span>{user.title}</span>}
+                    {user.title && user.department && <span> · </span>}
+                    {user.department && <span>{user.department}</span>}
+                  </div>
+                )}
+              </div>
+              {user.alreadyImported && (
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <UserCheck className="h-3 w-3" />
+                  Already added
+                </Badge>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+      
+      {/* Import button */}
+      <div className="flex justify-between items-center">
+        <p className="text-sm text-muted-foreground">
+          You can always add more members later
+        </p>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            onClick={onImportComplete}
+            disabled={importing}
+          >
+            Skip for now
+          </Button>
+          <Button 
+            onClick={handleImport}
+            disabled={importing || selectedUsers.size === 0}
+          >
+            {importing ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Importing...
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4 mr-2" />
+                Import {selectedUsers.size} {selectedUsers.size === 1 ? 'Member' : 'Members'}
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function OnboardingPage() {
   const { toast } = useToast();
@@ -482,46 +753,30 @@ export function OnboardingPage() {
         const canImport = currentStep?.canImport;
         const importProvider = currentStep?.importProvider;
         
-        return (
-          <div className="space-y-4">
-            <div className="text-center p-6 border rounded-lg">
-              <UserPlus className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="font-semibold mb-2">Import Your Team</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                {canImport && importProvider
-                  ? `Import team members from ${getProviderName(importProvider)}`
-                  : 'Add team members to your organization'}
-              </p>
-              {canImport && importProvider && (
-                <Button 
-                  variant="default" 
-                  className="mb-2"
-                  onClick={async () => {
-                    try {
-                      const res = await apiRequest('POST', '/api/onboarding/import-slack-members');
-                      const data = await res.json();
-                      toast({
-                        title: 'Import started',
-                        description: data.message || 'Importing team members...'
-                      });
-                    } catch (error) {
-                      toast({
-                        title: 'Import failed',
-                        description: 'Unable to import members at this time',
-                        variant: 'destructive'
-                      });
-                    }
-                  }}
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Import from {getProviderName(importProvider)}
-                </Button>
-              )}
-              <p className="text-xs text-muted-foreground">
-                {canImport ? 'or manually invite members later' : 'You can add members after completing setup'}
-              </p>
+        // If can't import, show simple message
+        if (!canImport || !importProvider) {
+          return (
+            <div className="space-y-4">
+              <div className="text-center p-6 border rounded-lg">
+                <UserPlus className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="font-semibold mb-2">Team Members</h3>
+                <p className="text-sm text-muted-foreground">
+                  You can add team members after completing setup
+                </p>
+              </div>
             </div>
-          </div>
+          );
+        }
+        
+        // User selection interface for import
+        return (
+          <UserImportSelector 
+            provider={importProvider}
+            onImportComplete={() => {
+              // Move to next step after import
+              handleNext();
+            }}
+          />
         );
 
       case 'settings':

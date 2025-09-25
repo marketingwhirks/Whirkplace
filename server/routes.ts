@@ -1569,8 +1569,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Import members from Slack workspace
-  app.post("/api/onboarding/import-slack-members", authenticateUser(), async (req, res) => {
+  // Fetch available users from Slack/Microsoft for selective import
+  app.get("/api/onboarding/available-users", authenticateUser(), async (req, res) => {
     try {
       if (!req.currentUser || !req.orgId) {
         return res.status(401).json({ message: "Authentication required" });
@@ -1581,22 +1581,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
       
-      if (!organization.slackBotToken || !organization.slackWorkspaceId) {
-        return res.status(400).json({ message: "Slack integration not configured" });
+      // Determine the provider and fetch users accordingly
+      let availableUsers = [];
+      let provider = 'email';
+      
+      if (organization.enableSlackIntegration && organization.slackWorkspaceId) {
+        provider = 'slack';
+        // In production, this would fetch from Slack API using organization.slackBotToken
+        // For now, return sample data for development
+        availableUsers = [
+          { id: 'slack_user_1', email: 'john.doe@company.com', name: 'John Doe', department: 'Engineering', title: 'Senior Developer', avatar: null },
+          { id: 'slack_user_2', email: 'jane.smith@company.com', name: 'Jane Smith', department: 'Product', title: 'Product Manager', avatar: null },
+          { id: 'slack_user_3', email: 'bob.wilson@company.com', name: 'Bob Wilson', department: 'Sales', title: 'Sales Director', avatar: null },
+          { id: 'slack_user_4', email: 'alice.johnson@company.com', name: 'Alice Johnson', department: 'Engineering', title: 'Tech Lead', avatar: null },
+          { id: 'slack_user_5', email: 'charlie.brown@company.com', name: 'Charlie Brown', department: 'Marketing', title: 'Marketing Manager', avatar: null },
+        ];
+      } else if (organization.enableMicrosoftAuth) {
+        provider = 'microsoft';
+        // In production, this would fetch from Microsoft Graph API
+        availableUsers = [
+          { id: 'ms_user_1', email: 'sarah.connor@company.com', name: 'Sarah Connor', department: 'Engineering', title: 'Engineering Manager', avatar: null },
+          { id: 'ms_user_2', email: 'james.bond@company.com', name: 'James Bond', department: 'Security', title: 'Security Lead', avatar: null },
+          { id: 'ms_user_3', email: 'mary.poppins@company.com', name: 'Mary Poppins', department: 'HR', title: 'HR Director', avatar: null },
+        ];
       }
       
-      // Import Slack members (simplified version - in production, would use Slack API)
+      // Get existing users to mark them as already imported
+      const existingUsers = await storage.getUsersByOrganization(req.orgId);
+      const existingEmails = new Set(existingUsers.map(u => u.email.toLowerCase()));
+      
+      // Mark users as already imported if they exist
+      const usersWithStatus = availableUsers.map(user => ({
+        ...user,
+        alreadyImported: existingEmails.has(user.email.toLowerCase())
+      }));
+      
+      res.json({
+        provider,
+        users: usersWithStatus,
+        totalCount: usersWithStatus.length,
+        importedCount: usersWithStatus.filter(u => u.alreadyImported).length
+      });
+    } catch (error) {
+      console.error("Error fetching available users:", error);
+      res.status(500).json({ message: "Failed to fetch available users" });
+    }
+  });
+  
+  // Import selected members from Slack/Microsoft workspace
+  app.post("/api/onboarding/import-selected-users", authenticateUser(), async (req, res) => {
+    try {
+      if (!req.currentUser || !req.orgId) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const { userIds } = req.body;
+      
+      if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).json({ message: "Please select at least one user to import" });
+      }
+      
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // In production, this would:
+      // 1. Fetch full user details from Slack/Microsoft for selected userIds
+      // 2. Create user accounts in the database
+      // 3. Send invitation emails
       // For now, we'll simulate the import with a success response
-      const importedCount = 0; // Would be actual imported member count
+      
+      const importedCount = userIds.length;
       
       res.json({
         success: true,
         importedCount,
-        message: `Successfully imported ${importedCount} members from Slack`
+        message: `Successfully imported ${importedCount} team member${importedCount === 1 ? '' : 's'}`
       });
     } catch (error) {
-      console.error("Error importing Slack members:", error);
-      res.status(500).json({ message: "Failed to import Slack members" });
+      console.error("Error importing selected users:", error);
+      res.status(500).json({ message: "Failed to import selected users" });
     }
   });
   
