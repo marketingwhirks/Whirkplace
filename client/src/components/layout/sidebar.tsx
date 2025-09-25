@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { 
-  Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu, Gift, 
+  Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu, HandMetal, 
   ClipboardCheck, Shield, Crown, Calendar, Target, Lock, Rocket
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -38,7 +38,7 @@ const baseNavigation = [
   { name: "KRA Management", href: "/kra-management", icon: Target, roles: ["member", "manager", "admin"] },
   { name: "Team", href: "/team", icon: Users, roles: ["member", "manager", "admin"] },
   { name: "Wins", href: "/wins", icon: Trophy, roles: ["member", "manager", "admin"] },
-  { name: "Shout Outs", href: "/shoutouts", icon: Gift, roles: ["member", "manager", "admin"] },
+  { name: "Shout Outs", href: "/shoutouts", icon: HandMetal, roles: ["member", "manager", "admin"] },
   { name: "Questions", href: "/questions", icon: HelpCircle, roles: ["manager", "admin"] },
   { name: "Reviews", href: "/reviews", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
   { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },

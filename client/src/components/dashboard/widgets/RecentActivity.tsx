@@ -9,7 +9,7 @@ import {
   Trophy, 
   ClipboardCheck, 
   Users, 
-  Heart,
+  HandMetal,
   MessageSquare,
   Calendar,
   ChevronRight 
@@ -48,7 +48,7 @@ export interface RecentActivityProps {
 const activityIcons = {
   checkin: ClipboardCheck,
   win: Trophy,
-  shoutout: Heart,
+  shoutout: HandMetal,
   meeting: Calendar,
   system: MessageSquare,
   user: Users,
