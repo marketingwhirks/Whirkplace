@@ -44,8 +44,11 @@ export function DynamicThemeProvider({ children, organizationId }: DynamicThemeP
       try {
         const response = await apiRequest('GET', `/api/organizations/${activeOrgId}/theme`);
         return response.json();
-      } catch (error) {
-        console.warn("Failed to fetch theme configuration:", error);
+      } catch (error: any) {
+        // Only log non-authentication errors (401 is expected when not logged in)
+        if (error?.status !== 401) {
+          console.warn("Failed to fetch theme configuration:", error);
+        }
         return null;
       }
     },

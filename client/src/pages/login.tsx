@@ -548,8 +548,17 @@ export default function LoginPage() {
         </Card>
 
         {/* Footer */}
-        <div className="text-center text-sm text-muted-foreground">
+        <div className="text-center text-sm text-muted-foreground space-y-2">
           <p>By signing in, you agree to our terms of service</p>
+          <p>
+            <a 
+              href="/" 
+              className="underline hover:no-underline text-primary"
+              data-testid="link-home"
+            >
+              ← Back to Home
+            </a>
+          </p>
         </div>
       </div>
     </div>
