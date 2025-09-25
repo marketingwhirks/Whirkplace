@@ -1233,9 +1233,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // ONBOARDING ROUTES (authenticated but accessible during onboarding)
   // Get current onboarding status
-  app.get("/api/onboarding/status", authenticateUser, async (req, res) => {
+  app.get("/api/onboarding/status", authenticateUser(), async (req, res) => {
     try {
-      if (!req.userId) {
+      if (!req.currentUser) {
         return res.status(401).json({ message: "Authentication required" });
       }
       
@@ -1264,7 +1264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Update onboarding step completion
-  app.post("/api/onboarding/complete-step", authenticateUser, requireRole("admin"), async (req, res) => {
+  app.post("/api/onboarding/complete-step", authenticateUser(), requireRole(["admin", "super_admin"]), async (req, res) => {
     try {
       const { step } = req.body;
       const validSteps = ['workspace', 'billing', 'roles', 'values', 'members', 'settings'];
@@ -1332,7 +1332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Complete entire onboarding
-  app.post("/api/onboarding/complete", authenticateUser, requireRole("admin"), async (req, res) => {
+  app.post("/api/onboarding/complete", authenticateUser(), requireRole(["admin", "super_admin"]), async (req, res) => {
     try {
       const organization = await storage.getOrganization(req.orgId);
       if (!organization) {
