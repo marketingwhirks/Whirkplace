@@ -59,7 +59,6 @@ function Router() {
             <Route path="/admin" component={Admin} />
             <Route path="/super-admin" component={SuperAdmin} />
             <Route path="/select-organization" component={SelectOrganizationPage} />
-            <Route path="/onboarding" component={OnboardingPage} />
             <Route path="/brand-guide" component={BrandGuideViewer} />
             <Route path="/theme-customizer" component={ThemeCustomizer} />
             <Route component={NotFound} />
@@ -112,6 +111,7 @@ function App() {
               <Route path="/login" component={LoginPage} />
               <Route path="/partners" component={PartnerPage} />
               <Route path="/dev-login" component={DevLogin} />
+              <Route path="/onboarding" component={OnboardingPage} />
               <Route component={AuthenticatedApp} />
             </Switch>
           </RoleSwitchProvider>
