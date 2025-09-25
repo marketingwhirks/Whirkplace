@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Building2, Users, ArrowLeft, Heart } from "lucide-react";
+import { Building2, ArrowLeft, Heart, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -13,29 +13,69 @@ import { apiRequest } from "@/lib/queryClient";
 export default function SignupPage() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
-  const [step, setStep] = useState<'choose' | 'create-org' | 'join-org'>('choose');
   const [orgData, setOrgData] = useState({
     organizationName: '',
     organizationSlug: '',
     firstName: '',
     lastName: '',
     email: '',
-    password: ''
+    password: '',
+    confirmPassword: ''
   });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    
+    if (!orgData.organizationName) {
+      newErrors.organizationName = 'Organization name is required';
+    }
+    if (!orgData.firstName) {
+      newErrors.firstName = 'First name is required';
+    }
+    if (!orgData.lastName) {
+      newErrors.lastName = 'Last name is required';
+    }
+    if (!orgData.email) {
+      newErrors.email = 'Email is required';
+    } else if (!/\S+@\S+\.\S+/.test(orgData.email)) {
+      newErrors.email = 'Invalid email format';
+    }
+    if (!orgData.password) {
+      newErrors.password = 'Password is required';
+    } else if (orgData.password.length < 8) {
+      newErrors.password = 'Password must be at least 8 characters';
+    }
+    if (!orgData.confirmPassword) {
+      newErrors.confirmPassword = 'Please confirm your password';
+    } else if (orgData.password !== orgData.confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const createOrgMutation = useMutation({
     mutationFn: async (data: typeof orgData) => {
       return await apiRequest('/api/business/signup', 'POST', data);
     },
     onSuccess: (data) => {
+      // Store authentication in localStorage
+      if (data.userId) {
+        localStorage.setItem('x-auth-user-id', data.userId);
+      }
+      if (data.organizationId) {
+        localStorage.setItem('x-auth-org-id', data.organizationId);
+      }
+      
       toast({
-        title: "Organization created!",
-        description: "Your organization has been created successfully. Redirecting to login...",
+        title: "Welcome to Whirkplace!",
+        description: "Your organization has been created successfully.",
       });
-      // Redirect to login with the new organization
-      setTimeout(() => {
-        setLocation(`/login?org=${orgData.organizationSlug}`);
-      }, 2000);
+      
+      // Redirect to onboarding
+      setLocation(`/onboarding?org=${orgData.organizationSlug}`);
     },
     onError: (error: any) => {
       toast({
@@ -46,7 +86,13 @@ export default function SignupPage() {
     }
   });
 
-  const handleCreateOrg = () => {
+  const handleCreateOrg = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
     // Generate slug from organization name
     const slug = orgData.organizationName
       .toLowerCase()
@@ -61,347 +107,230 @@ export default function SignupPage() {
     });
   };
 
-  const handleSlackSignup = async () => {
-    // For new org creation via Slack - use endpoint to get OAuth URL then redirect
-    console.log('Starting Slack signup process...');
-    
-    // Clear any existing authentication to ensure clean OAuth flow
-    localStorage.removeItem('auth_user_id');
-    localStorage.removeItem('auth_org_id');
-    localStorage.removeItem('auth_session_token');
-    localStorage.removeItem('roleSwitch');
-    
-    try {
-      // Use /auth/slack/oauth-url (no /api prefix) to avoid authentication middleware
-      const response = await fetch('/auth/slack/oauth-url?org=new&action=create');
-      console.log('OAuth response status:', response.status);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('OAuth response data:', data);
-      
-      if (data.url) {
-        console.log('Redirecting to Slack OAuth URL:', data.url);
-        // Navigate directly to Slack OAuth page
-        window.location.href = data.url;
-      } else {
-        console.error('No OAuth URL returned in response:', data);
-        toast({
-          title: "OAuth Error",
-          description: "Failed to get OAuth URL from server",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error('Failed to get OAuth URL:', error);
-      toast({
-        title: "Connection Error",  
-        description: "Failed to connect to OAuth service. Please try again.",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleMicrosoftSignup = () => {
-    // For new org creation via Microsoft  
-    // Navigate directly to the server endpoint without clearing auth
-    // The server will handle creating a new org even if user is authenticated
-    const baseUrl = window.location.origin;
-    // Use replace to prevent back button issues
-    window.location.replace(`${baseUrl}/auth/microsoft?org=new&action=create`);
-  };
-
-  const urlParams = new URLSearchParams(window.location.search);
-  const plan = urlParams.get('plan');
-
-  if (step === 'choose') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
-        <div className="w-full max-w-4xl">
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center mb-4">
-              <div className="w-12 h-12 rounded-lg border-2 flex items-center justify-center" style={{backgroundColor: '#1b365d', borderColor: '#1b365d'}}>
-                <Heart className="w-6 h-6 fill-accent stroke-accent" strokeWidth="2" />
-              </div>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
+      <div className="w-full max-w-lg">
+        <div className="text-center mb-6">
+          <div className="flex items-center justify-center mb-4">
+            <div className="w-12 h-12 rounded-lg border-2 flex items-center justify-center" style={{backgroundColor: '#1b365d', borderColor: '#1b365d'}}>
+              <Heart className="w-6 h-6 fill-accent stroke-accent" strokeWidth="2" />
             </div>
-            <h1 className="text-3xl font-bold mb-2">Welcome to Whirkplace</h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              {plan ? `Get started with the ${plan} plan` : 'Choose how you want to get started'}
-            </p>
           </div>
-
-          <div className="grid md:grid-cols-2 gap-6">
-            <Card 
-              className="cursor-pointer hover:shadow-lg transition-shadow"
-              onClick={() => setStep('create-org')}
-              data-testid="card-create-org"
-            >
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5" />
-                  Create New Organization
-                </CardTitle>
-                <CardDescription>
-                  Start fresh with your own organization
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                  <li>• Set up your company workspace</li>
-                  <li>• Invite your team members</li>
-                  <li>• Customize your settings</li>
-                  <li>• Full administrative control</li>
-                </ul>
-                <Button className="w-full mt-4" variant="default">
-                  Create Organization
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card 
-              className="cursor-pointer hover:shadow-lg transition-shadow"
-              onClick={() => setStep('join-org')}
-              data-testid="card-join-org"
-            >
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Join Existing Organization
-                </CardTitle>
-                <CardDescription>
-                  Connect with your team's workspace
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-                  <li>• Join your company's workspace</li>
-                  <li>• Access team resources</li>
-                  <li>• Collaborate with colleagues</li>
-                  <li>• Get started immediately</li>
-                </ul>
-                <Button className="w-full mt-4" variant="outline">
-                  Join Organization
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="text-center mt-6">
-            <Button 
-              variant="link" 
-              onClick={() => setLocation('/login')}
-              data-testid="button-back-login"
-            >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Login
-            </Button>
-          </div>
+          <h1 className="text-3xl font-bold mb-2">Create Your Organization</h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Start your team wellness journey with Whirkplace
+          </p>
         </div>
-      </div>
-    );
-  }
 
-  if (step === 'create-org') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
-        <Card className="w-full max-w-lg">
+        <Card>
           <CardHeader>
-            <CardTitle>Create Your Organization</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Organization Setup
+            </CardTitle>
             <CardDescription>
-              Set up your company workspace and admin account
+              Create your workspace and admin account
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {/* Quick signup with providers */}
-              <div className="space-y-2">
-                {/* Use API call to get OAuth URL and redirect */}
-                <Button 
-                  onClick={handleSlackSignup}
-                  className="w-full"
-                  variant="outline"
-                  data-testid="button-slack-signup"
-                >
-                  <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 8.834a2.528 2.528 0 0 1 2.522-2.521A2.528 2.528 0 0 1 24 8.834a2.528 2.528 0 0 1-2.522 2.521h-2.522V8.834zM17.688 8.834a2.528 2.528 0 0 1-2.523 2.521 2.527 2.527 0 0 1-2.52-2.521V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v6.312zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z"/>
-                  </svg>
-                  Sign up with Slack
-                </Button>
-                
-                <form action="/auth/microsoft" method="get" className="w-full">
-                  <input type="hidden" name="org" value="new" />
-                  <input type="hidden" name="action" value="create" />
-                  <Button 
-                    type="submit"
-                    className="w-full"
-                    variant="outline"
-                    data-testid="button-microsoft-signup"
-                  >
-                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M11.4 11.4H0V0h11.4v11.4ZM24 11.4H12.6V0H24v11.4ZM11.4 24H0V12.6h11.4V24Zm12.6 0H12.6V12.6H24V24Z"/>
-                    </svg>
-                    Sign up with Microsoft 365
-                  </Button>
-                </form>
-              </div>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <span className="w-full border-t" />
-                </div>
-                <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">Or continue with email</span>
-                </div>
-              </div>
-
-              {/* Manual signup form */}
-              <div className="space-y-3">
-                <div>
-                  <Label htmlFor="orgName">Organization Name</Label>
+            <form onSubmit={handleCreateOrg} className="space-y-4">
+              {/* Organization Info */}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="orgName">Organization Name *</Label>
                   <Input 
                     id="orgName"
                     placeholder="Acme Corporation"
                     value={orgData.organizationName}
-                    onChange={(e) => setOrgData({...orgData, organizationName: e.target.value})}
+                    onChange={(e) => {
+                      setOrgData({...orgData, organizationName: e.target.value});
+                      if (errors.organizationName) {
+                        setErrors({...errors, organizationName: ''});
+                      }
+                    }}
+                    className={errors.organizationName ? 'border-red-500' : ''}
                     data-testid="input-org-name"
                   />
+                  {errors.organizationName && (
+                    <p className="text-sm text-red-500 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.organizationName}
+                    </p>
+                  )}
                 </div>
+              </div>
+
+              {/* Admin User Info */}
+              <div className="space-y-4 pt-4 border-t">
+                <h3 className="font-medium">Administrator Account</h3>
                 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="firstName">First Name</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">First Name *</Label>
                     <Input 
                       id="firstName"
                       placeholder="John"
                       value={orgData.firstName}
-                      onChange={(e) => setOrgData({...orgData, firstName: e.target.value})}
+                      onChange={(e) => {
+                        setOrgData({...orgData, firstName: e.target.value});
+                        if (errors.firstName) {
+                          setErrors({...errors, firstName: ''});
+                        }
+                      }}
+                      className={errors.firstName ? 'border-red-500' : ''}
                       data-testid="input-first-name"
                     />
+                    {errors.firstName && (
+                      <p className="text-sm text-red-500 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.firstName}
+                      </p>
+                    )}
                   </div>
-                  <div>
-                    <Label htmlFor="lastName">Last Name</Label>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Last Name *</Label>
                     <Input 
                       id="lastName"
                       placeholder="Doe"
                       value={orgData.lastName}
-                      onChange={(e) => setOrgData({...orgData, lastName: e.target.value})}
+                      onChange={(e) => {
+                        setOrgData({...orgData, lastName: e.target.value});
+                        if (errors.lastName) {
+                          setErrors({...errors, lastName: ''});
+                        }
+                      }}
+                      className={errors.lastName ? 'border-red-500' : ''}
                       data-testid="input-last-name"
                     />
+                    {errors.lastName && (
+                      <p className="text-sm text-red-500 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.lastName}
+                      </p>
+                    )}
                   </div>
                 </div>
                 
-                <div>
-                  <Label htmlFor="email">Work Email</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Work Email *</Label>
                   <Input 
                     id="email"
                     type="email"
                     placeholder="john@acme.com"
                     value={orgData.email}
-                    onChange={(e) => setOrgData({...orgData, email: e.target.value})}
+                    onChange={(e) => {
+                      setOrgData({...orgData, email: e.target.value});
+                      if (errors.email) {
+                        setErrors({...errors, email: ''});
+                      }
+                    }}
+                    className={errors.email ? 'border-red-500' : ''}
                     data-testid="input-email"
                   />
+                  {errors.email && (
+                    <p className="text-sm text-red-500 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.email}
+                    </p>
+                  )}
                 </div>
                 
-                <div>
-                  <Label htmlFor="password">Password</Label>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password *</Label>
                   <Input 
                     id="password"
                     type="password"
                     placeholder="••••••••"
                     value={orgData.password}
-                    onChange={(e) => setOrgData({...orgData, password: e.target.value})}
+                    onChange={(e) => {
+                      setOrgData({...orgData, password: e.target.value});
+                      if (errors.password) {
+                        setErrors({...errors, password: ''});
+                      }
+                    }}
+                    className={errors.password ? 'border-red-500' : ''}
                     data-testid="input-password"
                   />
+                  {errors.password && (
+                    <p className="text-sm text-red-500 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.password}
+                    </p>
+                  )}
                 </div>
                 
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password *</Label>
+                  <Input 
+                    id="confirmPassword"
+                    type="password"
+                    placeholder="••••••••"
+                    value={orgData.confirmPassword}
+                    onChange={(e) => {
+                      setOrgData({...orgData, confirmPassword: e.target.value});
+                      if (errors.confirmPassword) {
+                        setErrors({...errors, confirmPassword: ''});
+                      }
+                    }}
+                    className={errors.confirmPassword ? 'border-red-500' : ''}
+                    data-testid="input-confirm-password"
+                  />
+                  {errors.confirmPassword && (
+                    <p className="text-sm text-red-500 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.confirmPassword}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Submit buttons */}
+              <div className="space-y-3 pt-4">
                 <Button 
-                  onClick={handleCreateOrg}
+                  type="submit"
                   className="w-full"
-                  disabled={createOrgMutation.isPending || !orgData.organizationName || !orgData.email || !orgData.password}
+                  disabled={createOrgMutation.isPending}
                   data-testid="button-create-org"
                 >
-                  {createOrgMutation.isPending ? 'Creating...' : 'Create Organization'}
+                  {createOrgMutation.isPending ? 'Creating Organization...' : 'Create Organization'}
+                </Button>
+                
+                <Button 
+                  type="button"
+                  variant="link" 
+                  onClick={() => setLocation('/login')}
+                  className="w-full"
+                  data-testid="button-back-login"
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Login
                 </Button>
               </div>
               
-              <Button 
-                variant="link" 
-                onClick={() => setStep('choose')}
-                className="w-full"
-                data-testid="button-back-choose"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (step === 'join-org') {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
-        <Card className="w-full max-w-lg">
-          <CardHeader>
-            <CardTitle>Join an Organization</CardTitle>
-            <CardDescription>
-              Enter your organization's URL or code to join
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <Alert>
-                <AlertDescription>
-                  Ask your administrator for your organization's URL. It usually looks like:
-                  <br />
-                  <code className="text-sm">yourcompany.whirkplace.com</code>
-                </AlertDescription>
-              </Alert>
-              
-              <div>
-                <Label htmlFor="orgUrl">Organization URL</Label>
-                <Input 
-                  id="orgUrl"
-                  placeholder="yourcompany.whirkplace.com"
-                  data-testid="input-org-url"
-                />
+              <div className="text-center text-sm text-gray-500 pt-2">
+                <p>
+                  Already have an account?{' '}
+                  <button
+                    type="button"
+                    onClick={() => setLocation('/login')}
+                    className="text-primary hover:underline"
+                  >
+                    Sign in
+                  </button>
+                </p>
               </div>
-              
-              <Button 
-                className="w-full"
-                onClick={() => {
-                  const input = document.getElementById('orgUrl') as HTMLInputElement;
-                  const value = input?.value;
-                  if (value) {
-                    const orgSlug = value.split('.')[0];
-                    setLocation(`/login?org=${orgSlug}`);
-                  }
-                }}
-                data-testid="button-join"
-              >
-                Continue to Login
-              </Button>
-              
-              <Button 
-                variant="link" 
-                onClick={() => setStep('choose')}
-                className="w-full"
-                data-testid="button-back"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Back
-              </Button>
-            </div>
+            </form>
           </CardContent>
         </Card>
+        
+        <div className="mt-4">
+          <Alert>
+            <AlertDescription className="text-sm">
+              <strong>Note:</strong> After creating your organization, you can connect Slack or Microsoft 365 for team authentication from your settings page.
+            </AlertDescription>
+          </Alert>
+        </div>
       </div>
-    );
-  }
-  
-  return null;
+    </div>
+  );
 }
