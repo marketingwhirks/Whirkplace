@@ -270,6 +270,12 @@ declare module "express-session" {
 export function authenticateUser() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // Skip authentication for certain paths
+      const skipAuthPaths = ['/auth/logout', '/csrf-token'];
+      if (skipAuthPaths.some(path => req.path === path || req.path.startsWith(path + '/'))) {
+        return next();
+      }
+      
       // SECURITY FIX: Removed automatic backdoor authentication based on session existence
       // This was a critical vulnerability that bypassed real authentication
       

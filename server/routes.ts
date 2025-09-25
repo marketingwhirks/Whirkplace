@@ -42,6 +42,46 @@ if (process.env.STRIPE_SECRET_KEY) {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // CRITICAL: Logout endpoint MUST come first, before ANY middleware
+  // This endpoint needs no authentication, organization, or CSRF checks
+  app.post("/api/auth/logout", (req, res) => {
+    // Destroy session if it exists
+    if (req.session) {
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Session destroy error:", err);
+        }
+      });
+    }
+    
+    // Clear all auth-related cookies unconditionally
+    const isReplit = !!process.env.REPL_SLUG;
+    const isProd = process.env.NODE_ENV === 'production';
+    const secure = isProd || isReplit;
+    const sameSite = (isProd || isReplit) ? 'none' : 'lax';
+    
+    // Clear session cookie
+    res.clearCookie('connect.sid', {
+      secure,
+      httpOnly: true,
+      sameSite: sameSite as any,
+      path: '/'
+    });
+    
+    // Clear auth cookies
+    ['auth_user_id', 'auth_org_id', 'auth_session_token'].forEach(cookieName => {
+      res.clearCookie(cookieName, {
+        httpOnly: true,
+        secure,
+        sameSite: sameSite as any,
+        path: '/'
+      });
+    });
+    
+    // Always return success
+    return res.status(200).json({ message: "Logged out successfully" });
+  });
+  
   // NEW: Fresh backdoor endpoint with proper Replit cookie handling
   // NOTE: This endpoint does NOT use requireOrganization() since it needs to work without authentication
   app.post("/api/auth/dev-login-fresh", async (req, res) => {
@@ -1698,74 +1738,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error importing selected users:", error);
       res.status(500).json({ message: "Failed to import selected users" });
-    }
-  });
-  
-  // Logout endpoint - MUST come before requireOrganization middleware
-  // This endpoint doesn't need authentication since we're logging out
-  app.post("/api/auth/logout", (req, res) => {
-    if (req.session) {
-      req.session.destroy((err) => {
-        if (err) {
-          console.error("Session destroy error:", err);
-          return res.status(500).json({ message: "Failed to logout" });
-        }
-        // Clear session cookie with matching attributes from session config
-        res.clearCookie('connect.sid', {
-          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-          httpOnly: true,
-          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-          path: '/'
-        });
-        // Also clear auth cookies used by cookie-based authentication
-        // SECURITY FIX: Must match exact same attributes used when setting cookies
-        res.clearCookie('auth_user_id', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-          path: '/'
-        });
-        res.clearCookie('auth_org_id', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-          path: '/'
-        });
-        res.clearCookie('auth_session_token', {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-          sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-          path: '/'
-        });
-        res.json({ message: "Logged out successfully" });
-      });
-    } else {
-      // If no session exists, just clear cookies and respond
-      res.clearCookie('connect.sid', {
-        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-        httpOnly: true,
-        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-        path: '/'
-      });
-      res.clearCookie('auth_user_id', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-        path: '/'
-      });
-      res.clearCookie('auth_org_id', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-        path: '/'
-      });
-      res.clearCookie('auth_session_token', {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-        sameSite: (process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG) ? 'none' : 'lax',
-        path: '/'
-      });
-      res.json({ message: "Logged out successfully" });
     }
   });
   
