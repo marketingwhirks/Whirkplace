@@ -148,6 +148,7 @@ export const organizations = pgTable("organizations", {
   timezone: text("timezone").notNull().default("America/Chicago"),
   weeklyCheckInSchedule: text("weekly_check_in_schedule").notNull().default("friday"), // monday, tuesday, etc.
   checkInReminderTime: text("check_in_reminder_time").notNull().default("09:00"), // 24-hour format
+  reviewReminderDay: text("review_reminder_day").notNull().default("monday"), // day for manager review reminders
   reviewReminderTime: text("review_reminder_time").notNull().default("16:00"), // 24-hour format for manager review reminders
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
@@ -181,6 +182,9 @@ export const users = pgTable("users", {
   microsoftAccessToken: text("microsoft_access_token"), // Microsoft OAuth access token
   microsoftRefreshToken: text("microsoft_refresh_token"), // Microsoft OAuth refresh token
   authProvider: text("auth_provider").notNull().default("local"), // local, slack, microsoft
+  // Personal review reminder preferences (for managers and admins)
+  personalReviewReminderDay: text("personal_review_reminder_day"), // Override org default for personal review reminders
+  personalReviewReminderTime: text("personal_review_reminder_time"), // Override org default for personal review time
   isActive: boolean("is_active").notNull().default(true),
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),

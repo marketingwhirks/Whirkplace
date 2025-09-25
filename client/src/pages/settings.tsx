@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw, Calendar, CalendarOff, Clock } from "lucide-react";
+import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw, Calendar, CalendarOff, Clock, UserCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,8 +45,10 @@ const notificationFormSchema = z.object({
   slackWinAnnouncements: z.boolean().default(true),
   slackShoutouts: z.boolean().default(true),
   reminderFrequency: z.enum(["daily", "weekly", "biweekly"]).default("weekly"),
-  reminderTime: z.string().default("09:00"), // New field for reminder time
-  reminderTimezone: z.string().default("America/Chicago"), // New field for timezone
+  reminderTime: z.string().default("09:00"),
+  reminderTimezone: z.string().default("America/Chicago"),
+  reviewReminderDay: z.enum(["monday", "tuesday", "wednesday", "thursday", "friday"]).optional(),
+  reviewReminderTime: z.string().optional(),
 });
 
 const organizationFormSchema = z.object({
@@ -232,12 +234,39 @@ export default function Settings() {
     updateProfileMutation.mutate(data);
   };
 
+  // Update notification preferences mutation
+  const updateNotificationsMutation = useMutation({
+    mutationFn: async (data: NotificationForm) => {
+      // Update user's personal review reminder preferences if they're a manager/admin
+      if ((currentUser?.role === 'manager' || currentUser?.role === 'admin') && 
+          (data.reviewReminderDay || data.reviewReminderTime)) {
+        return apiRequest("PATCH", `/api/users/${currentUser.id}/preferences`, {
+          personalReviewReminderDay: data.reviewReminderDay,
+          personalReviewReminderTime: data.reviewReminderTime,
+          ...data
+        });
+      }
+      // Otherwise just save general notification preferences
+      return apiRequest("PATCH", `/api/users/${currentUser?.id}/preferences`, data);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Preferences updated",
+        description: "Your notification preferences have been saved.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
+    },
+    onError: () => {
+      toast({
+        title: "Failed to update preferences",
+        description: "Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
   const handleNotificationSubmit = (data: NotificationForm) => {
-    // Placeholder for notification preferences update
-    toast({
-      title: "Notifications updated",
-      description: "Your notification preferences have been saved.",
-    });
+    updateNotificationsMutation.mutate(data);
   };
 
   // Organization update mutation
@@ -1001,6 +1030,73 @@ export default function Settings() {
                           />
                         </div>
                       </div>
+
+                      {/* Review Reminder Settings for Managers and Admins */}
+                      {(currentUser?.role === 'manager' || currentUser?.role === 'admin') && (
+                        <div className="space-y-4">
+                          <Separator />
+                          <h4 className="font-medium flex items-center gap-2">
+                            <UserCheck className="w-4 h-4" />
+                            <span>Personal Review Reminder Settings</span>
+                          </h4>
+                          <p className="text-sm text-muted-foreground">
+                            Customize when you want to be reminded to review your team's check-ins. These settings override the organization defaults.
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <FormField
+                              control={notificationForm.control}
+                              name="reviewReminderDay"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Review Day</FormLabel>
+                                  <Select onValueChange={field.onChange} value={field.value || currentUser?.personalReviewReminderDay || 'monday'}>
+                                    <FormControl>
+                                      <SelectTrigger data-testid="select-review-reminder-day">
+                                        <SelectValue placeholder="Select day" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="monday">Monday</SelectItem>
+                                      <SelectItem value="tuesday">Tuesday</SelectItem>
+                                      <SelectItem value="wednesday">Wednesday</SelectItem>
+                                      <SelectItem value="thursday">Thursday</SelectItem>
+                                      <SelectItem value="friday">Friday</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <FormDescription>
+                                    Day to receive review reminders
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                            <FormField
+                              control={notificationForm.control}
+                              name="reviewReminderTime"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Review Time</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="time"
+                                      {...field}
+                                      value={field.value || currentUser?.personalReviewReminderTime || '16:00'}
+                                      data-testid="input-review-reminder-time"
+                                    />
+                                  </FormControl>
+                                  <FormDescription>
+                                    Time to receive review reminders
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            ⚡ Smart reminders: You'll only be notified if there are pending check-ins to review.
+                          </p>
+                        </div>
+                      )}
 
                       <div className="flex justify-end">
                         <Button type="submit" data-testid="button-save-notifications">

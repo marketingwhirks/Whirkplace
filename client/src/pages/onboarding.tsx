@@ -928,18 +928,37 @@ export function OnboardingPage() {
             </div>
             
             <div className="space-y-2">
-              <Label htmlFor="review-time">Review Reminder Time</Label>
-              <Input
-                id="review-time"
-                type="time"
-                value={formData.settings.reviewReminderTime || '16:00'}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  settings: { ...formData.settings, reviewReminderTime: e.target.value }
-                })}
-              />
+              <Label>Review Reminder Schedule</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Select
+                  value={formData.settings.reviewReminderDay || 'monday'}
+                  onValueChange={(value) => setFormData({
+                    ...formData,
+                    settings: { ...formData.settings, reviewReminderDay: value }
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select day" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="monday">Monday</SelectItem>
+                    <SelectItem value="tuesday">Tuesday</SelectItem>
+                    <SelectItem value="wednesday">Wednesday</SelectItem>
+                    <SelectItem value="thursday">Thursday</SelectItem>
+                    <SelectItem value="friday">Friday</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="time"
+                  value={formData.settings.reviewReminderTime || '16:00'}
+                  onChange={(e) => setFormData({
+                    ...formData,
+                    settings: { ...formData.settings, reviewReminderTime: e.target.value }
+                  })}
+                />
+              </div>
               <p className="text-xs text-muted-foreground">
-                Managers reminded to review pending check-ins
+                Managers reminded to review pending check-ins. They can customize their personal reminder times in settings.
               </p>
             </div>
             
