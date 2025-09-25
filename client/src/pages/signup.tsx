@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Building2, ArrowLeft, Heart, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
@@ -16,11 +18,14 @@ export default function SignupPage() {
   const [orgData, setOrgData] = useState({
     organizationName: '',
     organizationSlug: '',
+    organizationSize: '',
     firstName: '',
     lastName: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    acceptTerms: false,
+    subscribeNewsletter: false
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -29,6 +34,9 @@ export default function SignupPage() {
     
     if (!orgData.organizationName) {
       newErrors.organizationName = 'Organization name is required';
+    }
+    if (!orgData.organizationSize) {
+      newErrors.organizationSize = 'Please select organization size';
     }
     if (!orgData.firstName) {
       newErrors.firstName = 'First name is required';
@@ -50,6 +58,9 @@ export default function SignupPage() {
       newErrors.confirmPassword = 'Please confirm your password';
     } else if (orgData.password !== orgData.confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
+    }
+    if (!orgData.acceptTerms) {
+      newErrors.acceptTerms = 'You must accept the terms and conditions';
     }
     
     setErrors(newErrors);
@@ -156,6 +167,36 @@ export default function SignupPage() {
                     <p className="text-sm text-red-500 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
                       {errors.organizationName}
+                    </p>
+                  )}
+                </div>
+                
+                <div className="space-y-2">
+                  <Label htmlFor="orgSize">Organization Size *</Label>
+                  <Select 
+                    value={orgData.organizationSize}
+                    onValueChange={(value) => {
+                      setOrgData({...orgData, organizationSize: value});
+                      if (errors.organizationSize) {
+                        setErrors({...errors, organizationSize: ''});
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="orgSize" className={errors.organizationSize ? 'border-red-500' : ''} data-testid="select-org-size">
+                      <SelectValue placeholder="Select team size" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1-10">1-10 employees</SelectItem>
+                      <SelectItem value="11-50">11-50 employees</SelectItem>
+                      <SelectItem value="51-200">51-200 employees</SelectItem>
+                      <SelectItem value="201-500">201-500 employees</SelectItem>
+                      <SelectItem value="501+">501+ employees</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.organizationSize && (
+                    <p className="text-sm text-red-500 flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {errors.organizationSize}
                     </p>
                   )}
                 </div>
@@ -282,6 +323,55 @@ export default function SignupPage() {
                       {errors.confirmPassword}
                     </p>
                   )}
+                </div>
+              </div>
+
+              {/* Terms and Newsletter */}
+              <div className="space-y-3 pt-4 border-t">
+                <div className="flex items-start space-x-2">
+                  <Checkbox 
+                    id="acceptTerms"
+                    checked={orgData.acceptTerms}
+                    onCheckedChange={(checked) => {
+                      setOrgData({...orgData, acceptTerms: checked as boolean});
+                      if (errors.acceptTerms) {
+                        setErrors({...errors, acceptTerms: ''});
+                      }
+                    }}
+                    className={errors.acceptTerms ? 'border-red-500' : ''}
+                    data-testid="checkbox-accept-terms"
+                  />
+                  <div className="space-y-1 leading-none">
+                    <Label htmlFor="acceptTerms" className="text-sm">
+                      I accept the terms and conditions *
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      By creating an account, you agree to our terms of service and privacy policy
+                    </p>
+                    {errors.acceptTerms && (
+                      <p className="text-sm text-red-500 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        {errors.acceptTerms}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex items-start space-x-2">
+                  <Checkbox 
+                    id="subscribeNewsletter"
+                    checked={orgData.subscribeNewsletter}
+                    onCheckedChange={(checked) => setOrgData({...orgData, subscribeNewsletter: checked as boolean})}
+                    data-testid="checkbox-newsletter"
+                  />
+                  <div className="space-y-1 leading-none">
+                    <Label htmlFor="subscribeNewsletter" className="text-sm">
+                      Subscribe to newsletter
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Get updates about new features and team wellness tips
+                    </p>
+                  </div>
                 </div>
               </div>
 
