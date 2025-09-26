@@ -148,10 +148,10 @@ export default function DemoLoginPage() {
         
         // Small delay to ensure session is fully established
         setTimeout(() => {
-          // Clear React Query cache before redirect
+          // Clear React Query cache and force reload to ensure fresh auth state
           queryClient.clear();
-          // Redirect to dashboard with organization parameter to maintain context
-          window.location.href = "/?org=fictitious-delicious";
+          // Force a full page reload with the organization parameter
+          window.location.replace("/?org=fictitious-delicious");
         }, 500);
       } else {
         const error = await response.json();
@@ -203,10 +203,10 @@ export default function DemoLoginPage() {
         
         // Small delay to ensure session is fully established
         setTimeout(() => {
-          // Clear React Query cache before redirect
+          // Clear React Query cache and force reload to ensure fresh auth state
           queryClient.clear();
-          // Redirect to dashboard with organization parameter to maintain context
-          window.location.href = "/?org=fictitious-delicious";
+          // Force a full page reload with the organization parameter
+          window.location.replace("/?org=fictitious-delicious");
         }, 500);
       } else {
         const error = await response.json();
