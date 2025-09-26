@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Heart, Users, MessageSquare, BarChart3, CheckCircle, Star, ArrowRight, Building, Zap, Shield } from "lucide-react";
+import { Heart, Users, MessageSquare, BarChart3, CheckCircle, Star, ArrowRight, Building, Zap, Shield, Play } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -175,6 +175,9 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button size="lg" onClick={handleSignUp} data-testid="button-get-started">
               Get Started Free <ArrowRight className="ml-2 h-5 w-5" />
+            </Button>
+            <Button size="lg" variant="outline" onClick={() => setLocation('/demo')} data-testid="button-try-demo">
+              <Play className="mr-2 h-5 w-5" /> Try Live Demo
             </Button>
             <Button size="lg" variant="outline" onClick={handleSignIn} data-testid="button-signin-hero">
               Sign In
