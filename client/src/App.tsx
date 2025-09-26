@@ -32,6 +32,7 @@ import DevLogin from "@/pages/DevLogin";
 import SelectOrganizationPage from "@/pages/select-organization";
 import DemoPage from "@/pages/demo";
 import DemoLoginPage from "@/pages/demo-login";
+import RoadmapPage from "@/pages/roadmap";
 import { OnboardingPage } from "@/pages/onboarding";
 import OAuthCallbackPage from "@/pages/oauth-callback";
 import Sidebar from "@/components/layout/sidebar";
@@ -60,6 +61,7 @@ function Router() {
             <Route path="/analytics" component={Analytics} />
             <Route path="/settings" component={Settings} />
             <Route path="/admin" component={Admin} />
+            <Route path="/roadmap" component={RoadmapPage} />
             <Route path="/super-admin" component={SuperAdmin} />
             <Route path="/select-organization" component={SelectOrganizationPage} />
             <Route path="/brand-guide" component={BrandGuideViewer} />

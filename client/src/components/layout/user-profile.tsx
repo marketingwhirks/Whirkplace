@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { LogOut, User, Settings, AlertTriangle, HelpCircle, CheckCircle2, Lightbulb, MessageSquare, Shield } from "lucide-react";
-import { useMutation } from "@tanstack/react-query";
+import { LogOut, User, Settings, AlertTriangle, HelpCircle, CheckCircle2, Lightbulb, MessageSquare, Shield, Map, ShieldAlert } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +34,21 @@ export function UserProfile() {
   const { canSwitchRoles } = useRoleSwitch();
   
   const helpContent = getHelpContent(location);
+
+  // Get organization information for the current user
+  const { data: organization } = useQuery({
+    queryKey: ["/api/organizations", currentUser?.organizationId],
+    queryFn: async () => {
+      if (!currentUser?.organizationId) return null;
+      const response = await fetch(`/api/organizations/${currentUser.organizationId}`);
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!currentUser?.organizationId,
+  });
+
+  // Check if user is from Whirkplace organization (super admin organization)
+  const isWhirkplaceOrg = organization?.slug === 'whirkplace' || organization?.name?.toLowerCase() === 'whirkplace';
 
   const openSupportForm = (category: "bug" | "question" | "feature_request" = "question") => {
     setIsHelpOpen(false);
@@ -160,6 +175,29 @@ export function UserProfile() {
           <Settings className="mr-2 h-4 w-4" />
           <span>Settings</span>
         </DropdownMenuItem>
+        
+        {/* Roadmap link - available for all users */}
+        <DropdownMenuItem 
+          className="cursor-pointer"
+          onClick={() => setLocation('/roadmap')}
+          data-testid="roadmap-menu-item"
+        >
+          <Map className="mr-2 h-4 w-4" />
+          <span>Roadmap</span>
+        </DropdownMenuItem>
+        
+        {/* Super Admin menu - only for Whirkplace organization users with super admin role */}
+        {isWhirkplaceOrg && currentUser?.isSuperAdmin && (
+          <DropdownMenuItem 
+            className="cursor-pointer"
+            onClick={() => setLocation('/super-admin')}
+            data-testid="super-admin-menu-item"
+          >
+            <ShieldAlert className="mr-2 h-4 w-4" />
+            <span>Super Admin</span>
+          </DropdownMenuItem>
+        )}
+        
         {canSwitchRoles && (
           <DropdownMenuItem 
             className="cursor-pointer"
