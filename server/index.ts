@@ -106,9 +106,9 @@ const isReplit = !!process.env.REPL_SLUG;
 const isProduction = process.env.NODE_ENV === 'production';
 const isSecureEnvironment = isProduction || isReplit;
 
-// For production, we need SameSite=None to work with OAuth redirects
-// This is critical for maintaining sessions across the OAuth flow
-const sameSiteValue = isProduction || isReplit ? 'none' : 'lax';
+// For production OAuth, we'd normally need SameSite=None for cross-site redirects
+// But for demo login and same-origin requests, 'lax' works better
+const sameSiteValue = isProduction && !isReplit ? 'none' : 'lax';
 
 app.use(session({
   store: sessionStore,
@@ -130,7 +130,7 @@ app.use(session({
 console.log('🔐 Session configuration:', {
   environment: isProduction ? 'production' : (isReplit ? 'replit' : 'development'),
   secure: isSecureEnvironment,
-  sameSite: isReplit ? 'none' : 'lax',
+  sameSite: sameSiteValue,
   trustProxy: true
 });
 

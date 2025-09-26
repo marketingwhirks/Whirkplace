@@ -366,7 +366,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Set session after regeneration
         req.session.userId = user.id;
-        req.session.organizationId = req.orgId;
+        (req.session as any).organizationId = req.orgId;
+        
+        console.log(`📝 Session after setting:`, {
+          sessionId: req.sessionID,
+          userId: req.session.userId,
+          organizationId: (req.session as any).organizationId,
+          orgIdFromReq: req.orgId
+        });
         
         // Save session before sending response to ensure persistence
         req.session.save((err) => {
@@ -376,6 +383,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           
           console.log(`✅ Local login successful for ${user.name} (${user.email})`);
+          console.log(`📝 Session saved with ID: ${req.sessionID}`);
           
           res.json({ 
             message: "Login successful", 
