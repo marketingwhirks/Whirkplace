@@ -44,7 +44,7 @@ const baseNavigation = [
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },
   { name: "Admin Panel", href: "/admin", icon: Shield, roles: ["admin"] },
-  { name: "Super Admin", href: "/super-admin", icon: Lock, roles: ["admin"] },
+  { name: "Super Admin", href: "/super-admin", icon: Lock, roles: [] as ("member" | "manager" | "admin")[], isSuperAdminOnly: true },
   { name: "Settings", href: "/settings", icon: Settings, roles: ["member", "manager", "admin"] },
   { name: "Onboarding", href: "/onboarding", icon: Rocket, roles: [] as ("member" | "manager" | "admin")[], isSuperAdminOnly: true },
 ];
@@ -83,19 +83,17 @@ function SidebarContent() {
       return [];
     }
     return baseNavigation.filter(item => {
+      // Handle super admin only items first
+      if (item.isSuperAdminOnly) {
+        // Only show for users with isSuperAdmin flag in Whirkplace organization
+        return isWhirkplaceOrg && currentUser.isSuperAdmin;
+      }
+      
       // Normal role-based filtering
       if (!item.roles.includes(currentUser.role as "member" | "manager" | "admin")) {
         // Special exception: Allow Admin Panel access for users who can switch roles
         // This ensures Matthew Patrick can always access the role switcher
         if (item.name === "Admin Panel" && canSwitchRoles) {
-          return true;
-        }
-        // Special exception: Super Admin only for Whirkplace org users with isSuperAdmin flag
-        if (item.name === "Super Admin" && isWhirkplaceOrg && currentUser.isSuperAdmin) {
-          return true;
-        }
-        // Special exception: Onboarding only for Whirkplace org users with isSuperAdmin flag
-        if (item.name === "Onboarding" && isWhirkplaceOrg && currentUser.isSuperAdmin) {
           return true;
         }
         return false;
