@@ -173,6 +173,61 @@ export default function DemoLoginPage() {
     }
   };
 
+  // Direct login function that bypasses form to avoid browser autofill
+  const handleLoginDirect = async (demoEmail: string, demoPassword: string) => {
+    setIsLoading(true);
+    try {
+      // Clear any existing auth data
+      localStorage.clear();
+      sessionStorage.clear();
+      queryClient.clear();
+
+      const response = await fetch("/auth/local/login?org=fictitious-delicious", {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json"
+        },
+        credentials: "include",
+        body: JSON.stringify({ email: demoEmail, password: demoPassword })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Store user data for client-side use
+        if (data.user) {
+          localStorage.setItem("whirkplace-user", JSON.stringify(data.user));
+          localStorage.setItem("auth_user_id", data.user.id);
+          localStorage.setItem("auth_user_data", JSON.stringify(data.user));
+        }
+        
+        toast({ 
+          title: "Welcome to the demo!", 
+          description: `Logged in as ${data.user.name}` 
+        });
+        
+        // Redirect to dashboard
+        window.location.href = "/";
+      } else {
+        const error = await response.json();
+        toast({ 
+          title: "Login failed", 
+          description: error.message || "Invalid credentials",
+          variant: "destructive" 
+        });
+      }
+    } catch (error: any) {
+      console.error("Login error:", error);
+      toast({ 
+        title: "Login failed", 
+        description: "Network error. Please try again.",
+        variant: "destructive" 
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-5xl">
@@ -274,7 +329,12 @@ export default function DemoLoginPage() {
 
                         <Button 
                           className="w-full" 
-                          onClick={() => handleLogin()}
+                          onClick={() => {
+                            // Directly use demo credentials, bypassing form
+                            setEmail(account.email);
+                            setPassword("Demo1234!");
+                            setTimeout(() => handleLoginDirect(account.email, "Demo1234!"), 50);
+                          }}
                           disabled={isLoading}
                         >
                           <LogIn className="w-4 h-4 mr-2" />
