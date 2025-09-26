@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import type { User } from "@shared/schema";
+import { sanitizeUser } from "../utils/sanitizeUser";
 
 /**
  * SECURITY: Additional authentication security guards
@@ -17,18 +18,16 @@ function isDevelopmentAuthEnabled() {
 }
 
 // SECURITY: Check if backdoor authentication is allowed in current environment
-// This allows backdoor access in development OR production with explicit flag
+// PRODUCTION HARDENING: Never allow backdoor access in production
 function isBackdoorAuthAllowed() {
-  const isDevAllowed = isDevelopmentAuthEnabled();
-  const isProdAllowed = process.env.NODE_ENV === 'production' && process.env.ALLOW_PRODUCTION_BACKDOOR === 'true';
-  const result = isDevAllowed || isProdAllowed;
-  
-  if (isProdAllowed) {
-    console.log(`⚠️  Production backdoor access is ENABLED via ALLOW_PRODUCTION_BACKDOOR=true`);
+  // SECURITY: Never allow backdoor in production, regardless of flags
+  if (process.env.NODE_ENV === 'production') {
+    return false;
   }
   
-  console.log(`🔑 Backdoor auth check: dev=${isDevAllowed}, prod=${isProdAllowed}, result=${result}`);
-  return result;
+  const isDevAllowed = isDevelopmentAuthEnabled();
+  console.log(`🔑 Backdoor auth check: dev=${isDevAllowed}, prod=false (hardcoded), result=${isDevAllowed}`);
+  return isDevAllowed;
 }
 
 /**
@@ -43,15 +42,14 @@ function isBackdoorAuthAllowed() {
  * 3. BYPASS: Set SKIP_AUTH_VALIDATION=true (not recommended for security)
  */
 export function validateAuthConfiguration() {
-  // DEPLOYMENT-FRIENDLY SECURITY VALIDATION
-  // This validation is designed to be secure but not block legitimate deployments
+  // PRODUCTION SECURITY VALIDATION - FAIL CLOSED
+  // This validation prevents insecure configurations in production
   
-  // Allow bypassing validation entirely if explicitly requested
-  if (process.env.SKIP_AUTH_VALIDATION === 'true') {
-    console.warn(`⚠️  SECURITY WARNING: Authentication validation has been BYPASSED via SKIP_AUTH_VALIDATION=true`);
-    console.warn(`⚠️  This disables important security checks and should only be used temporarily`);
-    console.warn(`⚠️  Remove SKIP_AUTH_VALIDATION=true once deployment issues are resolved`);
-    return;
+  // SECURITY: Never allow validation bypass in production
+  if (process.env.NODE_ENV === 'production' && process.env.SKIP_AUTH_VALIDATION === 'true') {
+    console.error(`🚨 CRITICAL: Authentication validation cannot be bypassed in production`);
+    console.error(`🚨 Remove SKIP_AUTH_VALIDATION=true to continue`);
+    throw new Error('Security validation bypass not allowed in production');
   }
 
   // PRODUCTION SECURITY: Handle development authentication flags intelligently
@@ -106,8 +104,10 @@ export function validateAuthConfiguration() {
       console.warn(`⚠️  `);
       console.warn(`⚠️  Proceeding with deployment despite security warnings...`);
       
-      // IMPORTANT: Don't throw error - just warn and proceed
-      // This allows deployment to succeed while encouraging better security practices
+      // SECURITY: In production, fail closed - throw error if insecure flags detected
+      if (process.env.NODE_ENV === 'production' && !allowProductionBackdoor) {
+        throw new Error(`Production security violation: Development authentication flags detected. Remove: ${presentFlags.join(', ')}`);
+      }
     }
   }
   
@@ -345,7 +345,7 @@ export function authenticateUser() {
         const user = await storage.getUser(resolvedOrgId, req.session.userId);
         if (user && user.isActive) {
           console.log(`✅ Session auth successful for: ${user.name} (role: ${user.role}, superAdmin: ${user.isSuperAdmin})`);
-          req.currentUser = user;
+          req.currentUser = sanitizeUser(user);
           req.orgId = resolvedOrgId; // Ensure orgId is set for downstream middleware
           return next();
         } else {
@@ -379,7 +379,7 @@ export function authenticateUser() {
           const user = await storage.getUser(req.orgId, authUserId);
           if (user && user.isActive) {
             console.log(`✅ localStorage auth successful for: ${user.name}`);
-            req.currentUser = user;
+            req.currentUser = sanitizeUser(user);
             return next();
           } else {
             console.log(`❌ localStorage auth failed - user not found or inactive`);
@@ -428,7 +428,7 @@ export function authenticateUser() {
           const user = await storage.getUser(authOrgId, authUserId);
           if (user && user.isActive) {
             console.log(`✅ Cookie auth successful for: ${user.name} (role: ${user.role}, superAdmin: ${user.isSuperAdmin})`);
-            req.currentUser = user;
+            req.currentUser = sanitizeUser(user);
             req.orgId = authOrgId; // Ensure orgId is set for downstream middleware
             
             // Also set session for consistency (helps prevent repeated cookie lookups)

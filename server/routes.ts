@@ -34,6 +34,7 @@ import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
 import { registerAuthDiagnosticRoutes } from "./routes/auth-diagnostic";
 import { resolveRedirectUri } from "./utils/redirect-uri";
 import { sendWelcomeEmail } from "./services/emailService";
+import { sanitizeUser, sanitizeUsers } from "./utils/sanitizeUser";
 
 // Initialize Stripe if available
 let stripe: Stripe | null = null;
@@ -2209,7 +2210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const users = await storage.getPartnerUsers(id, includeInactive);
-      res.json(users);
+      res.json(sanitizeUsers(users));
     } catch (error) {
       console.error("Error fetching partner users:", error);
       res.status(500).json({ message: "Failed to fetch partner users" });
@@ -2970,7 +2971,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Admins can see all users including inactive, others see only active
       const includeInactive = currentUser.role === "admin";
       const users = await storage.getAllUsers(req.orgId, includeInactive);
-      res.json(users);
+      res.json(sanitizeUsers(users));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch users" });
     }
@@ -2994,7 +2995,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      res.json(user);
+      res.json(sanitizeUser(user));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch user" });
     }
@@ -3039,7 +3040,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-      res.json(user);
+      res.json(sanitizeUser(user));
     } catch (error) {
       res.status(400).json({ message: "Invalid user data" });
     }
@@ -3051,7 +3052,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Include inactive users for admin/manager contexts
       const includeInactive = currentUser.role === "admin" || currentUser.role === "manager";
       const reports = await storage.getUsersByManager(req.orgId, req.params.id, includeInactive);
-      res.json(reports);
+      res.json(sanitizeUsers(reports));
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch reports" });
     }
