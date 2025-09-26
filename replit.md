@@ -85,6 +85,7 @@ Implemented comprehensive account ownership and transfer capabilities:
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
+Demo Organization: Fictitious Delicious is a fine dining restaurant (not a tech company).
 
 ## System Architecture
 

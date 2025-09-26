@@ -27,7 +27,7 @@ export async function ensureDemoDataExists() {
       id: demoOrgId,
       name: 'Fictitious Delicious',
       slug: 'fictitious-delicious',
-      description: 'A demo organization for exploring Whirkplace features',
+      description: 'A fine dining restaurant showcasing Whirkplace for hospitality teams',
       isDemo: true,
       createdAt: new Date(),
       updatedAt: new Date()
@@ -35,35 +35,35 @@ export async function ensureDemoDataExists() {
 
     // Company values will be added when that feature is implemented
 
-    // Create demo teams
+    // Create demo teams for restaurant
     const teamIds = {
-      engineering: crypto.randomUUID(),
-      sales: crypto.randomUUID(),
-      marketing: crypto.randomUUID()
+      kitchen: crypto.randomUUID(),
+      service: crypto.randomUUID(),
+      management: crypto.randomUUID()
     };
 
     await db.insert(teams).values([
       {
-        id: teamIds.engineering,
+        id: teamIds.kitchen,
         organizationId: demoOrgId,
-        name: 'Engineering',
-        description: 'Product development team',
+        name: 'Kitchen',
+        description: 'Culinary team and back of house',
         createdAt: new Date(),
         updatedAt: new Date()
       },
       {
-        id: teamIds.sales,
+        id: teamIds.service,
         organizationId: demoOrgId,
-        name: 'Sales',
-        description: 'Business development team',
+        name: 'Service',
+        description: 'Front of house and customer experience',
         createdAt: new Date(),
         updatedAt: new Date()
       },
       {
-        id: teamIds.marketing,
+        id: teamIds.management,
         organizationId: demoOrgId,
-        name: 'Marketing',
-        description: 'Marketing and growth team',
+        name: 'Management',
+        description: 'Restaurant operations and administration',
         createdAt: new Date(),
         updatedAt: new Date()
       }
@@ -72,14 +72,15 @@ export async function ensureDemoDataExists() {
     // Hash the demo password
     const demoPassword = await bcrypt.hash('Demo1234!', 10);
 
-    // Create demo users with specific IDs
+    // Create demo users with specific IDs - restaurant staff
     const demoUsers = [
       {
         id: '41803eac-b385-4f1b-883c-bc66f26697db',
         email: 'john@delicious.com',
         name: 'John Delicious',
         role: 'admin' as const,
-        teamId: teamIds.engineering,
+        teamId: teamIds.management,
+        jobTitle: 'Restaurant Owner',
         isAccountOwner: true
       },
       {
@@ -87,31 +88,35 @@ export async function ensureDemoDataExists() {
         email: 'sarah@delicious.com',
         name: 'Sarah Connor',
         role: 'admin' as const,
-        teamId: teamIds.sales,
+        teamId: teamIds.management,
+        jobTitle: 'General Manager',
         isAccountOwner: false
       },
       {
         id: crypto.randomUUID(),
         email: 'mike@delicious.com',
-        name: 'Mike Manager',
+        name: 'Mike Chen',
         role: 'manager' as const,
-        teamId: teamIds.engineering,
+        teamId: teamIds.kitchen,
+        jobTitle: 'Executive Chef',
         isAccountOwner: false
       },
       {
         id: crypto.randomUUID(),
         email: 'alice@delicious.com',
-        name: 'Alice Member',
+        name: 'Alice Johnson',
         role: 'member' as const,
-        teamId: teamIds.engineering,
+        teamId: teamIds.service,
+        jobTitle: 'Head Server',
         isAccountOwner: false
       },
       {
         id: crypto.randomUUID(),
         email: 'bob@delicious.com',
-        name: 'Bob Builder',
+        name: 'Bob Martinez',
         role: 'member' as const,
-        teamId: teamIds.marketing,
+        teamId: teamIds.kitchen,
+        jobTitle: 'Sous Chef',
         isAccountOwner: false
       }
     ];
@@ -122,8 +127,7 @@ export async function ensureDemoDataExists() {
         password: demoPassword,
         username: user.email.split('@')[0],
         organizationId: demoOrgId,
-        jobTitle: user.role === 'admin' ? 'Account Owner' : 
-                   user.role === 'manager' ? 'Team Manager' : 'Team Member',
+        jobTitle: user.jobTitle,
         createdAt: new Date(),
         updatedAt: new Date()
       });
@@ -131,12 +135,12 @@ export async function ensureDemoDataExists() {
 
     // Update team leaders
     await db.update(teams)
-      .set({ leaderId: demoUsers[2].id }) // Mike Manager leads Engineering
-      .where(eq(teams.id, teamIds.engineering));
+      .set({ leaderId: demoUsers[2].id }) // Mike Chen leads Kitchen
+      .where(eq(teams.id, teamIds.kitchen));
 
     await db.update(teams)
-      .set({ leaderId: demoUsers[1].id }) // Sarah Connor leads Sales
-      .where(eq(teams.id, teamIds.sales));
+      .set({ leaderId: demoUsers[3].id }) // Alice Johnson leads Service
+      .where(eq(teams.id, teamIds.service));
 
     console.log('✅ Demo data created successfully!');
     console.log('👤 Demo accounts:');
