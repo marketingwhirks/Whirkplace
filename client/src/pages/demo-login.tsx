@@ -140,7 +140,14 @@ export default function DemoLoginPage() {
       if (response.ok) {
         const data = await response.json();
         
-        // Session is established via cookies, no need for localStorage
+        // Store auth info in localStorage as cookies aren't working in Replit
+        if (data.user?.id) {
+          localStorage.setItem('auth_user_id', data.user.id);
+          localStorage.setItem('auth_user_name', data.user.name);
+          localStorage.setItem('auth_user_email', data.user.email);
+          localStorage.setItem('auth_user_role', data.user.role);
+          localStorage.setItem('auth_organization_id', 'b74d00fd-e1ce-41ae-afca-4a0d55cb1fe1');
+        }
         
         toast({ 
           title: "Welcome to the demo!", 
@@ -195,7 +202,14 @@ export default function DemoLoginPage() {
       if (response.ok) {
         const data = await response.json();
         
-        // Session is established via cookies, no need for localStorage
+        // Store auth info in localStorage as cookies aren't working in Replit
+        if (data.user?.id) {
+          localStorage.setItem('auth_user_id', data.user.id);
+          localStorage.setItem('auth_user_name', data.user.name);
+          localStorage.setItem('auth_user_email', data.user.email);
+          localStorage.setItem('auth_user_role', data.user.role);
+          localStorage.setItem('auth_organization_id', 'b74d00fd-e1ce-41ae-afca-4a0d55cb1fe1');
+        }
         
         toast({ 
           title: "Welcome to the demo!", 
