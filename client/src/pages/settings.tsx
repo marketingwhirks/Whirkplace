@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw, Calendar, CalendarOff, Clock, UserCheck } from "lucide-react";
+import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw, Calendar, CalendarOff, Clock, UserCheck, UserPlus, AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,6 +76,213 @@ type NotificationForm = z.infer<typeof notificationFormSchema>;
 type OrganizationForm = z.infer<typeof organizationFormSchema>;
 type PasswordForm = z.infer<typeof passwordFormSchema>;
 type AppPreferencesForm = z.infer<typeof appPreferencesFormSchema>;
+
+// Account Ownership Transfer Component
+function AccountOwnershipTransfer() {
+  const { toast } = useToast();
+  const { data: currentUser } = useCurrentUser();
+  const [selectedNewOwner, setSelectedNewOwner] = useState<string>("");
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
+  
+  // Fetch current account owner
+  const { data: ownerData, isLoading: ownerLoading } = useQuery({
+    queryKey: ["/api/account/owner"],
+    queryFn: async () => {
+      const response = await fetch("/api/account/owner");
+      if (!response.ok) throw new Error("Failed to fetch account owner");
+      return response.json();
+    },
+  });
+  
+  // Fetch all admin users in the organization
+  const { data: adminUsers = [], isLoading: usersLoading } = useQuery({
+    queryKey: ["/api/users", { role: "admin" }],
+    queryFn: async () => {
+      const response = await fetch("/api/users?role=admin");
+      if (!response.ok) throw new Error("Failed to fetch admin users");
+      const data = await response.json();
+      // Filter out the current owner
+      return data.filter((user: UserType) => user.id !== ownerData?.owner?.id);
+    },
+    enabled: !!ownerData?.owner,
+  });
+  
+  // Transfer ownership mutation
+  const transferOwnershipMutation = useMutation({
+    mutationFn: async (newOwnerId: string) => {
+      return apiRequest("POST", "/api/account/transfer-ownership", { newOwnerId });
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/account/owner"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/current-user"] });
+      toast({
+        title: "Ownership Transferred",
+        description: data.message,
+      });
+      setShowTransferDialog(false);
+      setSelectedNewOwner("");
+      // If the current user transferred ownership away, refresh to update their permissions
+      if (currentUser?.isAccountOwner && !currentUser?.isSuperAdmin) {
+        setTimeout(() => window.location.reload(), 1500);
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Transfer Failed",
+        description: error.message || "Failed to transfer account ownership",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const handleTransferOwnership = () => {
+    if (!selectedNewOwner) {
+      toast({
+        title: "Select New Owner",
+        description: "Please select a user to transfer ownership to",
+        variant: "destructive",
+      });
+      return;
+    }
+    transferOwnershipMutation.mutate(selectedNewOwner);
+  };
+  
+  if (ownerLoading || usersLoading) {
+    return <div className="text-center py-4">Loading...</div>;
+  }
+  
+  const currentOwner = ownerData?.owner;
+  
+  return (
+    <div className="space-y-6">
+      {/* Current Account Owner */}
+      <div>
+        <h4 className="font-medium mb-3">Current Account Owner</h4>
+        {currentOwner ? (
+          <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+            <div className="flex items-center gap-3">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback>
+                  {currentOwner.name?.charAt(0).toUpperCase() || "?"}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <p className="font-medium">{currentOwner.name}</p>
+                <p className="text-sm text-muted-foreground">{currentOwner.email}</p>
+              </div>
+            </div>
+            <Badge variant="default">
+              <Shield className="w-3 h-3 mr-1" />
+              Account Owner
+            </Badge>
+          </div>
+        ) : (
+          <div className="p-4 border rounded-lg bg-muted/30">
+            <p className="text-sm text-muted-foreground">No account owner assigned</p>
+          </div>
+        )}
+      </div>
+      
+      {/* Transfer Ownership Section */}
+      <div>
+        <h4 className="font-medium mb-2">Transfer Account Ownership</h4>
+        <p className="text-sm text-muted-foreground mb-4">
+          Transfer account ownership to another admin user. This action cannot be undone by the new owner.
+          Only organization admins can become account owners.
+        </p>
+        
+        {adminUsers.length === 0 ? (
+          <div className="p-4 border rounded-lg bg-muted/30 text-center">
+            <UserPlus className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">
+              No other admin users available. Promote a user to admin role first before transferring ownership.
+            </p>
+          </div>
+        ) : (
+          <>
+            <Select value={selectedNewOwner} onValueChange={setSelectedNewOwner}>
+              <SelectTrigger data-testid="select-new-owner">
+                <SelectValue placeholder="Select new account owner" />
+              </SelectTrigger>
+              <SelectContent>
+                {adminUsers.map((user: UserType) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    <div className="flex items-center gap-2">
+                      <span>{user.name}</span>
+                      <span className="text-sm text-muted-foreground">({user.email})</span>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <div className="mt-4">
+              <AlertDialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+                <AlertDialogTrigger asChild>
+                  <Button 
+                    variant="destructive"
+                    disabled={!selectedNewOwner}
+                    data-testid="button-transfer-ownership"
+                  >
+                    <UserCheck className="w-4 h-4 mr-2" />
+                    Transfer Ownership
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-destructive" />
+                      Confirm Ownership Transfer
+                    </AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to transfer account ownership to{" "}
+                      <span className="font-semibold">
+                        {adminUsers.find((u: UserType) => u.id === selectedNewOwner)?.name}
+                      </span>
+                      ? This action will grant them full control over the organization account.
+                      {currentUser?.isAccountOwner && !currentUser?.isSuperAdmin && (
+                        <span className="block mt-2 text-destructive">
+                          You will lose account owner privileges after this transfer.
+                        </span>
+                      )}
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleTransferOwnership}
+                      disabled={transferOwnershipMutation.isPending}
+                      className="bg-destructive hover:bg-destructive/90"
+                    >
+                      {transferOwnershipMutation.isPending ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Transferring...
+                        </>
+                      ) : (
+                        "Confirm Transfer"
+                      )}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </>
+        )}
+      </div>
+      
+      {currentUser?.isSuperAdmin && (
+        <div className="p-3 border rounded-lg bg-blue-50 dark:bg-blue-950/30">
+          <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            As super admin, you can transfer ownership for any organization
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Settings() {
   const { toast } = useToast();
@@ -1285,6 +1492,21 @@ export default function Settings() {
                     </Form>
                   </CardContent>
                 </Card>
+
+                {/* Account Ownership Transfer (for account owners and super admins only) */}
+                {(currentUser?.isAccountOwner || currentUser?.isSuperAdmin) && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center space-x-2">
+                        <Shield className="w-5 h-5" />
+                        <span>Account Ownership</span>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <AccountOwnershipTransfer />
+                    </CardContent>
+                  </Card>
+                )}
               </TabsContent>
             )}
 

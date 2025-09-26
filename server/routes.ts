@@ -1486,15 +1486,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Allow any authenticated user who is an admin of their organization
   app.post("/api/onboarding/complete-step", authenticateUser(), async (req, res) => {
     try {
-      // Check if user has owner or admin rights in their organization
+      // Check if user has account owner or admin rights in their organization
       const currentUser = req.currentUser!;
-      console.log("Onboarding step - User:", currentUser.email, "Role:", currentUser.role, "Owner:", currentUser.isOwner, "SuperAdmin:", currentUser.isSuperAdmin, "OrgId:", req.orgId);
+      console.log("Onboarding step - User:", currentUser.email, "Role:", currentUser.role, "Account Owner:", currentUser.isAccountOwner, "SuperAdmin:", currentUser.isSuperAdmin, "OrgId:", req.orgId);
       
-      // Allow owners, admins, and super admins to complete onboarding
-      if (!currentUser.isOwner && currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
-        console.error("Onboarding access denied for user:", currentUser.email, "with role:", currentUser.role, "isOwner:", currentUser.isOwner);
+      // Allow account owners, admins, and super admins to complete onboarding
+      if (!currentUser.isAccountOwner && currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
+        console.error("Onboarding access denied for user:", currentUser.email, "with role:", currentUser.role, "isAccountOwner:", currentUser.isAccountOwner);
         return res.status(403).json({ 
-          message: "Access denied. Only organization owners, administrators, and super administrators can complete the onboarding process." 
+          message: "Access denied. Only account owners, administrators, and super administrators can complete the onboarding process." 
         });
       }
       
@@ -1567,15 +1567,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Allow any authenticated user who is an admin of their organization
   app.post("/api/onboarding/complete", authenticateUser(), async (req, res) => {
     try {
-      // Check if user has owner or admin rights in their organization
+      // Check if user has account owner or admin rights in their organization
       const currentUser = req.currentUser!;
-      console.log("Onboarding complete - User:", currentUser.email, "Role:", currentUser.role, "Owner:", currentUser.isOwner, "SuperAdmin:", currentUser.isSuperAdmin, "OrgId:", req.orgId);
+      console.log("Onboarding complete - User:", currentUser.email, "Role:", currentUser.role, "Account Owner:", currentUser.isAccountOwner, "SuperAdmin:", currentUser.isSuperAdmin, "OrgId:", req.orgId);
       
-      // Allow owners, admins, and super admins to complete onboarding
-      if (!currentUser.isOwner && currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
-        console.error("Onboarding complete access denied for user:", currentUser.email, "with role:", currentUser.role, "isOwner:", currentUser.isOwner);
+      // Allow account owners, admins, and super admins to complete onboarding
+      if (!currentUser.isAccountOwner && currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
+        console.error("Onboarding complete access denied for user:", currentUser.email, "with role:", currentUser.role, "isAccountOwner:", currentUser.isAccountOwner);
         return res.status(403).json({ 
-          message: "Access denied. Only organization owners, administrators, and super administrators can complete the onboarding process." 
+          message: "Access denied. Only account owners, administrators, and super administrators can complete the onboarding process." 
         });
       }
       
@@ -1899,19 +1899,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       console.log("Organization created:", organization.id);
 
-      // Create admin user as OWNER - organizationId is passed as first parameter
-      console.log("Creating owner/admin user for organization:", organization.id);
+      // Create admin user as ACCOUNT OWNER - organizationId is passed as first parameter
+      console.log("Creating account owner/admin user for organization:", organization.id);
       const adminUser = await storage.createUser(organization.id, {
         username: data.email.split('@')[0],
         password: data.password, // Should be hashed in real implementation
         name: `${data.firstName} ${data.lastName}`,
         email: data.email,
-        role: "admin", // Owner has admin role
-        isOwner: true, // Mark as organization owner/founder
+        role: "admin", // Account owner has admin role
+        isAccountOwner: true, // Mark as account owner (legal organization owner)
         isActive: true,
         authProvider: "local",
       });
-      console.log("Owner/admin user created:", adminUser.id, "with owner status");
+      console.log("Account owner/admin user created:", adminUser.id, "with account owner status");
 
       // Create initial onboarding record
       const onboardingId = randomBytes(16).toString('hex');
@@ -8750,6 +8750,109 @@ Return the response as a JSON object with this structure:
     } catch (error) {
       console.error("Failed to delete widget template:", error);
       res.status(500).json({ message: "Failed to delete widget template" });
+    }
+  });
+
+  // ========== ACCOUNT OWNERSHIP MANAGEMENT ==========
+  
+  // Transfer account ownership to another admin user
+  app.post("/api/account/transfer-ownership", requireOrganization(), authenticateUser(), async (req, res) => {
+    try {
+      const currentUser = req.currentUser!;
+      
+      // Only account owners and super admins can transfer ownership
+      if (!currentUser.isAccountOwner && !currentUser.isSuperAdmin) {
+        return res.status(403).json({ 
+          message: "Only the current account owner can transfer ownership" 
+        });
+      }
+      
+      const { newOwnerId } = req.body;
+      
+      if (!newOwnerId) {
+        return res.status(400).json({ message: "New owner ID is required" });
+      }
+      
+      // Get the new owner user
+      const newOwner = await storage.getUser(req.orgId, newOwnerId);
+      
+      if (!newOwner) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // New owner must be an admin
+      if (newOwner.role !== 'admin') {
+        return res.status(400).json({ 
+          message: "New account owner must have admin role. Please promote the user to admin first." 
+        });
+      }
+      
+      // Cannot transfer to self
+      if (newOwner.id === currentUser.id) {
+        return res.status(400).json({ message: "Cannot transfer ownership to yourself" });
+      }
+      
+      console.log(`Transferring account ownership from ${currentUser.email} to ${newOwner.email} for org ${req.orgId}`);
+      
+      // Remove account owner status from all users in this organization
+      const allUsers = await storage.getAllUsers(req.orgId, true);
+      for (const user of allUsers) {
+        if (user.isAccountOwner) {
+          await storage.updateUser(req.orgId, user.id, {
+            isAccountOwner: false
+          });
+        }
+      }
+      
+      // Grant account owner status to new owner
+      await storage.updateUser(req.orgId, newOwnerId, {
+        isAccountOwner: true,
+        role: 'admin' // Ensure they remain admin
+      });
+      
+      // Log the ownership transfer
+      console.log(`Account ownership successfully transferred to ${newOwner.email} (${newOwner.id})`);
+      
+      res.json({ 
+        success: true,
+        message: `Account ownership transferred to ${newOwner.name}`,
+        newOwner: {
+          id: newOwner.id,
+          name: newOwner.name,
+          email: newOwner.email
+        }
+      });
+    } catch (error) {
+      console.error("Failed to transfer account ownership:", error);
+      res.status(500).json({ message: "Failed to transfer account ownership" });
+    }
+  });
+  
+  // Get current account owner
+  app.get("/api/account/owner", requireOrganization(), authenticateUser(), async (req, res) => {
+    try {
+      const allUsers = await storage.getAllUsers(req.orgId, false);
+      const accountOwner = allUsers.find(user => user.isAccountOwner);
+      
+      if (!accountOwner) {
+        // This shouldn't happen, but handle gracefully
+        return res.json({ 
+          owner: null,
+          message: "No account owner found for this organization" 
+        });
+      }
+      
+      res.json({
+        owner: {
+          id: accountOwner.id,
+          name: accountOwner.name,
+          email: accountOwner.email,
+          avatar: accountOwner.avatar
+        }
+      });
+    } catch (error) {
+      console.error("Failed to get account owner:", error);
+      res.status(500).json({ message: "Failed to get account owner" });
     }
   });
 

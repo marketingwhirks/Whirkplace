@@ -34,6 +34,17 @@ Enhanced multi-provider authentication system for development and production use
 - **Provider Selection**: Organizations can enable/disable specific authentication providers
 - **Production OAuth Security**: Fixed critical security vulnerability where Slack OAuth was redirecting to localhost instead of https://whirkplace.com in production
 
+### Account Ownership System (September 2025)
+Implemented comprehensive account ownership and transfer capabilities:
+- **Account Owner Role**: Organization creators automatically become "account owners" with permanent admin rights
+- **Ownership Transfer**: Account owners can transfer ownership to other admin users within their organization
+- **Database Schema**: Added is_account_owner boolean field to users table with proper validation
+- **API Endpoints**: Created endpoints for ownership transfer and retrieving current account owner
+- **UI Implementation**: Settings page includes account ownership transfer functionality for authorized users
+- **Security Controls**: Only account owners and super admins can transfer ownership, with confirmation dialogs
+- **Super Admin Access**: mpatrick@whirks.com maintains backdoor super admin access across all organizations
+- **Role Hierarchy**: Super admin > Account owner (admin role) > Regular admin > Manager > Member
+
 ## Roadmap
 
 ### Immediate Priorities
