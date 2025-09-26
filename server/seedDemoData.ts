@@ -28,9 +28,9 @@ export async function ensureDemoDataExists() {
       name: 'Fictitious Delicious',
       slug: 'fictitious-delicious',
       description: 'A demo organization for exploring Whirkplace features',
-      is_demo: true,
-      created_at: new Date(),
-      updated_at: new Date()
+      isDemo: true,
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
 
     // Company values will be added when that feature is implemented
@@ -45,27 +45,27 @@ export async function ensureDemoDataExists() {
     await db.insert(teams).values([
       {
         id: teamIds.engineering,
-        organization_id: demoOrgId,
+        organizationId: demoOrgId,
         name: 'Engineering',
         description: 'Product development team',
-        created_at: new Date(),
-        updated_at: new Date()
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
       {
         id: teamIds.sales,
-        organization_id: demoOrgId,
+        organizationId: demoOrgId,
         name: 'Sales',
         description: 'Business development team',
-        created_at: new Date(),
-        updated_at: new Date()
+        createdAt: new Date(),
+        updatedAt: new Date()
       },
       {
         id: teamIds.marketing,
-        organization_id: demoOrgId,
+        organizationId: demoOrgId,
         name: 'Marketing',
         description: 'Marketing and growth team',
-        created_at: new Date(),
-        updated_at: new Date()
+        createdAt: new Date(),
+        updatedAt: new Date()
       }
     ]);
 
@@ -79,40 +79,40 @@ export async function ensureDemoDataExists() {
         email: 'john@delicious.com',
         name: 'John Delicious',
         role: 'admin' as const,
-        team_id: teamIds.engineering,
-        is_account_owner: true
+        teamId: teamIds.engineering,
+        isAccountOwner: true
       },
       {
         id: crypto.randomUUID(),
         email: 'sarah@delicious.com',
         name: 'Sarah Connor',
         role: 'admin' as const,
-        team_id: teamIds.sales,
-        is_account_owner: false
+        teamId: teamIds.sales,
+        isAccountOwner: false
       },
       {
         id: crypto.randomUUID(),
         email: 'mike@delicious.com',
         name: 'Mike Manager',
         role: 'manager' as const,
-        team_id: teamIds.engineering,
-        is_account_owner: false
+        teamId: teamIds.engineering,
+        isAccountOwner: false
       },
       {
         id: crypto.randomUUID(),
         email: 'alice@delicious.com',
         name: 'Alice Member',
         role: 'member' as const,
-        team_id: teamIds.engineering,
-        is_account_owner: false
+        teamId: teamIds.engineering,
+        isAccountOwner: false
       },
       {
         id: crypto.randomUUID(),
         email: 'bob@delicious.com',
         name: 'Bob Builder',
         role: 'member' as const,
-        team_id: teamIds.marketing,
-        is_account_owner: false
+        teamId: teamIds.marketing,
+        isAccountOwner: false
       }
     ];
 
@@ -120,21 +120,22 @@ export async function ensureDemoDataExists() {
       await db.insert(users).values({
         ...user,
         password: demoPassword,
-        organization_id: demoOrgId,
-        job_title: user.role === 'admin' ? 'Account Owner' : 
+        username: user.email.split('@')[0],
+        organizationId: demoOrgId,
+        jobTitle: user.role === 'admin' ? 'Account Owner' : 
                    user.role === 'manager' ? 'Team Manager' : 'Team Member',
-        created_at: new Date(),
-        updated_at: new Date()
+        createdAt: new Date(),
+        updatedAt: new Date()
       });
     }
 
     // Update team leaders
     await db.update(teams)
-      .set({ leader_id: demoUsers[2].id }) // Mike Manager leads Engineering
+      .set({ leaderId: demoUsers[2].id }) // Mike Manager leads Engineering
       .where(eq(teams.id, teamIds.engineering));
 
     await db.update(teams)
-      .set({ leader_id: demoUsers[1].id }) // Sarah Connor leads Sales
+      .set({ leaderId: demoUsers[1].id }) // Sarah Connor leads Sales
       .where(eq(teams.id, teamIds.sales));
 
     console.log('✅ Demo data created successfully!');
