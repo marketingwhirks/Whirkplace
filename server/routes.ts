@@ -2592,7 +2592,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       '/business/',
       '/partner/',
       '/users/current',  // Allow getting current user during onboarding
-      '/organizations/by-slug/'  // Allow fetching org by slug during onboarding
+      '/organizations/by-slug/',  // Allow fetching org by slug during onboarding
+      '/users',  // Allow fetching users
+      '/questions',  // Allow fetching questions
+      '/checkins',  // Allow check-ins
+      '/wins',  // Allow wins
+      '/shoutouts',  // Allow shoutouts
+      '/analytics/',  // Allow analytics
+      '/features'  // Allow feature flags
     ];
     
     // Check if the request path starts with any of the exempt paths
