@@ -4002,6 +4002,180 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to delete question" });
     }
   });
+  
+  // Question Categories
+  app.get("/api/question-categories", requireAuth(), async (req, res) => {
+    try {
+      const categories = await storage.getQuestionCategories();
+      res.json(categories);
+    } catch (error) {
+      console.error("Error fetching question categories:", error);
+      res.status(500).json({ message: "Failed to fetch categories" });
+    }
+  });
+  
+  app.post("/api/question-categories", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { insertQuestionCategorySchema } = await import("@shared/schema");
+      const categoryData = insertQuestionCategorySchema.parse(req.body);
+      
+      const category = await storage.createQuestionCategory(categoryData);
+      res.json(category);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid category data", details: error.errors });
+      }
+      console.error("Error creating question category:", error);
+      res.status(500).json({ message: "Failed to create category" });
+    }
+  });
+  
+  app.patch("/api/question-categories/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { insertQuestionCategorySchema } = await import("@shared/schema");
+      const updateData = insertQuestionCategorySchema.partial().parse(req.body);
+      
+      const category = await storage.updateQuestionCategory(req.params.id, updateData);
+      if (!category) {
+        return res.status(404).json({ message: "Category not found" });
+      }
+      res.json(category);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", details: error.errors });
+      }
+      console.error("Error updating question category:", error);
+      res.status(500).json({ message: "Failed to update category" });
+    }
+  });
+  
+  app.delete("/api/question-categories/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const deleted = await storage.deleteQuestionCategory(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Category not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting question category:", error);
+      res.status(500).json({ message: "Failed to delete category" });
+    }
+  });
+  
+  // Question Bank
+  app.get("/api/question-bank", requireAuth(), async (req, res) => {
+    try {
+      const categoryId = req.query.categoryId as string | undefined;
+      const items = await storage.getQuestionBank(categoryId);
+      // Filter to only show approved items or items contributed by the current org
+      const filteredItems = items.filter(item => 
+        item.isApproved || 
+        item.contributedByOrg === req.orgId ||
+        req.user?.role === 'admin'
+      );
+      res.json(filteredItems);
+    } catch (error) {
+      console.error("Error fetching question bank:", error);
+      res.status(500).json({ message: "Failed to fetch question bank" });
+    }
+  });
+  
+  app.post("/api/question-bank", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { insertQuestionBankSchema } = await import("@shared/schema");
+      const itemData = insertQuestionBankSchema.parse(req.body);
+      
+      const item = await storage.createQuestionBankItem({
+        ...itemData,
+        contributedBy: req.user!.id,
+        contributedByOrg: req.orgId,
+        isSystem: false,
+        isApproved: false, // New items need approval
+      });
+      res.json(item);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid question data", details: error.errors });
+      }
+      console.error("Error creating question bank item:", error);
+      res.status(500).json({ message: "Failed to create question" });
+    }
+  });
+  
+  app.post("/api/question-bank/:id/use", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      // When a question from the bank is used, increment its usage count
+      await storage.incrementQuestionBankUsage(req.params.id);
+      
+      // Get the question bank item
+      const bankItem = await storage.getQuestionBankItem(req.params.id);
+      if (!bankItem) {
+        return res.status(404).json({ message: "Question not found" });
+      }
+      
+      // Create a question in the organization based on the bank item
+      const question = await storage.createQuestion(req.orgId, {
+        text: bankItem.text,
+        organizationId: req.orgId,
+        createdBy: req.user!.id,
+        categoryId: bankItem.categoryId,
+        bankQuestionId: bankItem.id,
+        isActive: true,
+        order: 0, // Will be set by the client
+        addToBank: false,
+      });
+      
+      res.json(question);
+    } catch (error) {
+      console.error("Error using question from bank:", error);
+      res.status(500).json({ message: "Failed to use question" });
+    }
+  });
+  
+  app.patch("/api/question-bank/:id/approve", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Only super admins can approve questions for the bank
+      if (req.user?.email !== 'mpatrick@whirks.com') {
+        return res.status(403).json({ message: "Only super admins can approve questions" });
+      }
+      
+      const item = await storage.approveQuestionBankItem(req.params.id);
+      if (!item) {
+        return res.status(404).json({ message: "Question not found" });
+      }
+      res.json(item);
+    } catch (error) {
+      console.error("Error approving question bank item:", error);
+      res.status(500).json({ message: "Failed to approve question" });
+    }
+  });
+  
+  app.delete("/api/question-bank/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Users can only delete their own unapproved contributions
+      const item = await storage.getQuestionBankItem(req.params.id);
+      if (!item) {
+        return res.status(404).json({ message: "Question not found" });
+      }
+      
+      if (item.isApproved && req.user?.email !== 'mpatrick@whirks.com') {
+        return res.status(403).json({ message: "Cannot delete approved questions" });
+      }
+      
+      if (item.contributedByOrg !== req.orgId && req.user?.email !== 'mpatrick@whirks.com') {
+        return res.status(403).json({ message: "Can only delete your own contributions" });
+      }
+      
+      const deleted = await storage.deleteQuestionBankItem(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Question not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting question bank item:", error);
+      res.status(500).json({ message: "Failed to delete question" });
+    }
+  });
 
   // Wins
   app.get("/api/wins", requireAuth(), async (req, res) => {

@@ -3,6 +3,8 @@ import {
   type Team, type InsertTeam, type TeamHierarchy,
   type Checkin, type InsertCheckin,
   type Question, type InsertQuestion,
+  type QuestionCategory, type InsertQuestionCategory,
+  type QuestionBank, type InsertQuestionBank,
   type Win, type InsertWin,
   type Comment, type InsertComment,
   type Shoutout, type InsertShoutout,
@@ -32,7 +34,7 @@ import {
   type DashboardWidgetTemplate, type InsertDashboardWidgetTemplate,
   type OrganizationAuthProvider, type InsertOrganizationAuthProvider,
   type UserIdentity, type InsertUserIdentity,
-  users, teams, checkins, questions, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
+  users, teams, checkins, questions, questionCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
   organizationAuthProviders, userIdentities,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
@@ -167,6 +169,21 @@ export interface IStorage {
   updateQuestion(organizationId: string, id: string, question: Partial<InsertQuestion>): Promise<Question | undefined>;
   deleteQuestion(organizationId: string, id: string): Promise<boolean>;
   getActiveQuestions(organizationId: string): Promise<Question[]>;
+  
+  // Question Categories
+  getQuestionCategories(): Promise<QuestionCategory[]>;
+  createQuestionCategory(category: InsertQuestionCategory): Promise<QuestionCategory>;
+  updateQuestionCategory(id: string, category: Partial<InsertQuestionCategory>): Promise<QuestionCategory | undefined>;
+  deleteQuestionCategory(id: string): Promise<boolean>;
+  
+  // Question Bank
+  getQuestionBank(categoryId?: string): Promise<QuestionBank[]>;
+  getQuestionBankItem(id: string): Promise<QuestionBank | undefined>;
+  createQuestionBankItem(item: InsertQuestionBank): Promise<QuestionBank>;
+  updateQuestionBankItem(id: string, item: Partial<InsertQuestionBank>): Promise<QuestionBank | undefined>;
+  deleteQuestionBankItem(id: string): Promise<boolean>;
+  incrementQuestionBankUsage(id: string): Promise<void>;
+  approveQuestionBankItem(id: string): Promise<QuestionBank | undefined>;
 
   // Wins
   getWin(organizationId: string, id: string): Promise<Win | undefined>;
@@ -1323,6 +1340,95 @@ export class DatabaseStorage implements IStorage {
         eq(questions.organizationId, organizationId)
       ))
       .orderBy(questions.order);
+  }
+  
+  // Question Categories
+  async getQuestionCategories(): Promise<QuestionCategory[]> {
+    return await db
+      .select()
+      .from(questionCategories)
+      .orderBy(questionCategories.order);
+  }
+  
+  async createQuestionCategory(category: InsertQuestionCategory): Promise<QuestionCategory> {
+    const [newCategory] = await db
+      .insert(questionCategories)
+      .values(category)
+      .returning();
+    return newCategory;
+  }
+  
+  async updateQuestionCategory(id: string, categoryUpdate: Partial<InsertQuestionCategory>): Promise<QuestionCategory | undefined> {
+    const [updated] = await db
+      .update(questionCategories)
+      .set(categoryUpdate)
+      .where(eq(questionCategories.id, id))
+      .returning();
+    return updated;
+  }
+  
+  async deleteQuestionCategory(id: string): Promise<boolean> {
+    const result = await db
+      .delete(questionCategories)
+      .where(eq(questionCategories.id, id));
+    return result.rowCount > 0;
+  }
+  
+  // Question Bank
+  async getQuestionBank(categoryId?: string): Promise<QuestionBank[]> {
+    const query = categoryId
+      ? db.select().from(questionBank).where(eq(questionBank.categoryId, categoryId))
+      : db.select().from(questionBank);
+    
+    return await query.orderBy(desc(questionBank.usageCount));
+  }
+  
+  async getQuestionBankItem(id: string): Promise<QuestionBank | undefined> {
+    const [item] = await db
+      .select()
+      .from(questionBank)
+      .where(eq(questionBank.id, id));
+    return item;
+  }
+  
+  async createQuestionBankItem(item: InsertQuestionBank): Promise<QuestionBank> {
+    const [newItem] = await db
+      .insert(questionBank)
+      .values(item)
+      .returning();
+    return newItem;
+  }
+  
+  async updateQuestionBankItem(id: string, itemUpdate: Partial<InsertQuestionBank>): Promise<QuestionBank | undefined> {
+    const [updated] = await db
+      .update(questionBank)
+      .set(itemUpdate)
+      .where(eq(questionBank.id, id))
+      .returning();
+    return updated;
+  }
+  
+  async deleteQuestionBankItem(id: string): Promise<boolean> {
+    const result = await db
+      .delete(questionBank)
+      .where(eq(questionBank.id, id));
+    return result.rowCount > 0;
+  }
+  
+  async incrementQuestionBankUsage(id: string): Promise<void> {
+    await db
+      .update(questionBank)
+      .set({ usageCount: sql`usage_count + 1` })
+      .where(eq(questionBank.id, id));
+  }
+  
+  async approveQuestionBankItem(id: string): Promise<QuestionBank | undefined> {
+    const [approved] = await db
+      .update(questionBank)
+      .set({ isApproved: true })
+      .where(eq(questionBank.id, id))
+      .returning();
+    return approved;
   }
 
   // Wins
@@ -5042,6 +5148,94 @@ export class MemStorage implements IStorage {
     return Array.from(this.questions.values())
       .filter(question => question.isActive && question.organizationId === organizationId)
       .sort((a, b) => a.order - b.order);
+  }
+  
+  // Question Categories
+  private questionCategoriesStorage = new Map<string, QuestionCategory>();
+  private questionBankStorage = new Map<string, QuestionBank>();
+  
+  async getQuestionCategories(): Promise<QuestionCategory[]> {
+    return Array.from(this.questionCategoriesStorage.values()).sort((a, b) => a.order - b.order);
+  }
+  
+  async createQuestionCategory(category: InsertQuestionCategory): Promise<QuestionCategory> {
+    const newCategory: QuestionCategory = {
+      ...category,
+      id: randomUUID(),
+      createdAt: new Date(),
+      isDefault: category.isDefault ?? false,
+    };
+    this.questionCategoriesStorage.set(newCategory.id, newCategory);
+    return newCategory;
+  }
+  
+  async updateQuestionCategory(id: string, categoryUpdate: Partial<InsertQuestionCategory>): Promise<QuestionCategory | undefined> {
+    const category = this.questionCategoriesStorage.get(id);
+    if (!category) return undefined;
+    const updated = { ...category, ...categoryUpdate };
+    this.questionCategoriesStorage.set(id, updated);
+    return updated;
+  }
+  
+  async deleteQuestionCategory(id: string): Promise<boolean> {
+    return this.questionCategoriesStorage.delete(id);
+  }
+  
+  // Question Bank
+  async getQuestionBank(categoryId?: string): Promise<QuestionBank[]> {
+    const items = Array.from(this.questionBankStorage.values());
+    const filtered = categoryId
+      ? items.filter(item => item.categoryId === categoryId)
+      : items;
+    return filtered.sort((a, b) => b.usageCount - a.usageCount);
+  }
+  
+  async getQuestionBankItem(id: string): Promise<QuestionBank | undefined> {
+    return this.questionBankStorage.get(id);
+  }
+  
+  async createQuestionBankItem(item: InsertQuestionBank): Promise<QuestionBank> {
+    const newItem: QuestionBank = {
+      ...item,
+      id: randomUUID(),
+      createdAt: new Date(),
+      usageCount: 0,
+      isApproved: false,
+      isSystem: item.isSystem ?? false,
+      tags: item.tags ?? [],
+    };
+    this.questionBankStorage.set(newItem.id, newItem);
+    return newItem;
+  }
+  
+  async updateQuestionBankItem(id: string, itemUpdate: Partial<InsertQuestionBank>): Promise<QuestionBank | undefined> {
+    const item = this.questionBankStorage.get(id);
+    if (!item) return undefined;
+    const updated = { ...item, ...itemUpdate };
+    this.questionBankStorage.set(id, updated);
+    return updated;
+  }
+  
+  async deleteQuestionBankItem(id: string): Promise<boolean> {
+    return this.questionBankStorage.delete(id);
+  }
+  
+  async incrementQuestionBankUsage(id: string): Promise<void> {
+    const item = this.questionBankStorage.get(id);
+    if (item) {
+      item.usageCount++;
+      this.questionBankStorage.set(id, item);
+    }
+  }
+  
+  async approveQuestionBankItem(id: string): Promise<QuestionBank | undefined> {
+    const item = this.questionBankStorage.get(id);
+    if (item) {
+      item.isApproved = true;
+      this.questionBankStorage.set(id, item);
+      return item;
+    }
+    return undefined;
   }
 
   // Wins

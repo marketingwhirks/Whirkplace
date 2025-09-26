@@ -261,13 +261,45 @@ export const checkins = pgTable("checkins", {
   orgReviewedOnTimeIdx: index("checkins_org_reviewed_on_time_idx").on(table.organizationId, table.reviewedOnTime),
 }));
 
+// Question categories for organizing questions into groups
+export const questionCategories = pgTable("question_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  icon: text("icon"), // emoji or icon name
+  order: integer("order").notNull().default(0),
+  isDefault: boolean("is_default").notNull().default(false), // System default categories
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
+// Question bank - shared templates that organizations can use
+export const questionBank = pgTable("question_bank", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  text: text("text").notNull(),
+  categoryId: varchar("category_id").notNull(),
+  description: text("description"), // Helper text explaining when to use this question
+  tags: text("tags").array().notNull().default([]), // Tags like "weekly", "monthly", "team-health", etc.
+  usageCount: integer("usage_count").notNull().default(0), // Track popularity
+  isSystem: boolean("is_system").notNull().default(false), // System provided vs user contributed
+  contributedBy: varchar("contributed_by"), // User who contributed this question
+  contributedByOrg: varchar("contributed_by_org"), // Organization that contributed
+  isApproved: boolean("is_approved").notNull().default(false), // Admin approval for user contributions
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  categoryIdx: index("question_bank_category_idx").on(table.categoryId),
+  approvedIdx: index("question_bank_approved_idx").on(table.isApproved),
+}));
+
 export const questions = pgTable("questions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   text: text("text").notNull(),
   organizationId: varchar("organization_id").notNull(),
   createdBy: varchar("created_by").notNull(),
+  categoryId: varchar("category_id"), // Link to category
+  bankQuestionId: varchar("bank_question_id"), // If this came from the question bank
   isActive: boolean("is_active").notNull().default(true),
   order: integer("order").notNull().default(0),
+  addToBank: boolean("add_to_bank").notNull().default(false), // Flag to contribute to bank
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
@@ -621,9 +653,35 @@ export const insertCheckinSchema = createInsertSchema(checkins).omit({
   reviewDueDate: z.coerce.date().optional(),
 });
 
+export const insertQuestionCategorySchema = createInsertSchema(questionCategories).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  name: z.string().min(1, "Category name is required").max(50, "Category name too long"),
+  description: z.string().max(200, "Description too long").optional(),
+  icon: z.string().max(10, "Icon too long").optional(),
+  order: z.number().int().min(0, "Order must be non-negative"),
+});
+
+export const insertQuestionBankSchema = createInsertSchema(questionBank).omit({
+  id: true,
+  createdAt: true,
+  usageCount: true, // Managed by system
+  isApproved: true, // Managed by admins
+}).extend({
+  text: z.string().min(5, "Question text must be at least 5 characters").max(500, "Question text too long"),
+  description: z.string().max(200, "Description too long").optional(),
+  tags: z.array(z.string()).default([]),
+});
+
 export const insertQuestionSchema = createInsertSchema(questions).omit({
   id: true,
   createdAt: true,
+}).extend({
+  text: z.string().min(5, "Question text must be at least 5 characters").max(500, "Question text too long"),
+  categoryId: z.string().optional(),
+  bankQuestionId: z.string().optional(),
+  addToBank: z.boolean().default(false),
 });
 
 export const insertWinSchema = createInsertSchema(wins).omit({
@@ -812,6 +870,12 @@ export interface TeamHierarchy extends Team {
 
 export type InsertCheckin = z.infer<typeof insertCheckinSchema>;
 export type Checkin = typeof checkins.$inferSelect;
+
+export type InsertQuestionCategory = z.infer<typeof insertQuestionCategorySchema>;
+export type QuestionCategory = typeof questionCategories.$inferSelect;
+
+export type InsertQuestionBank = z.infer<typeof insertQuestionBankSchema>;
+export type QuestionBank = typeof questionBank.$inferSelect;
 
 export type InsertQuestion = z.infer<typeof insertQuestionSchema>;
 export type Question = typeof questions.$inferSelect;
