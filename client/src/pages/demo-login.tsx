@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { User, Shield, Users, ArrowLeft, LogIn, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +22,7 @@ interface DemoAccount {
 
 export default function DemoLoginPage() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [selectedAccount, setSelectedAccount] = useState<number>(0);
   const [email, setEmail] = useState("john@delicious.com");
   const [password, setPassword] = useState("Demo1234!");
@@ -148,12 +149,10 @@ export default function DemoLoginPage() {
         
         // Small delay to ensure session is fully established
         setTimeout(() => {
-          // Don't clear the query cache - we need to maintain the session
-          // Just invalidate the current user query to refetch with the new session
+          // Invalidate the current user query to refetch with the new session
           queryClient.invalidateQueries({ queryKey: ['/api/users/current'] });
-          // Navigate directly to dashboard to avoid auth check issues
-          const baseUrl = window.location.origin;
-          window.location.href = `${baseUrl}/?org=fictitious-delicious`;
+          // Use client-side navigation to maintain session
+          setLocation('/?org=fictitious-delicious');
         }, 500);
       } else {
         const error = await response.json();
@@ -205,12 +204,10 @@ export default function DemoLoginPage() {
         
         // Small delay to ensure session is fully established
         setTimeout(() => {
-          // Don't clear the query cache - we need to maintain the session
-          // Just invalidate the current user query to refetch with the new session
+          // Invalidate the current user query to refetch with the new session
           queryClient.invalidateQueries({ queryKey: ['/api/users/current'] });
-          // Navigate directly to dashboard to avoid auth check issues
-          const baseUrl = window.location.origin;
-          window.location.href = `${baseUrl}/?org=fictitious-delicious`;
+          // Use client-side navigation to maintain session
+          setLocation('/?org=fictitious-delicious');
         }, 500);
       } else {
         const error = await response.json();
