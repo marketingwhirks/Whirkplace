@@ -1869,6 +1869,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create initial onboarding record
       const onboardingId = randomBytes(16).toString('hex');
       
+      // Create auth provider record for the organization
+      await storage.createOrganizationAuthProvider({
+        organizationId: organization.id,
+        provider: 'local',
+        enabled: true,
+      }).catch(() => {
+        // Ignore if already exists
+      });
+      
+      // Create user identity record
+      await storage.createUserIdentity({
+        userId: adminUser.id,
+        provider: 'local',
+        providerUserId: adminUser.email,
+        providerEmail: adminUser.email,
+        providerDisplayName: adminUser.name,
+        lastLogin: new Date(),
+      }).catch(() => {
+        // Ignore if already exists
+      });
+      
+      // Set session for the new user
+      (req.session as any).userId = adminUser.id;
+      (req.session as any).organizationId = organization.id;
+      
       res.status(201).json({
         message: "Business account created successfully",
         organizationId: organization.id,
