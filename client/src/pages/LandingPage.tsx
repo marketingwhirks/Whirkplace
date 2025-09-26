@@ -3,23 +3,15 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Heart, Users, MessageSquare, BarChart3, CheckCircle, Star, ArrowRight, Building, Zap, Shield, Play } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocation } from "wouter";
 
 export default function LandingPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [location, setLocation] = useLocation();
 
-  // Check authentication status
-  const { data: user } = useQuery({
-    queryKey: ['/api/users/current'],
-    retry: false,
-    throwOnError: false
-  });
-
-  useEffect(() => {
-    setIsAuthenticated(!!user);
-  }, [user]);
+  // Check authentication status using the proper hook
+  const { data: user, isLoading } = useCurrentUser();
+  const isAuthenticated = !!user;
 
   // Determine organization based on hostname or URL params
   const getOrgSlug = () => {
@@ -113,6 +105,17 @@ export default function LandingPage() {
       setLocation(`/signup?plan=professional`);
     }
   };
+
+  // Show loading while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Loading...</h2>
+        </div>
+      </div>
+    );
+  }
 
   // If user is authenticated, redirect to dashboard
   if (isAuthenticated) {
