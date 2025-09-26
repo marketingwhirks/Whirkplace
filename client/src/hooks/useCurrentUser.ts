@@ -15,41 +15,48 @@ export function useCurrentUser() {
   // Check both regular URL params and hash params (for hash routing)
   const orgFromUrl = urlParams.get('org') || hashParams.get('org');
   
-  return useQuery<User>({
+  return useQuery<User | null>({
     queryKey: ["/api/users/current", { org: orgFromUrl }],
     queryFn: async () => {
-      // Build the URL, only append org param if it exists
-      let url = '/api/users/current';
-      if (orgFromUrl) {
-        url += `?org=${orgFromUrl}`;
-      }
+      try {
+        // Build the URL, only append org param if it exists
+        let url = '/api/users/current';
+        if (orgFromUrl) {
+          url += `?org=${orgFromUrl}`;
+        }
 
-      // Add localStorage auth headers for development
-      const authUserId = localStorage.getItem('auth_user_id');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      
-      if (authUserId) {
-        headers['x-auth-user-id'] = authUserId;
-      }
+        // Add localStorage auth headers for development
+        const authUserId = localStorage.getItem('auth_user_id');
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (authUserId) {
+          headers['x-auth-user-id'] = authUserId;
+        }
 
-      // Make actual API call to check current user authentication
-      const response = await fetch(url, {
-        method: 'GET',
-        credentials: 'include',
-        headers
-      });
-      
-      if (!response.ok) {
-        // If not authenticated, throw error to trigger loading state/redirect
-        throw new Error(`Authentication failed: ${response.status}`);
+        // Make actual API call to check current user authentication
+        const response = await fetch(url, {
+          method: 'GET',
+          credentials: 'include',
+          headers
+        });
+        
+        if (!response.ok) {
+          // Return null for unauthenticated users instead of throwing
+          return null;
+        }
+        
+        return response.json();
+      } catch (error) {
+        // Return null on any error to show landing page
+        console.error('Authentication check failed:', error);
+        return null;
       }
-      
-      return response.json();
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     retry: false, // Don't retry on auth failures
+    gcTime: 0, // Don't cache failed auth attempts
   });
 }
 

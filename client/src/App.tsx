@@ -75,7 +75,7 @@ function Router() {
 }
 
 function AuthenticatedApp() {
-  const { data: currentUser, isLoading, error } = useCurrentUser();
+  const { data: currentUser, isLoading } = useCurrentUser();
 
   // Show loading screen while checking authentication
   if (isLoading) {
@@ -90,8 +90,8 @@ function AuthenticatedApp() {
     );
   }
 
-  // If authentication failed or no user, show landing page
-  if (error || !currentUser) {
+  // If no user (unauthenticated), show landing page
+  if (!currentUser) {
     return <LandingPage />;
   }
 
