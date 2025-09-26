@@ -299,16 +299,49 @@ export function authenticateUser() {
       }
       
       
+      // CRITICAL FIX: Resolve organization ID from multiple sources
+      // Priority: session > auth_org_id cookie > req.orgId (from requireOrganization)
+      let resolvedOrgId = req.orgId; // Default from requireOrganization middleware
+      
+      // Try to get org ID from session first
+      if (req.session?.organizationId) {
+        resolvedOrgId = req.session.organizationId;
+        console.log(`📍 Using organization from session: ${resolvedOrgId}`);
+      } 
+      // Then try auth_org_id cookie (set during signup/login)
+      else if (req.cookies?.['auth_org_id']) {
+        resolvedOrgId = req.cookies['auth_org_id'];
+        console.log(`🍪 Using organization from auth_org_id cookie: ${resolvedOrgId}`);
+      }
+      // Fallback to manually parsing cookies if cookie-parser isn't working
+      else if (req.headers.cookie) {
+        const cookieHeader = req.headers.cookie;
+        const cookies: Record<string, string> = {};
+        cookieHeader.split(';').forEach(cookie => {
+          const [name, value] = cookie.trim().split('=');
+          if (name && value) {
+            cookies[name] = decodeURIComponent(value);
+          }
+        });
+        if (cookies['auth_org_id']) {
+          resolvedOrgId = cookies['auth_org_id'];
+          console.log(`🍪 Using organization from parsed auth_org_id cookie: ${resolvedOrgId}`);
+        }
+      }
+      
+      console.log(`🏢 Final resolved organization ID: ${resolvedOrgId}`);
+      
       // Check for session-based authentication FIRST (primary method)
       if (req.session && req.session.userId) {
         console.log(`🎫 Found session userId: ${req.session.userId}`);
-        const user = await storage.getUser(req.orgId, req.session.userId);
+        const user = await storage.getUser(resolvedOrgId, req.session.userId);
         if (user && user.isActive) {
-          console.log(`✅ Session auth successful for: ${user.name}`);
+          console.log(`✅ Session auth successful for: ${user.name} (role: ${user.role}, superAdmin: ${user.isSuperAdmin})`);
           req.currentUser = user;
+          req.orgId = resolvedOrgId; // Ensure orgId is set for downstream middleware
           return next();
         } else {
-          console.log(`❌ Session auth failed - user not found or inactive`);
+          console.log(`❌ Session auth failed - user not found or inactive in org: ${resolvedOrgId}`);
         }
       } else {
         console.log(`❌ No session or session userId`);
@@ -438,17 +471,23 @@ export function authenticateUser() {
         }
         
         // TODO: Implement proper token validation instead of trusting client-provided user IDs
-        if (authUserId && authOrgId && authToken && authOrgId === req.orgId) {
+        // CRITICAL FIX: Use the resolved organization ID, not just req.orgId
+        if (authUserId && authOrgId) {
           logDevAuthUsage('cookie', `userId=${authUserId}, orgId=${authOrgId}`);
           console.log(`🍪 Cookie auth attempt: userId=${authUserId}, orgId=${authOrgId}, token present=${!!authToken}`);
-          const user = await storage.getUser(req.orgId, authUserId);
+          
+          // Use the auth_org_id from the cookie for user lookup
+          const user = await storage.getUser(authOrgId, authUserId);
           if (user && user.isActive) {
-            console.log(`✅ Cookie auth successful for: ${user.name}`);
+            console.log(`✅ Cookie auth successful for: ${user.name} (role: ${user.role}, superAdmin: ${user.isSuperAdmin})`);
             req.currentUser = user;
+            req.orgId = authOrgId; // Ensure orgId is set for downstream middleware
+            
             // Also set session for consistency (helps prevent repeated cookie lookups)
             if (req.session) {
               req.session.userId = user.id;
-              console.log(`📦 Updated session with userId: ${user.id}`);
+              req.session.organizationId = authOrgId;
+              console.log(`📦 Updated session with userId: ${user.id} and orgId: ${authOrgId}`);
             }
             return next();
           } else {

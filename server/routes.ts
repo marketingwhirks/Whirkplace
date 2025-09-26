@@ -1931,6 +1931,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       });
       
+      // CRITICAL: Set auth cookies for Replit/iframe environment
+      const isReplit = !!process.env.REPL_SLUG;
+      const isProduction = process.env.NODE_ENV === 'production';
+      const useSecure = isProduction || isReplit;
+      const useSameSiteNone = isProduction || isReplit;
+      
+      console.log(`🍪 Setting auth cookies for new admin - secure=${useSecure}, sameSite=${useSameSiteNone ? 'none' : 'lax'}, isReplit=${isReplit}`);
+      
+      // Set authentication cookies for session persistence
+      res.cookie('auth_user_id', adminUser.id, {
+        httpOnly: true,
+        secure: useSecure,
+        sameSite: useSameSiteNone ? 'none' : 'lax',
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+      });
+      
+      res.cookie('auth_org_id', organization.id, {
+        httpOnly: true,
+        secure: useSecure,
+        sameSite: useSameSiteNone ? 'none' : 'lax',
+        path: '/',
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+      });
+      
       res.status(201).json({
         message: "Business account created successfully",
         organizationId: organization.id,
