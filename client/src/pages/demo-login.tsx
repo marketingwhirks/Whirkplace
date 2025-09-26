@@ -97,8 +97,24 @@ export default function DemoLoginPage() {
 
   // Ensure form is initialized with demo account on mount
   useEffect(() => {
-    setEmail(demoAccounts[0].email);
-    setPassword("Demo1234!");
+    // Clear any cached form data
+    const emailInput = document.getElementById('demo-email') as HTMLInputElement;
+    const passwordInput = document.getElementById('demo-password') as HTMLInputElement;
+    
+    if (emailInput) {
+      emailInput.value = demoAccounts[0].email;
+      setEmail(demoAccounts[0].email);
+    }
+    if (passwordInput) {
+      passwordInput.value = "Demo1234!";
+      setPassword("Demo1234!");
+    }
+    
+    // Force re-render to override any browser autofill
+    setTimeout(() => {
+      setEmail(demoAccounts[0].email);
+      setPassword("Demo1234!");
+    }, 100);
   }, []);
 
   const handleLogin = async (e?: React.FormEvent) => {
@@ -282,28 +298,36 @@ export default function DemoLoginPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleLogin} className="space-y-4">
+                <form onSubmit={handleLogin} className="space-y-4" autoComplete="new-password">
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="demo-email">Email</Label>
                     <Input 
-                      id="email"
+                      id="demo-email"
                       type="email"
+                      name="demo-email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Enter email"
-                      autoComplete="off"
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck="false"
                       data-testid="input-demo-email"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
+                    <Label htmlFor="demo-password">Password</Label>
                     <Input 
-                      id="password"
+                      id="demo-password"
                       type="password"
+                      name="demo-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter password"
-                      autoComplete="off"
+                      autoComplete="new-password"
+                      autoCorrect="off"
+                      autoCapitalize="off"
+                      spellCheck="false"
                       data-testid="input-demo-password"
                     />
                   </div>
