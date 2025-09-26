@@ -137,8 +137,11 @@ export default function DemoLoginPage() {
         body: JSON.stringify({ email, password })
       });
 
+      console.log("Login response status:", response.status);
+      
       if (response.ok) {
         const data = await response.json();
+        console.log("Login response data:", data);
         
         // Store auth info in localStorage as cookies aren't working in Replit
         if (data.user?.id) {
@@ -147,6 +150,7 @@ export default function DemoLoginPage() {
           localStorage.setItem('auth_user_email', data.user.email);
           localStorage.setItem('auth_user_role', data.user.role);
           localStorage.setItem('auth_organization_id', 'b74d00fd-e1ce-41ae-afca-4a0d55cb1fe1');
+          console.log("Stored auth in localStorage:", data.user.id);
         }
         
         toast({ 
@@ -154,15 +158,11 @@ export default function DemoLoginPage() {
           description: `Logged in as ${data.user.name}` 
         });
         
-        // Small delay to ensure session is fully established
-        setTimeout(() => {
-          // Invalidate the current user query to refetch with the new session
-          queryClient.invalidateQueries({ queryKey: ['/api/users/current'] });
-          // Use client-side navigation to maintain session
-          setLocation('/?org=fictitious-delicious');
-        }, 500);
+        // Force page reload to ensure auth is picked up
+        window.location.href = '/?org=fictitious-delicious';
       } else {
         const error = await response.json();
+        console.error("Login failed:", error);
         toast({ 
           title: "Login failed", 
           description: error.message || "Invalid credentials",
@@ -199,8 +199,11 @@ export default function DemoLoginPage() {
         body: JSON.stringify({ email: demoEmail, password: demoPassword })
       });
 
+      console.log("Direct login response status:", response.status);
+
       if (response.ok) {
         const data = await response.json();
+        console.log("Direct login response data:", data);
         
         // Store auth info in localStorage as cookies aren't working in Replit
         if (data.user?.id) {
@@ -209,6 +212,7 @@ export default function DemoLoginPage() {
           localStorage.setItem('auth_user_email', data.user.email);
           localStorage.setItem('auth_user_role', data.user.role);
           localStorage.setItem('auth_organization_id', 'b74d00fd-e1ce-41ae-afca-4a0d55cb1fe1');
+          console.log("Stored auth in localStorage (direct):", data.user.id);
         }
         
         toast({ 
@@ -216,15 +220,11 @@ export default function DemoLoginPage() {
           description: `Logged in as ${data.user.name}` 
         });
         
-        // Small delay to ensure session is fully established
-        setTimeout(() => {
-          // Invalidate the current user query to refetch with the new session
-          queryClient.invalidateQueries({ queryKey: ['/api/users/current'] });
-          // Use client-side navigation to maintain session
-          setLocation('/?org=fictitious-delicious');
-        }, 500);
+        // Force page reload to ensure auth is picked up
+        window.location.href = '/?org=fictitious-delicious';
       } else {
         const error = await response.json();
+        console.error("Direct login failed:", error);
         toast({ 
           title: "Login failed", 
           description: error.message || "Invalid credentials",
@@ -232,7 +232,7 @@ export default function DemoLoginPage() {
         });
       }
     } catch (error: any) {
-      console.error("Login error:", error);
+      console.error("Direct login error:", error);
       toast({ 
         title: "Login failed", 
         description: "Network error. Please try again.",
