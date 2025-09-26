@@ -1840,10 +1840,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = signupSchema.parse(req.body);
 
-      // Create organization
-      const orgSlug = data.organizationName.toLowerCase()
+      // Create organization with unique slug handling
+      let baseSlug = data.organizationName.toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
+      
+      // Check if slug exists and add suffix if needed
+      let orgSlug = baseSlug;
+      let counter = 0;
+      while (true) {
+        try {
+          const existing = await storage.getOrganizationBySlug(orgSlug);
+          if (!existing) {
+            break;
+          }
+          counter++;
+          orgSlug = `${baseSlug}-${counter}`;
+        } catch (error) {
+          // If error getting org, assume it doesn't exist
+          break;
+        }
+      }
 
       console.log("Creating organization with slug:", orgSlug);
       const organization = await storage.createOrganization({
