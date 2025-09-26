@@ -1488,7 +1488,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Check if user has admin rights in their organization
       const currentUser = req.currentUser!;
+      console.log("Onboarding step - User:", currentUser.email, "Role:", currentUser.role, "SuperAdmin:", currentUser.isSuperAdmin, "OrgId:", req.orgId);
+      
       if (currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
+        console.error("Onboarding access denied for user:", currentUser.email, "with role:", currentUser.role);
         return res.status(403).json({ 
           message: "Access denied. Only administrators and super administrators can complete the onboarding process." 
         });
@@ -1565,7 +1568,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Check if user has admin rights in their organization
       const currentUser = req.currentUser!;
+      console.log("Onboarding complete - User:", currentUser.email, "Role:", currentUser.role, "SuperAdmin:", currentUser.isSuperAdmin, "OrgId:", req.orgId);
+      
       if (currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
+        console.error("Onboarding complete access denied for user:", currentUser.email, "with role:", currentUser.role);
         return res.status(403).json({ 
           message: "Access denied. Only administrators and super administrators can complete the onboarding process." 
         });
@@ -1908,14 +1914,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const onboardingId = randomBytes(16).toString('hex');
       
       // Set session for the new user
-      console.log("Setting session for user:", adminUser.id);
+      console.log("Setting session for user:", adminUser.id, "with role:", adminUser.role);
       (req.session as any).userId = adminUser.id;
       (req.session as any).organizationId = organization.id;
+      
+      // Save session to ensure it persists
+      await new Promise((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) {
+            console.error("Session save error:", err);
+            reject(err);
+          } else {
+            console.log("Session saved successfully for new admin user");
+            resolve(true);
+          }
+        });
+      });
       
       res.status(201).json({
         message: "Business account created successfully",
         organizationId: organization.id,
+        organizationSlug: orgSlug,
         userId: adminUser.id,
+        userRole: adminUser.role,
         onboardingId,
       });
     } catch (error: any) {
