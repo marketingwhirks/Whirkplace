@@ -40,12 +40,12 @@ const baseNavigation = [
   { name: "Questions", href: "/questions", icon: HelpCircle, roles: ["manager", "admin"] },
   { name: "Reviews", href: "/reviews", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
   { name: "KRA Management", href: "/kra-management", icon: Target, roles: ["member", "manager", "admin"] },
+  { name: "Team", href: "/team", icon: Users, roles: ["member", "manager", "admin"] },
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },
   { name: "Admin Panel", href: "/admin", icon: Shield, roles: ["admin"] },
   { name: "Super Admin", href: "/super-admin", icon: Lock, roles: ["admin"] },
   { name: "Settings", href: "/settings", icon: Settings, roles: ["member", "manager", "admin"] },
-  { name: "Team", href: "/team", icon: Users, roles: ["member", "manager", "admin"] },
   { name: "Onboarding", href: "/onboarding", icon: Rocket, roles: [] as ("member" | "manager" | "admin")[], isSuperAdminOnly: true },
 ];
 
