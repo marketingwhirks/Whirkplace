@@ -148,9 +148,10 @@ export default function DemoLoginPage() {
         
         // Small delay to ensure session is fully established
         setTimeout(() => {
-          // Clear React Query cache and force reload to ensure fresh auth state
-          queryClient.clear();
-          // Force a full page reload with the organization parameter - append to existing URL
+          // Don't clear the query cache - we need to maintain the session
+          // Just invalidate the current user query to refetch with the new session
+          queryClient.invalidateQueries({ queryKey: ['/api/users/current'] });
+          // Navigate directly to dashboard to avoid auth check issues
           const baseUrl = window.location.origin;
           window.location.href = `${baseUrl}/?org=fictitious-delicious`;
         }, 500);
@@ -204,9 +205,10 @@ export default function DemoLoginPage() {
         
         // Small delay to ensure session is fully established
         setTimeout(() => {
-          // Clear React Query cache and force reload to ensure fresh auth state
-          queryClient.clear();
-          // Force a full page reload with the organization parameter - append to existing URL
+          // Don't clear the query cache - we need to maintain the session
+          // Just invalidate the current user query to refetch with the new session
+          queryClient.invalidateQueries({ queryKey: ['/api/users/current'] });
+          // Navigate directly to dashboard to avoid auth check issues
           const baseUrl = window.location.origin;
           window.location.href = `${baseUrl}/?org=fictitious-delicious`;
         }, 500);
