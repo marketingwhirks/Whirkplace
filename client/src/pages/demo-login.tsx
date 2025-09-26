@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { User, Shield, Users, ArrowLeft, LogIn, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,11 +22,11 @@ interface DemoAccount {
 
 export default function DemoLoginPage() {
   const { toast } = useToast();
+  const [selectedAccount, setSelectedAccount] = useState<number>(0);
   const [email, setEmail] = useState("john@delicious.com");
   const [password, setPassword] = useState("Demo1234!");
   const [isLoading, setIsLoading] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const [selectedAccount, setSelectedAccount] = useState<number>(0);
 
   const demoAccounts: DemoAccount[] = [
     {
@@ -94,6 +94,12 @@ export default function DemoLoginPage() {
     setEmail(demoAccounts[accountIndex].email);
     setPassword("Demo1234!");
   };
+
+  // Ensure form is initialized with demo account on mount
+  useEffect(() => {
+    setEmail(demoAccounts[0].email);
+    setPassword("Demo1234!");
+  }, []);
 
   const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -285,6 +291,7 @@ export default function DemoLoginPage() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="Enter email"
+                      autoComplete="off"
                       data-testid="input-demo-email"
                     />
                   </div>
@@ -296,6 +303,7 @@ export default function DemoLoginPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter password"
+                      autoComplete="off"
                       data-testid="input-demo-password"
                     />
                   </div>
