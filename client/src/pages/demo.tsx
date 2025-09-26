@@ -61,7 +61,7 @@ export default function DemoPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/30">
+    <div className="min-h-screen bg-background">
       {/* Hero Section */}
       <div className="container mx-auto px-4 py-12">
         <div className="text-center space-y-6 max-w-4xl mx-auto">
@@ -70,8 +70,8 @@ export default function DemoPage() {
             Live Demo Available
           </Badge>
           
-          <h1 className="text-5xl md:text-6xl font-bold bg-gradient-to-r from-primary via-primary/80 to-primary/60 bg-clip-text text-transparent">
-            Experience Whirkplace
+          <h1 className="text-5xl md:text-6xl font-bold text-foreground">
+            Experience <span className="text-primary">Whirkplace</span>
           </h1>
           
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -133,7 +133,7 @@ export default function DemoPage() {
 
       {/* Benefits Section */}
       <div className="container mx-auto px-4 py-16">
-        <Card className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-primary/20">
+        <Card className="bg-muted/50 border-muted">
           <CardContent className="p-8">
             <div className="grid md:grid-cols-2 gap-8 items-center">
               <div>
@@ -151,7 +151,7 @@ export default function DemoPage() {
                 </div>
               </div>
               <div className="space-y-4">
-                <Card className="bg-background/50 backdrop-blur">
+                <Card className="bg-background border-border">
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg">Demo Organization</CardTitle>
                     <CardDescription>Fictitious Delicious</CardDescription>
@@ -178,7 +178,7 @@ export default function DemoPage() {
 
       {/* CTA Section */}
       <div className="container mx-auto px-4 py-16">
-        <Card className="bg-gradient-to-r from-primary to-primary/80 text-primary-foreground">
+        <Card className="bg-primary text-primary-foreground">
           <CardContent className="p-12 text-center">
             <h2 className="text-3xl font-bold mb-4">Ready to Transform Your Team?</h2>
             <p className="text-lg mb-8 opacity-90 max-w-2xl mx-auto">
@@ -194,7 +194,7 @@ export default function DemoPage() {
                 </Button>
               </Link>
               <Link href="/signup">
-                <Button size="lg" variant="outline" className="bg-transparent border-primary-foreground text-primary-foreground hover:bg-primary-foreground hover:text-primary">
+                <Button size="lg" variant="secondary">
                   Create Your Organization
                 </Button>
               </Link>
