@@ -14,6 +14,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { resolveOrganization } from "./middleware/organization";
 import { runDevelopmentSeeding } from "./seeding";
+import { ensureDemoDataExists } from "./seedDemoData";
 
 // Add process error handlers to catch unhandled exceptions
 process.on('uncaughtException', (error) => {
@@ -182,6 +183,11 @@ app.use((req, res, next) => {
     console.log('🌱 Running development seeding...');
     await runDevelopmentSeeding();
     console.log('✅ Development seeding completed');
+    
+    // Ensure demo data exists (for both development and production)
+    console.log('🎬 Ensuring demo data exists...');
+    await ensureDemoDataExists();
+    console.log('✅ Demo data check completed');
     
     // Register routes
     console.log('🛣️  Registering routes...');
