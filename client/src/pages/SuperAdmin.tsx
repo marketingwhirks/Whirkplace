@@ -528,7 +528,7 @@ export default function SuperAdmin() {
                           name="name" 
                           defaultValue={editingPartner?.name} 
                           required 
-                          placeholder="Patrick Accounting"
+                          placeholder="Partner Organization"
                         />
                       </div>
                       <div>
@@ -585,7 +585,7 @@ export default function SuperAdmin() {
                           name="websiteUrl" 
                           type="url"
                           defaultValue={editingPartner?.websiteUrl} 
-                          placeholder="https://patrickaccounting.com"
+                          placeholder="https://example.com"
                         />
                       </div>
                       <div>
@@ -595,7 +595,7 @@ export default function SuperAdmin() {
                           name="contactEmail" 
                           type="email"
                           defaultValue={editingPartner?.contactEmail} 
-                          placeholder="contact@patrickaccounting.com"
+                          placeholder="contact@example.com"
                         />
                       </div>
                     </div>

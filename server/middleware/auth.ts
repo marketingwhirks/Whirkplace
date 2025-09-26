@@ -355,78 +355,18 @@ export function authenticateUser() {
         console.log(`❌ No session or session userId`);
       }
 
-      // Check for backdoor authentication (development with feature flag)
-      // Express automatically lowercases header names
+      // SECURITY FIX: Backdoor authentication has been disabled for automatic access
+      // Backdoor access should only be allowed through explicit login endpoints, not middleware
+      // This prevents automatic authentication without user consent
+      
+      // Log backdoor header attempts for security monitoring
       const backdoorUser = req.headers['x-backdoor-user'] as string;
       const backdoorKey = req.headers['x-backdoor-key'] as string;
-      const backdoorImpersonate = req.headers['x-backdoor-impersonate'] as string;
       
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`🔓 Backdoor headers: user=${backdoorUser}, key=${backdoorKey ? '[REDACTED]' : 'undefined'}, env=${process.env.NODE_ENV}`);
-        console.log(`🔑 Environment backdoor: user=${process.env.BACKDOOR_USER}, key=${process.env.BACKDOOR_KEY ? '[REDACTED]' : 'undefined'}`);
-        console.log(`🔧 DEV_AUTH_ENABLED=${isDevelopmentAuthEnabled()}`);
-      }
-      
-      // SECURITY: Backdoor authentication with environment-specific handling
-      if (backdoorUser && backdoorKey && isBackdoorAuthAllowed()) {
-        logDevAuthUsage('backdoor', `user=${backdoorUser}, impersonate=${backdoorImpersonate || 'none'}`);
-        
-        // Verify backdoor credentials - use environment variables for security
-        const validBackdoorUser = process.env.BACKDOOR_USER;
-        const validBackdoorKey = process.env.BACKDOOR_KEY;
-        
-        console.log(`🔑 Credential check: validUser=${validBackdoorUser}, validKey=${validBackdoorKey ? '[REDACTED]' : 'undefined'}`);
-        console.log(`🔑 Header check: backdoorUser=${backdoorUser}, backdoorKey=${backdoorKey ? '[REDACTED]' : 'undefined'}`);
-        console.log(`🔑 Match check: userMatch=${backdoorUser === validBackdoorUser}, keyMatch=${backdoorKey === validBackdoorKey}`);
-        
-        if (validBackdoorUser && validBackdoorKey && 
-            backdoorUser === validBackdoorUser && backdoorKey === validBackdoorKey) {
-          
-          // Backdoor impersonation is no longer supported
-          if (backdoorImpersonate) {
-            return res.status(400).json({ 
-              message: 'User impersonation has been removed from the system' 
-            });
-          }
-          
-          // Handle development vs production backdoor access differently
-          if (process.env.NODE_ENV === 'development') {
-            // Development: use Matthew Patrick's admin account (creates if needed)
-            const matthewUser = await ensureBackdoorUser(req.orgId);
-            req.currentUser = matthewUser;
-            
-            // Create session for backdoor user to maintain authentication
-            if (req.session) {
-              req.session.userId = matthewUser.id;
-              console.log(`🔐 Created session for backdoor user: ${matthewUser.username}`);
-            }
-            
-            return next();
-          } else {
-            // Production: find existing admin user matching BACKDOOR_USER (no creation)
-            console.log(`🔓 Production backdoor access: looking for existing user ${validBackdoorUser}`);
-            const existingUser = await storage.getUserByUsername(req.orgId, validBackdoorUser) || 
-                                await storage.getUserByEmail(req.orgId, validBackdoorUser);
-            
-            if (existingUser && existingUser.isActive && (existingUser.role === 'admin' || existingUser.isSuperAdmin)) {
-              console.log(`✅ Production backdoor access granted to existing admin: ${existingUser.username}`);
-              req.currentUser = existingUser;
-              
-              // Create session for backdoor user to maintain authentication
-              if (req.session) {
-                req.session.userId = existingUser.id;
-                console.log(`🔐 Created session for production backdoor user: ${existingUser.username}`);
-              }
-              
-              return next();
-            } else {
-              console.error(`🚨 Production backdoor failed: no active admin user found for ${validBackdoorUser}`);
-              return res.status(401).json({ 
-                message: 'Backdoor authentication failed: admin user not found' 
-              });
-            }
-          }
-        }
+      if (backdoorUser || backdoorKey) {
+        console.warn(`⚠️  SECURITY: Backdoor headers detected but automatic authentication is disabled`);
+        console.warn(`⚠️  Path: ${req.method} ${req.path}`);
+        console.warn(`⚠️  User must login through proper authentication endpoints`);
       }
 
       // Check for localStorage-based authentication as development fallback only

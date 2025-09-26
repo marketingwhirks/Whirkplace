@@ -4144,7 +4144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/question-bank/:id/approve", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
       // Only super admins can approve questions for the bank
-      if (req.user?.email !== 'mpatrick@whirks.com') {
+      if (!req.user?.isSuperAdmin) {
         return res.status(403).json({ message: "Only super admins can approve questions" });
       }
       
@@ -4167,11 +4167,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Question not found" });
       }
       
-      if (item.isApproved && req.user?.email !== 'mpatrick@whirks.com') {
+      if (item.isApproved && !req.user?.isSuperAdmin) {
         return res.status(403).json({ message: "Cannot delete approved questions" });
       }
       
-      if (item.contributedByOrg !== req.orgId && req.user?.email !== 'mpatrick@whirks.com') {
+      if (item.contributedByOrg !== req.orgId && !req.user?.isSuperAdmin) {
         return res.status(403).json({ message: "Can only delete your own contributions" });
       }
       
