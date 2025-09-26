@@ -104,7 +104,8 @@ const sessionStore = new PgSession({
 // Session configuration with proper production support
 const isReplit = !!process.env.REPL_SLUG;
 const isProduction = process.env.NODE_ENV === 'production';
-const isSecureEnvironment = isProduction || isReplit;
+// FIX: Only use secure cookies in actual production, not in Replit dev
+const isSecureEnvironment = isProduction && !process.env.REPL_SLUG;
 
 // For production OAuth, we'd normally need SameSite=None for cross-site redirects
 // But for demo login and same-origin requests, 'lax' works better
