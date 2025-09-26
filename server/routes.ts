@@ -1845,6 +1845,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 
+      console.log("Creating organization with slug:", orgSlug);
       const organization = await storage.createOrganization({
         name: data.organizationName,
         slug: orgSlug,
@@ -1853,8 +1854,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         enableSlackIntegration: false,
         enableMicrosoftAuth: false,
       });
+      console.log("Organization created:", organization.id);
 
-      // Create admin user
+      // Create admin user - organizationId is passed as first parameter
+      console.log("Creating admin user for organization:", organization.id);
       const adminUser = await storage.createUser(organization.id, {
         username: data.email.split('@')[0],
         password: data.password, // Should be hashed in real implementation
@@ -1863,13 +1866,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: "admin",
         isActive: true,
         authProvider: "local",
-        organizationId: organization.id,
       });
+      console.log("Admin user created:", adminUser.id);
 
       // Create initial onboarding record
       const onboardingId = randomBytes(16).toString('hex');
       
       // Set session for the new user
+      console.log("Setting session for user:", adminUser.id);
       (req.session as any).userId = adminUser.id;
       (req.session as any).organizationId = organization.id;
       
@@ -1880,14 +1884,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         onboardingId,
       });
     } catch (error: any) {
-      console.error("Business signup error:", error);
+      console.error("Business signup error - Full error:", error);
+      console.error("Error stack:", error.stack);
       if (error.name === 'ZodError') {
         return res.status(400).json({ 
           message: "Invalid signup data", 
           errors: error.errors 
         });
       }
-      res.status(500).json({ message: "Failed to create business account" });
+      res.status(500).json({ 
+        message: "Failed to create business account",
+        error: error.message 
+      });
     }
   });
 
