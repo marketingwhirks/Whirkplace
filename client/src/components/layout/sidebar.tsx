@@ -30,23 +30,23 @@ function getIsActive(currentLocation: string, itemHref: string): boolean {
   return normalizedLocation === normalizedHref;
 }
 
-// Base navigation items available to all users
+// Base navigation items available to all users - ordered as requested
 const baseNavigation = [
   { name: "Dashboard", href: "/", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Check-ins", href: "/checkins", icon: ClipboardList, roles: ["member", "manager", "admin"] },
-  { name: "One-on-Ones", href: "/one-on-ones", icon: Calendar, roles: ["member", "manager", "admin"] },
-  { name: "KRA Management", href: "/kra-management", icon: Target, roles: ["member", "manager", "admin"] },
-  { name: "Team", href: "/team", icon: Users, roles: ["member", "manager", "admin"] },
-  { name: "Wins", href: "/wins", icon: Trophy, roles: ["member", "manager", "admin"] },
   { name: "Shout Outs", href: "/shoutouts", icon: HandMetal, roles: ["member", "manager", "admin"] },
+  { name: "Wins", href: "/wins", icon: Trophy, roles: ["member", "manager", "admin"] },
+  { name: "One-on-Ones", href: "/one-on-ones", icon: Calendar, roles: ["member", "manager", "admin"] },
   { name: "Questions", href: "/questions", icon: HelpCircle, roles: ["manager", "admin"] },
   { name: "Reviews", href: "/reviews", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
-  { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },
+  { name: "KRA Management", href: "/kra-management", icon: Target, roles: ["member", "manager", "admin"] },
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
+  { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },
   { name: "Admin Panel", href: "/admin", icon: Shield, roles: ["admin"] },
   { name: "Super Admin", href: "/super-admin", icon: Lock, roles: ["admin"] },
-  { name: "Onboarding", href: "/onboarding", icon: Rocket, roles: [] as ("member" | "manager" | "admin")[], isSuperAdminOnly: true },
   { name: "Settings", href: "/settings", icon: Settings, roles: ["member", "manager", "admin"] },
+  { name: "Team", href: "/team", icon: Users, roles: ["member", "manager", "admin"] },
+  { name: "Onboarding", href: "/onboarding", icon: Rocket, roles: [] as ("member" | "manager" | "admin")[], isSuperAdminOnly: true },
 ];
 
 // Sidebar content component
