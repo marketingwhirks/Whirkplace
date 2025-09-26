@@ -1874,6 +1874,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         organizationId: organization.id,
         provider: 'local',
         enabled: true,
+        config: {},
       }).catch(() => {
         // Ignore if already exists
       });
@@ -1885,7 +1886,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         providerUserId: adminUser.email,
         providerEmail: adminUser.email,
         providerDisplayName: adminUser.name,
-        lastLogin: new Date(),
+        organizationId: organization.id,
+        profile: {},
+        lastLoginAt: new Date(),
       }).catch(() => {
         // Ignore if already exists
       });
