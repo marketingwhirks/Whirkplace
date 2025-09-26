@@ -186,6 +186,10 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
   }
 
   if (backdoorUser) {
+    // Check if this is the Whirkplace organization
+    const organization = await storage.getOrganizationById(organizationId);
+    const isWhirkplaceOrg = organization?.slug === 'whirkplace' || organization?.name?.toLowerCase() === 'whirkplace';
+    
     // Update existing user with latest profile info
     const updatedUser = await storage.updateUser(organizationId, backdoorUser.id, {
       name: profileName,
@@ -193,7 +197,7 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
       username: profileUsername,
       role: profileRole,
       isActive: true,
-      isSuperAdmin: true,  // Grant super admin privileges to backdoor user
+      isSuperAdmin: isWhirkplaceOrg,  // Only grant super admin if in Whirkplace org
       authProvider: 'local' as const,
     });
     
@@ -204,6 +208,10 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
     console.log(`Updated backdoor user account: ${updatedUser.username}`);
     return updatedUser;
   } else {
+    // Check if this is the Whirkplace organization
+    const organization = await storage.getOrganizationById(organizationId);
+    const isWhirkplaceOrg = organization?.slug === 'whirkplace' || organization?.name?.toLowerCase() === 'whirkplace';
+    
     // Create new backdoor user
     const newUser = await storage.createUser(organizationId, {
       username: profileUsername,
@@ -214,7 +222,7 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
       organizationId: organizationId,
       authProvider: 'local' as const,
       isActive: true,
-      isSuperAdmin: true,  // Grant super admin privileges to backdoor user
+      isSuperAdmin: isWhirkplaceOrg,  // Only grant super admin if in Whirkplace org
     });
     
     console.log(`Created backdoor user account: ${newUser.username}`);
