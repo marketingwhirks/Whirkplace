@@ -234,6 +234,8 @@ export const checkins = pgTable("checkins", {
   weekOf: timestamp("week_of").notNull(),
   overallMood: integer("overall_mood").notNull(), // 1-5 rating (weekly pulse check)
   responses: jsonb("responses").notNull().default({}), // question_id -> response
+  responseEmojis: jsonb("response_emojis").notNull().default({}), // question_id -> emoji (e.g., "😊", "😟", "🎯")
+  responseFlags: jsonb("response_flags").notNull().default({}), // question_id -> {addToOneOnOne: bool, flagForFollowUp: bool}
   winningNextWeek: text("winning_next_week"), // What winning looks like for next week
   isComplete: boolean("is_complete").notNull().default(false),
   submittedAt: timestamp("submitted_at"),
@@ -246,8 +248,8 @@ export const checkins = pgTable("checkins", {
   reviewedOnTime: boolean("reviewed_on_time").notNull().default(false), // If review completed on time
   reviewComments: text("review_comments"), // Optional feedback (nullable)
   responseComments: jsonb("response_comments").notNull().default({}), // question_id -> comment for individual responses
-  addToOneOnOne: boolean("add_to_one_on_one").notNull().default(false), // Flag for 1-on-1 agenda
-  flagForFollowUp: boolean("flag_for_follow_up").notNull().default(false), // Flag for future attention
+  addToOneOnOne: boolean("add_to_one_on_one").notNull().default(false), // Legacy: Flag for entire checkin
+  flagForFollowUp: boolean("flag_for_follow_up").notNull().default(false), // Legacy: Flag for entire checkin
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 }, (table) => ({
   orgWeekOfIdx: index("checkins_org_week_of_idx").on(table.organizationId, table.weekOf),

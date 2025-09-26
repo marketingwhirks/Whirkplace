@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow, startOfWeek, addWeeks, isSameWeek } from "date-fns";
-import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle } from "lucide-react";
+import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle, Smile, Flag, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -19,8 +19,13 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import RatingStars from "@/components/checkin/rating-stars";
 import CheckinDetail from "@/components/checkin/checkin-detail";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 import type { Checkin, Question, User, InsertCheckin } from "@shared/schema";
+
+// Common emoji options for quick selection
+const COMMON_EMOJIS = ["😊", "😟", "🎯", "💪", "🤔", "😌", "😤", "🚀", "❤️", "✅"];
 
 // Client-side form schema for check-in submission
 // Only includes fields the user should provide - server computes the rest
@@ -43,6 +48,11 @@ const createCheckinFormSchema = (questions: Question[]) => {
             }
           )
       : z.record(z.string()).optional().default({}),
+    responseEmojis: z.record(z.string()).optional().default({}), // question_id -> emoji
+    responseFlags: z.record(z.object({
+      addToOneOnOne: z.boolean().default(false),
+      flagForFollowUp: z.boolean().default(false),
+    })).optional().default({}), // question_id -> flags
     winningNextWeek: z.string().min(1, "Please describe what winning looks like for next week"),
   });
 };
@@ -50,6 +60,8 @@ const createCheckinFormSchema = (questions: Question[]) => {
 type CheckinForm = {
   overallMood: number;
   responses: Record<string, string>;
+  responseEmojis?: Record<string, string>;
+  responseFlags?: Record<string, { addToOneOnOne: boolean; flagForFollowUp: boolean }>;
   winningNextWeek: string;
 };
 
@@ -94,6 +106,8 @@ export default function Checkins() {
     defaultValues: {
       overallMood: 0,
       responses: {},
+      responseEmojis: {},
+      responseFlags: {},
       winningNextWeek: "",
     },
   });
@@ -369,27 +383,114 @@ export default function Checkins() {
                               <span className="text-red-500">*</span> All questions are required
                             </div>
                             {activeQuestions.map((question, index) => (
-                              <FormField
-                                key={question.id}
-                                control={form.control}
-                                name={`responses.${question.id}`}
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>
-                                      {question.text} <span className="text-red-500">*</span>
-                                    </FormLabel>
-                                    <FormControl>
-                                      <Textarea
-                                        placeholder="Share your thoughts..."
-                                        rows={3}
-                                        data-testid={`textarea-question-${index}`}
-                                        {...field}
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
+                              <Card key={question.id} className="p-4">
+                                <FormField
+                                  control={form.control}
+                                  name={`responses.${question.id}`}
+                                  render={({ field }) => (
+                                    <FormItem>
+                                      <FormLabel>
+                                        {question.text} <span className="text-red-500">*</span>
+                                      </FormLabel>
+                                      <FormControl>
+                                        <Textarea
+                                          placeholder="Share your thoughts..."
+                                          rows={3}
+                                          data-testid={`textarea-question-${index}`}
+                                          {...field}
+                                        />
+                                      </FormControl>
+                                      <FormMessage />
+                                    </FormItem>
+                                  )}
+                                />
+                                
+                                {/* Emoji Selection */}
+                                <div className="mt-3 flex items-center gap-2">
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button variant="outline" size="sm" type="button">
+                                        <Smile className="w-4 h-4 mr-1" />
+                                        {form.watch(`responseEmojis.${question.id}`) || "Add Emoji"}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-64">
+                                      <div className="grid grid-cols-5 gap-2">
+                                        {COMMON_EMOJIS.map((emoji) => (
+                                          <Button
+                                            key={emoji}
+                                            variant="ghost"
+                                            size="sm"
+                                            type="button"
+                                            className="text-2xl hover:bg-muted"
+                                            onClick={() => {
+                                              form.setValue(`responseEmojis.${question.id}`, emoji);
+                                            }}
+                                          >
+                                            {emoji}
+                                          </Button>
+                                        ))}
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
+                                  
+                                  {form.watch(`responseEmojis.${question.id}`) && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      type="button"
+                                      onClick={() => form.setValue(`responseEmojis.${question.id}`, "")}
+                                    >
+                                      Clear
+                                    </Button>
+                                  )}
+                                </div>
+                                
+                                {/* Flags */}
+                                <div className="mt-3 flex flex-wrap gap-4">
+                                  <FormField
+                                    control={form.control}
+                                    name={`responseFlags.${question.id}.addToOneOnOne`}
+                                    render={({ field }) => (
+                                      <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                          id={`oneOnOne-${question.id}`}
+                                          checked={field.value || false}
+                                          onCheckedChange={field.onChange}
+                                        />
+                                        <label
+                                          htmlFor={`oneOnOne-${question.id}`}
+                                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center"
+                                        >
+                                          <UserPlus className="w-4 h-4 mr-1" />
+                                          Add to one-on-one
+                                        </label>
+                                      </div>
+                                    )}
+                                  />
+                                  
+                                  <FormField
+                                    control={form.control}
+                                    name={`responseFlags.${question.id}.flagForFollowUp`}
+                                    render={({ field }) => (
+                                      <div className="flex items-center space-x-2">
+                                        <Checkbox
+                                          id={`followUp-${question.id}`}
+                                          checked={field.value || false}
+                                          onCheckedChange={field.onChange}
+                                        />
+                                        <label
+                                          htmlFor={`followUp-${question.id}`}
+                                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer flex items-center"
+                                        >
+                                          <Flag className="w-4 h-4 mr-1" />
+                                          Flag for follow-up
+                                        </label>
+                                      </div>
+                                    )}
+                                  />
+                                </div>
+                              </Card>
                             ))}
                           </div>
                         ) : (
