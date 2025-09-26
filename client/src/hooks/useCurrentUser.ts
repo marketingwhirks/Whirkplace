@@ -24,14 +24,21 @@ export function useCurrentUser() {
         url += `?org=${orgFromUrl}`;
       }
 
+      // Add localStorage auth headers for development
+      const authUserId = localStorage.getItem('auth_user_id');
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+      
+      if (authUserId) {
+        headers['x-auth-user-id'] = authUserId;
+      }
+
       // Make actual API call to check current user authentication
-      // Rely on session cookies for authentication, not localStorage
       const response = await fetch(url, {
         method: 'GET',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers
       });
       
       if (!response.ok) {
