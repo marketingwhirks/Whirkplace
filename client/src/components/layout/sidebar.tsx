@@ -55,6 +55,11 @@ function SidebarContent() {
   const { data: currentUser, isLoading: userLoading, canSwitchRoles } = useViewAsRole();
   const { canAccessOneOnOnes, canAccessKraManagement, plan, isLoading: featureLoading } = useFeatureAccess();
   
+  // Get the organization parameter from URL to maintain context
+  const urlParams = new URLSearchParams(window.location.search);
+  const orgParam = urlParams.get('org');
+  const orgSuffix = orgParam ? `?org=${orgParam}` : '';
+  
   // Get organization information for the current user
   const { data: organization } = useQuery({
     queryKey: ["/api/organizations", currentUser?.organizationId],
@@ -155,7 +160,7 @@ function SidebarContent() {
             return (
               <Link
                 key={item.name}
-                href={needsUpgrade ? "/settings?tab=plan" : item.href}
+                href={needsUpgrade ? `/settings${orgSuffix ? `${orgSuffix}&tab=plan` : '?tab=plan'}` : `${item.href}${orgSuffix}`}
                 className={cn(
                   "sidebar-link flex items-center space-x-2 p-2 rounded-lg transition-colors text-sm",
                   needsUpgrade

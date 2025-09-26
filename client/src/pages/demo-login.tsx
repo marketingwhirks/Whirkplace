@@ -151,8 +151,8 @@ export default function DemoLoginPage() {
           description: `Logged in as ${data.user.name}` 
         });
         
-        // Redirect to dashboard
-        window.location.href = "/";
+        // Redirect to dashboard with organization parameter to maintain context
+        window.location.href = "/?org=fictitious-delicious";
       } else {
         const error = await response.json();
         toast({ 
@@ -206,8 +206,8 @@ export default function DemoLoginPage() {
           description: `Logged in as ${data.user.name}` 
         });
         
-        // Redirect to dashboard
-        window.location.href = "/";
+        // Redirect to dashboard with organization parameter to maintain context
+        window.location.href = "/?org=fictitious-delicious";
       } else {
         const error = await response.json();
         toast({ 
