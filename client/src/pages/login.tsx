@@ -2,9 +2,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Heart, Users, Building2, ArrowRight } from "lucide-react";
+import { Heart, Users, Building2, ArrowRight, Play } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
@@ -382,19 +382,34 @@ export default function LoginPage() {
                     </div>
                   </div>
 
-                  {/* Sign up option */}
-                  <div className="text-center text-sm text-muted-foreground pt-4 border-t">
-                    <span>
-                      New to Whirkplace?{' '}
-                      <button 
-                        type="button"
-                        onClick={() => setLocation('/signup')}
-                        className="underline hover:no-underline text-primary"
-                        data-testid="link-signup"
-                      >
-                        Create a new organization
-                      </button>
-                    </span>
+                  {/* Demo and Sign up options */}
+                  <div className="space-y-3 pt-4 border-t">
+                    <div className="text-center">
+                      <Link href="/demo">
+                        <Button 
+                          variant="outline" 
+                          className="w-full"
+                          type="button"
+                          data-testid="button-try-demo"
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          Try Live Demo
+                        </Button>
+                      </Link>
+                    </div>
+                    <div className="text-center text-sm text-muted-foreground">
+                      <span>
+                        New to Whirkplace?{' '}
+                        <button 
+                          type="button"
+                          onClick={() => setLocation('/signup')}
+                          className="underline hover:no-underline text-primary"
+                          data-testid="link-signup"
+                        >
+                          Create a new organization
+                        </button>
+                      </span>
+                    </div>
                   </div>
                 </>
               ) : (
@@ -600,7 +615,7 @@ export default function LoginPage() {
         {/* Footer */}
         <div className="text-center text-sm text-muted-foreground space-y-2">
           <p>By signing in, you agree to our terms of service</p>
-          <p>
+          <div className="flex items-center justify-center gap-4">
             <button 
               onClick={() => window.location.href = "/"} 
               className="underline hover:no-underline text-primary"
@@ -609,7 +624,17 @@ export default function LoginPage() {
             >
               ← Back to Home
             </button>
-          </p>
+            <span className="text-muted-foreground">|</span>
+            <Link href="/demo">
+              <button 
+                className="underline hover:no-underline text-primary"
+                data-testid="link-demo-footer"
+                type="button"
+              >
+                Try Demo →
+              </button>
+            </Link>
+          </div>
         </div>
       </div>
     </div>

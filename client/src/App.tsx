@@ -30,6 +30,8 @@ import LandingPage from "@/pages/LandingPage";
 import PartnerPage from "@/pages/PartnerPage";
 import DevLogin from "@/pages/DevLogin";
 import SelectOrganizationPage from "@/pages/select-organization";
+import DemoPage from "@/pages/demo";
+import DemoLoginPage from "@/pages/demo-login";
 import { OnboardingPage } from "@/pages/onboarding";
 import OAuthCallbackPage from "@/pages/oauth-callback";
 import Sidebar from "@/components/layout/sidebar";
@@ -107,6 +109,8 @@ function App() {
           <RoleSwitchProvider>
             <Toaster />
             <Switch>
+              <Route path="/demo" component={DemoPage} />
+              <Route path="/demo/login" component={DemoLoginPage} />
               <Route path="/signup" component={SignupPage} />
               <Route path="/business-signup" component={BusinessSignupPage} />
               <Route path="/login" component={LoginPage} />
