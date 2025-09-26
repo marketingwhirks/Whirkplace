@@ -10,7 +10,7 @@ import RatingStars from "@/components/checkin/rating-stars";
 import WinCard from "@/components/wins/win-card";
 import TeamMemberCard from "@/components/team/team-member-card";
 import CheckinDetail from "@/components/checkin/checkin-detail";
-import { Heart, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer } from "lucide-react";
+import { Heart, Sparkles, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
@@ -573,7 +573,7 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center">
-                  <Heart className="w-6 h-6 text-pink-600" />
+                  <Sparkles className="w-6 h-6 text-pink-600" />
                 </div>
               </div>
             </CardContent>
