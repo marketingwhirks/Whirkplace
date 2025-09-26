@@ -189,6 +189,12 @@ app.use((req, res, next) => {
     await ensureDemoDataExists();
     console.log('✅ Demo data check completed');
     
+    // Ensure Whirkplace super admin account exists
+    console.log('👤 Ensuring Whirkplace super admin account...');
+    const { ensureWhirkplaceSuperAdmin } = await import("./ensureSuperAdmin");
+    await ensureWhirkplaceSuperAdmin();
+    console.log('✅ Super admin account verified');
+    
     // Register routes
     console.log('🛣️  Registering routes...');
     const server = await registerRoutes(app);
