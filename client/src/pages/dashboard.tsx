@@ -360,14 +360,14 @@ export default function Dashboard() {
                       {stats?.averageRating?.toFixed(1) || "0.0"}
                     </p>
                   )}
-                  <p className="text-xs text-green-600">
+                  <p className="text-xs text-muted-foreground">
                     {stats?.averageRating && stats.averageRating > 0 
                       ? currentUser.role === "member" ? "Your average" : "+0.3 from last week" 
                       : "No data yet"}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                  <Heart className="w-6 h-6 fill-accent stroke-accent" />
+                  <Heart className="w-6 h-6 text-green-600" />
                 </div>
               </div>
             </CardContent>
@@ -390,7 +390,7 @@ export default function Dashboard() {
                       }
                     </p>
                   )}
-                  <p className="text-xs text-blue-600">
+                  <p className="text-xs text-muted-foreground">
                     {stats?.totalCheckins && stats.totalCheckins > 0 
                       ? currentUser.role === "member" 
                         ? "Total submitted" 
@@ -502,7 +502,7 @@ export default function Dashboard() {
                         {Array.isArray(recentWins) ? recentWins.length : 0}
                       </p>
                     )}
-                    <p className="text-xs text-yellow-600">
+                    <p className="text-xs text-muted-foreground">
                       {Array.isArray(recentWins) && recentWins.length > 0 ? "+5 from last week" : "No wins yet"}
                     </p>
                   </div>
@@ -527,8 +527,8 @@ export default function Dashboard() {
                         {Array.isArray(questions) ? questions.length : 0}
                       </p>
                     )}
-                    <p className="text-xs text-purple-600">
-                      {Array.isArray(questions) && questions.length > 0 ? "3 pending responses" : "No questions yet"}
+                    <p className="text-xs text-muted-foreground">
+                      {Array.isArray(questions) && questions.length > 0 ? "For weekly check-ins" : "No questions yet"}
                     </p>
                   </div>
                   <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -562,7 +562,7 @@ export default function Dashboard() {
                           : shoutoutMetrics.personalCount}
                     </p>
                   )}
-                  <p className="text-xs text-pink-600" data-testid="text-shoutouts-detail">
+                  <p className="text-xs text-muted-foreground" data-testid="text-shoutouts-detail">
                     {currentUser.role === "admin" && shoutoutMetrics.topTeam
                       ? `Top: ${shoutoutMetrics.topTeam.teamName} (${shoutoutMetrics.topTeam.count})`
                       : currentUser.role === "manager" && shoutoutMetrics.personalCount !== undefined
