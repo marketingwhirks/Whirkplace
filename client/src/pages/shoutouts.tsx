@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Edit, Trash2, Users, Lock, Unlock, HandMetal, Star, MessageCircle, Send, Gift, Check, ChevronsUpDown, X } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Lock, Unlock, Sparkles, Star, MessageCircle, Send, Gift, Check, ChevronsUpDown, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -505,7 +505,7 @@ export default function ShoutoutsPage() {
               ) : shoutouts.length === 0 ? (
                 <Card>
                   <CardContent className="p-12 text-center">
-                    <HandMetal className="mx-auto h-12 w-12 fill-accent stroke-accent mb-4" />
+                    <Sparkles className="mx-auto h-12 w-12 fill-accent stroke-accent mb-4" />
                     <h3 className="text-lg font-medium mb-2">No shoutouts yet</h3>
                     <p className="text-muted-foreground mb-4">
                       Be the first to recognize someone's great work!

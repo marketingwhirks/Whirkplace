@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { 
-  Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu, HandMetal, 
+  Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu, Sparkles, 
   ClipboardCheck, Shield, Crown, Calendar, Target, Lock, Rocket
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -34,7 +34,7 @@ function getIsActive(currentLocation: string, itemHref: string): boolean {
 const baseNavigation = [
   { name: "Dashboard", href: "/", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Check-ins", href: "/checkins", icon: ClipboardList, roles: ["member", "manager", "admin"] },
-  { name: "Shout Outs", href: "/shoutouts", icon: HandMetal, roles: ["member", "manager", "admin"] },
+  { name: "Shout Outs", href: "/shoutouts", icon: Sparkles, roles: ["member", "manager", "admin"] },
   { name: "Wins", href: "/wins", icon: Trophy, roles: ["member", "manager", "admin"] },
   { name: "One-on-Ones", href: "/one-on-ones", icon: Calendar, roles: ["member", "manager", "admin"] },
   { name: "Questions", href: "/questions", icon: HelpCircle, roles: ["manager", "admin"] },
