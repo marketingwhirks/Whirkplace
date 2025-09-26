@@ -33,8 +33,18 @@ export function resolveOrganization() {
       
       console.log(`🌐 Resolving organization for host: ${host}, org param: ${urlParam}`);
       
-      // Method 1: Use org query parameter (for development and explicit org selection)
-      if (urlParam) {
+      // Method 1: Check session organizationId FIRST (for demo users and logged-in users)
+      if ((req.session as any)?.organizationId) {
+        const sessionOrgId = (req.session as any).organizationId;
+        console.log(`🔐 Found organization in session: ${sessionOrgId}`);
+        organization = await storage.getOrganization(sessionOrgId);
+        if (organization) {
+          console.log(`✅ Using session organization: ${organization.name} (${organization.slug})`);
+        }
+      }
+      
+      // Method 2: Use org query parameter (for development and explicit org selection)
+      if (!organization && urlParam) {
         if (urlParam === 'default') {
           organization = await storage.getOrganizationBySlug('whirkplace');
         } else {
@@ -43,7 +53,7 @@ export function resolveOrganization() {
         console.log(`🔍 Org param lookup (${urlParam}):`, organization ? 'found' : 'not found');
       }
       
-      // Method 2: Domain-based organization resolution
+      // Method 3: Domain-based organization resolution
       if (!organization && host) {
         // Handle root domains (whirkplace.com, localhost:5000, etc.)
         if (host === 'whirkplace.com' || 
