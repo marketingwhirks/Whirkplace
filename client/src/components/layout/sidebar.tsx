@@ -54,6 +54,21 @@ function SidebarContent() {
   const [location] = useLocation();
   const { data: currentUser, isLoading: userLoading, canSwitchRoles } = useViewAsRole();
   const { canAccessOneOnOnes, canAccessKraManagement, plan, isLoading: featureLoading } = useFeatureAccess();
+  
+  // Get organization information for the current user
+  const { data: organization } = useQuery({
+    queryKey: ["/api/organizations", currentUser?.organizationId],
+    queryFn: async () => {
+      if (!currentUser?.organizationId) return null;
+      const response = await fetch(`/api/organizations/${currentUser.organizationId}`);
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!currentUser?.organizationId,
+  });
+
+  // Check if user is from Whirkplace organization (super admin organization)
+  const isWhirkplaceOrg = organization?.slug === 'whirkplace' || organization?.name?.toLowerCase() === 'whirkplace';
 
   // Fetch pending check-ins count for badge
   const { data: pendingCheckins = [], isLoading: pendingLoading } = useQuery<Checkin[]>({
@@ -75,12 +90,12 @@ function SidebarContent() {
         if (item.name === "Admin Panel" && canSwitchRoles) {
           return true;
         }
-        // Special exception: Super Admin only for users with isSuperAdmin flag
-        if (item.name === "Super Admin" && currentUser.isSuperAdmin) {
+        // Special exception: Super Admin only for Whirkplace org users with isSuperAdmin flag
+        if (item.name === "Super Admin" && isWhirkplaceOrg && currentUser.isSuperAdmin) {
           return true;
         }
-        // Special exception: Onboarding only for users with isSuperAdmin flag
-        if (item.name === "Onboarding" && currentUser.isSuperAdmin) {
+        // Special exception: Onboarding only for Whirkplace org users with isSuperAdmin flag
+        if (item.name === "Onboarding" && isWhirkplaceOrg && currentUser.isSuperAdmin) {
           return true;
         }
         return false;
@@ -91,7 +106,7 @@ function SidebarContent() {
       
       return true;
     });
-  }, [currentUser, canSwitchRoles, canAccessOneOnOnes, canAccessKraManagement]);
+  }, [currentUser, canSwitchRoles, canAccessOneOnOnes, canAccessKraManagement, isWhirkplaceOrg]);
 
   // Get badge count for items with badges
   const getBadgeCount = (item: typeof baseNavigation[0]) => {
