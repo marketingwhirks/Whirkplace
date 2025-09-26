@@ -23,7 +23,7 @@ import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutou
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { aggregationService } from "./services/aggregation";
-import { requireOrganization, sanitizeForOrganization } from "./middleware/organization";
+import { requireOrganization, resolveOrganization, sanitizeForOrganization } from "./middleware/organization";
 import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser, requireSuperAdmin, requirePartnerAdmin, requireOnboarded } from "./middleware/auth";
 import { generateCSRF, validateCSRF, csrfTokenEndpoint } from "./middleware/csrf";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
@@ -1769,6 +1769,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Apply organization middleware to all API routes AFTER onboarding routes
   // This ensures onboarding endpoints remain accessible during initial setup
+  app.use("/api", resolveOrganization());
   app.use("/api", requireOrganization());
   
   // PUBLIC BUSINESS SIGNUP ROUTES (no authentication required)

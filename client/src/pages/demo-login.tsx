@@ -150,8 +150,9 @@ export default function DemoLoginPage() {
         setTimeout(() => {
           // Clear React Query cache and force reload to ensure fresh auth state
           queryClient.clear();
-          // Force a full page reload with the organization parameter
-          window.location.replace("/?org=fictitious-delicious");
+          // Force a full page reload with the organization parameter - append to existing URL
+          const baseUrl = window.location.origin;
+          window.location.href = `${baseUrl}/?org=fictitious-delicious`;
         }, 500);
       } else {
         const error = await response.json();
@@ -205,8 +206,9 @@ export default function DemoLoginPage() {
         setTimeout(() => {
           // Clear React Query cache and force reload to ensure fresh auth state
           queryClient.clear();
-          // Force a full page reload with the organization parameter
-          window.location.replace("/?org=fictitious-delicious");
+          // Force a full page reload with the organization parameter - append to existing URL
+          const baseUrl = window.location.origin;
+          window.location.href = `${baseUrl}/?org=fictitious-delicious`;
         }, 500);
       } else {
         const error = await response.json();
