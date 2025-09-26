@@ -1483,8 +1483,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Update onboarding step completion
-  app.post("/api/onboarding/complete-step", authenticateUser(), requireRole(["admin", "super_admin"]), async (req, res) => {
+  // Allow any authenticated user who is an admin of their organization
+  app.post("/api/onboarding/complete-step", authenticateUser(), async (req, res) => {
     try {
+      // Check if user has admin rights in their organization
+      const currentUser = req.currentUser!;
+      if (currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
+        return res.status(403).json({ 
+          message: "Access denied. Only administrators and super administrators can complete the onboarding process." 
+        });
+      }
+      
       const { step } = req.body;
       const validSteps = ['workspace', 'billing', 'roles', 'values', 'members', 'settings'];
       
@@ -1551,8 +1560,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Complete entire onboarding
-  app.post("/api/onboarding/complete", authenticateUser(), requireRole(["admin", "super_admin"]), async (req, res) => {
+  // Allow any authenticated user who is an admin of their organization
+  app.post("/api/onboarding/complete", authenticateUser(), async (req, res) => {
     try {
+      // Check if user has admin rights in their organization
+      const currentUser = req.currentUser!;
+      if (currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
+        return res.status(403).json({ 
+          message: "Access denied. Only administrators and super administrators can complete the onboarding process." 
+        });
+      }
+      
       const organization = await storage.getOrganization(req.orgId);
       if (!organization) {
         return res.status(404).json({ message: "Organization not found" });
