@@ -27,8 +27,12 @@ interface FeatureResponse {
  * Hook to check feature availability based on organization plan
  */
 export function useFeatureAccess() {
+  // Get the organization from the URL or default to 'default'
+  const params = new URLSearchParams(window.location.search);
+  const orgFromUrl = params.get('org') || 'default';
+
   const { data, isLoading, error } = useQuery<FeatureResponse>({
-    queryKey: ["/api/features"],
+    queryKey: ["/api/features", { org: orgFromUrl }],
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
   });
