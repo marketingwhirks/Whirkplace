@@ -139,20 +139,20 @@ export default function DemoLoginPage() {
       if (response.ok) {
         const data = await response.json();
         
-        // Store user data for client-side use
-        if (data.user) {
-          localStorage.setItem("whirkplace-user", JSON.stringify(data.user));
-          localStorage.setItem("auth_user_id", data.user.id);
-          localStorage.setItem("auth_user_data", JSON.stringify(data.user));
-        }
+        // Session is established via cookies, no need for localStorage
         
         toast({ 
           title: "Welcome to the demo!", 
           description: `Logged in as ${data.user.name}` 
         });
         
-        // Redirect to dashboard with organization parameter to maintain context
-        window.location.href = "/?org=fictitious-delicious";
+        // Small delay to ensure session is fully established
+        setTimeout(() => {
+          // Clear React Query cache before redirect
+          queryClient.clear();
+          // Redirect to dashboard with organization parameter to maintain context
+          window.location.href = "/?org=fictitious-delicious";
+        }, 500);
       } else {
         const error = await response.json();
         toast({ 
@@ -194,20 +194,20 @@ export default function DemoLoginPage() {
       if (response.ok) {
         const data = await response.json();
         
-        // Store user data for client-side use
-        if (data.user) {
-          localStorage.setItem("whirkplace-user", JSON.stringify(data.user));
-          localStorage.setItem("auth_user_id", data.user.id);
-          localStorage.setItem("auth_user_data", JSON.stringify(data.user));
-        }
+        // Session is established via cookies, no need for localStorage
         
         toast({ 
           title: "Welcome to the demo!", 
           description: `Logged in as ${data.user.name}` 
         });
         
-        // Redirect to dashboard with organization parameter to maintain context
-        window.location.href = "/?org=fictitious-delicious";
+        // Small delay to ensure session is fully established
+        setTimeout(() => {
+          // Clear React Query cache before redirect
+          queryClient.clear();
+          // Redirect to dashboard with organization parameter to maintain context
+          window.location.href = "/?org=fictitious-delicious";
+        }, 500);
       } else {
         const error = await response.json();
         toast({ 

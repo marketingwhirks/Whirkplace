@@ -13,26 +13,25 @@ export function useCurrentUser() {
     : new URLSearchParams();
   
   // Check both regular URL params and hash params (for hash routing)
-  const orgFromUrl = urlParams.get('org') || hashParams.get('org') || 'default';
+  const orgFromUrl = urlParams.get('org') || hashParams.get('org');
   
   return useQuery<User>({
     queryKey: ["/api/users/current", { org: orgFromUrl }],
     queryFn: async () => {
-      // Add localStorage auth headers to bypass cookie issues
-      const authUserId = localStorage.getItem('x-auth-user-id');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      
-      if (authUserId) {
-        headers['x-auth-user-id'] = authUserId;
+      // Build the URL, only append org param if it exists
+      let url = '/api/users/current';
+      if (orgFromUrl) {
+        url += `?org=${orgFromUrl}`;
       }
 
       // Make actual API call to check current user authentication
-      const response = await fetch(`/api/users/current?org=${orgFromUrl}`, {
+      // Rely on session cookies for authentication, not localStorage
+      const response = await fetch(url, {
         method: 'GET',
         credentials: 'include',
-        headers
+        headers: {
+          'Content-Type': 'application/json'
+        }
       });
       
       if (!response.ok) {
