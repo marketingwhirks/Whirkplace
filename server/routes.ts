@@ -1486,14 +1486,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Allow any authenticated user who is an admin of their organization
   app.post("/api/onboarding/complete-step", authenticateUser(), async (req, res) => {
     try {
-      // Check if user has admin rights in their organization
+      // Check if user has owner or admin rights in their organization
       const currentUser = req.currentUser!;
-      console.log("Onboarding step - User:", currentUser.email, "Role:", currentUser.role, "SuperAdmin:", currentUser.isSuperAdmin, "OrgId:", req.orgId);
+      console.log("Onboarding step - User:", currentUser.email, "Role:", currentUser.role, "Owner:", currentUser.isOwner, "SuperAdmin:", currentUser.isSuperAdmin, "OrgId:", req.orgId);
       
-      if (currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
-        console.error("Onboarding access denied for user:", currentUser.email, "with role:", currentUser.role);
+      // Allow owners, admins, and super admins to complete onboarding
+      if (!currentUser.isOwner && currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
+        console.error("Onboarding access denied for user:", currentUser.email, "with role:", currentUser.role, "isOwner:", currentUser.isOwner);
         return res.status(403).json({ 
-          message: "Access denied. Only administrators and super administrators can complete the onboarding process." 
+          message: "Access denied. Only organization owners, administrators, and super administrators can complete the onboarding process." 
         });
       }
       
@@ -1566,14 +1567,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Allow any authenticated user who is an admin of their organization
   app.post("/api/onboarding/complete", authenticateUser(), async (req, res) => {
     try {
-      // Check if user has admin rights in their organization
+      // Check if user has owner or admin rights in their organization
       const currentUser = req.currentUser!;
-      console.log("Onboarding complete - User:", currentUser.email, "Role:", currentUser.role, "SuperAdmin:", currentUser.isSuperAdmin, "OrgId:", req.orgId);
+      console.log("Onboarding complete - User:", currentUser.email, "Role:", currentUser.role, "Owner:", currentUser.isOwner, "SuperAdmin:", currentUser.isSuperAdmin, "OrgId:", req.orgId);
       
-      if (currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
-        console.error("Onboarding complete access denied for user:", currentUser.email, "with role:", currentUser.role);
+      // Allow owners, admins, and super admins to complete onboarding
+      if (!currentUser.isOwner && currentUser.role !== 'admin' && !currentUser.isSuperAdmin) {
+        console.error("Onboarding complete access denied for user:", currentUser.email, "with role:", currentUser.role, "isOwner:", currentUser.isOwner);
         return res.status(403).json({ 
-          message: "Access denied. Only administrators and super administrators can complete the onboarding process." 
+          message: "Access denied. Only organization owners, administrators, and super administrators can complete the onboarding process." 
         });
       }
       
@@ -1897,18 +1899,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       console.log("Organization created:", organization.id);
 
-      // Create admin user - organizationId is passed as first parameter
-      console.log("Creating admin user for organization:", organization.id);
+      // Create admin user as OWNER - organizationId is passed as first parameter
+      console.log("Creating owner/admin user for organization:", organization.id);
       const adminUser = await storage.createUser(organization.id, {
         username: data.email.split('@')[0],
         password: data.password, // Should be hashed in real implementation
         name: `${data.firstName} ${data.lastName}`,
         email: data.email,
-        role: "admin",
+        role: "admin", // Owner has admin role
+        isOwner: true, // Mark as organization owner/founder
         isActive: true,
         authProvider: "local",
       });
-      console.log("Admin user created:", adminUser.id);
+      console.log("Owner/admin user created:", adminUser.id, "with owner status");
 
       // Create initial onboarding record
       const onboardingId = randomBytes(16).toString('hex');

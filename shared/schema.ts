@@ -165,6 +165,7 @@ export const users = pgTable("users", {
   teamId: varchar("team_id"),
   managerId: varchar("manager_id"),
   avatar: text("avatar"),
+  isOwner: boolean("is_owner").notNull().default(false), // Tracks if user is the organization founder/owner
   // Slack integration fields
   slackUserId: text("slack_user_id"), // Unique Slack user ID
   slackUsername: text("slack_username"), // Slack username for tagging (@username)
@@ -587,6 +588,8 @@ export const insertUserSchema = createInsertSchema(users).omit({
   microsoftAccessToken: z.string().optional(),
   microsoftRefreshToken: z.string().optional(),
   authProvider: z.enum([AuthProvider.LOCAL, AuthProvider.SLACK, AuthProvider.MICROSOFT]).default(AuthProvider.LOCAL),
+  // Owner flag for organization founders
+  isOwner: z.boolean().default(false),
 });
 
 export const insertTeamSchema = createInsertSchema(teams).omit({
