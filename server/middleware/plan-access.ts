@@ -3,8 +3,8 @@ import { Plan, PlanType } from "@shared/schema";
 
 // Feature requirements mapping
 const FEATURE_PLAN_REQUIREMENTS = {
-  one_on_ones: Plan.ENTERPRISE,
-  kra_management: Plan.ENTERPRISE,
+  one_on_ones: Plan.PROFESSIONAL,  // Changed from ENTERPRISE to PROFESSIONAL
+  kra_management: Plan.PROFESSIONAL,  // Changed from ENTERPRISE to PROFESSIONAL
   advanced_analytics: Plan.ENTERPRISE,
   slack_integration: Plan.ENTERPRISE,
   teams_integration: Plan.ENTERPRISE,
@@ -26,6 +26,7 @@ export function hasFeatureAccess(organizationPlan: PlanType, feature: FeatureNam
     [Plan.STARTER]: 1,
     [Plan.PROFESSIONAL]: 2,
     [Plan.ENTERPRISE]: 3,
+    [Plan.PARTNER]: 3, // Partner has same level as enterprise
   };
   
   const currentPlanLevel = planHierarchy[organizationPlan];

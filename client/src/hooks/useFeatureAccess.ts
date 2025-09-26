@@ -58,10 +58,10 @@ export function useFeatureAccess() {
    * Get required plan for a specific feature
    */
   const getRequiredPlan = (feature: keyof FeatureAvailability): PlanType => {
-    if (feature === "one_on_ones" || feature === "kra_management" || feature === "advanced_analytics" || feature === "slack_integration" || feature === "teams_integration") {
+    if (feature === "advanced_analytics" || feature === "slack_integration" || feature === "teams_integration") {
       return "enterprise";
     }
-    if (feature === "teams" || feature === "reviews" || feature === "analytics") {
+    if (feature === "one_on_ones" || feature === "kra_management" || feature === "teams" || feature === "reviews" || feature === "analytics") {
       return "professional";
     }
     return "starter";

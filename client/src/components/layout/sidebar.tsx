@@ -53,7 +53,7 @@ const baseNavigation = [
 function SidebarContent() {
   const [location] = useLocation();
   const { data: currentUser, isLoading: userLoading, canSwitchRoles } = useViewAsRole();
-  const { canAccessOneOnOnes, canAccessKraManagement, isLoading: featureLoading } = useFeatureAccess();
+  const { canAccessOneOnOnes, canAccessKraManagement, plan, isLoading: featureLoading } = useFeatureAccess();
 
   // Fetch pending check-ins count for badge
   const { data: pendingCheckins = [], isLoading: pendingLoading } = useQuery<Checkin[]>({
@@ -86,14 +86,8 @@ function SidebarContent() {
         return false;
       }
       
-      // Plan-based feature filtering
-      if (item.name === "One-on-Ones" && !canAccessOneOnOnes) {
-        return false;
-      }
-      
-      if (item.name === "KRA Management" && !canAccessKraManagement) {
-        return false;
-      }
+      // For KRA Management and One-on-Ones, show them for all plans but with upgrade indicator
+      // Don't filter them out, we'll show an upgrade indicator instead
       
       return true;
     });
@@ -139,29 +133,43 @@ function SidebarContent() {
             const badgeCount = getBadgeCount(item);
             const showBadge = badgeCount !== undefined && badgeCount > 0;
             
+            // Check if this is a restricted feature for Starter plan
+            const needsUpgrade = plan === "starter" && (
+              (item.name === "One-on-Ones" && !canAccessOneOnOnes) ||
+              (item.name === "KRA Management" && !canAccessKraManagement)
+            );
+            
             return (
               <Link
                 key={item.name}
-                href={item.href}
+                href={needsUpgrade ? "/settings?tab=plan" : item.href}
                 className={cn(
                   "sidebar-link flex items-center space-x-2 p-2 rounded-lg transition-colors text-sm",
-                  isActive
+                  needsUpgrade
+                    ? "text-muted-foreground/50 hover:bg-accent/50 cursor-pointer"
+                    : isActive
                     ? "bg-accent text-accent-foreground"
                     : "text-muted-foreground hover:text-foreground hover:bg-accent"
                 )}
                 data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                title={needsUpgrade ? "Upgrade to Professional plan to access this feature" : undefined}
               >
                 <item.icon className="w-4 h-4 flex-shrink-0" />
                 <span className={cn("text-sm", isActive && "font-medium")}>
                   {item.name}
                 </span>
-                {showBadge && (
+                {needsUpgrade && (
+                  <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-400 font-medium">
+                    Upgrade
+                  </span>
+                )}
+                {showBadge && !needsUpgrade && (
                   <span className="ml-auto notification-badge bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5">
                     {badgeCount}
                   </span>
                 )}
                 {/* Show loading indicator for badges */}
-                {item.hasBadge && pendingLoading && item.name === "Reviews" && (
+                {item.hasBadge && pendingLoading && item.name === "Reviews" && !needsUpgrade && (
                   <div className="ml-auto w-5 h-5">
                     <Skeleton className="w-5 h-5 rounded-full" />
                   </div>
