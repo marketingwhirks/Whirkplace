@@ -102,6 +102,7 @@ export const organizations = pgTable("organizations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   slug: text("slug").notNull().unique(), // for URL routing: company.whirkplace.com
+  industry: text("industry"), // Organization's industry (technology, healthcare, finance, etc.)
   customValues: text("custom_values").array().notNull().default(defaultCompanyValuesArray),
   plan: text("plan").notNull().default("starter"), // starter, professional, enterprise
   partnerFirmId: varchar("partner_firm_id"), // Reference to partner firm if managed by a partner

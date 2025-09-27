@@ -1843,6 +1843,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const signupSchema = z.object({
         organizationName: z.string().min(2).max(100),
+        industry: z.string(),
         organizationSize: z.string(),
         firstName: z.string().min(2).max(50),
         lastName: z.string().min(2).max(50),
@@ -1880,6 +1881,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const organization = await storage.createOrganization({
         name: data.organizationName,
         slug: orgSlug,
+        industry: data.industry, // Store the industry
         plan: "starter", // Default plan
         customValues: ["Innovation", "Teamwork", "Excellence"], // Default company values
         enableSlackIntegration: false,
@@ -8351,6 +8353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const signupSchema = z.object({
         organizationName: z.string().min(2).max(100),
+        industry: z.string(),
         organizationSize: z.string(),
         firstName: z.string().min(2).max(50),
         lastName: z.string().min(2).max(50),
