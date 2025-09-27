@@ -47,6 +47,15 @@ Implemented comprehensive account ownership and transfer capabilities:
 
 ## Roadmap
 
+### User-Friendly Tour Guides (September 2025)
+Successfully implemented interactive tour guides using react-joyride for onboarding and feature discovery:
+- **TourGuide Component**: Custom wrapper with shadcn/ui themed tooltips and progress indicators
+- **Tour Management**: Database-backed progress tracking with user_tours table for persistent state
+- **Auto-Triggering**: Smart tour sequencing for new users starting with dashboard intro
+- **Settings Integration**: Full tour management UI in settings page for resetting and managing tours
+- **Mobile Responsive**: Adaptive positioning and styling for mobile devices
+- **Tour Coverage**: Comprehensive tours for Dashboard, Check-ins, Wins, Teams, Analytics, and Settings pages
+
 ### Immediate Priorities
 - **Microsoft 365 SSO**: Single sign-on integration with Microsoft 365 credentials alongside existing Slack authentication
 - **Microsoft Teams Integration**: Real-time notifications and workflow automation similar to Slack integration

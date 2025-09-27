@@ -7,7 +7,7 @@ import Joyride, {
   STATUS,
 } from 'react-joyride';
 import { useTourManager } from '@/hooks/useTours';
-import { useMobile } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { X, RotateCcw, ChevronRight, ChevronLeft, Check } from 'lucide-react';
 import {
@@ -40,7 +40,7 @@ export function TourGuide({
   delay = 500,
   className,
 }: TourGuideProps) {
-  const isMobile = useMobile();
+  const isMobile = useIsMobile();
   const tourManager = useTourManager(tourId);
   const [run, setRun] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
