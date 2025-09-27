@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 import type { User } from "@shared/schema";
 import { sanitizeUser } from "../utils/sanitizeUser";
+import { getSessionUser } from "./session";
 
 /**
  * SECURITY: Additional authentication security guards
@@ -324,20 +325,33 @@ export function authenticateUser() {
       
       console.log(`🏢 Final resolved organization ID: ${resolvedOrgId}`);
       
-      // Check for session-based authentication FIRST (primary method)
-      if (req.session && req.session.userId) {
-        console.log(`🎫 Found session userId: ${req.session.userId}`);
-        const user = await storage.getUser(resolvedOrgId, req.session.userId);
+      // Check for session-based authentication using centralized session management
+      const sessionData = getSessionUser(req);
+      console.log(`🎫 Session check:`, {
+        hasSession: !!req.session,
+        sessionId: req.session?.id,
+        userId: sessionData?.userId,
+        organizationId: sessionData?.organizationId
+      });
+      
+      if (sessionData?.userId && sessionData?.organizationId) {
+        console.log(`✅ Found session for user: ${sessionData.userId} in org: ${sessionData.organizationId}`);
+        
+        // Use session's organization ID, not the resolved one from URL
+        const user = await storage.getUser(sessionData.organizationId, sessionData.userId);
         if (user && user.isActive) {
           console.log(`✅ Session auth successful for: ${user.name} (role: ${user.role}, superAdmin: ${user.isSuperAdmin})`);
           req.currentUser = sanitizeUser(user);
-          req.orgId = resolvedOrgId; // Ensure orgId is set for downstream middleware
+          req.orgId = sessionData.organizationId; // Use session's org ID
           return next();
         } else {
-          console.log(`❌ Session auth failed - user not found or inactive in org: ${resolvedOrgId}`);
+          console.log(`❌ Session auth failed - user not found or inactive`);
+          // Clear invalid session
+          delete req.session.userId;
+          delete req.session.organizationId;
         }
       } else {
-        console.log(`❌ No session or session userId`);
+        console.log(`❌ No valid session data`);
       }
 
       // SECURITY FIX: Backdoor authentication has been disabled for automatic access

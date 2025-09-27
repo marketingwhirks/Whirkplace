@@ -4,6 +4,7 @@ import { createServer, type Server } from "http";
 import { z } from "zod";
 import { storage } from "./storage";
 import { db } from "./db";
+import { setSessionUser, clearSessionUser } from "./middleware/session";
 import { 
   insertUserSchema, insertTeamSchema, insertCheckinSchema, 
   insertQuestionSchema, insertWinSchema, insertCommentSchema, insertShoutoutSchema, updateShoutoutSchema,
