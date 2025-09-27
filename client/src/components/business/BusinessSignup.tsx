@@ -150,37 +150,33 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
                   )}
                 />
                 
-                {/* DEBUGGING - INDUSTRY FIELD */}
-                <div className="border-2 border-red-500 p-4 bg-red-50">
-                  <p className="text-red-600 font-bold mb-2">INDUSTRY FIELD BELOW (THIS IS A TEST):</p>
-                  <FormField
-                    control={form.control}
-                    name="industry"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Industry *</FormLabel>
-                        <FormControl>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <SelectTrigger data-testid="select-industry" className="w-full">
-                              <SelectValue placeholder="Select your industry" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {industries.map((ind) => (
-                                <SelectItem key={ind.value} value={ind.value}>
-                                  {ind.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormControl>
-                        <FormDescription>
-                          Select the industry that best describes your organization
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                <FormField
+                  control={form.control}
+                  name="industry"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Industry *</FormLabel>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <SelectTrigger data-testid="select-industry" className="w-full">
+                            <SelectValue placeholder="Select your industry" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {industries.map((ind) => (
+                              <SelectItem key={ind.value} value={ind.value}>
+                                {ind.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormDescription>
+                        Select the industry that best describes your organization
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
                 
                 <FormField
                   control={form.control}
