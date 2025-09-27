@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { BusinessSignup } from "@/components/business/BusinessSignup";
@@ -38,6 +38,59 @@ export default function BusinessSignupPage() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  
+  // Handle payment success/cancel return from Stripe
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const step = params.get('step');
+    const organizationId = params.get('organizationId');
+    const payment = params.get('payment');
+    const error = params.get('error');
+    const canceled = params.get('canceled');
+    
+    if (step === 'theme' && organizationId && payment === 'success') {
+      // Payment successful, move to theme step
+      setSignupData(prev => ({ 
+        ...prev, 
+        organizationId,
+        businessInfo: { organizationId }
+      }));
+      setCurrentStep('theme');
+      toast({
+        title: "Payment Successful!",
+        description: "Your payment has been processed. Let's customize your brand.",
+      });
+      // Clean up URL
+      window.history.replaceState({}, '', '/business-signup');
+    } else if (canceled === 'true') {
+      // Payment canceled
+      toast({
+        title: "Payment Canceled",
+        description: "You canceled the payment process. Please select a plan to continue.",
+        variant: "destructive",
+      });
+      // Clean up URL
+      window.history.replaceState({}, '', '/business-signup');
+    } else if (error) {
+      // Handle error from Stripe
+      const errorMessages: Record<string, string> = {
+        missing_parameters: "Invalid payment session. Please try again.",
+        stripe_not_configured: "Payment system not configured. Please contact support.",
+        invalid_session: "Invalid payment session. Please try again.",
+        organization_mismatch: "Payment session mismatch. Please try again.",
+        payment_not_completed: "Payment was not completed. Please try again.",
+        checkout_verification_failed: "Payment verification failed. Please contact support.",
+      };
+      
+      toast({
+        title: "Payment Error",
+        description: errorMessages[error] || "An error occurred during payment. Please try again.",
+        variant: "destructive",
+      });
+      // Clean up URL
+      window.history.replaceState({}, '', '/business-signup');
+    }
+  }, [toast, setCurrentStep, setSignupData]);
 
   // Fetch available business plans
   const { data: plans, isLoading: plansLoading } = useQuery({
@@ -87,16 +140,36 @@ export default function BusinessSignupPage() {
       return response.json();
     },
     onSuccess: (data) => {
-      setSignupData(prev => ({ 
-        ...prev, 
-        selectedPlan: { planId: data.planId, billingCycle: data.billingCycle },
-        stripeCustomerId: data.stripeCustomerId,
-      }));
-      setCurrentStep("theme");
-      toast({
-        title: "Plan Selected!",
-        description: `You've selected your plan. Now let's customize your brand.`,
-      });
+      // Check if payment is required (paid plan)
+      if (data.requiresPayment && data.checkoutUrl) {
+        // Store plan data for after checkout
+        setSignupData(prev => ({ 
+          ...prev, 
+          selectedPlan: { planId: data.planId, billingCycle: data.billingCycle },
+          sessionId: data.sessionId,
+        }));
+        
+        toast({
+          title: "Redirecting to Payment",
+          description: "You'll be redirected to complete your payment securely.",
+        });
+        
+        // Redirect to Stripe checkout
+        setTimeout(() => {
+          window.location.href = data.checkoutUrl;
+        }, 1500);
+      } else {
+        // Starter plan - no payment required
+        setSignupData(prev => ({ 
+          ...prev, 
+          selectedPlan: { planId: data.planId || 'starter', billingCycle: data.billingCycle || 'monthly' },
+        }));
+        setCurrentStep("theme");
+        toast({
+          title: "Plan Selected!",
+          description: `You've selected the starter plan. Now let's customize your brand.`,
+        });
+      }
     },
     onError: (error: any) => {
       toast({

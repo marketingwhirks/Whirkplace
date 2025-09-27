@@ -8423,11 +8423,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = planSchema.parse(req.body);
 
-      // Update organization plan
-      await storage.updateOrganization(data.organizationId, {
-        plan: data.planId,
-      });
-
       // If not starter plan, handle payment processing
       if (data.planId !== "starter" && stripe) {
         // Create Stripe customer and setup subscription
@@ -8436,23 +8431,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ message: "Organization not found" });
         }
 
-        const customer = await stripe.customers.create({
-          name: organization.name,
+        // Create or retrieve Stripe customer
+        let customer;
+        if (organization.stripeCustomerId) {
+          customer = await stripe.customers.retrieve(organization.stripeCustomerId);
+        } else {
+          customer = await stripe.customers.create({
+            name: organization.name,
+            email: organization.email,
+            metadata: {
+              organizationId: data.organizationId,
+              plan: data.planId,
+              billingCycle: data.billingCycle,
+            },
+          });
+          
+          // Store the Stripe customer ID
+          await storage.updateOrganization(data.organizationId, {
+            stripeCustomerId: customer.id,
+          });
+        }
+
+        // Get price based on plan and billing cycle
+        const plans: Record<string, Record<string, number>> = {
+          professional: {
+            monthly: 1000,  // $10/month
+            annual: 9600,   // $96/year ($8/month with 20% off)
+          },
+          enterprise: {
+            monthly: 2500,  // $25/month
+            annual: 24000,  // $240/year ($20/month with 20% off)
+          }
+        };
+
+        const price = plans[data.planId]?.[data.billingCycle];
+        if (!price) {
+          return res.status(400).json({ message: "Invalid plan or billing cycle" });
+        }
+
+        // Get the base URL for redirects
+        const protocol = req.get('x-forwarded-proto') || req.protocol;
+        const host = req.get('host');
+        const baseUrl = `${protocol}://${host}`;
+
+        // Create Stripe checkout session
+        const session = await stripe.checkout.sessions.create({
+          customer: customer.id,
+          payment_method_types: ['card'],
+          mode: data.billingCycle === 'monthly' ? 'subscription' : 'payment',
+          line_items: [
+            {
+              price_data: {
+                currency: 'usd',
+                product_data: {
+                  name: `Whirkplace ${data.planId.charAt(0).toUpperCase() + data.planId.slice(1)} Plan`,
+                  description: `${data.billingCycle === 'monthly' ? 'Monthly' : 'Annual'} subscription for ${organization.name}`,
+                },
+                unit_amount: price,
+                ...(data.billingCycle === 'monthly' ? {
+                  recurring: {
+                    interval: 'month' as const,
+                    interval_count: 1,
+                  }
+                } : {})
+              },
+              quantity: 1,
+            },
+          ],
+          success_url: `${baseUrl}/api/business/checkout-success?session_id={CHECKOUT_SESSION_ID}&organizationId=${data.organizationId}`,
+          cancel_url: `${baseUrl}/business-signup?canceled=true`,
           metadata: {
             organizationId: data.organizationId,
-            plan: data.planId,
+            planId: data.planId,
             billingCycle: data.billingCycle,
           },
         });
 
+        // Store the session ID for verification
+        await storage.updateOrganization(data.organizationId, {
+          plan: data.planId,
+          pendingCheckoutSessionId: session.id,
+        });
+
         res.json({
           success: true,
-          stripeCustomerId: customer.id,
-          message: "Plan selected successfully"
+          requiresPayment: true,
+          checkoutUrl: session.url,
+          sessionId: session.id,
+          message: "Redirecting to Stripe checkout..."
         });
       } else {
+        // Starter plan - no payment required
+        await storage.updateOrganization(data.organizationId, {
+          plan: data.planId,
+        });
+
         res.json({
           success: true,
+          requiresPayment: false,
           message: "Plan selected successfully"
         });
       }
@@ -8466,6 +8542,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       res.status(500).json({ message: "Failed to select plan" });
+    }
+  });
+
+  // Handle Stripe checkout success callback
+  app.get("/api/business/checkout-success", async (req, res) => {
+    try {
+      const { session_id, organizationId } = req.query;
+
+      if (!session_id || !organizationId) {
+        return res.redirect('/business-signup?error=missing_parameters');
+      }
+
+      if (!stripe) {
+        return res.redirect('/business-signup?error=stripe_not_configured');
+      }
+
+      // Verify the checkout session
+      const session = await stripe.checkout.sessions.retrieve(session_id as string);
+
+      if (!session) {
+        return res.redirect('/business-signup?error=invalid_session');
+      }
+
+      // Verify the session belongs to this organization
+      if (session.metadata?.organizationId !== organizationId) {
+        return res.redirect('/business-signup?error=organization_mismatch');
+      }
+
+      // Verify payment was successful
+      if (session.payment_status !== 'paid') {
+        return res.redirect('/business-signup?error=payment_not_completed');
+      }
+
+      // Update organization with payment confirmation
+      await storage.updateOrganization(organizationId as string, {
+        stripeCheckoutSessionId: session.id,
+        stripeSubscriptionId: session.subscription as string || null,
+        paymentStatus: 'completed',
+        pendingCheckoutSessionId: null,
+      });
+
+      // Redirect to the theme step with success
+      res.redirect(`/business-signup?step=theme&organizationId=${organizationId}&payment=success`);
+      
+    } catch (error) {
+      console.error("Checkout success error:", error);
+      res.redirect('/business-signup?error=checkout_verification_failed');
     }
   });
 
