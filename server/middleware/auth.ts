@@ -173,7 +173,7 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
 
   if (backdoorUser) {
     // Check if this is the Whirkplace organization
-    const organization = await storage.getOrganizationById(organizationId);
+    const organization = await storage.getOrganization(organizationId);
     const isWhirkplaceOrg = organization?.slug === 'whirkplace' || organization?.name?.toLowerCase() === 'whirkplace';
     
     // Update existing user with latest profile info
@@ -195,7 +195,7 @@ export async function ensureBackdoorUser(organizationId: string): Promise<User> 
     return updatedUser;
   } else {
     // Check if this is the Whirkplace organization
-    const organization = await storage.getOrganizationById(organizationId);
+    const organization = await storage.getOrganization(organizationId);
     const isWhirkplaceOrg = organization?.slug === 'whirkplace' || organization?.name?.toLowerCase() === 'whirkplace';
     
     // Create new backdoor user
