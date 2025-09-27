@@ -101,7 +101,7 @@ export default function SuperAdminPage() {
   // Deactivate organization mutation
   const deactivateOrgMutation = useMutation({
     mutationFn: async (orgId: string) => {
-      const response = await apiRequest('PATCH', `/api/super-admin/organizations/${orgId}/deactivate`);
+      const response = await apiRequest('PUT', `/api/super-admin/organizations/${orgId}/deactivate`);
       return response.json();
     },
     onSuccess: () => {
