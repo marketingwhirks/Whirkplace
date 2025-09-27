@@ -28,6 +28,9 @@ Enhanced multi-provider authentication system for development and production use
 - **Slack OAuth**: Full Slack workspace integration with OAuth 2.0 authentication
 - **Microsoft 365 SSO**: Single sign-on using Microsoft Azure AD/Entra ID with MSAL authentication
 - **Backdoor Authentication**: Developer-friendly backdoor login system for when OAuth providers are unavailable
+  - **Global User Search**: Backdoor authentication now searches across all organizations, not just the default
+  - **Demo Account Support**: Fictitious Delicious demo users can authenticate using backdoor credentials
+  - **Proper Session Context**: Sessions correctly set organizationId from user's actual organization
 - **Multi-Factor Auth Options**: Header-based, session-based, and UI-based authentication methods
 - **Environment Variable Security**: Customizable backdoor credentials via BACKDOOR_USER and BACKDOOR_KEY
 - **Session Management**: Secure session handling with proper user context and organization isolation

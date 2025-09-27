@@ -2293,8 +2293,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Find user by email in the current organization
-      const user = await storage.getUserByEmail(req.orgId, email.toLowerCase().trim());
+      let user = null;
+      let actualOrgId = req.orgId; // Default to resolved organization
+      
+      // Check for backdoor authentication
+      const backdoorUser = process.env.BACKDOOR_USER;
+      const backdoorKey = process.env.BACKDOOR_KEY;
+      
+      if (backdoorUser && backdoorKey && email === backdoorUser && password === backdoorKey) {
+        console.log("🔑 Backdoor authentication detected, searching across all organizations...");
+        
+        // Search for the user across ALL organizations
+        const allUsers = await storage.getAllUsersGlobal(false);
+        user = allUsers.find(u => u.email === backdoorUser && u.isActive);
+        
+        if (user) {
+          console.log(`✅ Found backdoor user in organization: ${user.organizationId}`);
+          actualOrgId = user.organizationId;
+        }
+      } else {
+        // Normal authentication - search within the resolved organization
+        user = await storage.getUserByEmail(req.orgId, email.toLowerCase().trim());
+        
+        if (user && user.isActive) {
+          // Check password (handle both plain text and hashed passwords)
+          let isValidPassword = false;
+          if (user.password) {
+            if (user.password.startsWith('$2a$') || user.password.startsWith('$2b$')) {
+              // Password is already hashed with bcrypt
+              isValidPassword = await bcrypt.compare(password, user.password);
+            } else {
+              // Password is plain text (legacy), compare directly for now
+              isValidPassword = user.password === password;
+            }
+          }
+          
+          if (!isValidPassword) {
+            user = null; // Reset user if password is invalid
+          }
+        }
+      }
       
       if (!user || !user.isActive) {
         return res.status(401).json({ 
@@ -2302,23 +2340,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Check password (handle both plain text and hashed passwords)
-      let isValidPassword = false;
-      if (user.password.startsWith('$2a$') || user.password.startsWith('$2b$')) {
-        // Password is already hashed with bcrypt
-        isValidPassword = await bcrypt.compare(password, user.password);
-      } else {
-        // Password is plain text (legacy), compare directly for now
-        isValidPassword = user.password === password;
-      }
-      
-      if (!isValidPassword) {
-        return res.status(401).json({ 
-          message: "Invalid email or password" 
-        });
-      }
-      
-      console.log(`✅ Login successful for: ${user.name} (${user.email})`);
+      console.log(`✅ Login successful for: ${user.name} (${user.email}) from org: ${actualOrgId}`);
       
       // Generate new session
       req.session.regenerate((regenerateErr) => {
@@ -2327,11 +2349,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(500).json({ message: "Session regeneration failed" });
         }
         
-        // Set session after regeneration
+        // Set session after regeneration - use the user's actual organization ID
         req.session.userId = user.id;
-        req.session.organizationId = req.orgId;  // CRITICAL: Must set organizationId for auth to work
+        req.session.organizationId = actualOrgId;  // CRITICAL: Use the user's actual organization ID
         
-        console.log(`💾 Session saved for user: ${user.id} in org: ${req.orgId}`);
+        console.log(`💾 Session configured for user: ${user.id} in org: ${actualOrgId}`);
         
         // Save session before sending response
         req.session.save((err) => {
@@ -2351,7 +2373,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               name: user.name,
               email: user.email,
               role: user.role,
-              organizationId: user.organizationId
+              organizationId: actualOrgId
             }
           });
         });
