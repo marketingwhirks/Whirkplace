@@ -39,6 +39,7 @@ import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
 import { ThemeCustomizer } from "@/components/ThemeCustomizer";
+import { TourProvider } from "@/contexts/TourProvider";
 
 function Router() {
   return (
@@ -98,7 +99,9 @@ function AuthenticatedApp() {
   // Show main app if authenticated
   return (
     <DynamicThemeProvider>
-      <Router />
+      <TourProvider>
+        <Router />
+      </TourProvider>
     </DynamicThemeProvider>
   );
 }

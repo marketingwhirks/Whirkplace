@@ -17,6 +17,9 @@ import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Progress } from "@/components/ui/progress";
 import type { Checkin, Win, User, Question, ComplianceMetricsResult, Shoutout } from "@shared/schema";
+import { TourGuide } from "@/components/TourGuide";
+import { TOUR_IDS } from "@/lib/tours/tour-configs";
+import { useManagedTour } from "@/contexts/TourProvider";
 
 interface DashboardStats {
   averageRating: number;
@@ -32,6 +35,9 @@ export default function Dashboard() {
     responses: {} as Record<string, string>,
   });
   const [selectedCheckin, setSelectedCheckin] = useState<(Checkin & { user?: User }) | null>(null);
+  
+  // Tour management
+  const tourManager = useManagedTour(TOUR_IDS.DASHBOARD_INTRO);
 
   // Handle loading and error states for authentication
   if (userLoading) {
@@ -344,8 +350,19 @@ export default function Dashboard() {
   return (
     <>
       <main className="flex-1 overflow-auto p-6 space-y-6">
+        {/* Tour Guide for dashboard */}
+        {tourManager.shouldShow && (
+          <TourGuide
+            tourId={TOUR_IDS.DASHBOARD_INTRO}
+            onComplete={tourManager.handleComplete}
+            onSkip={tourManager.handleSkip}
+            autoStart={true}
+            delay={1000}
+          />
+        )}
+        
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" data-testid="dashboard-widgets">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center">

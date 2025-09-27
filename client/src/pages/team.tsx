@@ -16,6 +16,9 @@ import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { TourGuide } from "@/components/TourGuide";
+import { TOUR_IDS } from "@/lib/tours/tour-configs";
+import { useManagedTour } from "@/contexts/TourProvider";
 import type { User, Team, InsertUser, InsertTeam, TeamHierarchy } from "@shared/schema";
 
 // Form schemas
@@ -46,6 +49,9 @@ export default function Team() {
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  
+  // Tour management
+  const tourManager = useManagedTour(TOUR_IDS.TEAM_MANAGEMENT);
 
   const { data: currentUser } = useCurrentUser();
 
@@ -126,7 +132,7 @@ export default function Team() {
     const teamLeader = users.find(user => user.id === team.leaderId);
     
     return (
-      <div key={team.id} className="space-y-2">
+      <div key={team.id} className="space-y-2" data-testid={`team-hierarchy-${team.id}`}>
         <Card className={`${indentClass} transition-all duration-200 hover:shadow-md`}>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -309,6 +315,17 @@ export default function Team() {
 
   return (
     <main className="flex-1 overflow-auto p-6 space-y-6">
+        {/* Tour Guide for team management */}
+        {tourManager.shouldShow && (
+          <TourGuide
+            tourId={TOUR_IDS.TEAM_MANAGEMENT}
+            onComplete={tourManager.handleComplete}
+            onSkip={tourManager.handleSkip}
+            autoStart={true}
+            delay={1000}
+          />
+        )}
+        
         {/* Quick Actions */}
         <div className="flex justify-between items-center">
           <div>

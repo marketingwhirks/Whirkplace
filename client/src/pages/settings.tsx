@@ -22,6 +22,9 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { IntegrationsDashboard } from "@/components/IntegrationsDashboard";
+import { TourGuide } from "@/components/TourGuide";
+import { TOUR_IDS } from "@/lib/tours/tour-configs";
+import { useManagedTour } from "@/contexts/TourProvider";
 
 import type { User as UserType, Team, Vacation } from "@shared/schema";
 import { DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
@@ -296,6 +299,9 @@ export default function Settings() {
   const [vacationDatePopoverOpen, setVacationDatePopoverOpen] = useState(false);
   const [selectedVacationDate, setSelectedVacationDate] = useState<Date | undefined>();
   const [vacationNote, setVacationNote] = useState("");
+  
+  // Tour management - Note: No specific settings tour defined yet
+  // const tourManager = useManagedTour('settings-navigation');
 
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   

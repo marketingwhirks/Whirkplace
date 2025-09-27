@@ -59,6 +59,9 @@ import {
   AlertCircle 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { TourGuide } from "@/components/TourGuide";
+import { TOUR_IDS } from "@/lib/tours/tour-configs";
+import { useManagedTour } from "@/contexts/TourProvider";
 
 // Types and interfaces
 interface FilterState {
@@ -859,6 +862,9 @@ export default function Analytics() {
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const { canViewScope, getDefaultScope, getEntityId } = useViewAsPermissions();
   
+  // Tour management
+  const tourManager = useManagedTour(TOUR_IDS.ANALYTICS_GUIDE);
+  
   // Initialize filters based on user role
   const getInitialFilters = (): FilterState => {
     if (!currentUser) return DEFAULT_FILTERS;
@@ -991,6 +997,17 @@ export default function Analytics() {
 
   return (
       <main className="flex-1 overflow-auto p-6 space-y-6">
+        {/* Tour Guide for analytics */}
+        {tourManager.shouldShow && (
+          <TourGuide
+            tourId={TOUR_IDS.ANALYTICS_GUIDE}
+            onComplete={tourManager.handleComplete}
+            onSkip={tourManager.handleSkip}
+            autoStart={true}
+            delay={1000}
+          />
+        )}
+        
         {/* User Role Badge */}
         {currentUser && (
           <div className="flex items-center justify-between">
@@ -1009,14 +1026,16 @@ export default function Analytics() {
         )}
 
         {/* Filters */}
-        <FiltersBar 
-          filters={filters}
-          onFiltersChange={handleFiltersChange}
-          teams={availableTeams}
-          users={availableUsers}
-          currentUser={currentUser}
-          canViewScope={canViewScope}
-        />
+        <div data-testid="analytics-filters">
+          <FiltersBar 
+            filters={filters}
+            onFiltersChange={handleFiltersChange}
+            teams={availableTeams}
+            users={availableUsers}
+            currentUser={currentUser}
+            canViewScope={canViewScope}
+          />
+        </div>
 
         {/* Overview Cards */}
         <OverviewCards filters={filtersWithDefaults} />

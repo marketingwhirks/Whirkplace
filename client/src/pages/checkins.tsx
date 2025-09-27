@@ -21,6 +21,9 @@ import RatingStars from "@/components/checkin/rating-stars";
 import CheckinDetail from "@/components/checkin/checkin-detail";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { TourGuide } from "@/components/TourGuide";
+import { TOUR_IDS } from "@/lib/tours/tour-configs";
+import { useManagedTour } from "@/contexts/TourProvider";
 
 import type { Checkin, Question, User, InsertCheckin } from "@shared/schema";
 
@@ -71,6 +74,9 @@ export default function Checkins() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedCheckin, setSelectedCheckin] = useState<(Checkin & { user?: User }) | null>(null);
   const [activeTab, setActiveTab] = useState<"current" | "history">("current");
+  
+  // Tour management
+  const tourManager = useManagedTour(TOUR_IDS.CHECKINS_GUIDE);
 
   // Get current week start (Monday)
   const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -238,6 +244,16 @@ export default function Checkins() {
 
   return (
     <>
+      {/* Tour Guide for check-ins */}
+      {tourManager.shouldShow && (
+        <TourGuide
+          tourId={TOUR_IDS.CHECKINS_GUIDE}
+          onComplete={tourManager.handleComplete}
+          onSkip={tourManager.handleSkip}
+          autoStart={true}
+          delay={1000}
+        />
+      )}
 
       <main className="flex-1 overflow-auto p-6 space-y-6">
         {/* Current Week Status */}
@@ -746,7 +762,7 @@ export default function Checkins() {
                     <Button
                       type="submit"
                       disabled={createCheckinMutation.isPending || activeQuestions.length === 0}
-                      data-testid="button-submit-dialog"
+                      data-testid="checkin-submit"
                     >
                       {createCheckinMutation.isPending ? "Submitting..." : currentWeekCheckin ? "Update Check-in" : "Submit Check-in"}
                     </Button>

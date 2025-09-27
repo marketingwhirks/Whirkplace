@@ -22,6 +22,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { TourGuide } from "@/components/TourGuide";
+import { TOUR_IDS } from "@/lib/tours/tour-configs";
+import { useManagedTour } from "@/contexts/TourProvider";
 
 import type { Win, User, InsertWin, CompanyValue } from "@shared/schema";
 import { insertWinSchema, DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
@@ -43,6 +46,9 @@ export default function Wins() {
   const [editingWin, setEditingWin] = useState<Win | null>(null);
   const [filter, setFilter] = useState<"all" | "public" | "private">("all");
   const [deleteWin, setDeleteWin] = useState<Win | null>(null);
+  
+  // Tour management
+  const tourManager = useManagedTour(TOUR_IDS.WINS_INTRO);
 
   // Fetch wins
   const { data: wins = [], isLoading: winsLoading } = useQuery<Win[]>({
@@ -234,7 +240,18 @@ export default function Wins() {
 
   return (
     <main className="flex-1 overflow-auto p-4 md:p-6">
-        <div className="space-y-6">
+      {/* Tour Guide for wins */}
+      {tourManager.shouldShow && (
+        <TourGuide
+          tourId={TOUR_IDS.WINS_INTRO}
+          onComplete={tourManager.handleComplete}
+          onSkip={tourManager.handleSkip}
+          autoStart={true}
+          delay={1000}
+        />
+      )}
+      
+      <div className="space-y-6" data-testid="wins-container">
           {/* Actions Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <Tabs value={filter} onValueChange={(value) => setFilter(value as any)} className="w-full sm:w-auto">
@@ -247,7 +264,7 @@ export default function Wins() {
 
             <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
               <DialogTrigger asChild>
-                <Button data-testid="button-create-win" className="w-full sm:w-auto">
+                <Button data-testid="button-new-win" className="w-full sm:w-auto">
                   <Plus className="w-4 h-4 mr-2" />
                   Create Win
                 </Button>
