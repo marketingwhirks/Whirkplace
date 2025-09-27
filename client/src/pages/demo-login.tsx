@@ -143,7 +143,10 @@ export default function DemoLoginPage() {
         const data = await response.json();
         console.log("Login response data:", data);
         
-        // Session cookie should now work properly with the fixed configuration
+        // Store token as backup for cookie issues
+        if (data.token) {
+          localStorage.setItem('demo_token', data.token);
+        }
         
         toast({ 
           title: "Welcome to the demo!", 

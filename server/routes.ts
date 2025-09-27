@@ -274,6 +274,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Special handling for demo users - works in all environments
+      const { getDemoUser, generateDemoToken } = require('./demo-auth');
+      const demoUser = getDemoUser(email);
+      if (demoUser && demoUser.password === password) {
+        const token = generateDemoToken(email);
+        console.log(`🎪 Demo login successful for ${demoUser.name}`);
+        
+        // Set a simple demo session cookie
+        res.cookie('demo_token', token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
+          sameSite: 'lax',
+          maxAge: 24 * 60 * 60 * 1000 // 24 hours
+        });
+        
+        return res.json({ 
+          message: "Login successful", 
+          user: { 
+            id: demoUser.id, 
+            name: demoUser.name, 
+            email: demoUser.email, 
+            role: demoUser.role,
+            isSuperAdmin: false
+          },
+          token: token // Include token for fallback
+        });
+      }
+      
       // Get user by email
       console.log(`🔐 Local login attempt for ${email} in org ${req.orgId}`);
       const user = await storage.getUserByEmail(req.orgId, email);

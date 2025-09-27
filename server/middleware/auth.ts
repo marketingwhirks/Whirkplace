@@ -334,6 +334,31 @@ export function authenticateUser() {
         organizationId: sessionData?.organizationId
       });
       
+      // Check for demo token authentication first
+      const demoToken = req.cookies?.['demo_token'];
+      if (demoToken) {
+        const { verifyDemoToken, getDemoUserById } = require('../demo-auth');
+        const decoded = verifyDemoToken(demoToken);
+        if (decoded && decoded.isDemo) {
+          const demoUser = getDemoUserById(decoded.userId);
+          if (demoUser) {
+            console.log(`🎪 Demo token auth successful for: ${demoUser.name}`);
+            req.currentUser = {
+              id: demoUser.id,
+              name: demoUser.name,
+              email: demoUser.email,
+              role: demoUser.role,
+              teamId: demoUser.teamId,
+              isActive: true,
+              isSuperAdmin: false,
+              organizationId: demoUser.organizationId
+            };
+            req.orgId = demoUser.organizationId;
+            return next();
+          }
+        }
+      }
+      
       if (sessionData?.userId && sessionData?.organizationId) {
         console.log(`✅ Found session for user: ${sessionData.userId} in org: ${sessionData.organizationId}`);
         
