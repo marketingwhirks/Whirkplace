@@ -1910,21 +1910,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create initial onboarding record
       const onboardingId = randomBytes(16).toString('hex');
       
-      // Set session for the new user
+      // Regenerate session for security and proper initialization
       console.log("Setting session for user:", adminUser.id, "with role:", adminUser.role);
-      (req.session as any).userId = adminUser.id;
-      (req.session as any).organizationId = organization.id;
       
-      // Save session to ensure it persists
       await new Promise((resolve, reject) => {
-        req.session.save((err) => {
-          if (err) {
-            console.error("Session save error:", err);
-            reject(err);
-          } else {
-            console.log("Session saved successfully for new admin user");
-            resolve(true);
+        req.session.regenerate((regenerateErr) => {
+          if (regenerateErr) {
+            console.error('Failed to regenerate session:', regenerateErr);
+            return reject(regenerateErr);
           }
+          
+          // Set session properties after regeneration
+          req.session.userId = adminUser.id;
+          req.session.organizationId = organization.id;
+          req.session.userRole = adminUser.role;
+          req.session.username = adminUser.name;
+          
+          console.log(`💾 Session configured for user: ${adminUser.id} in org: ${organization.id}`);
+          
+          // Save session to persist it
+          req.session.save((err) => {
+            if (err) {
+              console.error("Session save error:", err);
+              reject(err);
+            } else {
+              console.log("Session saved successfully for new admin user");
+              resolve(true);
+            }
+          });
         });
       });
       
