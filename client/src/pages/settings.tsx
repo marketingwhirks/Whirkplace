@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw, Calendar, CalendarOff, Clock, UserCheck, UserPlus, AlertTriangle } from "lucide-react";
+import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw, Calendar, CalendarOff, Clock, UserCheck, UserPlus, AlertTriangle, Compass, RotateCcw, Play } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,8 +23,10 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { IntegrationsDashboard } from "@/components/IntegrationsDashboard";
 import { TourGuide } from "@/components/TourGuide";
-import { TOUR_IDS } from "@/lib/tours/tour-configs";
+import { TOUR_IDS, TOUR_CONFIGS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
+import { TourManagementCard } from "@/components/TourManagementCard";
+import { useTours, useResetTour } from "@/hooks/useTours";
 
 import type { User as UserType, Team, Vacation } from "@shared/schema";
 import { DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
@@ -283,6 +285,237 @@ function AccountOwnershipTransfer() {
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+// Tours Management Component
+function ToursManagement() {
+  const { toast } = useToast();
+  const { data: tours = [], isLoading: toursLoading } = useTours();
+  const [autoStartTours, setAutoStartTours] = useState(true);
+  const [resetAllDialogOpen, setResetAllDialogOpen] = useState(false);
+  
+  // Get user's auto-start preference
+  const { data: currentUser } = useCurrentUser();
+  
+  // Get tour configurations
+  const tourConfigs = Object.values(TOUR_CONFIGS);
+  
+  // Combine tour status with tour configs
+  const combinedTours = tourConfigs.map(config => {
+    const tourStatus = tours.find(t => t.tourId === config.id);
+    return {
+      config,
+      status: tourStatus || {
+        id: '',
+        userId: currentUser?.id || '',
+        organizationId: currentUser?.organizationId || '',
+        tourId: config.id,
+        status: 'not_started',
+        currentStep: 0,
+        version: '1.0',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        completedAt: null,
+        skippedAt: null,
+        lastShownAt: null,
+      }
+    };
+  });
+
+  // Group tours by status
+  const completedTours = combinedTours.filter(t => t.status.status === 'completed');
+  const inProgressTours = combinedTours.filter(t => t.status.status === 'in_progress');
+  const availableTours = combinedTours.filter(t => 
+    t.status.status === 'not_started' || t.status.status === 'skipped'
+  );
+
+  // Handle reset all tours
+  const handleResetAllTours = async () => {
+    try {
+      // Reset each tour individually
+      const resetPromises = tours.map(tour => 
+        apiRequest(`/api/tours/${tour.tourId}/reset`, {
+          method: 'POST',
+        })
+      );
+      
+      await Promise.all(resetPromises);
+      
+      queryClient.invalidateQueries({ queryKey: ['/api/tours'] });
+      
+      toast({
+        title: "All Tours Reset",
+        description: "All guided tours have been reset and are ready to start.",
+      });
+      
+      setResetAllDialogOpen(false);
+    } catch (error) {
+      toast({
+        title: "Reset Failed",
+        description: "Failed to reset tours. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Handle auto-start preference change
+  const handleAutoStartChange = async (checked: boolean) => {
+    setAutoStartTours(checked);
+    // TODO: Save this preference to user settings when API is available
+    toast({
+      title: "Preference Updated",
+      description: `Auto-start tours has been ${checked ? 'enabled' : 'disabled'}.`,
+    });
+  };
+
+  if (toursLoading) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Loading tours...</CardTitle>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header with overview */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Compass className="w-5 h-5" />
+              <span>Guided Tours</span>
+            </div>
+            {tours.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setResetAllDialogOpen(true)}
+                data-testid="button-reset-all-tours"
+              >
+                <RotateCcw className="w-4 h-4 mr-2" />
+                Reset All Tours
+              </Button>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Tour Statistics */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-4 border rounded-lg">
+              <div className="text-2xl font-bold">{completedTours.length}</div>
+              <div className="text-sm text-muted-foreground">Completed</div>
+            </div>
+            <div className="p-4 border rounded-lg">
+              <div className="text-2xl font-bold">{inProgressTours.length}</div>
+              <div className="text-sm text-muted-foreground">In Progress</div>
+            </div>
+            <div className="p-4 border rounded-lg">
+              <div className="text-2xl font-bold">{availableTours.length}</div>
+              <div className="text-sm text-muted-foreground">Available</div>
+            </div>
+          </div>
+
+          {/* Auto-start Preference */}
+          <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
+            <div className="space-y-0.5">
+              <FormLabel>Auto-start new feature tours</FormLabel>
+              <FormDescription>
+                Automatically show guided tours when new features are added
+              </FormDescription>
+            </div>
+            <Switch
+              checked={autoStartTours}
+              onCheckedChange={handleAutoStartChange}
+              data-testid="switch-auto-start-tours"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* In Progress Tours */}
+      {inProgressTours.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Clock className="w-5 h-5" />
+            In Progress
+          </h3>
+          <div className="grid gap-4">
+            {inProgressTours.map(tour => (
+              <TourManagementCard
+                key={tour.config.id}
+                tour={tour.status}
+                tourConfig={tour.config}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Available Tours */}
+      {availableTours.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Play className="w-5 h-5" />
+            Available Tours
+          </h3>
+          <div className="grid gap-4">
+            {availableTours.map(tour => (
+              <TourManagementCard
+                key={tour.config.id}
+                tour={tour.status}
+                tourConfig={tour.config}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Completed Tours */}
+      {completedTours.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            <Check className="w-5 h-5" />
+            Completed Tours
+          </h3>
+          <div className="grid gap-4">
+            {completedTours.map(tour => (
+              <TourManagementCard
+                key={tour.config.id}
+                tour={tour.status}
+                tourConfig={tour.config}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Reset All Tours Confirmation Dialog */}
+      <AlertDialog open={resetAllDialogOpen} onOpenChange={setResetAllDialogOpen}>
+        <AlertDialogContent data-testid="dialog-reset-all-tours">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset All Tours</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to reset all guided tours? This will allow you to replay all tours from the beginning. Your progress will be lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-reset-all">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetAllTours}
+              data-testid="button-confirm-reset-all"
+            >
+              Reset All Tours
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -721,6 +954,10 @@ export default function Settings() {
               <TabsTrigger value="integrations" data-testid="tab-integrations" className="flex items-center gap-2">
                 <Globe className="w-4 h-4" />
                 <span>Integrations</span>
+              </TabsTrigger>
+              <TabsTrigger value="tours" data-testid="tab-tours" className="flex items-center gap-2">
+                <Compass className="w-4 h-4" />
+                <span>Tours</span>
               </TabsTrigger>
             </TabsList>
 
@@ -1815,6 +2052,11 @@ export default function Settings() {
             {/* Integrations Settings */}
             <TabsContent value="integrations" className="space-y-6">
               <IntegrationsDashboard />
+            </TabsContent>
+
+            {/* Tours Settings */}
+            <TabsContent value="tours" className="space-y-6">
+              <ToursManagement />
             </TabsContent>
           </Tabs>
         </div>
