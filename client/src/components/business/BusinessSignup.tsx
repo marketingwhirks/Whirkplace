@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
 
@@ -290,18 +291,18 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
                       <FormItem>
                         <FormLabel>Industry *</FormLabel>
                         <FormControl>
-                          <select 
-                            {...field} 
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                            data-testid="select-industry"
-                          >
-                            <option value="">Select your industry</option>
-                            {industries.map((ind) => (
-                              <option key={ind.value} value={ind.value}>
-                                {ind.label}
-                              </option>
-                            ))}
-                          </select>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger data-testid="select-industry">
+                              <SelectValue placeholder="Select your industry" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {industries.map((ind) => (
+                                <SelectItem key={ind.value} value={ind.value}>
+                                  {ind.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -325,18 +326,18 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
                       <FormItem>
                         <FormLabel>Organization Size *</FormLabel>
                         <FormControl>
-                          <select 
-                            {...field} 
-                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                            data-testid="select-organization-size"
-                          >
-                            <option value="">Select organization size</option>
-                            {organizationSizes.map((size) => (
-                              <option key={size.value} value={size.value}>
-                                {size.label}
-                              </option>
-                            ))}
-                          </select>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <SelectTrigger data-testid="select-organization-size">
+                              <SelectValue placeholder="Select organization size" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {organizationSizes.map((size) => (
+                                <SelectItem key={size.value} value={size.value}>
+                                  {size.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </FormControl>
                         <FormDescription>
                           This helps us tailor the experience to your needs
