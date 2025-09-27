@@ -268,8 +268,10 @@ export function authenticateUser() {
       const skipAuthPaths = [
         '/auth/logout', 
         '/auth/login',  // Add login endpoint to skip auth
+        '/business/plans',  // Public endpoint for viewing business plans
         '/business/signup',
         '/business/select-plan',
+        '/business/checkout-success',  // Stripe callback endpoint
         '/business/complete-onboarding',
         '/auth/demo-login'
       ];

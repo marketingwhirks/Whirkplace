@@ -1783,12 +1783,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Apply organization middleware to all API routes AFTER onboarding routes
-  // This ensures onboarding endpoints remain accessible during initial setup
-  app.use("/api", resolveOrganization());
-  app.use("/api", requireOrganization());
-  
   // PUBLIC BUSINESS SIGNUP ROUTES (no authentication required)
+  // These must come BEFORE requireOrganization() middleware
   // Get available business plans
   app.get("/api/business/plans", async (req, res) => {
     try {
@@ -2019,6 +2015,282 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to submit partner application" });
     }
   });
+
+  // Select business plan - Step 2: Plan selection
+  app.post("/api/business/select-plan", async (req, res) => {
+    try {
+      const planSchema = z.object({
+        organizationId: z.string(),
+        planId: z.string(),
+        billingCycle: z.enum(["monthly", "annual"]),
+      });
+
+      const data = planSchema.parse(req.body);
+
+      // If not starter plan, handle payment processing
+      if (data.planId !== "starter" && stripe) {
+        // Create Stripe customer and setup subscription
+        const organization = await storage.getOrganization(data.organizationId);
+        if (!organization) {
+          return res.status(404).json({ message: "Organization not found" });
+        }
+
+        // Create or retrieve Stripe customer
+        let customer;
+        if (organization.stripeCustomerId) {
+          customer = await stripe.customers.retrieve(organization.stripeCustomerId);
+        } else {
+          customer = await stripe.customers.create({
+            name: organization.name,
+            email: organization.email,
+            metadata: {
+              organizationId: data.organizationId,
+              plan: data.planId,
+              billingCycle: data.billingCycle,
+            },
+          });
+          
+          // Store the Stripe customer ID
+          await storage.updateOrganization(data.organizationId, {
+            stripeCustomerId: customer.id,
+          });
+        }
+
+        // Get price based on plan and billing cycle
+        const plans: Record<string, Record<string, number>> = {
+          professional: {
+            monthly: 1000,  // $10/month
+            annual: 9600,   // $96/year ($8/month with 20% off)
+          },
+          enterprise: {
+            monthly: 2500,  // $25/month
+            annual: 24000,  // $240/year ($20/month with 20% off)
+          }
+        };
+
+        const price = plans[data.planId]?.[data.billingCycle];
+        if (!price) {
+          return res.status(400).json({ message: "Invalid plan or billing cycle" });
+        }
+
+        // Get the base URL for redirects
+        const protocol = req.get('x-forwarded-proto') || req.protocol;
+        const host = req.get('host');
+        const baseUrl = `${protocol}://${host}`;
+
+        // Create Stripe checkout session
+        const session = await stripe.checkout.sessions.create({
+          customer: customer.id,
+          payment_method_types: ['card'],
+          mode: data.billingCycle === 'monthly' ? 'subscription' : 'payment',
+          line_items: [
+            {
+              price_data: {
+                currency: 'usd',
+                product_data: {
+                  name: `Whirkplace ${data.planId.charAt(0).toUpperCase() + data.planId.slice(1)} Plan`,
+                  description: `${data.billingCycle === 'monthly' ? 'Monthly' : 'Annual'} subscription for ${organization.name}`,
+                },
+                unit_amount: price,
+                ...(data.billingCycle === 'monthly' ? {
+                  recurring: {
+                    interval: 'month' as const,
+                    interval_count: 1,
+                  }
+                } : {})
+              },
+              quantity: 1,
+            },
+          ],
+          success_url: `${baseUrl}/api/business/checkout-success?session_id={CHECKOUT_SESSION_ID}&organizationId=${data.organizationId}`,
+          cancel_url: `${baseUrl}/business-signup?canceled=true`,
+          metadata: {
+            organizationId: data.organizationId,
+            planId: data.planId,
+            billingCycle: data.billingCycle,
+          },
+        });
+
+        // Store the session ID for verification
+        await storage.updateOrganization(data.organizationId, {
+          plan: data.planId,
+          pendingCheckoutSessionId: session.id,
+        });
+
+        res.json({
+          success: true,
+          requiresPayment: true,
+          checkoutUrl: session.url,
+          sessionId: session.id,
+          message: "Redirecting to Stripe checkout..."
+        });
+      } else {
+        // Starter plan - no payment required
+        await storage.updateOrganization(data.organizationId, {
+          plan: data.planId,
+        });
+
+        res.json({
+          success: true,
+          requiresPayment: false,
+          message: "Plan selected successfully"
+        });
+      }
+
+    } catch (error: any) {
+      console.error("Plan selection error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to select plan" });
+    }
+  });
+
+  // Handle Stripe checkout success callback
+  app.get("/api/business/checkout-success", async (req, res) => {
+    try {
+      const { session_id, organizationId } = req.query;
+
+      if (!session_id || !organizationId) {
+        return res.redirect('/business-signup?error=missing_parameters');
+      }
+
+      if (!stripe) {
+        return res.redirect('/business-signup?error=stripe_not_configured');
+      }
+
+      // Verify the checkout session
+      const session = await stripe.checkout.sessions.retrieve(session_id as string);
+
+      if (!session) {
+        return res.redirect('/business-signup?error=invalid_session');
+      }
+
+      // Verify the session belongs to this organization
+      if (session.metadata?.organizationId !== organizationId) {
+        return res.redirect('/business-signup?error=organization_mismatch');
+      }
+
+      // Verify payment was successful
+      if (session.payment_status !== 'paid') {
+        return res.redirect('/business-signup?error=payment_not_completed');
+      }
+
+      // Update organization with payment confirmation
+      await storage.updateOrganization(organizationId as string, {
+        stripeCheckoutSessionId: session.id,
+        stripeSubscriptionId: session.subscription as string || null,
+        paymentStatus: 'completed',
+        pendingCheckoutSessionId: null,
+      });
+
+      // Redirect to the theme step with success
+      res.redirect(`/business-signup?step=theme&organizationId=${organizationId}&payment=success`);
+      
+    } catch (error) {
+      console.error("Checkout success error:", error);
+      res.redirect('/business-signup?error=checkout_verification_failed');
+    }
+  });
+
+  // Complete onboarding - Step 3: Organization setup
+  app.post("/api/business/complete-onboarding", async (req, res) => {
+    try {
+      const onboardingSchema = z.object({
+        organizationId: z.string(),
+        teams: z.array(z.object({
+          name: z.string().min(2),
+          description: z.string().optional(),
+          type: z.enum(["team", "department", "pod"]),
+        })),
+        userInvites: z.array(z.object({
+          email: z.string().email(),
+          name: z.string().min(2),
+          role: z.enum(["admin", "manager", "member"]),
+          teamName: z.string().optional(),
+        })).optional(),
+        organizationSettings: z.object({
+          companyValues: z.array(z.string()).min(1),
+          checkInFrequency: z.enum(["daily", "weekly", "biweekly"]),
+          workingHours: z.string(),
+          timezone: z.string(),
+        }),
+      });
+
+      const data = onboardingSchema.parse(req.body);
+
+      // Update organization with custom values
+      await storage.updateOrganization(data.organizationId, {
+        customValues: data.organizationSettings.companyValues,
+      });
+
+      // Create teams
+      const createdTeams: any[] = [];
+      for (const team of data.teams) {
+        const organization = await storage.getOrganization(data.organizationId);
+        if (organization) {
+          // Get admin user to set as team leader
+          const adminUsers = await storage.getAllUsers(data.organizationId);
+          const adminUser = adminUsers.find(u => u.role === 'admin');
+          
+          if (adminUser) {
+            const createdTeam = await storage.createTeam(data.organizationId, {
+              name: team.name,
+              description: team.description || null,
+              leaderId: adminUser.id,
+              organizationId: data.organizationId,
+            });
+            createdTeams.push(createdTeam);
+          }
+        }
+      }
+
+      // Process user invitations (if any)
+      if (data.userInvites && data.userInvites.length > 0) {
+        for (const invite of data.userInvites) {
+          // Store pending invitations
+          await storage.createUserInvitation({
+            organizationId: data.organizationId,
+            email: invite.email,
+            role: invite.role,
+            invitedBy: req.currentUser?.id || 'system',
+            status: 'pending',
+          });
+          
+          // Send invitation emails
+          await sendWelcomeEmail(invite.email, invite.name, data.organizationId);
+        }
+      }
+
+      // Update organization onboarding status
+      const onboarding = await storage.completeOrganizationOnboarding(data.organizationId);
+
+      res.json({
+        success: true,
+        message: "Onboarding completed successfully",
+        organizationId: data.organizationId,
+        teams: createdTeams,
+        invitesSent: data.userInvites?.length || 0,
+      });
+    } catch (error: any) {
+      console.error("Onboarding completion error:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to complete onboarding" });
+    }
+  });
+
+  // Apply organization middleware to all API routes AFTER onboarding and business routes
+  // This ensures public endpoints remain accessible during initial setup
+  app.use("/api", resolveOrganization());
+  app.use("/api", requireOrganization());
 
   // ========== PARTNER MANAGEMENT ROUTES ==========
   // These routes handle partner firm management and require authentication
@@ -8385,15 +8657,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Business Signup and Onboarding Routes - NOTE: Duplicate removed, kept single definition above
+  // Create Stripe payment intent for plan upgrades  
+  app.post("/api/stripe/create-payment-intent", async (req, res) => {
+    if (!stripe) {
+      return res.status(503).json({ message: "Payment processing not available" });
+    }
 
-  // Select business plan - Step 2: Plan selection
-  app.post("/api/business/select-plan", async (req, res) => {
     try {
-      const planSchema = z.object({
+      const paymentSchema = z.object({
         organizationId: z.string(),
         planId: z.string(),
         billingCycle: z.enum(["monthly", "annual"]),
+        amount: z.number().min(0),
       });
 
       const data = planSchema.parse(req.body);
