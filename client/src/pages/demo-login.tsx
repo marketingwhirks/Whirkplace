@@ -161,7 +161,7 @@ export default function DemoLoginPage() {
         
         // Force page reload to ensure auth is picked up
         // Use the hardcoded organization ID for demo users
-        window.location.href = '/dashboard?org=fictitious-delicious';
+        window.location.href = '/?org=fictitious-delicious';
       } else {
         const error = await response.json();
         console.error("Login failed:", error);
@@ -225,7 +225,7 @@ export default function DemoLoginPage() {
         
         // Force page reload to ensure auth is picked up
         // Use the hardcoded organization ID for demo users
-        window.location.href = '/dashboard?org=fictitious-delicious';
+        window.location.href = '/?org=fictitious-delicious';
       } else {
         const error = await response.json();
         console.error("Direct login failed:", error);

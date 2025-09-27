@@ -329,7 +329,7 @@ export function authenticateUser() {
       const sessionData = getSessionUser(req);
       console.log(`🎫 Session check:`, {
         hasSession: !!req.session,
-        sessionId: req.session?.id,
+        sessionId: req.sessionID,
         userId: sessionData?.userId,
         organizationId: sessionData?.organizationId
       });
