@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 const signupSchema = z.object({
   // Organization details
   organizationName: z.string().min(2, "Organization name must be at least 2 characters").max(100, "Organization name too long"),
+  industry: z.string().min(1, "Please select your industry"),
   organizationSize: z.string().min(1, "Please select organization size"),
   
   // Admin user details
@@ -40,6 +41,25 @@ const organizationSizes = [
   { value: "1000+", label: "1000+ employees" },
 ];
 
+const industries = [
+  { value: "technology", label: "Technology" },
+  { value: "healthcare", label: "Healthcare" },
+  { value: "finance", label: "Finance & Banking" },
+  { value: "retail", label: "Retail & E-commerce" },
+  { value: "manufacturing", label: "Manufacturing" },
+  { value: "education", label: "Education" },
+  { value: "hospitality", label: "Hospitality & Tourism" },
+  { value: "realestate", label: "Real Estate" },
+  { value: "nonprofit", label: "Non-profit" },
+  { value: "government", label: "Government" },
+  { value: "consulting", label: "Consulting & Professional Services" },
+  { value: "media", label: "Media & Entertainment" },
+  { value: "transportation", label: "Transportation & Logistics" },
+  { value: "energy", label: "Energy & Utilities" },
+  { value: "agriculture", label: "Agriculture" },
+  { value: "other", label: "Other" },
+];
+
 interface BusinessSignupProps {
   onSignupComplete: (data: SignupForm) => void;
   isLoading?: boolean;
@@ -55,6 +75,7 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
     resolver: zodResolver(signupSchema),
     defaultValues: {
       organizationName: "",
+      industry: "",
       organizationSize: "",
       firstName: "",
       lastName: "",
@@ -115,6 +136,31 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
                           {...field} 
                           data-testid="input-organization-name"
                         />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
+                  name="industry"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Industry *</FormLabel>
+                      <FormControl>
+                        <select 
+                          {...field} 
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          data-testid="select-industry"
+                        >
+                          <option value="">Select your industry</option>
+                          {industries.map((ind) => (
+                            <option key={ind.value} value={ind.value}>
+                              {ind.label}
+                            </option>
+                          ))}
+                        </select>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
