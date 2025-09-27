@@ -22,10 +22,33 @@ const PgSession = connectPgSimple(session);
 export function getSessionConfig() {
   const isProduction = process.env.NODE_ENV === 'production';
   const isReplit = !!process.env.REPL_SLUG;
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const port = process.env.PORT || '5000';
+  
+  // CRITICAL FIX: Comprehensive localhost detection
+  // In Replit development, we're still on localhost even though REPL_SLUG is set
+  // We need to detect when we're running on HTTP localhost vs HTTPS production
+  const isLocalhost = 
+    process.env.TESTING_LOCALHOST === 'true' || // Explicit env var
+    isDevelopment || // Development mode always means localhost
+    port === '5000' || // Default dev port indicates localhost
+    (!isProduction); // Any non-production is treated as localhost for cookies
+  
+  // Log detection details for debugging
+  console.log('🔍 Session environment detection:', {
+    NODE_ENV: process.env.NODE_ENV,
+    REPL_SLUG: !!process.env.REPL_SLUG,
+    PORT: port,
+    isProduction,
+    isDevelopment,
+    isReplit,
+    isLocalhost
+  });
   
   // Determine if we should use secure cookies
-  // In production OR Replit (which runs in iframe), use secure cookies
-  const useSecureCookies = isProduction || isReplit;
+  // Only use secure cookies in actual production (not dev, even in Replit)
+  // Development always gets non-secure cookies to work with HTTP
+  const useSecureCookies = isProduction && !isDevelopment;
   
   // Session store configuration
   const sessionStore = new PgSession({
@@ -39,8 +62,9 @@ export function getSessionConfig() {
   });
 
   // Cookie configuration
-  // Replit runs in iframe (third-party context), needs sameSite=none
-  const sameSite = (isProduction || isReplit) ? 'none' as const : 'lax' as const;
+  // Production Replit (iframe) needs sameSite=none with secure
+  // Development/localhost needs sameSite=lax without secure
+  const sameSite = useSecureCookies ? 'none' as const : 'lax' as const;
   
   const cookieConfig = {
     secure: useSecureCookies,
@@ -49,8 +73,8 @@ export function getSessionConfig() {
     sameSite: sameSite,
     domain: undefined, // Let browser set domain automatically
     path: '/',
-    // Add partitioned flag for production/Replit to handle Chrome's CHIPS
-    ...((isProduction || isReplit) ? { partitioned: true } : {})
+    // Add partitioned flag only when using secure cookies for Chrome's CHIPS
+    ...(useSecureCookies ? { partitioned: true } : {})
   } as any;
 
   // Session configuration
@@ -155,17 +179,29 @@ export async function clearSessionUser(req: Request): Promise<void> {
 export function logSessionConfig() {
   const isProduction = process.env.NODE_ENV === 'production';
   const isReplit = !!process.env.REPL_SLUG;
-  const useSecureCookies = isProduction || isReplit;
-  const sameSite = (isProduction || isReplit) ? 'none' : 'lax';
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const port = process.env.PORT || '5000';
+  
+  // Match the detection logic from getSessionConfig  
+  const isLocalhost = 
+    process.env.TESTING_LOCALHOST === 'true' || 
+    isDevelopment || 
+    port === '5000' || 
+    (!isProduction);
+  
+  const useSecureCookies = isProduction && !isDevelopment;
+  const sameSite = useSecureCookies ? 'none' : 'lax';
   
   console.log('🔐 Session configuration:', {
     environment: isProduction ? 'production' : 'development',
     replit: isReplit,
+    localhost: isLocalhost,
     secureCookies: useSecureCookies,
     sameSite: sameSite,
-    partitioned: isProduction || isReplit,
+    partitioned: useSecureCookies,
     sessionName: 'whirkplace.sid',
     trustProxy: true,
-    maxAge: '30 days'
+    maxAge: '30 days',
+    port: process.env.PORT || '5000'
   });
 }

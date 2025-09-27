@@ -99,24 +99,21 @@ app.use(session(sessionConfig));
 // Log session configuration on startup
 logSessionConfig();
 
-// Apply authentication middleware for all API routes
+// Apply authentication middleware for all API routes EXCEPT auth endpoints
 app.use("/api", (req, res, next) => {
-  // Only skip authentication for diagnostic endpoints in development
-  if (req.path.startsWith("/auth/diagnostic")) {
-    // SECURITY: Only allow diagnostic endpoints in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔓 Diagnostic endpoint allowed in development:', req.path);
-      return next();
-    } else {
-      // In production, return 404 to hide the existence of these endpoints
-      console.warn('⚠️ Diagnostic endpoint access attempt blocked in production:', req.path);
-      return res.status(404).json({ 
-        message: 'Route not found',
-        path: req.path,
-        method: req.method 
-      });
-    }
+  // CRITICAL FIX: Skip authentication for auth endpoints - they CREATE authentication
+  // Login, signup, and other auth endpoints should NOT require authentication
+  if (req.path.startsWith("/auth/")) {
+    console.log('🔓 Auth endpoint - skipping authentication middleware:', req.path);
+    return next();
   }
+  
+  // Also skip for specific public endpoints
+  if (req.path === "/csrf-token" || req.path.startsWith("/partners/applications")) {
+    console.log('🔓 Public endpoint - skipping authentication:', req.path);
+    return next();
+  }
+  
   // Apply authentication for all other routes
   return authenticateUser()(req, res, next);
 });

@@ -96,6 +96,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
     return res.status(200).json({ message: "Logged out successfully" });
   });
   
+  // Super Admin backdoor endpoint for production
+  // This endpoint is specifically for mpatrick@whirks.com super admin access
+  app.post("/api/auth/super-admin-login", async (req, res) => {
+    console.log("🔑 Super admin login attempt");
+    
+    try {
+      const { email, key } = req.body;
+      
+      // SECURITY: Strict validation for production super admin
+      if (process.env.NODE_ENV === 'production') {
+        // Only allow specific super admin email in production
+        if (email !== 'mpatrick@whirks.com') {
+          console.log("❌ Invalid super admin email in production");
+          return res.status(401).json({ 
+            message: "Unauthorized" 
+          });
+        }
+        
+        // Verify production backdoor key
+        const validKey = process.env.BACKDOOR_KEY;
+        if (!validKey || key !== validKey) {
+          console.log("❌ Invalid super admin key");
+          return res.status(401).json({ 
+            message: "Unauthorized" 
+          });
+        }
+      }
+      
+      // Find or create super admin user
+      const allUsers = await storage.getAllUsersGlobal(false);
+      let superAdmin = allUsers.find(u => u.email === email && u.isSuperAdmin);
+      
+      if (!superAdmin) {
+        // Create super admin in whirkplace organization
+        const whirkplaceOrg = await storage.getOrganizationBySlug('whirkplace');
+        if (!whirkplaceOrg) {
+          return res.status(404).json({ message: "Organization not found" });
+        }
+        
+        superAdmin = await storage.createUser(whirkplaceOrg.id, {
+          username: 'mpatrick',
+          password: await bcrypt.hash(randomBytes(32).toString('hex'), 10),
+          name: 'Matthew Patrick',
+          email: 'mpatrick@whirks.com',
+          organizationId: whirkplaceOrg.id,
+          role: 'admin',
+          isSuperAdmin: true,
+          isAccountOwner: false,
+          isActive: true,
+          authProvider: 'local',
+        });
+        console.log('✅ Created super admin user');
+      }
+      
+      // Create session
+      req.session.regenerate((err) => {
+        if (err) {
+          console.error('Session regeneration failed:', err);
+          return res.status(500).json({ message: "Session error" });
+        }
+        
+        req.session.userId = superAdmin.id;
+        req.session.organizationId = superAdmin.organizationId;
+        
+        // FIX: Let express-session automatically save and set cookie
+        console.log(`✅ Super admin ${email} logged in successfully`);
+        console.log(`🍪 Session will auto-save with Set-Cookie header`);
+        res.json({ 
+          message: "Super admin login successful",
+          user: sanitizeUser(superAdmin)
+        });
+      });
+    } catch (error) {
+      console.error("Super admin login error:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+  
   // NEW: Fresh backdoor endpoint with proper Replit cookie handling
   // NOTE: This endpoint does NOT use requireOrganization() since it needs to work without authentication
   app.post("/api/auth/dev-login-fresh", async (req, res) => {
@@ -168,29 +246,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.session.organizationId = organizationId;
         req.session.organizationSlug = org[0].slug;
         
-        // Save session before sending response to ensure persistence
-        req.session.save((err) => {
-        if (err) {
-          console.error('Failed to save session:', err);
-          return res.status(500).json({ message: "Session save failed" });
-        }
-        
-        console.log(`💾 Session saved for user: ${matthewUser.id}`);
+        // FIX: Let express-session automatically save and set cookie
+        console.log(`💾 Session will auto-save for user: ${matthewUser.id}`);
+        console.log(`🍪 Set-Cookie header will be added automatically`);
         
         // SECURITY: No longer setting auth cookies - sessions are the only authentication method
         // Cookies like auth_user_id were a critical vulnerability allowing user impersonation
         
         console.log(`✅ Fresh backdoor login successful for ${matthewUser.name}`);
         
-          res.json({ 
-            message: "Fresh backdoor login successful", 
-            user: { 
-              id: matthewUser.id, 
-              name: matthewUser.name, 
-              email: matthewUser.email, 
-              role: matthewUser.role 
-            } 
-          });
+        res.json({ 
+          message: "Fresh backdoor login successful", 
+          user: { 
+            id: matthewUser.id, 
+            name: matthewUser.name, 
+            email: matthewUser.email, 
+            role: matthewUser.role 
+          } 
         });
       });
     } catch (error) {
@@ -240,25 +312,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.session.userId = matthewUser.id;
         req.session.organizationId = req.orgId;  // Also set the organizationId
         
-        // Save session before sending response to ensure persistence
-        req.session.save((err) => {
-        if (err) {
-          console.error('Failed to save session:', err);
-          return res.status(500).json({ message: "Session save failed" });
-        }
+        // FIX: Let express-session automatically save and set cookie
+        console.log(`🍪 Session will auto-save with Set-Cookie header`);
         
         // SECURITY: No auth cookies - sessions only
         // Removed dangerous auth cookies that allowed user impersonation
         
-          res.json({ 
-            message: "Backdoor login successful", 
-            user: { 
-              id: matthewUser.id, 
-              name: matthewUser.name, 
-              email: matthewUser.email, 
-              role: matthewUser.role 
-            } 
-          });
+        res.json({ 
+          message: "Backdoor login successful", 
+          user: { 
+            id: matthewUser.id, 
+            name: matthewUser.name, 
+            email: matthewUser.email, 
+            role: matthewUser.role 
+          } 
         });
       });
     } catch (error) {
@@ -359,26 +426,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           orgIdFromReq: req.orgId
         });
         
-        // Save session before sending response to ensure persistence
-        req.session.save((err) => {
-          if (err) {
-            console.error('Failed to save session:', err);
-            return res.status(500).json({ message: "Session save failed" });
-          }
-          
-          console.log(`✅ Local login successful for ${user.name} (${user.email})`);
-          console.log(`📝 Session saved with ID: ${req.sessionID}`);
-          
-          res.json({ 
-            message: "Login successful", 
-            user: { 
-              id: user.id, 
-              name: user.name, 
-              email: user.email, 
-              role: user.role,
-              isSuperAdmin: user.isSuperAdmin || false
-            } 
-          });
+        // FIX: Let express-session automatically save and set cookie
+        console.log(`✅ Local login successful for ${user.name} (${user.email})`);
+        console.log(`🍪 Session will auto-save with Set-Cookie header, ID: ${req.sessionID}`);
+        
+        res.json({ 
+          message: "Login successful", 
+          user: { 
+            id: user.id, 
+            name: user.name, 
+            email: user.email, 
+            role: user.role,
+            isSuperAdmin: user.isSuperAdmin || false
+          } 
         });
       });
     } catch (error) {
@@ -452,16 +512,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const orgSlugString = typeof organizationSlug === 'string' ? organizationSlug : String(organizationSlug);
       const oauthUrl = generateOAuthURL(orgSlugString, req.session, req);
       
-      // Save session AFTER setting the state
-      req.session.save((err) => {
-        if (err) {
-          console.error('Failed to save session:', err);
-          return res.status(500).json({ error: "Session error" });
-        }
-        
-        // Return the OAuth URL as JSON
-        res.json({ url: oauthUrl });
-      });
+      // FIX: Let express-session automatically save and set cookie
+      console.log('🍪 Session will auto-save with OAuth state');
+      
+      // Return the OAuth URL as JSON
+      res.json({ url: oauthUrl });
     } catch (error) {
       console.error("OAuth URL generation error:", error);
       res.status(500).json({ error: "Failed to generate OAuth URL" });
@@ -512,18 +567,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           expires: (req.session as any).slackOAuthExpires
         });
         
-        // Save session AFTER setting the state to ensure persistence
-        req.session.save((err) => {
-          if (err) {
-            console.error('Failed to save session after setting OAuth state:', err);
-            return res.status(500).json({ message: "Session error during authentication" });
-          }
-          
-          console.log('✅ Slack OAuth session state saved, redirecting to:', oauthUrl.substring(0, 100) + '...');
-          
-          // Redirect to Slack OAuth
-          res.redirect(oauthUrl);
-        });
+        // FIX: Let express-session automatically save and set cookie
+        console.log('🍪 Session will auto-save with OAuth state');
+        console.log('✅ Redirecting to Slack OAuth:', oauthUrl.substring(0, 100) + '...');
+        
+        // Redirect to Slack OAuth
+        res.redirect(oauthUrl);
       } catch (urlError) {
         console.error("OAuth URL generation error:", urlError);
         res.status(500).json({ 
@@ -1035,7 +1084,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             avatar: user.picture,
           };
           
-          authenticatedUser = await storage.createUser(organization.id, userData);
+          authenticatedUser = await storage.createUser(organization.id, {
+            ...userData,
+            isAccountOwner: isNewOrganization ? true : false,  // Account owner flag for new org creator
+          });
         } catch (error) {
           console.error("🔴 CRITICAL: Failed to create user from Slack:", error);
           console.error("🔴 User creation attempted for email:", user.email || "unknown");
@@ -1185,82 +1237,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
           req.session.slackOAuthState = undefined;
           req.session.slackOrgSlug = undefined;
           
-          // Save session before setting cookies to ensure consistency
-          req.session.save((sessionErr) => {
-            if (sessionErr) {
-              console.error('Failed to save session:', sessionErr);
-              return res.status(500).send(`
-                <!DOCTYPE html>
-                <html>
-                  <head>
-                    <title>Authentication Error</title>
-                    <meta name="viewport" content="width=device-width, initial-scale=1">
-                    <style>
-                      body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
-                      .error { color: #dc3545; }
-                      button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
-                    </style>
-                  </head>
-                  <body>
-                    <h1 class="error">❌ Session Error</h1>
-                    <p>Failed to save authentication session. Please try again.</p>
-                    <button onclick="window.location.href='/'">Try Again</button>
-                  </body>
-                </html>
-              `);
-            }
-            
-            // SECURITY: Session-based authentication only
-            // No auth cookies are set - they were a critical vulnerability
-            
-            console.log(`User ${authenticatedUser.name} (${authenticatedUser.email}) successfully authenticated via Slack OAuth for organization ${organization.name}`);
-            
-            // Redirect to the organization's dashboard
-            // Use the centralized redirect URI resolver to get the base URL
-            const baseRedirectUri = resolveRedirectUri(req, '/');
-            // Remove the trailing slash to get the base URL
-            const appUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
-            
-            // Check if organization needs onboarding
-            const needsOnboarding = isNewOrganization || 
-              !organization.onboardingStatus || 
-              organization.onboardingStatus === 'not_started' || 
-              organization.onboardingStatus === 'in_progress';
-            
-            // For super admin users, redirect to organization selection
-            // For new organizations or those still in onboarding, redirect to onboarding
-            // Otherwise, redirect to the specific organization dashboard
-            const actualOrgSlug = organization.slug || organizationSlug;
-            
-            // Redirect directly to the appropriate page with auth params
-            // The page will handle setting up localStorage authentication
-            const authParams = new URLSearchParams({
-              auth_user_id: authenticatedUser.id,
-              auth_org_id: organization.id,
-              auth_session: sessionToken
-            });
-            
-            let redirectPath: string;
-            if (isSuperAdmin) {
-              // Super admins go to organization selection
-              redirectPath = `${appUrl}/select-organization?${authParams.toString()}`;
-            } else if (needsOnboarding) {
-              // New organizations go to onboarding with org slug and auth
-              authParams.append('org', actualOrgSlug);
-              redirectPath = `${appUrl}/onboarding?${authParams.toString()}`;
-            } else {
-              // Existing organizations go to dashboard
-              authParams.append('org', actualOrgSlug);
-              redirectPath = `${appUrl}/dashboard?${authParams.toString()}`;
-            }
-            
-            console.log(`🚀 Redirecting after OAuth authentication`);
-            console.log(`   User: ${authenticatedUser.email}`);
-            console.log(`   Organization: ${actualOrgSlug} (new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
-            console.log(`   Redirect: ${redirectPath.replace(/auth_session=[^&]+/, 'auth_session=[REDACTED]')}`);
-            
-            res.redirect(redirectPath);
+          // FIX: Let express-session automatically save and set cookie
+          console.log(`🍪 Session will auto-save with Set-Cookie header`);
+          
+          // SECURITY: Session-based authentication only
+          // No auth cookies are set - they were a critical vulnerability
+          
+          console.log(`User ${authenticatedUser.name} (${authenticatedUser.email}) successfully authenticated via Slack OAuth for organization ${organization.name}`);
+          
+          // Redirect to the organization's dashboard
+          // Use the centralized redirect URI resolver to get the base URL
+          const baseRedirectUri = resolveRedirectUri(req, '/');
+          // Remove the trailing slash to get the base URL
+          const appUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
+          
+          // Check if organization needs onboarding
+          const needsOnboarding = isNewOrganization || 
+            !organization.onboardingStatus || 
+            organization.onboardingStatus === 'not_started' || 
+            organization.onboardingStatus === 'in_progress';
+          
+          // For super admin users, redirect to organization selection
+          // For new organizations or those still in onboarding, redirect to onboarding
+          // Otherwise, redirect to the specific organization dashboard
+          const actualOrgSlug = organization.slug || organizationSlug;
+          
+          // Redirect directly to the appropriate page with auth params
+          // The page will handle setting up localStorage authentication
+          const authParams = new URLSearchParams({
+            auth_user_id: authenticatedUser.id,
+            auth_org_id: organization.id,
+            auth_session: sessionToken
           });
+          
+          let redirectPath: string;
+          if (isSuperAdmin) {
+            // Super admins go to organization selection
+            redirectPath = `${appUrl}/select-organization?${authParams.toString()}`;
+          } else if (needsOnboarding) {
+            // New organizations go to onboarding with org slug and auth
+            authParams.append('org', actualOrgSlug);
+            redirectPath = `${appUrl}/onboarding?${authParams.toString()}`;
+          } else {
+            // Existing organizations go to dashboard
+            authParams.append('org', actualOrgSlug);
+            redirectPath = `${appUrl}/dashboard?${authParams.toString()}`;
+          }
+          
+          console.log(`🚀 Redirecting after OAuth authentication`);
+          console.log(`   User: ${authenticatedUser.email}`);
+          console.log(`   Organization: ${actualOrgSlug} (new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
+          console.log(`   Redirect: ${redirectPath.replace(/auth_session=[^&]+/, 'auth_session=[REDACTED]')}`);
+          
+          res.redirect(redirectPath);
         });
       } catch (error) {
         console.error("Failed to establish session:", error);
@@ -1900,6 +1929,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: hashedPassword, // Store hashed password
         name: `${data.firstName} ${data.lastName}`,
         email: data.email,
+        organizationId: organization.id,
         role: "admin", // Account owner has admin role
         isAccountOwner: true, // Mark as account owner (legal organization owner)
         isActive: true,
@@ -1926,16 +1956,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           console.log(`💾 Session configured for user: ${adminUser.id} in org: ${organization.id}`);
           
-          // Save session to persist it
-          req.session.save((err) => {
-            if (err) {
-              console.error("Session save error:", err);
-              reject(err);
-            } else {
-              console.log("Session saved successfully for new admin user");
-              resolve(true);
-            }
-          });
+          // CRITICAL FIX: Don't call session.save() - let express-session handle it
+          // The session will be automatically saved and Set-Cookie header added when response is sent
+          console.log("🍪 Session will auto-save with Set-Cookie header on response");
+          resolve(true);
         });
       });
       
@@ -2329,20 +2353,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           actualOrgId = user.organizationId;
         }
       } else {
-        // Normal authentication - if we have org context, search within that org
-        // Otherwise, search across all organizations by email
-        if (req.orgId) {
-          user = await storage.getUserByEmail(req.orgId, email.toLowerCase().trim());
-        } else {
-          // Search for user across all organizations
-          console.log("No organization context, searching globally for user by email...");
-          const allUsers = await storage.getAllUsersGlobal(false);
-          user = allUsers.find(u => u.email === email.toLowerCase().trim() && u.isActive);
-          
-          if (user) {
-            actualOrgId = user.organizationId;
-            console.log(`Found user in organization: ${actualOrgId}`);
-          }
+        // Always search across all organizations for login
+        // This allows users from any organization to log in from the main login page
+        console.log("Searching for user across all organizations...");
+        const allUsers = await storage.getAllUsersGlobal(false);
+        user = allUsers.find(u => u.email === email.toLowerCase().trim() && u.isActive);
+        
+        if (user) {
+          actualOrgId = user.organizationId;
+          console.log(`Found user in organization: ${actualOrgId}`);
         }
         
         if (user && user.isActive) {
@@ -2372,41 +2391,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`✅ Login successful for: ${user.name} (${user.email}) from org: ${actualOrgId}`);
       
-      // Generate new session
-      req.session.regenerate((regenerateErr) => {
-        if (regenerateErr) {
-          console.error('Failed to regenerate session:', regenerateErr);
-          return res.status(500).json({ message: "Session regeneration failed" });
-        }
-        
-        // Set session after regeneration - use the user's actual organization ID
-        req.session.userId = user.id;
-        req.session.organizationId = actualOrgId;  // CRITICAL: Use the user's actual organization ID
-        
-        console.log(`💾 Session configured for user: ${user.id} in org: ${actualOrgId}`);
-        
-        // Save session before sending response
+      // Set session properties
+      req.session.userId = user.id;
+      req.session.organizationId = actualOrgId;  // CRITICAL: Use the user's actual organization ID
+      
+      console.log(`💾 Session configured for user: ${user.id} in org: ${actualOrgId}`);
+      console.log(`🍪 Session ID: ${req.sessionID}`);
+      
+      // CRITICAL FIX: Explicitly save session with promise to ensure it's saved
+      // BUT let express-session handle the Set-Cookie header by continuing the response
+      await new Promise<void>((resolve, reject) => {
         req.session.save((err) => {
           if (err) {
-            console.error('Failed to save session:', err);
-            return res.status(500).json({ message: "Session save failed" });
+            console.error('Session save error:', err);
+            reject(err);
+          } else {
+            console.log(`✅ Session explicitly saved for user: ${user.id}`);
+            resolve();
           }
-          
-          console.log(`💾 Session saved for user: ${user.id}`);
-          
-          // SECURITY: Session-based authentication only - no auth cookies
-          
-          res.json({ 
-            message: "Login successful",
-            user: {
-              id: user.id,
-              name: user.name,
-              email: user.email,
-              role: user.role,
-              organizationId: actualOrgId
-            }
-          });
         });
+      });
+      
+      // SECURITY: Session-based authentication only - no auth cookies
+      
+      // Now send response - express-session should have set the cookie
+      res.json({ 
+        message: "Login successful",
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          organizationId: actualOrgId
+        }
       });
       
     } catch (error) {
@@ -2505,27 +2522,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Set session after regeneration
         req.session.userId = newUser.id;
         
-        // Save session before sending response
-        req.session.save((err) => {
-          if (err) {
-            console.error('Failed to save session:', err);
-            return res.status(500).json({ message: "Session save failed" });
+        // FIX: Let express-session automatically save and set cookie
+        console.log(`💾 Registration session will auto-save for user: ${newUser.id}`);
+        console.log(`🍪 Set-Cookie header will be added automatically`);
+        
+        // SECURITY: Session-based authentication only - no auth cookies
+        
+        res.status(201).json({ 
+          message: "Registration successful",
+          user: {
+            id: newUser.id,
+            name: newUser.name,
+            email: newUser.email,
+            role: newUser.role,
+            organizationId: newUser.organizationId
           }
-          
-          console.log(`💾 Registration session saved for user: ${newUser.id}`);
-          
-          // SECURITY: Session-based authentication only - no auth cookies
-          
-          res.status(201).json({ 
-            message: "Registration successful",
-            user: {
-              id: newUser.id,
-              name: newUser.name,
-              email: newUser.email,
-              role: newUser.role,
-              organizationId: newUser.organizationId
-            }
-          });
         });
       });
       

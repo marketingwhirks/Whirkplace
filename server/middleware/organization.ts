@@ -43,14 +43,15 @@ export function resolveOrganization() {
         }
       }
       
-      // Method 2: Use org query parameter (for development and explicit org selection)
-      if (!organization && urlParam) {
+      // Method 2: Use org query parameter (ONLY in development for testing)
+      // SECURITY: Disable query parameter in production to prevent org injection
+      if (!organization && urlParam && process.env.NODE_ENV !== 'production') {
         if (urlParam === 'default') {
           organization = await storage.getOrganizationBySlug('whirkplace');
         } else {
           organization = await storage.getOrganizationBySlug(urlParam);
         }
-        console.log(`🔍 Org param lookup (${urlParam}):`, organization ? 'found' : 'not found');
+        console.log(`🔍 [DEV ONLY] Org param lookup (${urlParam}):`, organization ? 'found' : 'not found');
       }
       
       // Method 3: Domain-based organization resolution
