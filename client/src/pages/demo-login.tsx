@@ -213,7 +213,8 @@ export default function DemoLoginPage() {
           localStorage.setItem('auth_user_name', data.user.name);
           localStorage.setItem('auth_user_email', data.user.email);
           localStorage.setItem('auth_user_role', data.user.role);
-          localStorage.setItem('auth_organization_id', 'b74d00fd-e1ce-41ae-afca-4a0d55cb1fe1');
+          localStorage.setItem('auth_organization_id', 'fictitious-delicious');
+          localStorage.setItem('auth_organization_slug', 'fictitious-delicious');
           console.log("Stored auth in localStorage (direct):", data.user.id);
         }
         
