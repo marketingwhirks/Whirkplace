@@ -25,6 +25,7 @@ import Admin from "@/pages/admin";
 import SuperAdmin from "@/pages/SuperAdmin";
 import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
+import ForgotPasswordPage from "@/pages/forgot-password";
 import LandingPage from "@/pages/LandingPage";
 import PartnerPage from "@/pages/PartnerPage";
 import DevLogin from "@/pages/DevLogin";
@@ -118,6 +119,7 @@ function App() {
               <Route path="/signup" component={BusinessSignupPage} />
               <Route path="/business-signup" component={BusinessSignupPage} />
               <Route path="/login" component={LoginPage} />
+              <Route path="/forgot-password" component={ForgotPasswordPage} />
               <Route path="/partners" component={PartnerPage} />
               <Route path="/dev-login" component={DevLogin} />
               <Route path="/onboarding" component={OnboardingPage} />

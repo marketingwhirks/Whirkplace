@@ -543,7 +543,17 @@ export default function LoginPage() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="password">Password</Label>
+                          <div className="flex items-center justify-between mb-2">
+                            <Label htmlFor="password">Password</Label>
+                            <button
+                              type="button"
+                              onClick={() => setLocation('/forgot-password')}
+                              className="text-sm text-primary hover:underline"
+                              data-testid="forgot-password-link"
+                            >
+                              Forgot password?
+                            </button>
+                          </div>
                           <Input 
                             id="password"
                             type="password"
