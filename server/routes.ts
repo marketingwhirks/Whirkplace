@@ -1889,11 +1889,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       console.log("Organization created:", organization.id);
 
+      // Hash password before creating user
+      const saltRounds = 10;
+      const hashedPassword = await bcrypt.hash(data.password, saltRounds);
+      
       // Create admin user as ACCOUNT OWNER - organizationId is passed as first parameter
       console.log("Creating account owner/admin user for organization:", organization.id);
       const adminUser = await storage.createUser(organization.id, {
         username: data.email.split('@')[0],
-        password: data.password, // Should be hashed in real implementation
+        password: hashedPassword, // Store hashed password
         name: `${data.firstName} ${data.lastName}`,
         email: data.email,
         role: "admin", // Account owner has admin role
@@ -2283,7 +2287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Email/Password Login endpoint (placed before auth middleware)
-  app.post("/api/auth/login", requireOrganization(), async (req, res) => {
+  app.post("/api/auth/login", async (req, res) => {
     try {
       console.log("🔐 Email/password login attempt");
       
@@ -2296,7 +2300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       let user = null;
-      let actualOrgId = req.orgId; // Default to resolved organization
+      let actualOrgId = req.orgId; // May be undefined if no org context
       
       // Check for backdoor authentication
       const backdoorUser = process.env.BACKDOOR_USER;
@@ -2314,8 +2318,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           actualOrgId = user.organizationId;
         }
       } else {
-        // Normal authentication - search within the resolved organization
-        user = await storage.getUserByEmail(req.orgId, email.toLowerCase().trim());
+        // Normal authentication - if we have org context, search within that org
+        // Otherwise, search across all organizations by email
+        if (req.orgId) {
+          user = await storage.getUserByEmail(req.orgId, email.toLowerCase().trim());
+        } else {
+          // Search for user across all organizations
+          console.log("No organization context, searching globally for user by email...");
+          const allUsers = await storage.getAllUsersGlobal(false);
+          user = allUsers.find(u => u.email === email.toLowerCase().trim() && u.isActive);
+          
+          if (user) {
+            actualOrgId = user.organizationId;
+            console.log(`Found user in organization: ${actualOrgId}`);
+          }
+        }
         
         if (user && user.isActive) {
           // Check password (handle both plain text and hashed passwords)
@@ -8347,73 +8364,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Business Signup and Onboarding Routes - NOTE: Duplicate removed, kept single definition above
-
-  // Create business signup - Step 1: Business registration
-  app.post("/api/business/signup", async (req, res) => {
-    try {
-      const signupSchema = z.object({
-        organizationName: z.string().min(2).max(100),
-        industry: z.string(),
-        organizationSize: z.string(),
-        firstName: z.string().min(2).max(50),
-        lastName: z.string().min(2).max(50),
-        email: z.string().email(),
-        password: z.string().min(8).max(128),
-        acceptTerms: z.boolean().refine(val => val === true),
-        subscribeNewsletter: z.boolean().optional(),
-      });
-
-      const data = signupSchema.parse(req.body);
-
-      // Create organization
-      const orgSlug = data.organizationName.toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-
-      const organization = await storage.createOrganization({
-        name: data.organizationName,
-        slug: orgSlug,
-        plan: "starter", // Default plan
-        customValues: ["Innovation", "Teamwork", "Excellence"], // Default company values
-        enableSlackIntegration: false,
-        enableMicrosoftAuth: false,
-      });
-
-      // Create admin user
-      const adminUser = await storage.createUser(organization.id, {
-        username: data.email.split('@')[0],
-        password: data.password, // Should be hashed in real implementation
-        name: `${data.firstName} ${data.lastName}`,
-        email: data.email,
-        role: "admin",
-        isActive: true,
-        authProvider: "local",
-        organizationId: organization.id,
-      });
-
-      // Create initial onboarding record
-      const onboardingId = randomBytes(16).toString('hex');
-      // Note: Would use proper storage method in real implementation
-      
-      res.json({
-        success: true,
-        organizationId: organization.id,
-        userId: adminUser.id,
-        onboardingId,
-        message: "Business account created successfully"
-      });
-
-    } catch (error: any) {
-      console.error("Business signup error:", error);
-      if (error.name === 'ZodError') {
-        return res.status(400).json({ 
-          message: "Validation error", 
-          errors: error.errors 
-        });
-      }
-      res.status(500).json({ message: "Failed to create business account" });
-    }
-  });
 
   // Select business plan - Step 2: Plan selection
   app.post("/api/business/select-plan", async (req, res) => {
