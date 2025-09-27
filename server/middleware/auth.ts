@@ -267,7 +267,6 @@ export function authenticateUser() {
       // Skip authentication for certain paths (public endpoints)
       const skipAuthPaths = [
         '/auth/logout', 
-        '/csrf-token',
         '/business/signup',
         '/business/select-plan',
         '/business/complete-onboarding',
