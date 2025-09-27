@@ -26,13 +26,20 @@ export function useCurrentUser() {
         }
 
         // Make actual API call to check current user authentication
-        // Only rely on secure session cookies, no auth headers
+        // Use Bearer token if available (for demo users), otherwise rely on secure session cookies
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json'
+        };
+        
+        const demoToken = localStorage.getItem('demo_token');
+        if (demoToken) {
+          headers['Authorization'] = `Bearer ${demoToken}`;
+        }
+        
         const response = await fetch(url, {
           method: 'GET',
           credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          headers
         });
         
         if (!response.ok) {
