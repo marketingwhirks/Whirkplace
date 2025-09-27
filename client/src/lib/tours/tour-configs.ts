@@ -140,9 +140,6 @@ export const defaultTourStyles: JoyrideProps['styles'] = {
       color: 'hsl(var(--background))',
     },
   },
-  options: {
-    zIndex: 10000,
-  },
 };
 
 // Helper function to create a basic tour step
