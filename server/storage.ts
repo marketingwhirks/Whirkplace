@@ -34,8 +34,9 @@ import {
   type DashboardWidgetTemplate, type InsertDashboardWidgetTemplate,
   type OrganizationAuthProvider, type InsertOrganizationAuthProvider,
   type UserIdentity, type InsertUserIdentity,
+  type UserTour, type InsertUserTour,
   users, teams, checkins, questions, questionCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
-  organizationAuthProviders, userIdentities,
+  organizationAuthProviders, userIdentities, userTours,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
@@ -381,6 +382,13 @@ export interface IStorage {
   createUserIdentity(identity: InsertUserIdentity): Promise<UserIdentity>;
   deleteUserIdentity(userId: string, provider: string): Promise<boolean>;
   findUserByProviderIdentity(organizationId: string, provider: string, providerUserId: string): Promise<User | undefined>;
+
+  // User Tours
+  getUserTourStatus(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
+  markTourCompleted(organizationId: string, userId: string, tourId: string, version?: string): Promise<UserTour>;
+  markTourSkipped(organizationId: string, userId: string, tourId: string, version?: string): Promise<UserTour>;
+  getAllUserTours(organizationId: string, userId: string): Promise<UserTour[]>;
+  resetUserTour(organizationId: string, userId: string, tourId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -4477,6 +4485,168 @@ export class DatabaseStorage implements IStorage {
       throw error;
     }
   }
+
+  // User Tours
+  async getUserTourStatus(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+    try {
+      const [tour] = await db
+        .select()
+        .from(userTours)
+        .where(and(
+          eq(userTours.organizationId, organizationId),
+          eq(userTours.userId, userId),
+          eq(userTours.tourId, tourId)
+        ))
+        .orderBy(desc(userTours.version))
+        .limit(1);
+      
+      return tour || undefined;
+    } catch (error) {
+      console.error("Failed to get user tour status:", error);
+      throw error;
+    }
+  }
+
+  async markTourCompleted(organizationId: string, userId: string, tourId: string, version: string = "1.0"): Promise<UserTour> {
+    try {
+      // Check if tour already exists
+      const existingTour = await db
+        .select()
+        .from(userTours)
+        .where(and(
+          eq(userTours.organizationId, organizationId),
+          eq(userTours.userId, userId),
+          eq(userTours.tourId, tourId),
+          eq(userTours.version, version)
+        ))
+        .limit(1);
+      
+      const now = new Date();
+      
+      if (existingTour.length > 0) {
+        // Update existing tour
+        const [updated] = await db
+          .update(userTours)
+          .set({
+            completedAt: now,
+            skippedAt: null,
+            updatedAt: now
+          })
+          .where(and(
+            eq(userTours.organizationId, organizationId),
+            eq(userTours.userId, userId),
+            eq(userTours.tourId, tourId),
+            eq(userTours.version, version)
+          ))
+          .returning();
+        return updated;
+      } else {
+        // Create new tour record
+        const [created] = await db
+          .insert(userTours)
+          .values({
+            organizationId,
+            userId,
+            tourId,
+            version,
+            completedAt: now,
+            skippedAt: null
+          })
+          .returning();
+        return created;
+      }
+    } catch (error) {
+      console.error("Failed to mark tour as completed:", error);
+      throw error;
+    }
+  }
+
+  async markTourSkipped(organizationId: string, userId: string, tourId: string, version: string = "1.0"): Promise<UserTour> {
+    try {
+      // Check if tour already exists
+      const existingTour = await db
+        .select()
+        .from(userTours)
+        .where(and(
+          eq(userTours.organizationId, organizationId),
+          eq(userTours.userId, userId),
+          eq(userTours.tourId, tourId),
+          eq(userTours.version, version)
+        ))
+        .limit(1);
+      
+      const now = new Date();
+      
+      if (existingTour.length > 0) {
+        // Update existing tour
+        const [updated] = await db
+          .update(userTours)
+          .set({
+            skippedAt: now,
+            completedAt: null,
+            updatedAt: now
+          })
+          .where(and(
+            eq(userTours.organizationId, organizationId),
+            eq(userTours.userId, userId),
+            eq(userTours.tourId, tourId),
+            eq(userTours.version, version)
+          ))
+          .returning();
+        return updated;
+      } else {
+        // Create new tour record
+        const [created] = await db
+          .insert(userTours)
+          .values({
+            organizationId,
+            userId,
+            tourId,
+            version,
+            skippedAt: now,
+            completedAt: null
+          })
+          .returning();
+        return created;
+      }
+    } catch (error) {
+      console.error("Failed to mark tour as skipped:", error);
+      throw error;
+    }
+  }
+
+  async getAllUserTours(organizationId: string, userId: string): Promise<UserTour[]> {
+    try {
+      return await db
+        .select()
+        .from(userTours)
+        .where(and(
+          eq(userTours.organizationId, organizationId),
+          eq(userTours.userId, userId)
+        ))
+        .orderBy(desc(userTours.createdAt));
+    } catch (error) {
+      console.error("Failed to get all user tours:", error);
+      throw error;
+    }
+  }
+
+  async resetUserTour(organizationId: string, userId: string, tourId: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(userTours)
+        .where(and(
+          eq(userTours.organizationId, organizationId),
+          eq(userTours.userId, userId),
+          eq(userTours.tourId, tourId)
+        ));
+      
+      return true;
+    } catch (error) {
+      console.error("Failed to reset user tour:", error);
+      throw error;
+    }
+  }
 }
 
 export class MemStorage implements IStorage {
@@ -6568,6 +6738,93 @@ export class MemStorage implements IStorage {
 
   async findUserByProviderIdentity(organizationId: string, provider: string, providerUserId: string): Promise<User | undefined> {
     return undefined;
+  }
+
+  // User Tours (MemStorage implementation)
+  private userTours: Map<string, UserTour> = new Map();
+
+  async getUserTourStatus(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+    const tours = Array.from(this.userTours.values()).filter(tour =>
+      tour.organizationId === organizationId &&
+      tour.userId === userId &&
+      tour.tourId === tourId
+    );
+    
+    // Return the latest version
+    return tours.sort((a, b) => b.version.localeCompare(a.version))[0] || undefined;
+  }
+
+  async markTourCompleted(organizationId: string, userId: string, tourId: string, version: string = "1.0"): Promise<UserTour> {
+    const tourKey = `${organizationId}-${userId}-${tourId}-${version}`;
+    const existingTour = this.userTours.get(tourKey);
+    const now = new Date();
+    
+    const tour: UserTour = existingTour ? {
+      ...existingTour,
+      completedAt: now,
+      skippedAt: null,
+      updatedAt: now
+    } : {
+      id: randomUUID(),
+      organizationId,
+      userId,
+      tourId,
+      version,
+      completedAt: now,
+      skippedAt: null,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    this.userTours.set(tourKey, tour);
+    return tour;
+  }
+
+  async markTourSkipped(organizationId: string, userId: string, tourId: string, version: string = "1.0"): Promise<UserTour> {
+    const tourKey = `${organizationId}-${userId}-${tourId}-${version}`;
+    const existingTour = this.userTours.get(tourKey);
+    const now = new Date();
+    
+    const tour: UserTour = existingTour ? {
+      ...existingTour,
+      skippedAt: now,
+      completedAt: null,
+      updatedAt: now
+    } : {
+      id: randomUUID(),
+      organizationId,
+      userId,
+      tourId,
+      version,
+      skippedAt: now,
+      completedAt: null,
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    this.userTours.set(tourKey, tour);
+    return tour;
+  }
+
+  async getAllUserTours(organizationId: string, userId: string): Promise<UserTour[]> {
+    return Array.from(this.userTours.values()).filter(tour =>
+      tour.organizationId === organizationId && tour.userId === userId
+    ).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async resetUserTour(organizationId: string, userId: string, tourId: string): Promise<boolean> {
+    const toDelete: string[] = [];
+    
+    for (const [key, tour] of this.userTours.entries()) {
+      if (tour.organizationId === organizationId && 
+          tour.userId === userId && 
+          tour.tourId === tourId) {
+        toDelete.push(key);
+      }
+    }
+    
+    toDelete.forEach(key => this.userTours.delete(key));
+    return toDelete.length > 0;
   }
 }
 

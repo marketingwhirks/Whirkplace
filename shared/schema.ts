@@ -1412,6 +1412,30 @@ export const dashboardWidgetTemplates = pgTable("dashboard_widget_templates", {
   typeIdx: index("widget_templates_type_idx").on(table.widgetType),
 }));
 
+// User Tours - Track tour completion status per user
+export const userTours = pgTable("user_tours", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  organizationId: varchar("organization_id").notNull(),
+  tourId: text("tour_id").notNull(), // e.g., 'dashboard-intro', 'check-ins-guide'
+  completedAt: timestamp("completed_at"), // When tour was completed (nullable)
+  skippedAt: timestamp("skipped_at"), // When tour was skipped (nullable)
+  version: text("version").notNull().default("1.0"), // Tour version (e.g., '1.0', '2.0')
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for user tour lookups
+  userIdx: index("user_tours_user_idx").on(table.userId),
+  // Index for organization tour lookups
+  orgIdx: index("user_tours_org_idx").on(table.organizationId),
+  // Index for tour ID lookups
+  tourIdx: index("user_tours_tour_idx").on(table.tourId),
+  // Composite index for efficient user-tour lookups
+  userTourIdx: index("user_tours_user_tour_idx").on(table.userId, table.tourId),
+  // Unique constraint: one tour per user per version
+  userTourVersionUnique: unique("user_tours_user_tour_version_unique").on(table.userId, table.tourId, table.version),
+}));
+
 // Super Admin Zod schemas
 export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit({
   id: true,
@@ -1460,6 +1484,20 @@ export const insertDashboardWidgetTemplateSchema = createInsertSchema(dashboardW
 });
 export type InsertDashboardWidgetTemplate = z.infer<typeof insertDashboardWidgetTemplateSchema>;
 export type DashboardWidgetTemplate = typeof dashboardWidgetTemplates.$inferSelect;
+
+// User Tours Zod schemas
+export const insertUserTourSchema = createInsertSchema(userTours).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  tourId: z.string().min(1, "Tour ID is required").max(100, "Tour ID too long"),
+  version: z.string().min(1, "Version is required").max(10, "Version too long").default("1.0"),
+  completedAt: z.date().optional(),
+  skippedAt: z.date().optional(),
+});
+export type InsertUserTour = z.infer<typeof insertUserTourSchema>;
+export type UserTour = typeof userTours.$inferSelect;
 
 // Partner Applications table
 export const partnerApplications = pgTable('partner_applications', {
