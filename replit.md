@@ -6,6 +6,13 @@ Whirkplace is a comprehensive team management and wellness application designed 
 
 ## Recent Changes
 
+### Authentication & Signup Improvements (September 27, 2025)
+- **Industry Field**: Added industry selection to business signup flow on page 1 alongside organization name
+- **Duplicate Endpoint Fix**: Removed duplicate business signup endpoint that was causing conflicts
+- **Password Hashing**: Fixed password hashing on signup to use bcrypt properly
+- **Login Endpoint Enhancement**: Updated login to search globally for users when not found in default organization
+- **Session Management**: Signup now properly sets session after account creation for automatic login
+
 ### Multi-Tenant Architecture (September 2025)
 Successfully implemented multi-tenant database architecture to support multiple organizations:
 - **Organizations Table**: Added support for customizable company values per organization
