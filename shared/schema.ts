@@ -1418,8 +1418,11 @@ export const userTours = pgTable("user_tours", {
   userId: varchar("user_id").notNull(),
   organizationId: varchar("organization_id").notNull(),
   tourId: text("tour_id").notNull(), // e.g., 'dashboard-intro', 'check-ins-guide'
+  status: text("status").notNull().default("not_started"), // not_started, in_progress, completed, skipped
+  currentStep: integer("current_step").notNull().default(0),
   completedAt: timestamp("completed_at"), // When tour was completed (nullable)
   skippedAt: timestamp("skipped_at"), // When tour was skipped (nullable)
+  lastShownAt: timestamp("last_shown_at"), // When tour was last shown to user
   version: text("version").notNull().default("1.0"), // Tour version (e.g., '1.0', '2.0')
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),

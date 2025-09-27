@@ -219,6 +219,15 @@ export interface IStorage {
   getNotificationsByUser(organizationId: string, userId: string, limit?: number): Promise<Notification[]>;
   getUnreadNotificationCount(organizationId: string, userId: string): Promise<number>;
 
+  // User Tours
+  getUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
+  getUserTours(organizationId: string, userId: string): Promise<UserTour[]>;
+  createUserTour(organizationId: string, tour: InsertUserTour): Promise<UserTour>;
+  updateUserTour(organizationId: string, userId: string, tourId: string, tour: Partial<InsertUserTour>): Promise<UserTour | undefined>;
+  markTourCompleted(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
+  markTourSkipped(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
+  resetUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
+
   // Check-in Review Methods
   getPendingCheckins(organizationId: string, managerId?: string): Promise<Checkin[]>;
   reviewCheckin(organizationId: string, checkinId: string, reviewedBy: string, reviewData: ReviewCheckin): Promise<Checkin | undefined>;
@@ -1725,6 +1734,106 @@ export class DatabaseStorage implements IStorage {
         eq(notifications.isRead, false)
       ));
     return result?.count ?? 0;
+  }
+
+  // User Tours
+  async getUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+    const [result] = await db
+      .select()
+      .from(userTours)
+      .where(and(
+        eq(userTours.organizationId, organizationId),
+        eq(userTours.userId, userId),
+        eq(userTours.tourId, tourId)
+      ))
+      .limit(1);
+    return result;
+  }
+
+  async getUserTours(organizationId: string, userId: string): Promise<UserTour[]> {
+    return await db
+      .select()
+      .from(userTours)
+      .where(and(
+        eq(userTours.organizationId, organizationId),
+        eq(userTours.userId, userId)
+      ))
+      .orderBy(desc(userTours.updatedAt));
+  }
+
+  async createUserTour(organizationId: string, tour: InsertUserTour): Promise<UserTour> {
+    const [result] = await db
+      .insert(userTours)
+      .values({ ...tour, organizationId, updatedAt: new Date() })
+      .returning();
+    return result!;
+  }
+
+  async updateUserTour(organizationId: string, userId: string, tourId: string, tour: Partial<InsertUserTour>): Promise<UserTour | undefined> {
+    const [result] = await db
+      .update(userTours)
+      .set({ ...tour, updatedAt: new Date() })
+      .where(and(
+        eq(userTours.organizationId, organizationId),
+        eq(userTours.userId, userId),
+        eq(userTours.tourId, tourId)
+      ))
+      .returning();
+    return result;
+  }
+
+  async markTourCompleted(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+    const [result] = await db
+      .update(userTours)
+      .set({ 
+        status: 'completed',
+        completedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(and(
+        eq(userTours.organizationId, organizationId),
+        eq(userTours.userId, userId),
+        eq(userTours.tourId, tourId)
+      ))
+      .returning();
+    return result;
+  }
+
+  async markTourSkipped(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+    const [result] = await db
+      .update(userTours)
+      .set({ 
+        status: 'skipped',
+        skippedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(and(
+        eq(userTours.organizationId, organizationId),
+        eq(userTours.userId, userId),
+        eq(userTours.tourId, tourId)
+      ))
+      .returning();
+    return result;
+  }
+
+  async resetUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+    const [result] = await db
+      .update(userTours)
+      .set({ 
+        status: 'not_started',
+        currentStep: 0,
+        completedAt: null,
+        skippedAt: null,
+        lastShownAt: null,
+        updatedAt: new Date()
+      })
+      .where(and(
+        eq(userTours.organizationId, organizationId),
+        eq(userTours.userId, userId),
+        eq(userTours.tourId, tourId)
+      ))
+      .returning();
+    return result;
   }
 
   // Helper methods for aggregation strategy
@@ -5622,6 +5731,99 @@ export class MemStorage implements IStorage {
     return Array.from(this.notifications.values())
       .filter(n => n.organizationId === organizationId && n.userId === userId && !n.isRead)
       .length;
+  }
+
+  // User Tours - MemStorage implementation
+  private userToursMap: Map<string, UserTour> = new Map();
+
+  async getUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+    const key = `${organizationId}:${userId}:${tourId}`;
+    const tour = this.userToursMap.get(key);
+    return tour && tour.organizationId === organizationId ? tour : undefined;
+  }
+
+  async getUserTours(organizationId: string, userId: string): Promise<UserTour[]> {
+    return Array.from(this.userToursMap.values())
+      .filter(tour => tour.organizationId === organizationId && tour.userId === userId)
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  }
+
+  async createUserTour(organizationId: string, tour: InsertUserTour): Promise<UserTour> {
+    const id = randomUUID();
+    const newTour: UserTour = {
+      ...tour,
+      id,
+      organizationId,
+      status: tour.status || 'not_started',
+      currentStep: tour.currentStep || 0,
+      completedAt: tour.completedAt || null,
+      skippedAt: tour.skippedAt || null,
+      lastShownAt: tour.lastShownAt || null,
+      version: tour.version || '1.0',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    const key = `${organizationId}:${tour.userId}:${tour.tourId}`;
+    this.userToursMap.set(key, newTour);
+    return newTour;
+  }
+
+  async updateUserTour(organizationId: string, userId: string, tourId: string, tour: Partial<InsertUserTour>): Promise<UserTour | undefined> {
+    const key = `${organizationId}:${userId}:${tourId}`;
+    const existingTour = this.userToursMap.get(key);
+    if (!existingTour || existingTour.organizationId !== organizationId) return undefined;
+    
+    const updatedTour = { ...existingTour, ...tour, updatedAt: new Date() };
+    this.userToursMap.set(key, updatedTour);
+    return updatedTour;
+  }
+
+  async markTourCompleted(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+    const key = `${organizationId}:${userId}:${tourId}`;
+    const tour = this.userToursMap.get(key);
+    if (!tour || tour.organizationId !== organizationId) return undefined;
+    
+    const updatedTour = { 
+      ...tour, 
+      status: 'completed' as const,
+      completedAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.userToursMap.set(key, updatedTour);
+    return updatedTour;
+  }
+
+  async markTourSkipped(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+    const key = `${organizationId}:${userId}:${tourId}`;
+    const tour = this.userToursMap.get(key);
+    if (!tour || tour.organizationId !== organizationId) return undefined;
+    
+    const updatedTour = { 
+      ...tour, 
+      status: 'skipped' as const,
+      skippedAt: new Date(),
+      updatedAt: new Date()
+    };
+    this.userToursMap.set(key, updatedTour);
+    return updatedTour;
+  }
+
+  async resetUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+    const key = `${organizationId}:${userId}:${tourId}`;
+    const tour = this.userToursMap.get(key);
+    if (!tour || tour.organizationId !== organizationId) return undefined;
+    
+    const updatedTour = { 
+      ...tour, 
+      status: 'not_started' as const,
+      currentStep: 0,
+      completedAt: null,
+      skippedAt: null,
+      lastShownAt: null,
+      updatedAt: new Date()
+    };
+    this.userToursMap.set(key, updatedTour);
+    return updatedTour;
   }
 
   // Analytics helper methods

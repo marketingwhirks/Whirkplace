@@ -4606,6 +4606,136 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // User Tours routes
+  app.get("/api/tours", requireAuth(), async (req, res) => {
+    try {
+      const tours = await storage.getUserTours(req.orgId, req.userId!);
+      res.json(tours);
+    } catch (error) {
+      console.error("Failed to fetch tours:", error);
+      res.status(500).json({ message: "Failed to fetch tours" });
+    }
+  });
+
+  app.get("/api/tours/:tourId", requireAuth(), async (req, res) => {
+    try {
+      const tour = await storage.getUserTour(req.orgId, req.userId!, req.params.tourId);
+      if (!tour) {
+        // Create a new tour record if it doesn't exist
+        const newTour = await storage.createUserTour(req.orgId, {
+          userId: req.userId!,
+          tourId: req.params.tourId,
+          status: 'not_started',
+          currentStep: 0,
+          version: '1.0'
+        });
+        return res.json(newTour);
+      }
+      res.json(tour);
+    } catch (error) {
+      console.error("Failed to fetch tour:", error);
+      res.status(500).json({ message: "Failed to fetch tour" });
+    }
+  });
+
+  app.post("/api/tours/:tourId/complete", requireAuth(), async (req, res) => {
+    try {
+      const tour = await storage.markTourCompleted(req.orgId, req.userId!, req.params.tourId);
+      if (!tour) {
+        // Create and complete if it doesn't exist
+        await storage.createUserTour(req.orgId, {
+          userId: req.userId!,
+          tourId: req.params.tourId,
+          status: 'completed',
+          completedAt: new Date(),
+          version: '1.0'
+        });
+        const completedTour = await storage.getUserTour(req.orgId, req.userId!, req.params.tourId);
+        return res.json(completedTour);
+      }
+      res.json(tour);
+    } catch (error) {
+      console.error("Failed to complete tour:", error);
+      res.status(500).json({ message: "Failed to complete tour" });
+    }
+  });
+
+  app.post("/api/tours/:tourId/skip", requireAuth(), async (req, res) => {
+    try {
+      const tour = await storage.markTourSkipped(req.orgId, req.userId!, req.params.tourId);
+      if (!tour) {
+        // Create and skip if it doesn't exist
+        await storage.createUserTour(req.orgId, {
+          userId: req.userId!,
+          tourId: req.params.tourId,
+          status: 'skipped',
+          skippedAt: new Date(),
+          version: '1.0'
+        });
+        const skippedTour = await storage.getUserTour(req.orgId, req.userId!, req.params.tourId);
+        return res.json(skippedTour);
+      }
+      res.json(tour);
+    } catch (error) {
+      console.error("Failed to skip tour:", error);
+      res.status(500).json({ message: "Failed to skip tour" });
+    }
+  });
+
+  app.post("/api/tours/:tourId/reset", requireAuth(), async (req, res) => {
+    try {
+      const tour = await storage.resetUserTour(req.orgId, req.userId!, req.params.tourId);
+      if (!tour) {
+        // Create a new tour if it doesn't exist
+        const newTour = await storage.createUserTour(req.orgId, {
+          userId: req.userId!,
+          tourId: req.params.tourId,
+          status: 'not_started',
+          currentStep: 0,
+          version: '1.0'
+        });
+        return res.json(newTour);
+      }
+      res.json(tour);
+    } catch (error) {
+      console.error("Failed to reset tour:", error);
+      res.status(500).json({ message: "Failed to reset tour" });
+    }
+  });
+
+  app.patch("/api/tours/:tourId", requireAuth(), async (req, res) => {
+    try {
+      const { currentStep, status, lastShownAt } = req.body;
+      
+      // Check if tour exists first
+      let tour = await storage.getUserTour(req.orgId, req.userId!, req.params.tourId);
+      
+      if (!tour) {
+        // Create new tour with the provided data
+        tour = await storage.createUserTour(req.orgId, {
+          userId: req.userId!,
+          tourId: req.params.tourId,
+          status: status || 'in_progress',
+          currentStep: currentStep || 0,
+          lastShownAt: lastShownAt || new Date(),
+          version: '1.0'
+        });
+      } else {
+        // Update existing tour
+        tour = await storage.updateUserTour(req.orgId, req.userId!, req.params.tourId, {
+          ...(currentStep !== undefined && { currentStep }),
+          ...(status !== undefined && { status }),
+          ...(lastShownAt !== undefined && { lastShownAt })
+        });
+      }
+      
+      res.json(tour);
+    } catch (error) {
+      console.error("Failed to update tour:", error);
+      res.status(500).json({ message: "Failed to update tour" });
+    }
+  });
+
   // User-specific shoutouts endpoint
   app.get("/api/users/:id/shoutouts", async (req, res) => {
     try {
