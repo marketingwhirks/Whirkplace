@@ -83,8 +83,8 @@ export default function LandingPage() {
     if (orgSlug) {
       setLocation(`/login?org=${orgSlug}&signup=true`);
     } else {
-      // Go to signup page for creating new organization
-      setLocation(`/signup`);
+      // Go to business signup page for creating new organization
+      setLocation(`/business-signup`);
     }
   };
 
@@ -93,7 +93,7 @@ export default function LandingPage() {
     if (orgSlug) {
       setLocation(`/login?org=${orgSlug}&signup=true&plan=starter`);
     } else {
-      setLocation(`/signup?plan=starter`);
+      setLocation(`/business-signup?plan=starter`);
     }
   };
 
@@ -102,7 +102,7 @@ export default function LandingPage() {
     if (orgSlug) {
       setLocation(`/login?org=${orgSlug}&signup=true&plan=professional`);
     } else {
-      setLocation(`/signup?plan=professional`);
+      setLocation(`/business-signup?plan=professional`);
     }
   };
 
