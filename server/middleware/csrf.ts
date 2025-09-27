@@ -88,14 +88,21 @@ export function validateCSRF() {
     // 3. Backdoor auth (development only)
     // 4. Logout endpoint (logout is inherently safe and CSRF protection would prevent legitimate logouts)
     // 5. localStorage auth (development only - sessions are not consistent)
+    // 6. Business signup endpoints (public endpoints for new organization registration)
+    // 7. Demo login endpoint (stateless JWT authentication)
     const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const isOAuthCallback = (req.path.includes('/auth/') || req.originalUrl.includes('/auth/')) && 
                            (req.path.includes('/callback') || req.originalUrl.includes('/callback'));
     const isBackdoorAuth = /\/auth\/backdoor$/.test(req.originalUrl) || req.path === '/auth/backdoor';
     const isLogout = /\/auth\/logout$/.test(req.originalUrl) || req.path === '/auth/logout';
     const isLocalStorageAuth = !!req.headers['x-auth-user-id']; // Development localStorage auth
+    const isBusinessSignup = req.path.includes('/business/signup') || 
+                            req.path.includes('/business/select-plan') || 
+                            req.path.includes('/business/complete-onboarding');
+    const isDemoLogin = req.path.includes('/auth/demo-login');
     
-    if (!isStateChanging || isOAuthCallback || isBackdoorAuth || isLogout || isLocalStorageAuth) {
+    if (!isStateChanging || isOAuthCallback || isBackdoorAuth || isLogout || 
+        isLocalStorageAuth || isBusinessSignup || isDemoLogin) {
       return next();
     }
     

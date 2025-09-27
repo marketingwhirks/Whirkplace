@@ -8,6 +8,44 @@ async function throwIfResNotOk(res: Response) {
 }
 
 
+// Cache for CSRF token  
+let csrfToken: string | null = null;
+let csrfTokenExpiry: number = 0;
+
+async function getCsrfToken(): Promise<string | null> {
+  // Check if we have a valid cached token
+  if (csrfToken && csrfTokenExpiry > Date.now()) {
+    return csrfToken;
+  }
+
+  try {
+    // Fetch new CSRF token
+    const headers: Record<string, string> = {};
+    const demoToken = localStorage.getItem('demo_token');
+    if (demoToken) {
+      headers['Authorization'] = `Bearer ${demoToken}`;
+    }
+
+    const response = await fetch('/api/csrf-token', {
+      method: 'GET',
+      credentials: 'include',
+      headers,
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      csrfToken = data.csrfToken;
+      // Cache for 30 minutes (CSRF tokens are valid for 1 hour)
+      csrfTokenExpiry = Date.now() + 30 * 60 * 1000;
+      return csrfToken;
+    }
+  } catch (error) {
+    console.error('Failed to fetch CSRF token:', error);
+  }
+  
+  return null;
+}
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -22,6 +60,15 @@ export async function apiRequest(
   const demoToken = localStorage.getItem('demo_token');
   if (demoToken) {
     headers['Authorization'] = `Bearer ${demoToken}`;
+  }
+
+  // Add CSRF token for state-changing requests
+  const needsCsrf = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
+  if (needsCsrf && !demoToken) { // Demo users don't need CSRF
+    const token = await getCsrfToken();
+    if (token) {
+      headers['X-CSRF-Token'] = token;
+    }
   }
 
   const res = await fetch(url, {
