@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Building2, User, Mail, Eye, EyeOff, ArrowRight, ArrowLeft, CheckCircle, Info } from "lucide-react";
+import { Building2, User, Eye, EyeOff, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Progress } from "@/components/ui/progress";
 
 // Full schema for validation
 const signupSchema = z.object({
@@ -34,31 +33,6 @@ const signupSchema = z.object({
   path: ["confirmPassword"],
 });
 
-// Page-specific schemas for partial validation
-const page1Schema = z.object({
-  organizationName: z.string().min(2, "Organization name must be at least 2 characters").max(100, "Organization name too long"),
-  industry: z.string().min(1, "Please select your industry"),
-});
-
-const page2Schema = z.object({
-  organizationSize: z.string().min(1, "Please select organization size"),
-});
-
-const page3Schema = z.object({
-  firstName: z.string().min(2, "First name must be at least 2 characters").max(50, "First name too long"),
-  lastName: z.string().min(2, "Last name must be at least 2 characters").max(50, "Last name too long"),
-  email: z.string().email("Please enter a valid email address"),
-  password: z.string().min(8, "Password must be at least 8 characters").max(128, "Password too long"),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "Passwords don't match",
-  path: ["confirmPassword"],
-});
-
-const page4Schema = z.object({
-  acceptTerms: z.boolean().refine(val => val === true, "You must accept the terms and conditions"),
-  subscribeNewsletter: z.boolean().optional(),
-});
 
 type SignupForm = z.infer<typeof signupSchema>;
 
@@ -98,98 +72,29 @@ interface BusinessSignupProps {
 export function BusinessSignup({ onSignupComplete, isLoading = false, className }: BusinessSignupProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
   const { toast } = useToast();
-  
-  // Persistent form data state
-  const [formData, setFormData] = useState<Partial<SignupForm>>({
-    organizationName: "",
-    industry: "",
-    organizationSize: "",
-    firstName: "",
-    lastName: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-    acceptTerms: false,
-    subscribeNewsletter: true,
-  });
 
   const form = useForm<SignupForm>({
     resolver: zodResolver(signupSchema),
-    defaultValues: formData,
+    defaultValues: {
+      organizationName: "",
+      industry: "",
+      organizationSize: "",
+      firstName: "",
+      lastName: "",
+      email: "",
+      password: "",
+      confirmPassword: "",
+      acceptTerms: false,
+      subscribeNewsletter: true,
+    },
   });
 
-  const getPageSchema = (page: number) => {
-    switch (page) {
-      case 1:
-        return page1Schema;
-      case 2:
-        return page2Schema;
-      case 3:
-        return page3Schema;
-      case 4:
-        return page4Schema;
-      default:
-        return signupSchema;
-    }
-  };
-
-  const validateCurrentPage = async () => {
-    const currentValues = form.getValues();
-    const pageSchema = getPageSchema(currentPage);
-    
-    try {
-      // Extract only the fields relevant to the current page
-      const pageData: any = {};
-      Object.keys(pageSchema.shape || {}).forEach(key => {
-        pageData[key] = currentValues[key as keyof SignupForm];
-      });
-      
-      await pageSchema.parseAsync(pageData);
-      return true;
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        // Set errors for the current page fields
-        error.errors.forEach(err => {
-          form.setError(err.path[0] as keyof SignupForm, {
-            message: err.message,
-          });
-        });
-      }
-      return false;
-    }
-  };
-
-  const handleNext = async () => {
-    const isValid = await validateCurrentPage();
-    if (!isValid) return;
-    
-    // Save current page data to persistent state
-    const currentValues = form.getValues();
-    setFormData(prev => ({ ...prev, ...currentValues }));
-    
-    setCurrentPage(prev => prev + 1);
-  };
-
-  const handleBack = () => {
-    // Save current page data before going back
-    const currentValues = form.getValues();
-    setFormData(prev => ({ ...prev, ...currentValues }));
-    
-    setCurrentPage(prev => prev - 1);
-  };
 
   const onSubmit = async (data: SignupForm) => {
     try {
-      // Merge all form data to ensure everything is included
-      const completeData = {
-        ...formData,
-        ...data,
-      };
-      
       // Remove confirmPassword before sending to API
-      const { confirmPassword, ...submitData } = completeData;
+      const { confirmPassword, ...submitData } = data;
       
       onSignupComplete(submitData as SignupForm);
     } catch (error) {
@@ -201,37 +106,6 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
     }
   };
 
-  const getStepTitle = () => {
-    switch (currentPage) {
-      case 1:
-        return "Organization Information";
-      case 2:
-        return "Organization Size";
-      case 3:
-        return "Administrator Account";
-      case 4:
-        return "Terms & Conditions";
-      default:
-        return "";
-    }
-  };
-
-  const getStepDescription = () => {
-    switch (currentPage) {
-      case 1:
-        return "Tell us about your organization";
-      case 2:
-        return "How big is your team?";
-      case 3:
-        return "Create your administrator account";
-      case 4:
-        return "Review and accept our terms";
-      default:
-        return "";
-    }
-  };
-
-  const progress = (currentPage / 4) * 100;
 
   return (
     <div className={`max-w-2xl mx-auto ${className}`} data-testid="business-signup">
@@ -243,127 +117,99 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
           <div>
             <CardTitle className="text-2xl">Create Your Business Account</CardTitle>
             <CardDescription className="text-base mt-2">
-              {getStepDescription()}
+              Fill in your organization and administrator account details
             </CardDescription>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm text-muted-foreground">
-              <span>Step {currentPage} of 4</span>
-              <span>{Math.round(progress)}% Complete</span>
-            </div>
-            <Progress value={progress} className="h-2" />
           </div>
         </CardHeader>
         
         <CardContent>
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              {/* Page 1: Organization Info */}
-              {currentPage === 1 && (
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
-                    <Building2 className="h-4 w-4" />
-                    <span>{getStepTitle()}</span>
-                  </div>
-                  
-                  <FormField
-                    control={form.control}
-                    name="organizationName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Organization Name *</FormLabel>
-                        <FormControl>
-                          <Input 
-                            placeholder="Acme Corporation" 
-                            {...field} 
-                            data-testid="input-organization-name"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="industry"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Industry *</FormLabel>
-                        <FormControl>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <SelectTrigger data-testid="select-industry">
-                              <SelectValue placeholder="Select your industry" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {industries.map((ind) => (
-                                <SelectItem key={ind.value} value={ind.value}>
-                                  {ind.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+              {/* Organization Information Section */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2 text-sm font-semibold text-muted-foreground">
+                  <Building2 className="h-4 w-4" />
+                  <span>Organization Information</span>
                 </div>
-              )}
+                
+                <FormField
+                  control={form.control}
+                  name="organizationName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Organization Name *</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Acme Corporation" 
+                          {...field} 
+                          data-testid="input-organization-name"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
+                  name="industry"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Industry *</FormLabel>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <SelectTrigger data-testid="select-industry">
+                            <SelectValue placeholder="Select your industry" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {industries.map((ind) => (
+                              <SelectItem key={ind.value} value={ind.value}>
+                                {ind.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
+                  name="organizationSize"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Organization Size *</FormLabel>
+                      <FormControl>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <SelectTrigger data-testid="select-organization-size">
+                            <SelectValue placeholder="Select organization size" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {organizationSizes.map((size) => (
+                              <SelectItem key={size.value} value={size.value}>
+                                {size.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </FormControl>
+                      <FormDescription>
+                        This helps us tailor the experience to your needs
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
 
-              {/* Page 2: Organization Size */}
-              {currentPage === 2 && (
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
-                    <Info className="h-4 w-4" />
-                    <span>{getStepTitle()}</span>
-                  </div>
-                  
-                  <FormField
-                    control={form.control}
-                    name="organizationSize"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Organization Size *</FormLabel>
-                        <FormControl>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <SelectTrigger data-testid="select-organization-size">
-                              <SelectValue placeholder="Select organization size" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {organizationSizes.map((size) => (
-                                <SelectItem key={size.value} value={size.value}>
-                                  {size.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </FormControl>
-                        <FormDescription>
-                          This helps us tailor the experience to your needs
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <div className="mt-8 p-4 bg-muted/50 rounded-lg">
-                    <h4 className="font-medium mb-2">Why we ask this:</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Knowing your organization size helps us recommend the right features, 
-                      pricing plans, and implementation strategies for your team.
-                    </p>
-                  </div>
+              {/* Administrator Account Section */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2 text-sm font-semibold text-muted-foreground">
+                  <User className="h-4 w-4" />
+                  <span>Administrator Account</span>
                 </div>
-              )}
-
-              {/* Page 3: Admin Account */}
-              {currentPage === 3 && (
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
-                    <User className="h-4 w-4" />
-                    <span>{getStepTitle()}</span>
-                  </div>
                   
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
@@ -497,44 +343,10 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
                       </FormItem>
                     )}
                   />
-                </div>
-              )}
+              </div>
 
-              {/* Page 4: Terms & Newsletter */}
-              {currentPage === 4 && (
-                <div className="space-y-4">
-                  <div className="flex items-center space-x-2 text-sm font-medium text-muted-foreground">
-                    <CheckCircle className="h-4 w-4" />
-                    <span>{getStepTitle()}</span>
-                  </div>
-                  
-                  {/* Summary of entered information */}
-                  <div className="p-4 bg-muted/50 rounded-lg space-y-2">
-                    <h4 className="font-medium mb-3">Please review your information:</h4>
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div className="text-muted-foreground">Organization:</div>
-                      <div className="font-medium">{formData.organizationName || form.getValues("organizationName")}</div>
-                      
-                      <div className="text-muted-foreground">Industry:</div>
-                      <div className="font-medium">
-                        {industries.find(i => i.value === (formData.industry || form.getValues("industry")))?.label || "Not selected"}
-                      </div>
-                      
-                      <div className="text-muted-foreground">Size:</div>
-                      <div className="font-medium">
-                        {organizationSizes.find(s => s.value === (formData.organizationSize || form.getValues("organizationSize")))?.label || "Not selected"}
-                      </div>
-                      
-                      <div className="text-muted-foreground">Admin Name:</div>
-                      <div className="font-medium">
-                        {formData.firstName || form.getValues("firstName")} {formData.lastName || form.getValues("lastName")}
-                      </div>
-                      
-                      <div className="text-muted-foreground">Admin Email:</div>
-                      <div className="font-medium">{formData.email || form.getValues("email")}</div>
-                    </div>
-                  </div>
-                  
+              {/* Terms & Conditions Section */}
+              <div className="space-y-4">
                   <FormField
                     control={form.control}
                     name="acceptTerms"
@@ -585,63 +397,34 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
                       </FormItem>
                     )}
                   />
-                </div>
-              )}
-
-              {/* Navigation buttons */}
-              <div className="flex justify-between">
-                {currentPage > 1 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleBack}
-                    data-testid="button-back"
-                  >
-                    <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back
-                  </Button>
-                )}
-                
-                {currentPage < 4 ? (
-                  <Button
-                    type="button"
-                    onClick={handleNext}
-                    className={currentPage === 1 ? "ml-auto" : ""}
-                    data-testid="button-next"
-                  >
-                    Next
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                ) : (
-                  <Button 
-                    type="submit" 
-                    className="ml-auto" 
-                    size="lg"
-                    disabled={isLoading}
-                    data-testid="button-create-account"
-                  >
-                    {isLoading ? (
-                      "Creating Account..."
-                    ) : (
-                      <>
-                        Create Account & Continue
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </>
-                    )}
-                  </Button>
-                )}
               </div>
+
+              {/* Submit Button */}
+              <Button 
+                type="submit" 
+                className="w-full" 
+                size="lg"
+                disabled={isLoading}
+                data-testid="button-create-account"
+              >
+                {isLoading ? (
+                  "Creating Account..."
+                ) : (
+                  <>
+                    Create Account
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
+              </Button>
             </form>
           </Form>
           
-          {currentPage === 1 && (
-            <div className="mt-6 text-center text-sm text-muted-foreground">
-              Already have an account?{" "}
-              <a href="/login" className="text-primary hover:underline font-medium">
-                Sign in here
-              </a>
-            </div>
-          )}
+          <div className="mt-6 text-center text-sm text-muted-foreground">
+            Already have an account?{" "}
+            <a href="/login" className="text-primary hover:underline font-medium">
+              Sign in here
+            </a>
+          </div>
         </CardContent>
       </Card>
     </div>
