@@ -17,6 +17,12 @@ export async function apiRequest(
   const headers: Record<string, string> = {
     ...(data ? { "Content-Type": "application/json" } : {}),
   };
+  
+  // Add demo token if present
+  const demoToken = localStorage.getItem('demo_token');
+  if (demoToken) {
+    headers['Authorization'] = `Bearer ${demoToken}`;
+  }
 
   const res = await fetch(url, {
     method,
@@ -61,8 +67,12 @@ export const getQueryFn: <T>(options: {
       url = queryKey.join("/") as string;
     }
 
-    // No auth headers - rely on secure session cookies
+    // Add demo token if present, otherwise rely on secure session cookies
     const headers: Record<string, string> = {};
+    const demoToken = localStorage.getItem('demo_token');
+    if (demoToken) {
+      headers['Authorization'] = `Bearer ${demoToken}`;
+    }
 
     const res = await fetch(url, {
       credentials: "include",

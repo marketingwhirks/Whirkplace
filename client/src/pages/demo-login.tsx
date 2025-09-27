@@ -128,7 +128,7 @@ export default function DemoLoginPage() {
       sessionStorage.clear();
       queryClient.clear();
 
-      const response = await fetch("/auth/local/login?org=fictitious-delicious", {
+      const response = await fetch("/api/auth/demo-login", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json"
@@ -143,9 +143,11 @@ export default function DemoLoginPage() {
         const data = await response.json();
         console.log("Login response data:", data);
         
-        // Store token as backup for cookie issues
+        // Store JWT token for API calls
         if (data.token) {
           localStorage.setItem('demo_token', data.token);
+          localStorage.setItem('demo_user', JSON.stringify(data.user));
+          localStorage.setItem('demo_org', 'fictitious-delicious');
         }
         
         toast({ 
@@ -153,9 +155,8 @@ export default function DemoLoginPage() {
           description: `Logged in as ${data.user.name}` 
         });
         
-        // Force page reload to ensure auth is picked up
-        // Use the hardcoded organization ID for demo users
-        window.location.href = '/?org=fictitious-delicious';
+        // Redirect to dashboard with organization
+        window.location.href = '/dashboard?org=fictitious-delicious';
       } else {
         const error = await response.json();
         console.error("Login failed:", error);
@@ -186,7 +187,7 @@ export default function DemoLoginPage() {
       sessionStorage.clear();
       queryClient.clear();
 
-      const response = await fetch("/auth/local/login?org=fictitious-delicious", {
+      const response = await fetch("/api/auth/demo-login", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json"
@@ -201,16 +202,20 @@ export default function DemoLoginPage() {
         const data = await response.json();
         console.log("Direct login response data:", data);
         
-        // Session cookie should now work properly with the fixed configuration
+        // Store JWT token for API calls
+        if (data.token) {
+          localStorage.setItem('demo_token', data.token);
+          localStorage.setItem('demo_user', JSON.stringify(data.user));
+          localStorage.setItem('demo_org', 'fictitious-delicious');
+        }
         
         toast({ 
           title: "Welcome to the demo!", 
           description: `Logged in as ${data.user.name}` 
         });
         
-        // Force page reload to ensure auth is picked up
-        // Use the hardcoded organization ID for demo users
-        window.location.href = '/?org=fictitious-delicious';
+        // Redirect to dashboard with organization
+        window.location.href = '/dashboard?org=fictitious-delicious';
       } else {
         const error = await response.json();
         console.error("Direct login failed:", error);
