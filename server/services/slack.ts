@@ -84,9 +84,6 @@ interface SlackOIDCUserInfo {
 export function generateOAuthURL(organizationSlug: string, session: any, req?: Request): string {
   const clientId = process.env.SLACK_CLIENT_ID;
   
-  // Force production redirect URI if configured
-  const forceProductionUri = process.env.FORCE_PRODUCTION_OAUTH === 'true';
-  
   // Debug logging
   console.log('🔧 Slack OAuth generation debug:');
   console.log('  NODE_ENV:', process.env.NODE_ENV);
@@ -102,10 +99,7 @@ export function generateOAuthURL(organizationSlug: string, session: any, req?: R
   // Use the unified redirect URI resolver function
   let redirectUri: string;
   
-  // Always use production URL if forced
-  if (forceProductionUri) {
-    redirectUri = 'https://whirkplace.com/auth/slack/callback';
-  } else if (req) {
+  if (req) {
     // Use the centralized resolver which handles production properly
     redirectUri = resolveRedirectUri(req, '/auth/slack/callback');
   } else {
@@ -115,11 +109,13 @@ export function generateOAuthURL(organizationSlug: string, session: any, req?: R
     // Check if we're likely in production based on various indicators
     const likelyProduction = process.env.NODE_ENV === 'production' ||
                            process.env.FORCE_PRODUCTION === 'true' ||
+                           process.env.FORCE_PRODUCTION_OAUTH === 'true' ||
+                           process.env.REPL_SLUG?.includes('whirkplace') ||
                            (process.env.REPLIT_URL && process.env.REPLIT_URL.includes('whirkplace.com')) ||
                            (process.env.PUBLIC_BASE_URL && process.env.PUBLIC_BASE_URL.includes('whirkplace.com'));
     
     if (likelyProduction) {
-      // Production always uses whirkplace.com
+      // Production always uses whirkplace.com with HTTPS
       redirectUri = 'https://whirkplace.com/auth/slack/callback';
     } else {
       // Development uses override if available, otherwise localhost
@@ -235,14 +231,17 @@ export async function exchangeOIDCCode(code: string, redirectUri?: string): Prom
   const clientId = process.env.SLACK_CLIENT_ID;
   const clientSecret = process.env.SLACK_CLIENT_SECRET;
   
-  // Force production redirect URI if configured
-  const forceProductionUri = process.env.FORCE_PRODUCTION_OAUTH === 'true';
-  
   // Use provided redirect URI or fallback to production/dev defaults
   let finalRedirectUri = redirectUri;
-  if (!finalRedirectUri || forceProductionUri) {
-    if (process.env.NODE_ENV === 'production' || forceProductionUri) {
-      // Production always uses whirkplace.com
+  if (!finalRedirectUri) {
+    // Check if we're in production based on various indicators
+    const isProduction = process.env.NODE_ENV === 'production' ||
+                         process.env.FORCE_PRODUCTION === 'true' ||
+                         process.env.FORCE_PRODUCTION_OAUTH === 'true' ||
+                         process.env.REPL_SLUG?.includes('whirkplace');
+    
+    if (isProduction) {
+      // Production always uses whirkplace.com with HTTPS
       finalRedirectUri = 'https://whirkplace.com/auth/slack/callback';
     } else {
       // Development uses override if available, otherwise localhost

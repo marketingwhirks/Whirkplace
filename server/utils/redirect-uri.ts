@@ -17,6 +17,7 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
   // Strip port for cleaner comparison
   const host = rawHost.split(':')[0];
   
+  // CRITICAL: In production with trust proxy, X-Forwarded-Proto is authoritative
   const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
   
   // Check if this is a development environment (Replit dev)
@@ -31,18 +32,20 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
                             host.endsWith('.whirkplace.com') ||
                             host.endsWith('whirkplace.replit.app'); // Also detect Replit deployment
   
+  // Production detection: check multiple indicators
   const isProduction = process.env.NODE_ENV === 'production' || 
                        process.env.FORCE_PRODUCTION === 'true' ||
                        process.env.FORCE_PRODUCTION_OAUTH === 'true' ||
+                       process.env.REPL_SLUG?.includes('whirkplace') ||  // Check if deployed as whirkplace
                        isProductionDomain;
   
   // Smart detection: Use dev URL for dev environments, production URL for production
-  if (isDevelopmentEnvironment && !process.env.FORCE_PRODUCTION_OAUTH) {
+  if (isDevelopmentEnvironment && !process.env.FORCE_PRODUCTION_OAUTH && !isProduction) {
     // Development environment - use the actual host
     console.log('🔧 Development environment detected, using actual host:', fullHost);
     return `${protocol}://${fullHost}${path}`;
-  } else if (isProduction || process.env.OAUTH_REDIRECT_BASE_URL === 'https://whirkplace.com/') {
-    // Production environment - always use whirkplace.com
+  } else if (isProduction) {
+    // Production environment - always use whirkplace.com with HTTPS
     console.log('🚀 Production environment detected, using whirkplace.com');
     return `https://whirkplace.com${path}`;
   }
@@ -76,20 +79,22 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
     return process.env.MICROSOFT_REDIRECT_URI;
   }
 
-  // For production domains, build from actual request headers to maintain session
-  // This ensures cookies work correctly across the OAuth flow
+  // For production domains, always use whirkplace.com with HTTPS
+  // This ensures OAuth callbacks work correctly across all production deployments
   if (isProductionDomain) {
-    console.log('  → Using actual production host from request:', host);
-    return `https://${host}${path}`;
+    console.log('  → Production domain detected, using whirkplace.com');
+    return `https://whirkplace.com${path}`;
   }
 
-  // Use the actual current host for Replit environments
-  if (host.includes('.replit.dev') || host.includes('repl.co')) {
-    return `${protocol}://${host}${path}`;
+  // Use the actual current host for Replit environments  
+  if (fullHost.includes('.replit.dev') || fullHost.includes('repl.co')) {
+    console.log('  → Replit environment, using actual host:', fullHost);
+    return `${protocol}://${fullHost}${path}`;
   }
 
   // Build the full callback URL for development/staging
-  const baseUrl = `${protocol}://${host}`;
+  const baseUrl = `${protocol}://${fullHost}`;
+  console.log('  → Default fallback, using:', baseUrl);
   return `${baseUrl}${path}`;
 }
 

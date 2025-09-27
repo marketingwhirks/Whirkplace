@@ -1216,28 +1216,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`User ${authenticatedUser.name} (${authenticatedUser.email}) successfully authenticated via Slack OAuth for organization ${organization.name}`);
             
             // Redirect to the organization's dashboard
-            // Determine the correct domain based on environment
-            let appUrl = 'http://localhost:5000';
-            
-            // Get the host from the request
-            const host = req.get('host') || 'localhost:5000';
-            const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
-            
-            // Check if this is a development environment first (Replit dev, localhost, etc)
-            const isDevelopmentEnvironment = host.includes('.replit.dev') || 
-                                           host.includes('repl.co') ||
-                                           host.includes('localhost');
-            
-            if (isDevelopmentEnvironment && !process.env.FORCE_PRODUCTION_OAUTH) {
-              // Development environment - use the actual host
-              appUrl = `${protocol}://${host}`;
-            } else if (process.env.NODE_ENV === 'production' || process.env.FORCE_PRODUCTION_OAUTH === 'true' || process.env.OAUTH_REDIRECT_BASE_URL === 'https://whirkplace.com/') {
-              // Production environment
-              appUrl = 'https://whirkplace.com';
-            } else if (process.env.OAUTH_REDIRECT_BASE_URL) {
-              // Custom configured base URL (for special deployments)
-              appUrl = process.env.OAUTH_REDIRECT_BASE_URL.replace(/\/auth\/.*$/, '').replace(/\/$/, '');
-            }
+            // Use the centralized redirect URI resolver to get the base URL
+            const baseRedirectUri = resolveRedirectUri(req, '/');
+            // Remove the trailing slash to get the base URL
+            const appUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
             
             // Check if organization needs onboarding
             const needsOnboarding = isNewOrganization || 
@@ -7213,9 +7195,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.slackOAuthState = state;
       (req.session as any).slackOrgId = req.params.id;
       
-      // Dynamic redirect URI based on environment
-      const baseUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
-      const redirectUri = `${baseUrl}/api/auth/slack/callback`;
+      // Use centralized redirect URI resolver for consistent URL handling
+      const redirectUri = resolveRedirectUri(req, '/api/auth/slack/callback');
       
       // Slack OAuth v2 scopes for bot functionality
       const scopes = [
@@ -7268,9 +7249,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       req.session.microsoftAuthState = state;
       req.session.authOrgId = req.params.id;
       
-      // Dynamic redirect URI based on environment
-      const baseUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
-      const redirectUri = `${baseUrl}/api/auth/microsoft/tenant/callback`;
+      // Use centralized redirect URI resolver for consistent URL handling
+      const redirectUri = resolveRedirectUri(req, '/api/auth/microsoft/tenant/callback');
       
       // Microsoft Graph scopes for tenant/app management
       const scopes = [
@@ -7315,6 +7295,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Microsoft OAuth tenant callback handler
   app.get("/api/auth/microsoft/tenant/callback", async (req, res) => {
     try {
+      // Get base URL using the centralized resolver for consistent URLs
+      const baseRedirectUri = resolveRedirectUri(req, '/');
+      const appBaseUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
+      
       const { code, state, error } = req.query;
       
       if (error) {
@@ -7342,7 +7326,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   window.opener.postMessage({
                     type: 'MICROSOFT_OAUTH_ERROR',
                     message: 'Failed to complete Microsoft integration'
-                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                  }, '${appBaseUrl}');
                 }
                 // Close popup after a short delay
                 setTimeout(() => window.close(), 3000);
@@ -7377,7 +7361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   window.opener.postMessage({
                     type: 'MICROSOFT_OAUTH_ERROR',
                     message: 'Missing authorization parameters'
-                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                  }, '${appBaseUrl}');
                 }
                 // Close popup after a short delay
                 setTimeout(() => window.close(), 3000);
@@ -7413,7 +7397,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   window.opener.postMessage({
                     type: 'MICROSOFT_OAUTH_ERROR',
                     message: 'Invalid security token'
-                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                  }, '${appBaseUrl}');
                 }
                 // Close popup after a short delay
                 setTimeout(() => window.close(), 3000);
@@ -7449,7 +7433,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   window.opener.postMessage({
                     type: 'MICROSOFT_OAUTH_ERROR',
                     message: 'Organization context lost'
-                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                  }, '${appBaseUrl}');
                 }
                 // Close popup after a short delay
                 setTimeout(() => window.close(), 3000);
@@ -7462,9 +7446,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.send(errorHtml);
       }
       
-      // Exchange authorization code for access token
-      const baseUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
-      const redirectUri = `${baseUrl}/api/auth/microsoft/tenant/callback`;
+      // Use centralized redirect URI resolver for consistent URL handling
+      const redirectUri = resolveRedirectUri(req, '/api/auth/microsoft/tenant/callback');
       
       const tokenResponse = await fetch("https://login.microsoftonline.com/common/oauth2/v2.0/token", {
         method: "POST",
@@ -7505,7 +7488,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   window.opener.postMessage({
                     type: 'MICROSOFT_OAUTH_ERROR',
                     message: 'Failed to exchange authorization code'
-                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                  }, '${appBaseUrl}');
                 }
                 // Close popup after a short delay
                 setTimeout(() => window.close(), 3000);
@@ -7551,7 +7534,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   window.opener.postMessage({
                     type: 'MICROSOFT_OAUTH_ERROR',
                     message: 'Failed to retrieve user information'
-                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                  }, '${appBaseUrl}');
                 }
                 // Close popup after a short delay
                 setTimeout(() => window.close(), 3000);
@@ -7606,7 +7589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   window.opener.postMessage({
                     type: 'MICROSOFT_OAUTH_ERROR',
                     message: 'Failed to update organization settings'
-                  }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                  }, '${appBaseUrl}');
                 }
                 // Close popup after a short delay
                 setTimeout(() => window.close(), 3000);
@@ -7650,7 +7633,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   type: 'MICROSOFT_OAUTH_SUCCESS',
                   tenantId: '${actualTenantId}',
                   organization: '${updatedOrg.name}'
-                }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }, '${appBaseUrl}');
               }
               // Close popup after a short delay
               setTimeout(() => window.close(), 2000);
@@ -7685,7 +7668,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 window.opener.postMessage({
                   type: 'MICROSOFT_OAUTH_ERROR',
                   message: 'Unexpected error during integration'
-                }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }, '${appBaseUrl}');
               }
               // Close popup after a short delay
               setTimeout(() => window.close(), 3000);
@@ -7704,32 +7687,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { code, state, error } = req.query;
       
+      // Get base URL using the centralized resolver
+      const baseRedirectUri = resolveRedirectUri(req, '/');
+      const appBaseUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
+      
       if (error) {
         console.error("Slack OAuth error:", error);
-        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_denied`);
+        return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_denied`);
       }
       
       if (!code || !state) {
-        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_missing_params`);
+        return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_missing_params`);
       }
       
       // Verify state to prevent CSRF attacks
       if (!req.session.slackOAuthState || req.session.slackOAuthState !== state) {
-        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_invalid_state`);
+        return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_invalid_state`);
       }
       
       const orgId = (req.session as any).slackOrgId;
       if (!orgId) {
-        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_missing_org`);
+        return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_missing_org`);
       }
       
       if (!process.env.SLACK_CLIENT_ID || !process.env.SLACK_CLIENT_SECRET) {
-        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_not_configured`);
+        return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_not_configured`);
       }
       
-      // Exchange authorization code for access token
-      const baseUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'http://localhost:5000';
-      const redirectUri = `${baseUrl}/api/auth/slack/callback`;
+      // Use centralized redirect URI resolver for consistent URL handling
+      const redirectUri = resolveRedirectUri(req, '/api/auth/slack/callback');
       
       const tokenResponse = await fetch("https://slack.com/api/oauth.v2.access", {
         method: "POST",
@@ -7748,7 +7734,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!tokenData.ok) {
         console.error("Slack token exchange error:", tokenData.error);
-        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_token_failed`);
+        return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_token_failed`);
       }
       
       // Update organization with Slack integration data
@@ -7763,7 +7749,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const updatedOrg = await storage.updateOrganization(orgId, updateData);
       if (!updatedOrg) {
-        return res.redirect(`${process.env.REPL_URL || 'http://localhost:5000'}/#/settings?error=slack_auth_org_update_failed`);
+        return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_org_update_failed`);
       }
       
       // Clear OAuth state
@@ -7794,7 +7780,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 window.opener.postMessage({
                   type: 'SLACK_OAUTH_SUCCESS',
                   workspaceName: '${tokenData.team.name}'
-                }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }, '${appBaseUrl}');
               }
               // Close popup after a short delay
               setTimeout(() => window.close(), 2000);
@@ -7830,7 +7816,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 window.opener.postMessage({
                   type: 'SLACK_OAUTH_ERROR',
                   message: 'Failed to complete Slack integration'
-                }, '${process.env.REPL_URL || 'http://localhost:5000'}');
+                }, '${appBaseUrl}');
               }
               // Close popup after a short delay
               setTimeout(() => window.close(), 3000);
