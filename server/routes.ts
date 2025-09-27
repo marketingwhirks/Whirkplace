@@ -2244,6 +2244,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Set session after regeneration
         req.session.userId = user.id;
+        req.session.organizationId = req.orgId;  // CRITICAL: Must set organizationId for auth to work
+        
+        console.log(`💾 Session saved for user: ${user.id} in org: ${req.orgId}`);
         
         // Save session before sending response
         req.session.save((err) => {
