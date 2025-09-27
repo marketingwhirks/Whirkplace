@@ -334,7 +334,33 @@ export function authenticateUser() {
         organizationId: sessionData?.organizationId
       });
       
-      // Check for demo token authentication first
+      // Check for Bearer token authentication for demo users
+      const authHeader = req.headers.authorization;
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        const { verifyDemoToken, getDemoUserById } = require('../demo-auth');
+        const decoded = verifyDemoToken(token);
+        if (decoded && decoded.isDemo) {
+          const demoUser = getDemoUserById(decoded.userId);
+          if (demoUser) {
+            console.log(`🎪 Demo Bearer token auth successful for: ${demoUser.name}`);
+            req.currentUser = {
+              id: demoUser.id,
+              name: demoUser.name,
+              email: demoUser.email,
+              role: demoUser.role,
+              teamId: demoUser.teamId,
+              isActive: true,
+              isSuperAdmin: false,
+              organizationId: demoUser.organizationId
+            };
+            req.orgId = demoUser.organizationId;
+            return next();
+          }
+        }
+      }
+      
+      // Check for demo token authentication via cookie (fallback)
       const demoToken = req.cookies?.['demo_token'];
       if (demoToken) {
         const { verifyDemoToken, getDemoUserById } = require('../demo-auth');
@@ -342,7 +368,7 @@ export function authenticateUser() {
         if (decoded && decoded.isDemo) {
           const demoUser = getDemoUserById(decoded.userId);
           if (demoUser) {
-            console.log(`🎪 Demo token auth successful for: ${demoUser.name}`);
+            console.log(`🎪 Demo cookie token auth successful for: ${demoUser.name}`);
             req.currentUser = {
               id: demoUser.id,
               name: demoUser.name,

@@ -383,6 +383,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Demo login endpoint - stateless JWT authentication for demo users
+  app.post("/api/auth/demo-login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ 
+          message: "Email and password are required" 
+        });
+      }
+      
+      const { getDemoUser, generateDemoToken } = require('./demo-auth');
+      const demoUser = getDemoUser(email);
+      
+      if (!demoUser || demoUser.password !== password) {
+        return res.status(401).json({ 
+          message: "Invalid demo credentials" 
+        });
+      }
+      
+      const token = generateDemoToken(email);
+      console.log(`🎪 Demo JWT login successful for ${demoUser.name}`);
+      
+      return res.json({ 
+        message: "Demo login successful", 
+        user: { 
+          id: demoUser.id, 
+          name: demoUser.name, 
+          email: demoUser.email, 
+          role: demoUser.role,
+          isSuperAdmin: false,
+          organizationId: demoUser.organizationId
+        },
+        token: token,
+        organizationSlug: 'fictitious-delicious'
+      });
+    } catch (error) {
+      console.error("Demo login error:", error);
+      res.status(500).json({ message: "Demo login failed" });
+    }
+  });
+
   // Backward compatibility: redirect /auth to /login
   app.get("/auth", (req, res) => {
     res.redirect(301, "/login");
