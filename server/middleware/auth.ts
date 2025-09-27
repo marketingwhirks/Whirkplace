@@ -385,62 +385,10 @@ export function authenticateUser() {
         // Continue to next auth method - headers are completely ignored
       }
       
-      // SECURITY: Cookie-based authentication disabled in production due to security risks
-      // The previous implementation trusted client-provided user IDs without proper token validation
-      if (isDevelopmentAuthEnabled()) {
-        // isDevelopmentAuthEnabled() already includes development environment check
-        // Check for cookie-based authentication (development only)
-        let authUserId, authOrgId, authToken;
-        
-        if (req.cookies) {
-          // cookie-parser is working
-          authUserId = req.cookies['auth_user_id'];
-          authOrgId = req.cookies['auth_org_id'];
-          authToken = req.cookies['auth_session_token'];
-        } else {
-          // Fallback: manually parse cookies from header
-          const cookieHeader = req.headers.cookie;
-          if (cookieHeader) {
-            const cookies: Record<string, string> = {};
-            cookieHeader.split(';').forEach(cookie => {
-              const [name, value] = cookie.trim().split('=');
-              if (name && value) {
-                cookies[name] = decodeURIComponent(value);
-              }
-            });
-            authUserId = cookies['auth_user_id'];
-            authOrgId = cookies['auth_org_id'];
-            authToken = cookies['auth_session_token'];
-          }
-        }
-        
-        // TODO: Implement proper token validation instead of trusting client-provided user IDs
-        // CRITICAL FIX: Use the resolved organization ID, not just req.orgId
-        if (authUserId && authOrgId) {
-          logDevAuthUsage('cookie', `userId=${authUserId}, orgId=${authOrgId}`);
-          console.log(`🍪 Cookie auth attempt: userId=${authUserId}, orgId=${authOrgId}, token present=${!!authToken}`);
-          
-          // Use the auth_org_id from the cookie for user lookup
-          const user = await storage.getUser(authOrgId, authUserId);
-          if (user && user.isActive) {
-            console.log(`✅ Cookie auth successful for: ${user.name} (role: ${user.role}, superAdmin: ${user.isSuperAdmin})`);
-            req.currentUser = sanitizeUser(user);
-            req.orgId = authOrgId; // Ensure orgId is set for downstream middleware
-            
-            // Also set session for consistency (helps prevent repeated cookie lookups)
-            if (req.session) {
-              req.session.userId = user.id;
-              req.session.organizationId = authOrgId;
-              console.log(`📦 Updated session with userId: ${user.id} and orgId: ${authOrgId}`);
-            }
-            return next();
-          } else {
-            console.log(`❌ Cookie auth failed - user not found or inactive`);
-          }
-        } else if (authUserId) {
-          console.log(`❌ Cookie auth failed - missing data or org mismatch. userId=${!!authUserId}, orgId=${authOrgId}, expectedOrg=${req.orgId}, token=${!!authToken}`);
-        }
-      }
+      // SECURITY: Cookie-based authentication completely removed
+      // This was a critical vulnerability that allowed user impersonation
+      // Authentication must only happen through secure sessions
+      // Never trust client-provided user IDs in cookies or headers
       
       // No valid authentication found
       return res.status(401).json({ 

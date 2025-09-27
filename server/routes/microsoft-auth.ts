@@ -217,32 +217,8 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
           req.session.authOrgId = undefined; // Clear temp org ID
           req.session.microsoftRedirectUri = undefined; // Clear stored redirect URI
         
-          // Set authentication cookies
-          const sessionToken = randomBytes(32).toString('hex');
-          
-          res.cookie('auth_user_id', user.id, {
-            httpOnly: true,
-            secure: true, // Required for SameSite=None
-            sameSite: 'none', // Allow cookies in iframe/embedded context
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-          });
-          
-          res.cookie('auth_org_id', orgId, {
-            httpOnly: true,
-            secure: true, // Required for SameSite=None
-            sameSite: 'none', // Allow cookies in iframe/embedded context
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-          });
-          
-          res.cookie('auth_session_token', sessionToken, {
-            httpOnly: true,
-            secure: true, // Required for SameSite=None
-            sameSite: 'none', // Allow cookies in iframe/embedded context
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-          });
+          // SECURITY: Session-based authentication only - no auth cookies
+          // Removed dangerous auth_user_id cookies that allowed user impersonation
           
           // Redirect to dashboard using current request's base URL
           const organization = await storage.getOrganization(orgId);

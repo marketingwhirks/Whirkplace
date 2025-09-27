@@ -62,7 +62,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const secure = isProd || isReplit;
     const sameSite = (isProd || isReplit) ? 'none' : 'lax';
     
-    // Clear session cookie
+    // Clear the correct session cookie (using our custom name)
+    res.clearCookie('whirkplace.sid', {
+      secure,
+      httpOnly: true,
+      sameSite: sameSite as any,
+      path: '/'
+    });
+    
+    // Also clear legacy session cookie if it exists
     res.clearCookie('connect.sid', {
       secure,
       httpOnly: true,
@@ -154,7 +162,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Set session after regeneration
         req.session.userId = matthewUser.id;
         req.session.organizationId = organizationId;
-        req.session.roles = matthewUser.roles || ['member'];
+        req.session.organizationSlug = org[0].slug;
         
         // Save session before sending response to ensure persistence
         req.session.save((err) => {
@@ -165,44 +173,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         console.log(`💾 Session saved for user: ${matthewUser.id}`);
         
-        // Also set authentication cookies for fallback (like Slack OAuth)
-        const sessionToken = randomBytes(32).toString('hex');
-        
-        // CRITICAL FIX: Use proper cookie settings for Replit environment  
-        const isReplit = !!process.env.REPL_SLUG;
-        const isProduction = process.env.NODE_ENV === 'production';
-        const useSecure = isProduction || isReplit; // Secure for production OR Replit
-        const useSameSiteNone = isProduction || isReplit; // SameSite=none for production OR Replit
-        
-        console.log(`🍪 Cookie settings: secure=${useSecure}, sameSite=${useSameSiteNone ? 'none' : 'lax'}, isReplit=${isReplit}`);
-        
-        // SECURITY: Set secure cookies for iframe compatibility (production/Replit) or lax for local development
-        res.cookie('auth_user_id', matthewUser.id, {
-          httpOnly: true,
-          secure: useSecure,
-          sameSite: useSameSiteNone ? 'none' : 'lax',
-          path: '/',
-          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-        });
-        
-        res.cookie('auth_org_id', organizationId, {
-          httpOnly: true,
-          secure: useSecure,
-          sameSite: useSameSiteNone ? 'none' : 'lax',
-          path: '/',
-          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-        });
-        
-        res.cookie('auth_session_token', sessionToken, {
-          httpOnly: true,
-          secure: useSecure,
-          sameSite: useSameSiteNone ? 'none' : 'lax',
-          path: '/',
-          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-        });
+        // SECURITY: No longer setting auth cookies - sessions are the only authentication method
+        // Cookies like auth_user_id were a critical vulnerability allowing user impersonation
         
         console.log(`✅ Fresh backdoor login successful for ${matthewUser.name}`);
-        console.log(`🎯 Response cookies set with secure=${useSecure}, sameSite=${useSameSiteNone ? 'none' : 'lax'}`);
         
           res.json({ 
             message: "Fresh backdoor login successful", 
@@ -268,33 +242,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(500).json({ message: "Session save failed" });
         }
         
-        // Also set authentication cookies for fallback (like Slack OAuth)
-        const sessionToken = randomBytes(32).toString('hex');
-        
-        // SECURITY: Set secure cookies for iframe compatibility (production) or lax for development
-        res.cookie('auth_user_id', matthewUser.id, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-          path: '/',
-          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-        });
-        
-        res.cookie('auth_org_id', req.orgId, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-          path: '/',
-          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-        });
-        
-        res.cookie('auth_session_token', sessionToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-          path: '/',
-          maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-        });
+        // SECURITY: No auth cookies - sessions only
+        // Removed dangerous auth cookies that allowed user impersonation
         
           res.json({ 
             message: "Backdoor login successful", 
@@ -1186,38 +1135,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
               `);
             }
             
-            // Set HTTP-only secure cookies for authentication fallback
-            // CRITICAL: Match session cookie settings for consistency
-            const sessionToken = randomBytes(32).toString('hex');
-            const isReplit = !!process.env.REPL_SLUG;
-            const isProduction = process.env.NODE_ENV === 'production';
-            const isSecureEnvironment = isProduction || isReplit;
-            
-            console.log(`🍪 Setting auth cookies - secure: ${isSecureEnvironment}, sameSite: ${isReplit ? 'none' : 'lax'}`);
-            
-            res.cookie('auth_user_id', authenticatedUser.id, {
-              httpOnly: true,
-              secure: isSecureEnvironment,
-              sameSite: isReplit ? 'none' : 'lax',
-              path: '/',
-              maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-            });
-            
-            res.cookie('auth_org_id', organization.id, {
-              httpOnly: true,
-              secure: isSecureEnvironment,
-              sameSite: isReplit ? 'none' : 'lax',
-              path: '/',
-              maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-            });
-            
-            res.cookie('auth_session_token', sessionToken, {
-              httpOnly: true,
-              secure: isSecureEnvironment,
-              sameSite: isReplit ? 'none' : 'lax',
-              path: '/',
-              maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-            });
+            // SECURITY: Session-based authentication only
+            // No auth cookies are set - they were a critical vulnerability
             
             console.log(`User ${authenticatedUser.name} (${authenticatedUser.email}) successfully authenticated via Slack OAuth for organization ${organization.name}`);
             
@@ -1953,22 +1872,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`🍪 Setting auth cookies for new admin - secure=${useSecure}, sameSite=${useSameSiteNone ? 'none' : 'lax'}, isReplit=${isReplit}`);
       
-      // Set authentication cookies for session persistence
-      res.cookie('auth_user_id', adminUser.id, {
-        httpOnly: true,
-        secure: useSecure,
-        sameSite: useSameSiteNone ? 'none' : 'lax',
-        path: '/',
-        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-      });
-      
-      res.cookie('auth_org_id', organization.id, {
-        httpOnly: true,
-        secure: useSecure,
-        sameSite: useSameSiteNone ? 'none' : 'lax',
-        path: '/',
-        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-      });
+      // SECURITY: Session-based authentication only - no auth cookies
       
       res.status(201).json({
         message: "Business account created successfully",
@@ -2350,32 +2254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           console.log(`💾 Session saved for user: ${user.id}`);
           
-          // Set authentication cookies for compatibility
-          const sessionToken = randomBytes(32).toString('hex');
-          
-          res.cookie('auth_user_id', user.id, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-          });
-          
-          res.cookie('auth_org_id', req.orgId, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-          });
-          
-          res.cookie('auth_session_token', sessionToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-          });
+          // SECURITY: Session-based authentication only - no auth cookies
           
           res.json({ 
             message: "Login successful",
@@ -2495,32 +2374,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           console.log(`💾 Registration session saved for user: ${newUser.id}`);
           
-          // Set authentication cookies
-          const sessionToken = randomBytes(32).toString('hex');
-          
-          res.cookie('auth_user_id', newUser.id, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-          });
-          
-          res.cookie('auth_org_id', req.orgId, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-          });
-          
-          res.cookie('auth_session_token', sessionToken, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-            path: '/',
-            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-          });
+          // SECURITY: Session-based authentication only - no auth cookies
           
           res.status(201).json({ 
             message: "Registration successful",
