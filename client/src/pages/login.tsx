@@ -19,7 +19,7 @@ export default function LoginPage() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [organizationSlug, setOrganizationSlug] = useState('');
   const [authProviders, setAuthProviders] = useState<any[]>([]);
-  const [loginStep, setLoginStep] = useState<'organization' | 'auth'>('organization');
+  const [loginStep, setLoginStep] = useState<'organization' | 'auth'>('auth');
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
@@ -51,6 +51,11 @@ export default function LoginPage() {
           setOrganizationSlug(subdomain);
           fetchAuthProviders(subdomain);
         }
+      } else {
+        // Default: Show basic auth providers for general login
+        setAuthProviders([
+          { provider: 'local', enabled: true }
+        ]);
       }
     }
     
@@ -156,8 +161,9 @@ export default function LoginPage() {
       // Clear any old authentication data first
       await clearAuthData();
       
-      // Use local authentication endpoint
-      const response = await fetch(`/auth/local/login?org=${organizationSlug}`, {
+      // Use local authentication endpoint - use default org if none specified
+      const orgSlug = organizationSlug || 'whirkplace';
+      const response = await fetch(`/auth/local/login?org=${orgSlug}`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json'
@@ -347,7 +353,7 @@ export default function LoginPage() {
             <CardDescription>
               {isSignUpMode ? 'Get started with your team culture platform' : 
                loginStep === 'organization' ? 'Enter your organization to continue' :
-               `Signing in to ${organizationSlug}`}
+               organizationSlug ? `Signing in to ${organizationSlug}` : 'Sign in to your account'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -532,20 +538,59 @@ export default function LoginPage() {
                     </>
                   )}
 
-                  {/* Back to organization selection */}
-                  <div className="text-center text-sm text-muted-foreground pt-4 border-t">
-                    <button 
-                      type="button"
-                      onClick={() => {
-                        setLoginStep('organization');
-                        setAuthProviders([]);
-                        setOrganizationSlug('');
-                      }}
-                      className="underline hover:no-underline"
-                      data-testid="back-to-org-selection"
-                    >
-                      ← Use a different organization
-                    </button>
+                  {/* Organization-specific login link and signup */}
+                  <div className="space-y-2 text-center text-sm text-muted-foreground pt-4 border-t">
+                    {!organizationSlug && (
+                      <div>
+                        <span>Have an organization account? </span>
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setLoginStep('organization');
+                            setAuthProviders([]);
+                            setOrganizationSlug('');
+                          }}
+                          className="underline hover:no-underline text-primary"
+                          data-testid="org-specific-login"
+                        >
+                          Sign in with organization
+                        </button>
+                      </div>
+                    )}
+                    {organizationSlug && (
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          setLoginStep('auth');
+                          setAuthProviders([{ provider: 'local', enabled: true }]);
+                          setOrganizationSlug('');
+                        }}
+                        className="underline hover:no-underline"
+                        data-testid="back-to-general-login"
+                      >
+                        ← Use different login method
+                      </button>
+                    )}
+                    <div>
+                      <span>New to Whirkplace? </span>
+                      <Link href="/signup" className="underline hover:no-underline text-primary">
+                        Create an account
+                      </Link>
+                    </div>
+                    <div>
+                      <Link href="/demo">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="mt-2"
+                          type="button"
+                          data-testid="button-try-demo"
+                        >
+                          <Play className="w-4 h-4 mr-2" />
+                          Try Live Demo
+                        </Button>
+                      </Link>
+                    </div>
                   </div>
                 </>
               )
