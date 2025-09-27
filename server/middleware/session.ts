@@ -24,8 +24,8 @@ export function getSessionConfig() {
   const isReplit = !!process.env.REPL_SLUG;
   
   // Determine if we should use secure cookies
-  // In production (not Replit dev), use secure cookies
-  const useSecureCookies = isProduction && !isReplit;
+  // In production OR Replit (which runs in iframe), use secure cookies
+  const useSecureCookies = isProduction || isReplit;
   
   // Session store configuration
   const sessionStore = new PgSession({
@@ -39,14 +39,19 @@ export function getSessionConfig() {
   });
 
   // Cookie configuration
+  // Replit runs in iframe (third-party context), needs sameSite=none
+  const sameSite = (isProduction || isReplit) ? 'none' as const : 'lax' as const;
+  
   const cookieConfig = {
     secure: useSecureCookies,
     httpOnly: true,
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    sameSite: 'lax' as const, // Use 'lax' for better compatibility
+    sameSite: sameSite,
     domain: undefined, // Let browser set domain automatically
-    path: '/'
-  };
+    path: '/',
+    // Add partitioned flag for Replit to handle Chrome's CHIPS
+    ...(isReplit ? { partitioned: true } : {})
+  } as any;
 
   // Session configuration
   return {
@@ -150,13 +155,15 @@ export async function clearSessionUser(req: Request): Promise<void> {
 export function logSessionConfig() {
   const isProduction = process.env.NODE_ENV === 'production';
   const isReplit = !!process.env.REPL_SLUG;
-  const useSecureCookies = isProduction && !isReplit;
+  const useSecureCookies = isProduction || isReplit;
+  const sameSite = (isProduction || isReplit) ? 'none' : 'lax';
   
   console.log('🔐 Session configuration:', {
     environment: isProduction ? 'production' : 'development',
     replit: isReplit,
     secureCookies: useSecureCookies,
-    sameSite: 'lax',
+    sameSite: sameSite,
+    partitioned: isReplit,
     sessionName: 'whirkplace.sid',
     trustProxy: true,
     maxAge: '30 days'

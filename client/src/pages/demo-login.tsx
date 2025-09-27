@@ -143,16 +143,7 @@ export default function DemoLoginPage() {
         const data = await response.json();
         console.log("Login response data:", data);
         
-        // Store auth info in localStorage as cookies aren't working in Replit
-        if (data.user?.id) {
-          localStorage.setItem('auth_user_id', data.user.id);
-          localStorage.setItem('auth_user_name', data.user.name);
-          localStorage.setItem('auth_user_email', data.user.email);
-          localStorage.setItem('auth_user_role', data.user.role);
-          localStorage.setItem('auth_organization_id', 'fictitious-delicious');
-          localStorage.setItem('auth_organization_slug', 'fictitious-delicious');
-          console.log("Stored auth in localStorage:", data.user.id);
-        }
+        // Session cookie should now work properly with the fixed configuration
         
         toast({ 
           title: "Welcome to the demo!", 
@@ -207,16 +198,7 @@ export default function DemoLoginPage() {
         const data = await response.json();
         console.log("Direct login response data:", data);
         
-        // Store auth info in localStorage as cookies aren't working in Replit
-        if (data.user?.id) {
-          localStorage.setItem('auth_user_id', data.user.id);
-          localStorage.setItem('auth_user_name', data.user.name);
-          localStorage.setItem('auth_user_email', data.user.email);
-          localStorage.setItem('auth_user_role', data.user.role);
-          localStorage.setItem('auth_organization_id', 'fictitious-delicious');
-          localStorage.setItem('auth_organization_slug', 'fictitious-delicious');
-          console.log("Stored auth in localStorage (direct):", data.user.id);
-        }
+        // Session cookie should now work properly with the fixed configuration
         
         toast({ 
           title: "Welcome to the demo!", 
