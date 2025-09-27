@@ -372,14 +372,25 @@ export function authenticateUser() {
       // Check for localStorage-based authentication as development fallback only
       if (isDevelopmentAuthEnabled()) {
         const authUserId = req.headers['x-auth-user-id'] as string;
-        console.log(`🔍 localStorage header check: x-auth-user-id = ${authUserId}`);
+        const authOrgSlug = req.headers['x-auth-organization-slug'] as string;
+        console.log(`🔍 localStorage header check: x-auth-user-id = ${authUserId}, x-auth-organization-slug = ${authOrgSlug}`);
         if (authUserId) {
-          logDevAuthUsage('localStorage', `userId=${authUserId}`);
+          logDevAuthUsage('localStorage', `userId=${authUserId}, orgSlug=${authOrgSlug}`);
           console.log(`📱 Found localStorage auth userId: ${authUserId}`);
-          const user = await storage.getUser(req.orgId, authUserId);
+          
+          // If demo organization slug is provided, look up the org by slug
+          let orgIdForAuth = resolvedOrgId;
+          if (authOrgSlug === 'fictitious-delicious') {
+            // Use the known demo organization ID
+            orgIdForAuth = 'b74d00fd-e1ce-41ae-afca-4a0d55cb1fe1';
+            console.log(`🍔 Using demo organization for auth: ${orgIdForAuth}`);
+          }
+          
+          const user = await storage.getUser(orgIdForAuth, authUserId);
           if (user && user.isActive) {
             console.log(`✅ localStorage auth successful for: ${user.name}`);
             req.currentUser = sanitizeUser(user);
+            req.orgId = orgIdForAuth; // Set orgId for downstream middleware
             return next();
           } else {
             console.log(`❌ localStorage auth failed - user not found or inactive`);

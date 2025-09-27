@@ -149,7 +149,8 @@ export default function DemoLoginPage() {
           localStorage.setItem('auth_user_name', data.user.name);
           localStorage.setItem('auth_user_email', data.user.email);
           localStorage.setItem('auth_user_role', data.user.role);
-          localStorage.setItem('auth_organization_id', 'b74d00fd-e1ce-41ae-afca-4a0d55cb1fe1');
+          localStorage.setItem('auth_organization_id', 'fictitious-delicious');
+          localStorage.setItem('auth_organization_slug', 'fictitious-delicious');
           console.log("Stored auth in localStorage:", data.user.id);
         }
         
@@ -159,7 +160,8 @@ export default function DemoLoginPage() {
         });
         
         // Force page reload to ensure auth is picked up
-        window.location.href = '/?org=fictitious-delicious';
+        // Use the hardcoded organization ID for demo users
+        window.location.href = '/dashboard';
       } else {
         const error = await response.json();
         console.error("Login failed:", error);
@@ -221,7 +223,8 @@ export default function DemoLoginPage() {
         });
         
         // Force page reload to ensure auth is picked up
-        window.location.href = '/?org=fictitious-delicious';
+        // Use the hardcoded organization ID for demo users
+        window.location.href = '/dashboard';
       } else {
         const error = await response.json();
         console.error("Direct login failed:", error);

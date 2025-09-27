@@ -15,12 +15,16 @@ export async function apiRequest(
 ): Promise<Response> {
   // Add localStorage auth headers to bypass cookie issues
   const authUserId = localStorage.getItem('auth_user_id');
+  const authOrgSlug = localStorage.getItem('auth_organization_slug');
   const headers: Record<string, string> = {
     ...(data ? { "Content-Type": "application/json" } : {}),
   };
   
   if (authUserId) {
     headers['x-auth-user-id'] = authUserId;
+  }
+  if (authOrgSlug) {
+    headers['x-auth-organization-slug'] = authOrgSlug;
   }
 
   const res = await fetch(url, {
@@ -68,10 +72,14 @@ export const getQueryFn: <T>(options: {
 
     // Add localStorage auth headers to bypass cookie issues
     const authUserId = localStorage.getItem('auth_user_id');
+    const authOrgSlug = localStorage.getItem('auth_organization_slug');
     const headers: Record<string, string> = {};
     
     if (authUserId) {
       headers['x-auth-user-id'] = authUserId;
+    }
+    if (authOrgSlug) {
+      headers['x-auth-organization-slug'] = authOrgSlug;
     }
 
     const res = await fetch(url, {
