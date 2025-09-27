@@ -7,12 +7,12 @@ import { OnboardingWalkthrough } from "@/components/business/OnboardingWalkthrou
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, Building2, CreditCard, Users } from "lucide-react";
+import { CheckCircle, Building2, CreditCard, Users, UserPlus, Settings } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { DynamicThemeProvider } from "@/components/theme/DynamicThemeProvider";
 
-type SignupStep = "signup" | "plan-selection" | "onboarding" | "payment" | "complete";
+type SignupStep = "signup" | "plan-selection" | "teams" | "invites" | "settings" | "payment" | "complete";
 
 interface SignupData {
   businessInfo?: any;
@@ -27,7 +27,9 @@ interface SignupData {
 const signupSteps = [
   { id: "signup", title: "Account", icon: <Building2 className="h-4 w-4" /> },
   { id: "plan-selection", title: "Plan", icon: <CreditCard className="h-4 w-4" /> },
-  { id: "onboarding", title: "Setup", icon: <Users className="h-4 w-4" /> },
+  { id: "teams", title: "Teams", icon: <Users className="h-4 w-4" /> },
+  { id: "invites", title: "Invites", icon: <UserPlus className="h-4 w-4" /> },
+  { id: "settings", title: "Settings", icon: <Settings className="h-4 w-4" /> },
 ];
 
 export default function BusinessSignupPage() {
@@ -46,17 +48,17 @@ export default function BusinessSignupPage() {
     const error = params.get('error');
     const canceled = params.get('canceled');
     
-    if (step === 'onboarding' && organizationId && payment === 'success') {
-      // Payment successful, move to onboarding step
+    if (step === 'teams' && organizationId && payment === 'success') {
+      // Payment successful, move to teams step
       setSignupData(prev => ({ 
         ...prev, 
         organizationId,
         businessInfo: { organizationId }
       }));
-      setCurrentStep('onboarding');
+      setCurrentStep('teams');
       toast({
         title: "Payment Successful!",
-        description: "Your payment has been processed. Let's set up your organization.",
+        description: "Your payment has been processed. Let's set up your teams.",
       });
       // Clean up URL
       window.history.replaceState({}, '', '/business-signup');
@@ -162,10 +164,10 @@ export default function BusinessSignupPage() {
           ...prev, 
           selectedPlan: { planId: data.planId || 'starter', billingCycle: data.billingCycle || 'monthly' },
         }));
-        setCurrentStep("onboarding");
+        setCurrentStep("teams");
         toast({
           title: "Plan Selected!",
-          description: `You've selected the starter plan. Now let's set up your organization.`,
+          description: `You've selected the starter plan. Now let's set up your teams.`,
         });
       }
     },
@@ -262,7 +264,7 @@ export default function BusinessSignupPage() {
         break;
       case "plan-selection":
         if (signupData.selectedPlan) {
-          setCurrentStep("onboarding");
+          setCurrentStep("teams");
         }
         break;
       case "theme":
