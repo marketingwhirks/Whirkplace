@@ -25,21 +25,14 @@ export function useCurrentUser() {
           url += `?org=${orgFromUrl}`;
         }
 
-        // Add localStorage auth headers for development
-        const authUserId = localStorage.getItem('auth_user_id');
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json'
-        };
-        
-        if (authUserId) {
-          headers['x-auth-user-id'] = authUserId;
-        }
-
         // Make actual API call to check current user authentication
+        // Only rely on secure session cookies, no auth headers
         const response = await fetch(url, {
           method: 'GET',
           credentials: 'include',
-          headers
+          headers: {
+            'Content-Type': 'application/json'
+          }
         });
         
         if (!response.ok) {

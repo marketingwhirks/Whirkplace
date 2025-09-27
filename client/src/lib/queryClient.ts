@@ -13,19 +13,10 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  // Add localStorage auth headers to bypass cookie issues
-  const authUserId = localStorage.getItem('auth_user_id');
-  const authOrgSlug = localStorage.getItem('auth_organization_slug');
+  // Only add content-type header when sending data
   const headers: Record<string, string> = {
     ...(data ? { "Content-Type": "application/json" } : {}),
   };
-  
-  if (authUserId) {
-    headers['x-auth-user-id'] = authUserId;
-  }
-  if (authOrgSlug) {
-    headers['x-auth-organization-slug'] = authOrgSlug;
-  }
 
   const res = await fetch(url, {
     method,
@@ -70,17 +61,8 @@ export const getQueryFn: <T>(options: {
       url = queryKey.join("/") as string;
     }
 
-    // Add localStorage auth headers to bypass cookie issues
-    const authUserId = localStorage.getItem('auth_user_id');
-    const authOrgSlug = localStorage.getItem('auth_organization_slug');
+    // No auth headers - rely on secure session cookies
     const headers: Record<string, string> = {};
-    
-    if (authUserId) {
-      headers['x-auth-user-id'] = authUserId;
-    }
-    if (authOrgSlug) {
-      headers['x-auth-organization-slug'] = authOrgSlug;
-    }
 
     const res = await fetch(url, {
       credentials: "include",

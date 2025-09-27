@@ -42,72 +42,45 @@ function isBackdoorAuthAllowed() {
  * 3. BYPASS: Set SKIP_AUTH_VALIDATION=true (not recommended for security)
  */
 export function validateAuthConfiguration() {
-  // DEPLOYMENT-FRIENDLY SECURITY VALIDATION
-  // This validation warns about insecure configurations but allows deployment
+  // SECURITY: Never allow validation bypass in production
+  if (process.env.NODE_ENV === 'production' && process.env.SKIP_AUTH_VALIDATION === 'true') {
+    console.error(`🚨 CRITICAL: SKIP_AUTH_VALIDATION cannot be used in production`);
+    throw new Error('Security validation cannot be bypassed in production environment');
+  }
   
-  // Allow bypassing validation if explicitly requested (with strong warnings)
-  if (process.env.SKIP_AUTH_VALIDATION === 'true') {
-    console.warn(`⚠️  SECURITY WARNING: Authentication validation has been BYPASSED via SKIP_AUTH_VALIDATION=true`);
-    console.warn(`⚠️  This disables important security checks and should only be used temporarily`);
-    console.warn(`⚠️  Remove SKIP_AUTH_VALIDATION=true once deployment issues are resolved`);
+  // Allow skip validation only in development for testing
+  if (process.env.NODE_ENV !== 'production' && process.env.SKIP_AUTH_VALIDATION === 'true') {
+    console.warn(`⚠️  DEV WARNING: Authentication validation bypassed for testing`);
     return;
   }
 
-  // PRODUCTION SECURITY: Handle development authentication flags intelligently
+  // CRITICAL SECURITY: Never allow development flags in production
   if (process.env.NODE_ENV === 'production') {
-    const dangerousFlags = [
-      'DEV_AUTH_ENABLED',
-      'BACKDOOR_USER', 
-      'BACKDOOR_KEY',
-      'BACKDOOR_PROFILE_NAME',
-      'BACKDOOR_PROFILE_EMAIL'
-    ];
+    // Check for DEV_AUTH_ENABLED flag
+    if (process.env.DEV_AUTH_ENABLED === 'true') {
+      console.error(`🚨 CRITICAL: DEV_AUTH_ENABLED cannot be true in production`);
+      throw new Error('Development authentication cannot be enabled in production');
+    }
     
-    const presentFlags = dangerousFlags.filter(flag => process.env[flag]);
-    if (presentFlags.length > 0) {
-      // PERMANENT FIX: More intelligent handling of development flags in production
-      const allowProductionBackdoor = process.env.ALLOW_PRODUCTION_BACKDOOR === 'true';
-      const isReviewApp = process.env.REPLIT_ENVIRONMENT === 'review' || 
-                         process.env.VERCEL_ENV === 'preview' ||
-                         process.env.NETLIFY_CONTEXT === 'deploy-preview';
-      const isDeploymentEnvironment = process.env.REPLIT_DEPLOYMENT === 'true' ||
-                                    process.env.VERCEL || 
-                                    process.env.NETLIFY ||
-                                    process.env.RAILWAY_ENVIRONMENT;
+    // Check for backdoor credentials
+    if (process.env.BACKDOOR_USER || process.env.BACKDOOR_KEY) {
+      // Special exception for mpatrick@whirks.com super admin
+      const isSuperAdminBackdoor = process.env.BACKDOOR_USER === 'mpatrick@whirks.com' && 
+                                    process.env.BACKDOOR_PROFILE_EMAIL === 'mpatrick@whirks.com';
       
-      // Allow development flags in review/preview environments with warning
-      if (isReviewApp) {
-        console.warn(`⚠️  REVIEW ENVIRONMENT: Development authentication flags detected: ${presentFlags.join(', ')}`);
-        console.warn(`⚠️  This is allowed in review/preview environments but should be avoided in production`);
-        return;
+      if (!isSuperAdminBackdoor) {
+        console.error(`🚨 CRITICAL: Non-super-admin backdoor credentials detected in production`);
+        console.error(`🚨 Remove BACKDOOR_USER and BACKDOOR_KEY immediately`);
+        throw new Error('Backdoor authentication cannot exist in production (except for system super admin)');
+      } else {
+        console.log(`✅ Super admin backdoor configured for mpatrick@whirks.com`);
       }
-      
-      // For production deployment environments, warn but allow if backdoor is explicitly enabled
-      if (allowProductionBackdoor || isDeploymentEnvironment) {
-        console.warn(`⚠️  PRODUCTION DEPLOYMENT: Development authentication flags detected: ${presentFlags.join(', ')}`);
-        console.warn(`⚠️  ${allowProductionBackdoor ? 'Production backdoor access is ENABLED' : 'Deployment environment detected'}`);
-        console.warn(`⚠️  Consider removing development flags for enhanced security`);
-        console.warn(`⚠️  This configuration is allowed but monitor for security implications`);
-        return;
-      }
-      
-      // Strict production environments: provide helpful guidance but don't block deployment
-      console.warn(`⚠️  PRODUCTION SECURITY NOTICE: Development authentication flags detected: ${presentFlags.join(', ')}`);
-      console.warn(`⚠️  For enhanced security, consider removing these environment variables:`);
-      presentFlags.forEach(flag => {
-        console.warn(`⚠️    - ${flag}`);
-      });
-      console.warn(`⚠️  `);
-      console.warn(`⚠️  DEPLOYMENT OPTIONS:`);
-      console.warn(`⚠️    - Set ALLOW_PRODUCTION_BACKDOOR=true (for emergency admin access)`);
-      console.warn(`⚠️    - Remove development flags for enhanced security`);
-      console.warn(`⚠️    - Set SKIP_AUTH_VALIDATION=true (bypasses all checks)`);
-      console.warn(`⚠️  `);
-      console.warn(`⚠️  Proceeding with deployment despite security warnings...`);
-      
-      // DEPLOYMENT FIX: Allow production deployment with warnings instead of failing
-      // The application will start but log security concerns for monitoring
-      // Backdoor authentication is still disabled in production via isBackdoorAuthAllowed()
+    }
+    
+    // Never allow production backdoor override
+    if (process.env.ALLOW_PRODUCTION_BACKDOOR === 'true') {
+      console.error(`🚨 CRITICAL: ALLOW_PRODUCTION_BACKDOOR cannot be true in production`);
+      throw new Error('Production backdoor override is not allowed');
     }
   }
   
@@ -369,35 +342,21 @@ export function authenticateUser() {
         console.warn(`⚠️  User must login through proper authentication endpoints`);
       }
 
-      // Check for localStorage-based authentication as development fallback only
-      if (isDevelopmentAuthEnabled()) {
-        const authUserId = req.headers['x-auth-user-id'] as string;
-        const authOrgSlug = req.headers['x-auth-organization-slug'] as string;
-        console.log(`🔍 localStorage header check: x-auth-user-id = ${authUserId}, x-auth-organization-slug = ${authOrgSlug}`);
-        if (authUserId) {
-          logDevAuthUsage('localStorage', `userId=${authUserId}, orgSlug=${authOrgSlug}`);
-          console.log(`📱 Found localStorage auth userId: ${authUserId}`);
-          
-          // If demo organization slug is provided, look up the org by slug
-          let orgIdForAuth = resolvedOrgId;
-          if (authOrgSlug === 'fictitious-delicious') {
-            // Use the known demo organization ID
-            orgIdForAuth = 'b74d00fd-e1ce-41ae-afca-4a0d55cb1fe1';
-            console.log(`🍔 Using demo organization for auth: ${orgIdForAuth}`);
-          }
-          
-          const user = await storage.getUser(orgIdForAuth, authUserId);
-          if (user && user.isActive) {
-            console.log(`✅ localStorage auth successful for: ${user.name}`);
-            req.currentUser = sanitizeUser(user);
-            req.orgId = orgIdForAuth; // Set orgId for downstream middleware
-            return next();
-          } else {
-            console.log(`❌ localStorage auth failed - user not found or inactive`);
-          }
+      // SECURITY: Never accept x-auth-* headers - they are a critical security vulnerability
+      // These headers could allow user impersonation if accepted
+      const dangerousHeaders = ['x-auth-user-id', 'x-auth-organization-slug', 'x-auth-organization-id'];
+      const foundHeaders = dangerousHeaders.filter(h => req.headers[h]);
+      if (foundHeaders.length > 0) {
+        if (process.env.NODE_ENV === 'production') {
+          console.error(`🚨 SECURITY ALERT: Client attempted to send auth headers: ${foundHeaders.join(', ')}`);
+          console.error(`🚨 Request: ${req.method} ${req.path}`);
+          console.error(`🚨 IP: ${req.ip}`);
+          // Headers are completely ignored - no authentication via headers
         } else {
-          console.log(`❌ No localStorage auth header found`);
+          console.warn(`⚠️  DEV WARNING: x-auth-* headers detected but ignored for security`);
+          console.warn(`⚠️  These headers are no longer supported to prevent user impersonation`);
         }
+        // Continue to next auth method - headers are completely ignored
       }
       
       // SECURITY: Cookie-based authentication disabled in production due to security risks
