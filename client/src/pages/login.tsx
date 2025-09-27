@@ -115,7 +115,10 @@ export default function LoginPage() {
       'auth-token',
       'user-id',
       'auth_user_id',
-      'auth_org_id'
+      'auth_org_id',
+      'demo_token',  // Clear demo authentication
+      'demo_user',   // Clear demo user data
+      'demo_org'     // Clear demo organization
     ];
     
     itemsToRemove.forEach(item => {
@@ -144,6 +147,11 @@ export default function LoginPage() {
   };
   
   const handleSlackLogin = () => {
+    // Clear any existing demo tokens before Slack authentication
+    localStorage.removeItem('demo_token');
+    localStorage.removeItem('demo_user');
+    localStorage.removeItem('demo_org');
+    
     // Include the org parameter in the Slack auth URL
     const url = `/auth/slack/login?org=${organizationSlug}`;
     console.log('Initiating Slack login for org:', organizationSlug);
@@ -151,6 +159,11 @@ export default function LoginPage() {
   };
   
   const handleMicrosoftLogin = () => {
+    // Clear any existing demo tokens before Microsoft authentication
+    localStorage.removeItem('demo_token');
+    localStorage.removeItem('demo_user');
+    localStorage.removeItem('demo_org');
+    
     // Redirect to the Microsoft OAuth endpoint with organization parameter
     console.log('Initiating Microsoft login for org:', organizationSlug);
     window.location.href = `/auth/microsoft?org=${organizationSlug}`;
@@ -224,6 +237,11 @@ export default function LoginPage() {
       return;
     }
 
+    // Clear any existing demo tokens before sign up
+    localStorage.removeItem('demo_token');
+    localStorage.removeItem('demo_user');
+    localStorage.removeItem('demo_org');
+
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
@@ -259,6 +277,11 @@ export default function LoginPage() {
   };
 
   const handleBackdoorLogin = async () => {
+    // Clear any existing demo tokens before backdoor login
+    localStorage.removeItem('demo_token');
+    localStorage.removeItem('demo_user');
+    localStorage.removeItem('demo_org');
+    
     try {
       console.log("🔄 Starting FRESH backdoor login with:", { username: backdoorUser, key: backdoorKey.substring(0, 3) + "***" });
       console.log("🌐 Making request to:", `${window.location.origin}/api/auth/dev-login-fresh?org=${organizationSlug || 'whirkplace'}`);
@@ -468,7 +491,13 @@ export default function LoginPage() {
                     {/* Google login option */}
                     {authProviders.find(p => p.provider === 'google' && p.enabled) && (
                       <Button 
-                        onClick={() => window.location.href = `/auth/google?org=${organizationSlug}`}
+                        onClick={() => {
+                          // Clear any existing demo tokens before Google authentication
+                          localStorage.removeItem('demo_token');
+                          localStorage.removeItem('demo_user');
+                          localStorage.removeItem('demo_org');
+                          window.location.href = `/auth/google?org=${organizationSlug}`;
+                        }}
                         className="w-full flex items-center justify-center space-x-2"
                         variant="outline"
                         size="lg"

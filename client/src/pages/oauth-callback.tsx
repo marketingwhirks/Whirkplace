@@ -16,6 +16,11 @@ export default function OAuthCallbackPage() {
       const isSuperAdmin = urlParams.get('super_admin') === 'true';
       
       if (userId) {
+        // Clear any existing demo token first to prevent authentication mode mixing
+        localStorage.removeItem('demo_token');
+        localStorage.removeItem('demo_user');
+        localStorage.removeItem('demo_org');
+        
         // Store auth info in localStorage for immediate recognition
         // Use the same key that the auth middleware expects
         console.log('OAuth callback - Setting auth in localStorage:', {
