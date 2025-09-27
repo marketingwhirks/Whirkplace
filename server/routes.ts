@@ -1923,8 +1923,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Set session properties after regeneration
           req.session.userId = adminUser.id;
           req.session.organizationId = organization.id;
-          req.session.userRole = adminUser.role;
-          req.session.username = adminUser.name;
           
           console.log(`💾 Session configured for user: ${adminUser.id} in org: ${organization.id}`);
           
