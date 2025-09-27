@@ -158,7 +158,7 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
                       <FormLabel>Industry *</FormLabel>
                       <FormControl>
                         <Select onValueChange={field.onChange} value={field.value}>
-                          <SelectTrigger data-testid="select-industry">
+                          <SelectTrigger data-testid="select-industry" className="w-full">
                             <SelectValue placeholder="Select your industry" />
                           </SelectTrigger>
                           <SelectContent>
@@ -170,6 +170,9 @@ export function BusinessSignup({ onSignupComplete, isLoading = false, className 
                           </SelectContent>
                         </Select>
                       </FormControl>
+                      <FormDescription>
+                        Select the industry that best describes your organization
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
