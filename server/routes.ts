@@ -275,7 +275,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Special handling for demo users - works in all environments
-      const { getDemoUser, generateDemoToken } = require('./demo-auth');
+      const { getDemoUser, generateDemoToken } = await import('./demo-auth');
       const demoUser = getDemoUser(email);
       if (demoUser && demoUser.password === password) {
         const token = generateDemoToken(email);
@@ -394,7 +394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const { getDemoUser, generateDemoToken } = require('./demo-auth');
+      const { getDemoUser, generateDemoToken } = await import('./demo-auth');
       const demoUser = getDemoUser(email);
       
       if (!demoUser || demoUser.password !== password) {

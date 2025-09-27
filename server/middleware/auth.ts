@@ -338,7 +338,7 @@ export function authenticateUser() {
       const authHeader = req.headers.authorization;
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
-        const { verifyDemoToken, getDemoUserById } = require('../demo-auth');
+        const { verifyDemoToken, getDemoUserById } = await import('../demo-auth');
         const decoded = verifyDemoToken(token);
         if (decoded && decoded.isDemo) {
           const demoUser = getDemoUserById(decoded.userId);
@@ -363,7 +363,7 @@ export function authenticateUser() {
       // Check for demo token authentication via cookie (fallback)
       const demoToken = req.cookies?.['demo_token'];
       if (demoToken) {
-        const { verifyDemoToken, getDemoUserById } = require('../demo-auth');
+        const { verifyDemoToken, getDemoUserById } = await import('../demo-auth');
         const decoded = verifyDemoToken(demoToken);
         if (decoded && decoded.isDemo) {
           const demoUser = getDemoUserById(decoded.userId);
