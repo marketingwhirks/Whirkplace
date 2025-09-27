@@ -100,7 +100,26 @@ app.use(session(sessionConfig));
 logSessionConfig();
 
 // Apply authentication middleware for all API routes
-app.use("/api", authenticateUser());
+app.use("/api", (req, res, next) => {
+  // Only skip authentication for diagnostic endpoints in development
+  if (req.path.startsWith("/auth/diagnostic")) {
+    // SECURITY: Only allow diagnostic endpoints in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔓 Diagnostic endpoint allowed in development:', req.path);
+      return next();
+    } else {
+      // In production, return 404 to hide the existence of these endpoints
+      console.warn('⚠️ Diagnostic endpoint access attempt blocked in production:', req.path);
+      return res.status(404).json({ 
+        message: 'Route not found',
+        path: req.path,
+        method: req.method 
+      });
+    }
+  }
+  // Apply authentication for all other routes
+  return authenticateUser()(req, res, next);
+});
 
 // Apply CSRF generation middleware after authentication
 app.use("/api", generateCSRF());

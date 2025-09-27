@@ -47,11 +47,33 @@ export function registerAuthDiagnosticRoutes(app: Express) {
         }
       },
       database: {
-        organizations: [],
-        superAdmins: [],
-        issues: []
+        organizations: [] as Array<{
+          id: string;
+          name: string;
+          slug: string;
+          plan: string;
+          slackEnabled: boolean;
+          slackWorkspaceId: string | null;
+          microsoftEnabled: boolean;
+          microsoftTenantId: string | null;
+          isActive: boolean;
+        }>,
+        superAdmins: [] as Array<{
+          id: string;
+          email: string;
+          name: string;
+          role: string;
+          isSuperAdmin: boolean;
+          authProvider: string;
+          isActive: boolean;
+          organizationId: string;
+        }>,
+        issues: [] as string[]
       },
-      recommendations: []
+      recommendations: [] as Array<{
+        priority: string;
+        action: string;
+      }>
     };
 
     // Check if OAuth providers are properly configured
@@ -196,12 +218,66 @@ export function registerAuthDiagnosticRoutes(app: Express) {
     }
 
     if (username === envUser && key === envKey) {
-      // Try to find the user
+      // Try to find the user across all organizations
       try {
-        const users = await storage.getAllUsers('whirkplace');
-        const user = users.find(u => u.email === username || u.username === username);
+        // First, check if this is the super admin (mpatrick@whirks.com)
+        // They should be in the whirkplace organization
+        if (username === 'mpatrick@whirks.com') {
+          const whirkplaceUsers = await storage.getAllUsers('whirkplace');
+          const superAdminUser = whirkplaceUsers.find(u => u.email === username || u.username === username);
+          
+          if (superAdminUser) {
+            // Get the whirkplace organization details
+            const whirkplaceOrg = await storage.getOrganizationBySlug('whirkplace');
+            
+            (req.session as any).userId = superAdminUser.id;
+            (req.session as any).organizationId = superAdminUser.organizationId;
+            
+            req.session.save((err) => {
+              if (err) {
+                return res.status(500).json({
+                  success: false,
+                  message: "Session save failed",
+                  error: err.message
+                });
+              }
+              
+              res.json({
+                success: true,
+                message: "Backdoor login successful (super admin)",
+                user: {
+                  id: superAdminUser.id,
+                  email: superAdminUser.email,
+                  name: superAdminUser.name,
+                  role: superAdminUser.role,
+                  isSuperAdmin: superAdminUser.isSuperAdmin,
+                  organizationId: superAdminUser.organizationId,
+                  organizationName: whirkplaceOrg?.name,
+                  organizationSlug: whirkplaceOrg?.slug,
+                  organizationPlan: whirkplaceOrg?.plan
+                }
+              });
+            });
+            return;
+          }
+        }
+        
+        // For all other users, search across all organizations
+        const allUsers = await storage.getAllUsersGlobal(false); // Don't include inactive users
+        const user = allUsers.find(u => u.email === username || u.username === username);
         
         if (user) {
+          // Get the organization to verify it's active
+          const organization = await storage.getOrganization(user.organizationId);
+          
+          if (!organization || !organization.isActive) {
+            return res.status(403).json({
+              success: false,
+              message: "User's organization is not active",
+              organizationId: user.organizationId
+            });
+          }
+          
           (req.session as any).userId = user.id;
           (req.session as any).organizationId = user.organizationId;
           
@@ -223,15 +299,18 @@ export function registerAuthDiagnosticRoutes(app: Express) {
                 name: user.name,
                 role: user.role,
                 isSuperAdmin: user.isSuperAdmin,
-                organizationId: user.organizationId
+                organizationId: user.organizationId,
+                organizationName: organization.name,
+                organizationSlug: organization.slug,
+                organizationPlan: organization.plan
               }
             });
           });
         } else {
           res.status(404).json({
             success: false,
-            message: `User ${username} not found in database`,
-            recommendation: "Create user account first"
+            message: `User ${username} not found in any organization`,
+            recommendation: "Ensure user account exists in the database"
           });
         }
       } catch (error) {
