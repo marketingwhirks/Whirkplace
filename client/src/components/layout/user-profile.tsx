@@ -85,6 +85,7 @@ export function UserProfile() {
       localStorage.removeItem('auth_user_data');
       localStorage.removeItem('whirkplace-user');
       localStorage.removeItem('roleSwitch');
+      localStorage.removeItem('demo_token');  // Clear demo authentication token
       
       // Clear any session storage as well
       sessionStorage.clear();
