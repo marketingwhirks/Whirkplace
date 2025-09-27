@@ -611,7 +611,7 @@ export function OnboardingPage() {
   // Update organization mutation
   const updateOrganizationMutation = useMutation({
     mutationFn: async (data: Record<string, any>) => {
-      const res = await apiRequest('PATCH', `/api/organizations/${currentUser?.organizationId}`, data);
+      const res = await apiRequest('PUT', `/api/organizations/${currentUser?.organizationId}`, data);
       return res.json();
     },
     onSuccess: () => {
