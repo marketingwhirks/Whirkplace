@@ -1276,6 +1276,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Apply authentication middleware BEFORE registering any other routes
+  // This ensures req.currentUser is set for all protected endpoints
+  app.use("/api", authenticateUser());
+  
   // Register Microsoft integration routes
   registerMicrosoftAuthRoutes(app);
   registerMicrosoftTeamsRoutes(app);
@@ -2487,8 +2491,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Apply CSRF validation to all remaining API routes
   app.use("/api", validateCSRF());
   
-  // Apply authentication middleware to all other API routes
-  app.use("/api", authenticateUser());
+  // NOTE: Authentication middleware already applied earlier before Microsoft routes
+  // to prevent route shadowing issues
   
   // Apply authentication requirement to all protected routes
   // (Not all routes need authentication, so we'll add requireAuth() selectively)
@@ -3401,8 +3405,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Add userId from current user and set weekOf if not provided
+      const bodyWithUserId = {
+        ...req.body,
+        userId: req.currentUser!.id,
+        weekOf: req.body.weekOf || new Date(),
+        overallMood: req.body.overallMood || req.body.moodRating || 5
+      };
+      
       // Parse and validate check-in data
-      const checkinData = insertCheckinSchema.parse(req.body);
+      const checkinData = insertCheckinSchema.parse(bodyWithUserId);
       
       // Validate that all questions have responses
       const responses = checkinData.responses as Record<string, string> || {};
@@ -4063,8 +4075,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Get current user
-      const viewer = await storage.getUser(req.orgId, req.userId!);
-      if (!viewer) {
+      const viewer = await storage.getUser(req.orgId, req.currentUser!.id);
+      if (!viewer && !req.currentUser?.isSuperAdmin) {
+        // For non-super admin users, we need their user record
         return res.status(401).json({ message: "User not found" });
       }
       
@@ -4099,7 +4112,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/wins", requireAuth(), async (req, res) => {
     try {
-      const winData = insertWinSchema.parse(req.body);
+      // Add userId from current user
+      const bodyWithUserId = {
+        ...req.body,
+        userId: req.currentUser!.id
+      };
+      const winData = insertWinSchema.parse(bodyWithUserId);
       const sanitizedData = sanitizeForOrganization(winData, req.orgId);
       const win = await storage.createWin(req.orgId, sanitizedData);
       
