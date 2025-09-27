@@ -49,8 +49,8 @@ export function getSessionConfig() {
     sameSite: sameSite,
     domain: undefined, // Let browser set domain automatically
     path: '/',
-    // Add partitioned flag for Replit to handle Chrome's CHIPS
-    ...(isReplit ? { partitioned: true } : {})
+    // Add partitioned flag for production/Replit to handle Chrome's CHIPS
+    ...((isProduction || isReplit) ? { partitioned: true } : {})
   } as any;
 
   // Session configuration
@@ -163,7 +163,7 @@ export function logSessionConfig() {
     replit: isReplit,
     secureCookies: useSecureCookies,
     sameSite: sameSite,
-    partitioned: isReplit,
+    partitioned: isProduction || isReplit,
     sessionName: 'whirkplace.sid',
     trustProxy: true,
     maxAge: '30 days'

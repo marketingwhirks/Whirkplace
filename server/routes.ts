@@ -61,13 +61,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const isProd = process.env.NODE_ENV === 'production';
     const secure = isProd || isReplit;
     const sameSite = (isProd || isReplit) ? 'none' : 'lax';
+    const partitioned = isProd || isReplit;
     
     // Clear the correct session cookie (using our custom name)
     res.clearCookie('whirkplace.sid', {
       secure,
       httpOnly: true,
       sameSite: sameSite as any,
-      path: '/'
+      path: '/',
+      ...(partitioned ? { partitioned: true } : {})
     });
     
     // Also clear legacy session cookie if it exists
@@ -75,7 +77,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       secure,
       httpOnly: true,
       sameSite: sameSite as any,
-      path: '/'
+      path: '/',
+      ...(partitioned ? { partitioned: true } : {})
     });
     
     // Clear auth cookies
@@ -84,7 +87,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         httpOnly: true,
         secure,
         sameSite: sameSite as any,
-        path: '/'
+        path: '/',
+        ...(partitioned ? { partitioned: true } : {})
       });
     });
     
@@ -2228,25 +2232,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log("🧹 Clearing authentication data");
       
       // Clear all authentication-related cookies
+      const isReplit = !!process.env.REPL_SLUG;
+      const isProd = process.env.NODE_ENV === 'production';
+      const secure = isProd || isReplit;
+      const sameSite = (isProd || isReplit) ? 'none' : 'lax';
+      const partitioned = isProd || isReplit;
+      
       res.clearCookie('auth_user_id', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        path: '/'
+        secure,
+        sameSite: sameSite as any,
+        path: '/',
+        ...(partitioned ? { partitioned: true } : {})
       });
       
       res.clearCookie('auth_org_id', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        path: '/'
+        secure,
+        sameSite: sameSite as any,
+        path: '/',
+        ...(partitioned ? { partitioned: true } : {})
       });
       
       res.clearCookie('auth_session_token', {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-        path: '/'
+        secure,
+        sameSite: sameSite as any,
+        path: '/',
+        ...(partitioned ? { partitioned: true } : {})
+      });
+      
+      // Clear the session cookies
+      res.clearCookie('whirkplace.sid', {
+        secure,
+        httpOnly: true,
+        sameSite: sameSite as any,
+        path: '/',
+        ...(partitioned ? { partitioned: true } : {})
+      });
+      
+      // Also clear legacy session cookie if it exists
+      res.clearCookie('connect.sid', {
+        secure,
+        httpOnly: true,
+        sameSite: sameSite as any,
+        path: '/',
+        ...(partitioned ? { partitioned: true } : {})
       });
       
       // Clear session if it exists
