@@ -9,12 +9,12 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import rateLimit from 'express-rate-limit';
-import connectPgSimple from 'connect-pg-simple';
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { resolveOrganization } from "./middleware/organization";
 import { runDevelopmentSeeding } from "./seeding";
 import { ensureDemoDataExists } from "./seedDemoData";
+import { getSessionConfig, logSessionConfig } from "./middleware/session";
 
 // Add process error handlers to catch unhandled exceptions
 process.on('uncaughtException', (error) => {
@@ -90,51 +90,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// Session middleware configuration - Use PostgreSQL store for production scalability
-const PgSession = connectPgSimple(session);
-const sessionStore = new PgSession({
-  conString: process.env.DATABASE_URL,
-  tableName: 'user_sessions', // Use custom table name to avoid conflicts
-  createTableIfMissing: true,
-  pruneSessionInterval: 60 * 15, // Prune expired sessions every 15 minutes
-  errorLog: (error) => {
-    console.error('Session store error:', error);
-  }
-});
-
-// Session configuration with proper production support
-const isReplit = !!process.env.REPL_SLUG;
-const isProduction = process.env.NODE_ENV === 'production';
-// FIX: Only use secure cookies in actual production, not in Replit dev
-const isSecureEnvironment = isProduction && !process.env.REPL_SLUG;
-
-// For production OAuth, we'd normally need SameSite=None for cross-site redirects
-// But for demo login and same-origin requests, 'lax' works better
-const sameSiteValue = isProduction && !isReplit ? 'none' : 'lax';
-
-app.use(session({
-  store: sessionStore,
-  secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
-  resave: false,
-  saveUninitialized: true, // Allow creating sessions for OAuth state storage
-  name: 'connect.sid',
-  proxy: true, // Trust proxy for production TLS terminator
-  cookie: {
-    secure: isSecureEnvironment, // Required when sameSite is 'none'
-    httpOnly: true,
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    sameSite: sameSiteValue, // Must be 'none' for OAuth to work in production
-    domain: undefined // Let browser set domain automatically
-  }
-}));
+// Use centralized session configuration
+const sessionConfig = getSessionConfig();
+app.use(session(sessionConfig));
 
 // Log session configuration on startup
-console.log('🔐 Session configuration:', {
-  environment: isProduction ? 'production' : (isReplit ? 'replit' : 'development'),
-  secure: isSecureEnvironment,
-  sameSite: sameSiteValue,
-  trustProxy: true
-});
+logSessionConfig();
 
 // Organization resolution middleware - must be before API routes
 app.use(resolveOrganization());
