@@ -12,6 +12,8 @@ import rateLimit from 'express-rate-limit';
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { resolveOrganization } from "./middleware/organization";
+import { authenticateUser } from "./middleware/auth";
+import { generateCSRF, validateCSRF } from "./middleware/csrf";
 import { runDevelopmentSeeding } from "./seeding";
 import { ensureDemoDataExists } from "./seedDemoData";
 import { getSessionConfig, logSessionConfig } from "./middleware/session";
@@ -38,7 +40,7 @@ console.log('📡 Node version:', process.version);
 const app = express();
 
 // Enable trust proxy for proper header handling in production
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 
 // Security headers middleware
 app.use((req, res, next) => {
@@ -97,7 +99,16 @@ app.use(session(sessionConfig));
 // Log session configuration on startup
 logSessionConfig();
 
-// Organization resolution middleware - must be before API routes
+// Apply authentication middleware for all API routes
+app.use("/api", authenticateUser());
+
+// Apply CSRF generation middleware after authentication
+app.use("/api", generateCSRF());
+
+// Apply CSRF validation middleware for state-changing requests
+app.use("/api", validateCSRF());
+
+// Organization resolution middleware - after auth but before routes
 app.use(resolveOrganization());
 
 app.use((req, res, next) => {

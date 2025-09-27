@@ -1347,11 +1347,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Apply authentication middleware BEFORE registering any other routes
-  // This ensures req.currentUser is set for all protected endpoints
-  app.use("/api", authenticateUser());
-  
   // Register Microsoft integration routes
+  // Note: Authentication middleware is already applied in server/index.ts
   registerMicrosoftAuthRoutes(app);
   registerMicrosoftTeamsRoutes(app);
   registerMicrosoftCalendarRoutes(app);
@@ -2520,10 +2517,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Apply CSRF protection and generation after authentication middleware
-  app.use("/api", generateCSRF());
-  
   // Apply onboarding requirement for main app routes (excluding auth, onboarding, and public routes)
+  // Note: CSRF generation middleware is already applied in server/index.ts
   app.use("/api", (req, res, next) => {
     // Exempt specific routes from onboarding requirement
     // Note: req.path doesn't include the '/api' prefix since we're mounted on '/api'
@@ -2559,10 +2554,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // CSRF token endpoint (requires authentication)
   app.get("/api/csrf-token", csrfTokenEndpoint);
   
-  // Apply CSRF validation to all remaining API routes
-  app.use("/api", validateCSRF());
-  
-  // NOTE: Authentication middleware already applied earlier before Microsoft routes
+  // NOTE: Authentication, CSRF generation and validation middleware already applied in server/index.ts
   // to prevent route shadowing issues
   
   // Apply authentication requirement to all protected routes
