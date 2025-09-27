@@ -264,9 +264,16 @@ declare module "express-session" {
 export function authenticateUser() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Skip authentication for certain paths
-      const skipAuthPaths = ['/auth/logout', '/csrf-token'];
-      if (skipAuthPaths.some(path => req.path === path || req.path.startsWith(path + '/'))) {
+      // Skip authentication for certain paths (public endpoints)
+      const skipAuthPaths = [
+        '/auth/logout', 
+        '/csrf-token',
+        '/business/signup',
+        '/business/select-plan',
+        '/business/complete-onboarding',
+        '/auth/demo-login'
+      ];
+      if (skipAuthPaths.some(path => req.path === path || req.path.startsWith(path + '/') || req.path === `/api${path}` || req.path.startsWith(`/api${path}/`))) {
         return next();
       }
       
