@@ -44,6 +44,16 @@ if (process.env.STRIPE_SECRET_KEY) {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Azure domain verification file - must be served at root
+  app.get("/MS89526594.txt", (req, res) => {
+    const verificationContent = {
+      "Description": "Domain ownership verification file for Microsoft 365 - place in the website root",
+      "Domain": "whirkplace.com",
+      "Id": "e7629383-63e1-4e40-a7b9-c8bf26467a9f"
+    };
+    res.type('text/plain').send(JSON.stringify(verificationContent, null, 2));
+  });
+
   // CRITICAL: Logout endpoint MUST come first, before ANY middleware
   // This endpoint needs no authentication, organization, or CSRF checks
   app.post("/api/auth/logout", (req, res) => {

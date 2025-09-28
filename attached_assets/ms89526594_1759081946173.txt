@@ -1,0 +1,5 @@
+﻿{
+  "Description": "Domain ownership verification file for Microsoft 365 - place in the website root",
+  "Domain": "whirkplace.com",
+  "Id": "e7629383-63e1-4e40-a7b9-c8bf26467a9f"
+}
