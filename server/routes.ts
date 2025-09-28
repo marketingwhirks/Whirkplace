@@ -1799,13 +1799,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           annualPrice: 4800,  // $48/year per user ($4/month, 20% off)
           maxUsers: 10,
           features: [
-            "Up to 10 team members",
-            "Essential team features",
-            "Basic check-ins & surveys",
-            "Basic team reports",
-            "Email support"
+            "Weekly Check-ins",
+            "Win Recognition",
+            "Team Management",
+            "Basic Analytics",
+            "Slack Integration"
           ],
-          hasSlackIntegration: false,
+          hasSlackIntegration: true,
           hasMicrosoftIntegration: false,
           hasAdvancedAnalytics: false,
           hasApiAccess: false,
@@ -1820,12 +1820,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           maxUsers: 100,
           features: [
             "Everything in Standard",
-            "Up to 100 team members", 
-            "Slack integration",
-            "Microsoft 365 integration",
-            "Advanced analytics",
-            "Custom questions",
-            "Priority support"
+            "KRA Management (Key Result Areas)",
+            "One-on-One Meeting Management",
+            "Advanced Analytics",
+            "Priority Support"
           ],
           hasSlackIntegration: true,
           hasMicrosoftIntegration: true,
