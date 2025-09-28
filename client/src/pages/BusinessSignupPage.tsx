@@ -164,15 +164,15 @@ export default function BusinessSignupPage() {
           window.location.href = data.checkoutUrl;
         }, 1500);
       } else {
-        // Starter plan - no payment required
+        // Standard plan - no payment required
         setSignupData(prev => ({ 
           ...prev, 
-          selectedPlan: { planId: data.planId || 'starter', billingCycle: data.billingCycle || 'monthly' },
+          selectedPlan: { planId: data.planId || 'standard', billingCycle: data.billingCycle || 'monthly' },
         }));
         setCurrentStep("teams");
         toast({
           title: "Plan Selected!",
-          description: `You've selected the starter plan. Now let's set up your teams.`,
+          description: `You've selected the standard plan. Now let's set up your teams.`,
         });
       }
     },
@@ -225,11 +225,11 @@ export default function BusinessSignupPage() {
     signupMutation.mutate(businessInfo);
   };
 
-  const handlePlanSelection = async (planId: string, billingCycle: 'monthly' | 'annual') => {
-    // Store the selected plan in state
+  const handlePlanSelection = async (planId: string, billingCycle: 'monthly' | 'annual', discountCode?: string, discountPercentage?: number) => {
+    // Store the selected plan and discount info in state
     setSignupData(prev => ({ 
       ...prev, 
-      selectedPlan: { planId, billingCycle }
+      selectedPlan: { planId, billingCycle, discountCode, discountPercentage }
     }));
     // Then process the plan selection
     planMutation.mutate({ planId, billingCycle });

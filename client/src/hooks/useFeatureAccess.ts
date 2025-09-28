@@ -48,7 +48,7 @@ export function useFeatureAccess() {
     analytics: false,
   };
 
-  const plan = data?.plan || "starter";
+  const plan = data?.plan || "standard";
   const upgradeSuggestions = data?.upgradeSuggestions || [];
 
   /**
@@ -68,7 +68,7 @@ export function useFeatureAccess() {
     if (feature === "one_on_ones" || feature === "kra_management" || feature === "teams" || feature === "reviews" || feature === "analytics") {
       return "professional";
     }
-    return "starter";
+    return "standard";
   };
 
   /**

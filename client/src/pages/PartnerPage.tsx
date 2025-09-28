@@ -194,9 +194,9 @@ export default function PartnerPage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
-            <Card className="border-2" data-testid="card-tier-starter">
+            <Card className="border-2" data-testid="card-tier-standard">
               <CardHeader>
-                <CardTitle className="text-center">Starter Partner</CardTitle>
+                <CardTitle className="text-center">Standard Partner</CardTitle>
                 <div className="text-center">
                   <div className="text-4xl font-bold text-green-600">$5</div>
                   <div className="text-sm text-muted-foreground">per member/month</div>

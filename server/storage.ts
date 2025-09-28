@@ -439,7 +439,7 @@ export class DatabaseStorage implements IStorage {
       name: insertOrganization.name,
       slug: insertOrganization.slug,
       customValues: insertOrganization.customValues ?? undefined,
-      plan: insertOrganization.plan ?? "starter",
+      plan: insertOrganization.plan ?? "standard",
       slackWorkspaceId: insertOrganization.slackWorkspaceId ?? null,
       isActive: insertOrganization.isActive ?? true,
     };
@@ -4792,7 +4792,7 @@ export class MemStorage implements IStorage {
       name: insertOrganization.name,
       slug: insertOrganization.slug,
       customValues: insertOrganization.customValues || [],
-      plan: insertOrganization.plan || "starter",
+      plan: insertOrganization.plan || "standard",
       slackWorkspaceId: insertOrganization.slackWorkspaceId || null,
       isActive: insertOrganization.isActive ?? true,
       createdAt: new Date(),

@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { Check, Star, Users, Zap, Building2, Crown } from "lucide-react";
+import { Check, Star, Users, Zap, Building2, Crown, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
 
 interface Plan {
   id: string;
@@ -24,7 +26,7 @@ interface Plan {
 
 const getPlanIcon = (planId: string) => {
   switch (planId) {
-    case 'starter':
+    case 'standard':
       return <Users className="h-8 w-8" />;
     case 'professional':
       return <Zap className="h-8 w-8" />;
@@ -33,6 +35,14 @@ const getPlanIcon = (planId: string) => {
     default:
       return <Building2 className="h-8 w-8" />;
   }
+};
+
+// Hardcoded discount codes for testing
+const DISCOUNT_CODES: { [key: string]: { percentage: number; description: string } } = {
+  'LAUNCH50': { percentage: 50, description: 'Launch Special - 50% off' },
+  'FOUNDERS20': { percentage: 20, description: 'Founders Discount - 20% off' },
+  'EARLY10': { percentage: 10, description: 'Early Bird - 10% off' },
+  'WHIRKS30': { percentage: 30, description: 'Whirks Special - 30% off' },
 };
 
 const getPlanBadge = (planId: string) => {
@@ -49,7 +59,7 @@ const getPlanBadge = (planId: string) => {
 interface PlanSelectionProps {
   plans: Plan[];
   selectedPlan?: string;
-  onPlanSelect: (planId: string, billingCycle: 'monthly' | 'annual') => void;
+  onPlanSelect: (planId: string, billingCycle: 'monthly' | 'annual', discountCode?: string, discountPercentage?: number) => void;
   isLoading?: boolean;
   className?: string;
   showContinueButton?: boolean;
@@ -58,6 +68,9 @@ interface PlanSelectionProps {
 export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = false, className, showContinueButton = true }: PlanSelectionProps) {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('annual');
   const [currentPlan, setCurrentPlan] = useState(selectedPlan || '');
+  const [discountCode, setDiscountCode] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; percentage: number; description: string } | null>(null);
+  const { toast } = useToast();
 
   const formatPrice = (price: number) => {
     return (price / 100).toLocaleString('en-US', {
@@ -92,7 +105,51 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
   };
   
   const handleContinue = () => {
-    onPlanSelect(currentPlan, billingCycle);
+    onPlanSelect(currentPlan, billingCycle, appliedDiscount?.code, appliedDiscount?.percentage);
+  };
+
+  const handleApplyDiscount = () => {
+    const code = discountCode.toUpperCase().trim();
+    if (!code) {
+      toast({
+        title: "Invalid Code",
+        description: "Please enter a discount code",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (DISCOUNT_CODES[code]) {
+      const discount = DISCOUNT_CODES[code];
+      setAppliedDiscount({ code, ...discount });
+      toast({
+        title: "Discount Applied!",
+        description: `${discount.description} has been applied to your order`,
+      });
+    } else {
+      toast({
+        title: "Invalid Code",
+        description: "The discount code you entered is not valid",
+        variant: "destructive",
+      });
+      setDiscountCode('');
+    }
+  };
+
+  const handleRemoveDiscount = () => {
+    setAppliedDiscount(null);
+    setDiscountCode('');
+    toast({
+      title: "Discount Removed",
+      description: "The discount has been removed from your order",
+    });
+  };
+
+  const applyDiscount = (price: number) => {
+    if (appliedDiscount) {
+      return Math.round(price * (1 - appliedDiscount.percentage / 100));
+    }
+    return price;
   };
 
   return (
@@ -123,6 +180,47 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
             </Badge>
           )}
         </div>
+        
+        {/* Discount Code Section */}
+        <div className="max-w-md mx-auto mt-4">
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Enter discount code"
+                value={discountCode}
+                onChange={(e) => setDiscountCode(e.target.value)}
+                className="pl-10 pr-3"
+                data-testid="input-discount-code"
+                disabled={!!appliedDiscount}
+              />
+            </div>
+            {!appliedDiscount ? (
+              <Button
+                onClick={handleApplyDiscount}
+                variant="outline"
+                data-testid="button-apply-discount"
+              >
+                Apply
+              </Button>
+            ) : (
+              <Button
+                onClick={handleRemoveDiscount}
+                variant="outline"
+                data-testid="button-remove-discount"
+              >
+                Remove
+              </Button>
+            )}
+          </div>
+          {appliedDiscount && (
+            <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+              <Check className="h-4 w-4" />
+              <span>{appliedDiscount.description}</span>
+            </div>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -151,9 +249,10 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
         <RadioGroup value={currentPlan} onValueChange={handlePlanChange} className="grid md:grid-cols-3 gap-6">
           {plans.map((plan) => {
             // For annual billing, calculate the monthly price with discount
-            const price = billingCycle === 'annual' 
+            const basePrice = billingCycle === 'annual' 
               ? Math.round(plan.annualPrice / 12) // Annual price divided by 12 months
               : plan.monthlyPrice;
+            const price = applyDiscount(basePrice);
             const savings = getAnnualSavings(plan.monthlyPrice, plan.annualPrice);
             const isSelected = currentPlan === plan.id;
             const planIcon = getPlanIcon(plan.id);
@@ -193,8 +292,15 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
                         <div className="text-4xl font-bold">Free</div>
                       ) : (
                         <>
-                          <div className="text-4xl font-bold" data-testid={`price-${plan.id}`}>
-                            {formatPrice(price)}
+                          <div className="relative">
+                            {appliedDiscount && price !== basePrice && (
+                              <div className="text-lg text-muted-foreground line-through">
+                                {formatPrice(basePrice)}
+                              </div>
+                            )}
+                            <div className="text-4xl font-bold" data-testid={`price-${plan.id}`}>
+                              {formatPrice(price)}
+                            </div>
                           </div>
                           <div className="text-sm text-muted-foreground">
                             per user / month
@@ -204,10 +310,15 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
                               billed annually
                             </div>
                           )}
-                          {billingCycle === 'annual' && savings > 0 && (
+                          {billingCycle === 'annual' && savings > 0 && !appliedDiscount && (
                             <div className="text-xs text-green-600 font-medium">
                               Save {savings}% annually
                             </div>
+                          )}
+                          {appliedDiscount && (
+                            <Badge className="text-xs" variant="default">
+                              {appliedDiscount.percentage}% off applied
+                            </Badge>
                           )}
                         </>
                       )}

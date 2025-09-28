@@ -159,8 +159,8 @@ export default function SuperAdminPage() {
 
   const getPlanBadge = (plan: string) => {
     switch (plan) {
-      case 'starter':
-        return <Badge variant="outline">Starter</Badge>;
+      case 'standard':
+        return <Badge variant="outline">Standard</Badge>;
       case 'professional':
         return <Badge variant="default">Professional</Badge>;
       case 'enterprise':

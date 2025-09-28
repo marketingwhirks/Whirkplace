@@ -23,7 +23,7 @@ export function hasFeatureAccess(organizationPlan: PlanType, feature: FeatureNam
   
   // Define plan hierarchy
   const planHierarchy = {
-    [Plan.STARTER]: 1,
+    [Plan.STANDARD]: 1,
     [Plan.PROFESSIONAL]: 2,
     [Plan.ENTERPRISE]: 3,
     [Plan.PARTNER]: 3, // Partner has same level as enterprise

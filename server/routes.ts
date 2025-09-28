@@ -819,7 +819,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           organization = await storage.createOrganization({
             name: orgName,
             slug: finalSlug,
-            plan: 'starter',
+            plan: 'standard',
             isActive: true,
             customValues: ['Innovation', 'Teamwork', 'Excellence'],
             enableSlackIntegration: true,
@@ -1791,9 +1791,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Return static plan data for now - could be from database later
       const plans = [
         {
-          id: "starter",
-          name: "starter",
-          displayName: "Starter",
+          id: "standard",
+          name: "standard",
+          displayName: "Standard",
           description: "Perfect for small teams getting started",
           monthlyPrice: 500,  // $5/month per user
           annualPrice: 4800,  // $48/year per user ($4/month, 20% off)
@@ -1815,11 +1815,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           name: "professional",
           displayName: "Professional",
           description: "Advanced features for growing teams",
-          monthlyPrice: 1000,  // $10/month per user
-          annualPrice: 9600,  // $96/year per user ($8/month, 20% off)
+          monthlyPrice: 800,  // $8/month per user
+          annualPrice: 7200,  // $72/year per user ($6/month, 25% off)
           maxUsers: 100,
           features: [
-            "Everything in Starter",
+            "Everything in Standard",
             "Up to 100 team members", 
             "Slack integration",
             "Microsoft 365 integration",
@@ -1907,7 +1907,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         name: data.organizationName,
         slug: orgSlug,
         industry: data.industry, // Store the industry
-        plan: "starter", // Default plan
+        plan: "standard", // Default plan
         customValues: ["Innovation", "Teamwork", "Excellence"], // Default company values
         enableSlackIntegration: false,
         enableMicrosoftAuth: false,
@@ -2027,8 +2027,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = planSchema.parse(req.body);
 
-      // If not starter plan, handle payment processing
-      if (data.planId !== "starter" && stripe) {
+      // If not standard plan, handle payment processing
+      if (data.planId !== "standard" && stripe) {
         // Create Stripe customer and setup subscription
         const organization = await storage.getOrganization(data.organizationId);
         if (!organization) {
@@ -8673,8 +8673,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = planSchema.parse(req.body);
 
-      // If not starter plan, handle payment processing
-      if (data.planId !== "starter" && stripe) {
+      // If not standard plan, handle payment processing
+      if (data.planId !== "standard" && stripe) {
         // Create Stripe customer and setup subscription
         const organization = await storage.getOrganization(data.organizationId);
         if (!organization) {
@@ -9450,7 +9450,7 @@ Return the response as a JSON object with this structure:
         id: `org-${Math.random().toString(36).substring(2, 15)}`,
         name,
         slug,
-        plan: plan || "starter",
+        plan: plan || "standard",
         customValues: customValues || [],
         isActive: true
       });

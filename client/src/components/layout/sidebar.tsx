@@ -151,8 +151,8 @@ function SidebarContent() {
             const badgeCount = getBadgeCount(item);
             const showBadge = badgeCount !== undefined && badgeCount > 0;
             
-            // Check if this is a restricted feature for Starter plan
-            const needsUpgrade = plan === "starter" && (
+            // Check if this is a restricted feature for Standard plan
+            const needsUpgrade = plan === "standard" && (
               (item.name === "One-on-Ones" && !canAccessOneOnOnes) ||
               (item.name === "KRA Management" && !canAccessKraManagement)
             );

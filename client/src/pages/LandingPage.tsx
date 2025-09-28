@@ -1,13 +1,26 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Heart, Users, MessageSquare, BarChart3, CheckCircle, Star, ArrowRight, Building, Zap, Shield, Play } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Heart, Users, MessageSquare, BarChart3, CheckCircle, Star, ArrowRight, Building, Zap, Shield, Play, Tag, Check } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocation } from "wouter";
+import { useToast } from "@/hooks/use-toast";
+
+// Hardcoded discount codes for testing
+const DISCOUNT_CODES: { [key: string]: { percentage: number; description: string } } = {
+  'LAUNCH50': { percentage: 50, description: 'Launch Special - 50% off' },
+  'FOUNDERS20': { percentage: 20, description: 'Founders Discount - 20% off' },
+  'EARLY10': { percentage: 10, description: 'Early Bird - 10% off' },
+  'WHIRKS30': { percentage: 30, description: 'Whirks Special - 30% off' },
+};
 
 export default function LandingPage() {
   const [location, setLocation] = useLocation();
+  const [discountCode, setDiscountCode] = useState('');
+  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; percentage: number; description: string } | null>(null);
+  const { toast } = useToast();
 
   // Check authentication status using the proper hook
   const { data: user, isLoading } = useCurrentUser();
@@ -88,12 +101,12 @@ export default function LandingPage() {
     }
   };
 
-  const handleStarterSignUp = () => {
+  const handleStandardSignUp = () => {
     const orgSlug = getOrgSlug();
     if (orgSlug) {
-      setLocation(`/login?org=${orgSlug}&signup=true&plan=starter`);
+      setLocation(`/login?org=${orgSlug}&signup=true&plan=standard`);
     } else {
-      setLocation(`/business-signup?plan=starter`);
+      setLocation(`/business-signup?plan=standard`);
     }
   };
 
@@ -277,17 +290,95 @@ export default function LandingPage() {
             </p>
           </div>
 
+          {/* Discount Code Section */}
+          <div className="max-w-md mx-auto mb-8">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Enter discount code"
+                  value={discountCode}
+                  onChange={(e) => setDiscountCode(e.target.value)}
+                  className="pl-10 pr-3"
+                  data-testid="input-discount-code-landing"
+                  disabled={!!appliedDiscount}
+                />
+              </div>
+              {!appliedDiscount ? (
+                <Button
+                  onClick={() => {
+                    const code = discountCode.toUpperCase().trim();
+                    if (!code) {
+                      toast({
+                        title: "Invalid Code",
+                        description: "Please enter a discount code",
+                        variant: "destructive",
+                      });
+                      return;
+                    }
+                    if (DISCOUNT_CODES[code]) {
+                      const discount = DISCOUNT_CODES[code];
+                      setAppliedDiscount({ code, ...discount });
+                      toast({
+                        title: "Discount Applied!",
+                        description: `${discount.description} has been applied to pricing`,
+                      });
+                    } else {
+                      toast({
+                        title: "Invalid Code",
+                        description: "The discount code you entered is not valid",
+                        variant: "destructive",
+                      });
+                      setDiscountCode('');
+                    }
+                  }}
+                  variant="outline"
+                  data-testid="button-apply-discount-landing"
+                >
+                  Apply
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => {
+                    setAppliedDiscount(null);
+                    setDiscountCode('');
+                    toast({
+                      title: "Discount Removed",
+                      description: "The discount has been removed",
+                    });
+                  }}
+                  variant="outline"
+                  data-testid="button-remove-discount-landing"
+                >
+                  Remove
+                </Button>
+              )}
+            </div>
+            {appliedDiscount && (
+              <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
+                <Check className="h-4 w-4" />
+                <span>{appliedDiscount.description}</span>
+              </div>
+            )}
+          </div>
+
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             <Card 
               className="border-2 cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105" 
-              onClick={handleStarterSignUp}
-              data-testid="card-plan-starter"
+              onClick={handleStandardSignUp}
+              data-testid="card-plan-standard"
             >
               <CardHeader>
-                <CardTitle>Starter</CardTitle>
-                <div className="text-3xl font-bold">$5<span className="text-sm font-normal">/user/month</span></div>
-                <div className="text-sm text-muted-foreground">or $4/month paid annually (save 20%)</div>
+                <CardTitle>Standard</CardTitle>
+                <div className="text-3xl font-bold">${appliedDiscount ? Math.round(5 * (1 - appliedDiscount.percentage / 100)) : 5}<span className="text-sm font-normal">/user/month</span></div>
+                <div className="text-sm text-muted-foreground">or ${appliedDiscount ? Math.round(4 * (1 - appliedDiscount.percentage / 100)) : 4}/month billed annually</div>
                 <CardDescription>Perfect for small teams getting started</CardDescription>
+                {appliedDiscount && (
+                  <Badge className="text-xs" variant="default">
+                    {appliedDiscount.percentage}% off applied
+                  </Badge>
+                )}
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
@@ -307,13 +398,18 @@ export default function LandingPage() {
               <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2">Most Popular</Badge>
               <CardHeader>
                 <CardTitle>Professional</CardTitle>
-                <div className="text-3xl font-bold">$10<span className="text-sm font-normal">/user/month</span></div>
-                <div className="text-sm text-muted-foreground">or $8/month paid annually (save 20%)</div>
+                <div className="text-3xl font-bold">${appliedDiscount ? Math.round(8 * (1 - appliedDiscount.percentage / 100)) : 8}<span className="text-sm font-normal">/user/month</span></div>
+                <div className="text-sm text-muted-foreground">or ${appliedDiscount ? Math.round(6 * (1 - appliedDiscount.percentage / 100)) : 6}/month billed annually</div>
                 <CardDescription>Advanced features for growing teams</CardDescription>
+                {appliedDiscount && (
+                  <Badge className="text-xs" variant="default">
+                    {appliedDiscount.percentage}% off applied
+                  </Badge>
+                )}
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
-                  <li className="flex items-start"><CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />Everything in Starter</li>
+                  <li className="flex items-start"><CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />Everything in Standard</li>
                   <li className="flex items-start"><CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />Slack integration</li>
                   <li className="flex items-start"><CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />Microsoft 365 integration</li>
                   <li className="flex items-start"><CheckCircle className="h-4 w-4 text-green-500 mr-2 mt-0.5 flex-shrink-0" />Advanced analytics</li>

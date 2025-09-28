@@ -16,7 +16,7 @@ export function UpgradePrompt({ feature, title, description, className }: Upgrad
   const requiredPlan = getRequiredPlan(feature);
   
   const planColors = {
-    starter: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+    standard: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
     professional: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300", 
     enterprise: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300"
   };

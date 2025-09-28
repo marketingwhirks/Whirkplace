@@ -399,12 +399,12 @@ export default function SuperAdmin() {
                     </div>
                     <div>
                       <Label htmlFor="plan">Plan</Label>
-                      <Select name="plan" defaultValue={editingOrg?.plan || 'starter'}>
+                      <Select name="plan" defaultValue={editingOrg?.plan || 'standard'}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="starter">Starter</SelectItem>
+                          <SelectItem value="standard">Standard</SelectItem>
                           <SelectItem value="professional">Professional</SelectItem>
                           <SelectItem value="enterprise">Enterprise</SelectItem>
                         </SelectContent>

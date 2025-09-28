@@ -43,7 +43,7 @@ export type TeamTypeValue = typeof TeamType[keyof typeof TeamType];
 
 // Plan Constants
 export const Plan = {
-  STARTER: "starter",
+  STANDARD: "standard",
   PROFESSIONAL: "professional", 
   ENTERPRISE: "enterprise",
   PARTNER: "partner", // Special plan for partner firms
@@ -53,7 +53,7 @@ export type PlanType = typeof Plan[keyof typeof Plan];
 
 // Feature access control based on plans
 export const PlanFeatures = {
-  [Plan.STARTER]: {
+  [Plan.STANDARD]: {
     maxUsers: 10,
     features: ["checkins", "wins", "shoutouts", "basic_analytics"],
   },
@@ -104,7 +104,9 @@ export const organizations = pgTable("organizations", {
   slug: text("slug").notNull().unique(), // for URL routing: company.whirkplace.com
   industry: text("industry"), // Organization's industry (technology, healthcare, finance, etc.)
   customValues: text("custom_values").array().notNull().default(defaultCompanyValuesArray),
-  plan: text("plan").notNull().default("starter"), // starter, professional, enterprise
+  plan: text("plan").notNull().default("standard"), // standard, professional, enterprise
+  discountCode: text("discount_code"), // Track applied discount code
+  discountPercentage: integer("discount_percentage"), // Store the discount percentage applied
   partnerFirmId: varchar("partner_firm_id"), // Reference to partner firm if managed by a partner
   // Slack Integration - Per Organization OAuth Configuration
   slackClientId: text("slack_client_id"), // Organization's Slack app client ID
