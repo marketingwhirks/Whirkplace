@@ -3,7 +3,12 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { BusinessSignup } from "@/components/business/BusinessSignup";
 import { PlanSelection } from "@/components/business/PlanSelection";
-import { OnboardingWalkthrough } from "@/components/business/OnboardingWalkthrough";
+import { 
+  OnboardingWalkthrough,
+  TeamSetupStep,
+  UserInvitesStep,
+  OrganizationSettingsStep
+} from "@/components/business/OnboardingWalkthrough";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -221,12 +226,42 @@ export default function BusinessSignupPage() {
   };
 
   const handlePlanSelection = async (planId: string, billingCycle: 'monthly' | 'annual') => {
+    // Store the selected plan in state
+    setSignupData(prev => ({ 
+      ...prev, 
+      selectedPlan: { planId, billingCycle }
+    }));
+    // Then process the plan selection
     planMutation.mutate({ planId, billingCycle });
   };
 
 
   const handleOnboardingComplete = async (onboardingData: any) => {
     onboardingMutation.mutate(onboardingData);
+  };
+  
+  const handleTeamSetup = (data: any) => {
+    setSignupData(prev => ({ ...prev, ...data }));
+    setCurrentStep("invites");
+  };
+  
+  const handleInvites = (data: any) => {
+    setSignupData(prev => ({ ...prev, ...data }));
+    setCurrentStep("settings");
+  };
+  
+  const handleSettings = (data: any) => {
+    const finalOnboardingData = {
+      teams: signupData.teams || data.teams || [],
+      userInvites: signupData.userInvites || data.userInvites || [],
+      organizationSettings: data.organizationSettings || {
+        companyValues: [],
+        checkInFrequency: "weekly",
+        workingHours: "9:00 AM - 5:00 PM",
+        timezone: "America/New_York",
+      },
+    };
+    onboardingMutation.mutate(finalOnboardingData);
   };
 
   // Navigation functions
@@ -240,8 +275,12 @@ export default function BusinessSignupPage() {
         return !!signupData.businessInfo;
       case "plan-selection":
         return !!signupData.selectedPlan;
-      case "onboarding":
-        return false; // Must complete onboarding
+      case "teams":
+        return !!signupData.teams;
+      case "invites":
+        return true; // Invites can be skipped
+      case "settings":
+        return false; // Settings completes the flow
       default:
         return false;
     }
@@ -267,8 +306,13 @@ export default function BusinessSignupPage() {
           setCurrentStep("teams");
         }
         break;
-      case "theme":
-        setCurrentStep("onboarding");
+      case "teams":
+        if (signupData.teams) {
+          setCurrentStep("invites");
+        }
+        break;
+      case "invites":
+        setCurrentStep("settings");
         break;
       default:
         break;
@@ -309,10 +353,29 @@ export default function BusinessSignupPage() {
           />
         );
       
-      case "onboarding":
+      case "teams":
         return (
-          <OnboardingWalkthrough 
-            onComplete={handleOnboardingComplete}
+          <TeamSetupStep
+            onComplete={handleTeamSetup}
+            initialData={signupData}
+            isLoading={onboardingMutation.isPending}
+          />
+        );
+      
+      case "invites":
+        return (
+          <UserInvitesStep
+            onComplete={handleInvites}
+            initialData={signupData}
+            isLoading={onboardingMutation.isPending}
+          />
+        );
+      
+      case "settings":
+        return (
+          <OrganizationSettingsStep
+            onComplete={handleSettings}
+            initialData={signupData}
             isLoading={onboardingMutation.isPending}
           />
         );
@@ -419,7 +482,7 @@ export default function BusinessSignupPage() {
             {renderCurrentStep()}
             
             {/* Navigation Buttons */}
-            {currentStep !== "complete" && currentStep !== "onboarding" && (
+            {currentStep !== "complete" && currentStep !== "teams" && currentStep !== "invites" && currentStep !== "settings" && (
               <div className="flex justify-between items-center pt-6 border-t">
                 <div>
                   {canGoBack() && (

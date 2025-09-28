@@ -52,11 +52,12 @@ interface PlanSelectionProps {
   onPlanSelect: (planId: string, billingCycle: 'monthly' | 'annual') => void;
   isLoading?: boolean;
   className?: string;
+  showContinueButton?: boolean;
 }
 
-export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = false, className }: PlanSelectionProps) {
+export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = false, className, showContinueButton = true }: PlanSelectionProps) {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('annual');
-  const [currentPlan, setCurrentPlan] = useState(selectedPlan || 'professional');
+  const [currentPlan, setCurrentPlan] = useState(selectedPlan || 'starter');
 
   const formatPrice = (price: number) => {
     return (price / 100).toLocaleString('en-US', {
@@ -76,13 +77,17 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
 
   const handlePlanChange = (planId: string) => {
     setCurrentPlan(planId);
-    onPlanSelect(planId, billingCycle);
+    // Don't auto-select, just update the UI state
   };
 
   const handleBillingChange = (isAnnual: boolean) => {
     const newCycle = isAnnual ? 'annual' : 'monthly';
     setBillingCycle(newCycle);
-    onPlanSelect(currentPlan, newCycle);
+    // Don't auto-select, just update the UI state
+  };
+  
+  const handleContinue = () => {
+    onPlanSelect(currentPlan, billingCycle);
   };
 
   return (
@@ -225,6 +230,20 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
       <div className="text-center text-sm text-muted-foreground">
         <p>All plans include a 10-day free trial • No credit card required • Cancel anytime</p>
       </div>
+      
+      {showContinueButton && (
+        <div className="flex justify-center mt-6">
+          <Button 
+            size="lg" 
+            onClick={handleContinue}
+            disabled={isLoading || !currentPlan}
+            data-testid="continue-plan-selection"
+            className="min-w-[200px]"
+          >
+            {isLoading ? 'Processing...' : 'Continue to Next Step'}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

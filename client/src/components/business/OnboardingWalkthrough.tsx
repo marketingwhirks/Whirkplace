@@ -21,21 +21,32 @@ interface OnboardingStep {
   component: React.ReactNode;
 }
 
-interface UserInvite {
+export interface StepFormData {
+  teams?: TeamSetup[];
+  userInvites?: UserInvite[];
+  organizationSettings?: {
+    companyValues: string[];
+    checkInFrequency: string;
+    workingHours: string;
+    timezone: string;
+  };
+}
+
+export interface UserInvite {
   email: string;
   name: string;
   role: "admin" | "manager" | "member";
   teamName?: string;
 }
 
-interface TeamSetup {
+export interface TeamSetup {
   name: string;
   description: string;
   type: "department" | "squad" | "pod";
   leaderId?: string;
 }
 
-interface OnboardingData {
+export interface OnboardingData {
   teams: TeamSetup[];
   userInvites: UserInvite[];
   organizationSettings: {
@@ -155,7 +166,7 @@ export function OnboardingWalkthrough({
   };
 
   // Team Setup Component
-  const TeamSetupStep = () => (
+  const TeamSetupStepInternal = () => (
     <div className="space-y-6">
       <div className="text-center">
         <h3 className="text-xl font-semibold">Set Up Your Teams</h3>
@@ -260,7 +271,7 @@ export function OnboardingWalkthrough({
   );
 
   // User Invites Component  
-  const UserInvitesStep = () => (
+  const UserInvitesStepInternal = () => (
     <div className="space-y-6">
       <div className="text-center">
         <h3 className="text-xl font-semibold">Invite Your Team</h3>
@@ -368,7 +379,7 @@ export function OnboardingWalkthrough({
   );
 
   // Organization Settings Component
-  const OrganizationSettingsStep = () => (
+  const OrganizationSettingsStepInternal = () => (
     <div className="space-y-6">
       <div className="text-center">
         <h3 className="text-xl font-semibold">Customize Your Settings</h3>
@@ -506,21 +517,21 @@ export function OnboardingWalkthrough({
       title: "Team Setup",
       description: "Create your organizational structure",
       icon: <Building2 className="h-5 w-5" />,
-      component: <TeamSetupStep />,
+      component: <TeamSetupStepInternal />,
     },
     {
       id: "invites",
       title: "Invite Members",
       description: "Add your team members",
       icon: <UserPlus className="h-5 w-5" />,
-      component: <UserInvitesStep />,
+      component: <UserInvitesStepInternal />,
     },
     {
       id: "settings", 
       title: "Organization Settings",
       description: "Configure preferences",
       icon: <Settings className="h-5 w-5" />,
-      component: <OrganizationSettingsStep />,
+      component: <OrganizationSettingsStepInternal />,
     },
   ];
 
@@ -659,6 +670,474 @@ export function OnboardingWalkthrough({
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// Standalone export functions for individual steps to be used in BusinessSignupPage
+interface StepProps {
+  onComplete: (data: any) => void;
+  initialData?: any;
+  isLoading?: boolean;
+}
+
+export function TeamSetupStep({ onComplete, initialData, isLoading }: StepProps) {
+  const teamForm = useForm({
+    resolver: zodResolver(teamSetupSchema),
+    defaultValues: {
+      teams: initialData?.teams || [
+        { name: "", description: "", type: "department" as const }
+      ],
+    },
+  });
+
+  const addTeam = () => {
+    const currentTeams = teamForm.getValues("teams");
+    teamForm.setValue("teams", [
+      ...currentTeams,
+      { name: "", description: "", type: "department" as const }
+    ]);
+  };
+
+  const removeTeam = (index: number) => {
+    const currentTeams = teamForm.getValues("teams");
+    teamForm.setValue("teams", currentTeams.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async () => {
+    const isValid = await teamForm.trigger();
+    if (isValid) {
+      onComplete({ teams: teamForm.getValues("teams") });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h3 className="text-xl font-semibold">Set Up Your Teams</h3>
+        <p className="text-muted-foreground mt-2">
+          Create departments, squads, or pods to organize your team members
+        </p>
+      </div>
+
+      <Form {...teamForm}>
+        <form className="space-y-4">
+          {teamForm.watch("teams").map((team, index) => (
+            <Card key={index} className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField
+                  control={teamForm.control}
+                  name={`teams.${index}.name`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Team Name *</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="Engineering" 
+                          {...field}
+                          data-testid={`team-name-${index}`}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={teamForm.control}
+                  name={`teams.${index}.type`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Team Type</FormLabel>
+                      <FormControl>
+                        <select 
+                          {...field}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          data-testid={`team-type-${index}`}
+                        >
+                          <option value="department">Department</option>
+                          <option value="squad">Squad</option>
+                          <option value="pod">Pod</option>
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <div className="flex items-end">
+                  {teamForm.watch("teams").length > 1 && (
+                    <Button 
+                      type="button" 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => removeTeam(index)}
+                      data-testid={`remove-team-${index}`}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </div>
+              </div>
+              
+              <FormField
+                control={teamForm.control}
+                name={`teams.${index}.description`}
+                render={({ field }) => (
+                  <FormItem className="mt-4">
+                    <FormLabel>Description (Optional)</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="Brief description of this team's responsibilities"
+                        {...field}
+                        data-testid={`team-description-${index}`}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </Card>
+          ))}
+          
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={addTeam}
+            className="w-full"
+            data-testid="add-team"
+          >
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add Another Team
+          </Button>
+        </form>
+      </Form>
+      
+      <div className="flex justify-end">
+        <Button onClick={handleSubmit} disabled={isLoading}>
+          {isLoading ? 'Saving...' : 'Continue'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function UserInvitesStep({ onComplete, initialData, isLoading }: StepProps) {
+  const inviteForm = useForm({
+    resolver: zodResolver(userInviteSchema),
+    defaultValues: {
+      userInvites: initialData?.userInvites || [],
+    },
+  });
+
+  const addUserInvite = () => {
+    const currentInvites = inviteForm.getValues("userInvites") || [];
+    inviteForm.setValue("userInvites", [
+      ...currentInvites,
+      { email: "", name: "", role: "member" as const, teamName: "" }
+    ]);
+  };
+
+  const removeUserInvite = (index: number) => {
+    const currentInvites = inviteForm.getValues("userInvites") || [];
+    inviteForm.setValue("userInvites", currentInvites.filter((_, i) => i !== index));
+  };
+
+  const handleSubmit = async () => {
+    const isValid = await inviteForm.trigger();
+    if (isValid) {
+      onComplete({ userInvites: inviteForm.getValues("userInvites") || [] });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h3 className="text-xl font-semibold">Invite Your Team</h3>
+        <p className="text-muted-foreground mt-2">
+          Send invitations to team members to join your organization
+        </p>
+      </div>
+
+      <Form {...inviteForm}>
+        <form className="space-y-4">
+          {(inviteForm.watch("userInvites") || []).map((invite, index) => (
+            <Card key={index} className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <FormField
+                  control={inviteForm.control}
+                  name={`userInvites.${index}.name`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Full Name *</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="John Doe" 
+                          {...field}
+                          data-testid={`invite-name-${index}`}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={inviteForm.control}
+                  name={`userInvites.${index}.email`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email *</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="email"
+                          placeholder="john@company.com" 
+                          {...field}
+                          data-testid={`invite-email-${index}`}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={inviteForm.control}
+                  name={`userInvites.${index}.role`}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Role</FormLabel>
+                      <FormControl>
+                        <select 
+                          {...field}
+                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                          data-testid={`invite-role-${index}`}
+                        >
+                          <option value="member">Member</option>
+                          <option value="manager">Manager</option>
+                          <option value="admin">Admin</option>
+                        </select>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <div className="flex items-end">
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => removeUserInvite(index)}
+                    data-testid={`remove-invite-${index}`}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          ))}
+          
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={addUserInvite}
+            className="w-full"
+            data-testid="add-invite"
+          >
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add Team Member
+          </Button>
+          
+          <div className="text-sm text-muted-foreground text-center">
+            <p>You can always invite more team members later from the team management page</p>
+          </div>
+        </form>
+      </Form>
+      
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => onComplete({ userInvites: [] })}>
+          Skip for now
+        </Button>
+        <Button onClick={handleSubmit} disabled={isLoading}>
+          {isLoading ? 'Saving...' : 'Continue'}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function OrganizationSettingsStep({ onComplete, initialData, isLoading }: StepProps) {
+  const settingsForm = useForm({
+    resolver: zodResolver(organizationSettingsSchema),
+    defaultValues: {
+      companyValues: initialData?.organizationSettings?.companyValues || [""],
+      checkInFrequency: initialData?.organizationSettings?.checkInFrequency || "weekly",
+      workingHours: initialData?.organizationSettings?.workingHours || "9:00 AM - 5:00 PM",
+      timezone: initialData?.organizationSettings?.timezone || "America/New_York",
+    },
+  });
+
+  const addCompanyValue = () => {
+    const currentValues = settingsForm.getValues("companyValues");
+    settingsForm.setValue("companyValues", [...currentValues, ""]);
+  };
+
+  const removeCompanyValue = (index: number) => {
+    const currentValues = settingsForm.getValues("companyValues");
+    if (currentValues.length > 1) {
+      settingsForm.setValue("companyValues", currentValues.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleSubmit = async () => {
+    const isValid = await settingsForm.trigger();
+    if (isValid) {
+      const settingsData = {
+        companyValues: settingsForm.getValues("companyValues").filter(v => v.trim()),
+        checkInFrequency: settingsForm.getValues("checkInFrequency"),
+        workingHours: settingsForm.getValues("workingHours"),
+        timezone: settingsForm.getValues("timezone"),
+      };
+      onComplete({ organizationSettings: settingsData });
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h3 className="text-xl font-semibold">Customize Your Settings</h3>
+        <p className="text-muted-foreground mt-2">
+          Configure your organization preferences and company values
+        </p>
+      </div>
+
+      <Form {...settingsForm}>
+        <form className="space-y-6">
+          <div className="space-y-4">
+            <h4 className="font-medium">Company Values</h4>
+            {settingsForm.watch("companyValues").map((value, index) => (
+              <div key={index} className="flex gap-2">
+                <FormField
+                  control={settingsForm.control}
+                  name={`companyValues.${index}`}
+                  render={({ field }) => (
+                    <FormItem className="flex-1">
+                      <FormControl>
+                        <Input 
+                          placeholder="e.g., Innovation, Teamwork, Excellence" 
+                          {...field}
+                          data-testid={`company-value-${index}`}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                {settingsForm.watch("companyValues").length > 1 && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => removeCompanyValue(index)}
+                    data-testid={`remove-value-${index}`}
+                  >
+                    Remove
+                  </Button>
+                )}
+              </div>
+            ))}
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={addCompanyValue}
+              data-testid="add-company-value"
+            >
+              Add Company Value
+            </Button>
+          </div>
+          
+          <Separator />
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormField
+              control={settingsForm.control}
+              name="checkInFrequency"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Check-in Frequency</FormLabel>
+                  <FormControl>
+                    <select 
+                      {...field}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      data-testid="checkin-frequency"
+                    >
+                      <option value="daily">Daily</option>
+                      <option value="weekly">Weekly</option>
+                      <option value="biweekly">Bi-weekly</option>
+                    </select>
+                  </FormControl>
+                  <FormDescription>
+                    How often team members should complete check-ins
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            
+            <FormField
+              control={settingsForm.control}
+              name="timezone"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Timezone</FormLabel>
+                  <FormControl>
+                    <select 
+                      {...field}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      data-testid="timezone"
+                    >
+                      <option value="America/New_York">Eastern Time</option>
+                      <option value="America/Chicago">Central Time</option>
+                      <option value="America/Denver">Mountain Time</option>
+                      <option value="America/Los_Angeles">Pacific Time</option>
+                      <option value="UTC">UTC</option>
+                    </select>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          
+          <FormField
+            control={settingsForm.control}
+            name="workingHours"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Working Hours</FormLabel>
+                <FormControl>
+                  <Input 
+                    placeholder="9:00 AM - 5:00 PM" 
+                    {...field}
+                    data-testid="working-hours"
+                  />
+                </FormControl>
+                <FormDescription>
+                  Default working hours for your organization
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </form>
+      </Form>
+      
+      <div className="flex justify-end">
+        <Button onClick={handleSubmit} disabled={isLoading}>
+          {isLoading ? 'Completing Setup...' : 'Complete Setup'}
+        </Button>
+      </div>
     </div>
   );
 }
