@@ -57,7 +57,7 @@ interface PlanSelectionProps {
 
 export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = false, className, showContinueButton = true }: PlanSelectionProps) {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('annual');
-  const [currentPlan, setCurrentPlan] = useState(selectedPlan || 'starter');
+  const [currentPlan, setCurrentPlan] = useState(selectedPlan || '');
 
   const formatPrice = (price: number) => {
     return (price / 100).toLocaleString('en-US', {
@@ -76,7 +76,12 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
   };
 
   const handlePlanChange = (planId: string) => {
-    setCurrentPlan(planId);
+    // Allow deselecting by clicking on already selected plan
+    if (currentPlan === planId) {
+      setCurrentPlan('');
+    } else {
+      setCurrentPlan(planId);
+    }
     // Don't auto-select, just update the UI state
   };
 
@@ -145,7 +150,10 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
       ) : (
         <RadioGroup value={currentPlan} onValueChange={handlePlanChange} className="grid md:grid-cols-3 gap-6">
           {plans.map((plan) => {
-            const price = billingCycle === 'annual' ? plan.annualPrice : plan.monthlyPrice;
+            // For annual billing, calculate the monthly price with discount
+            const price = billingCycle === 'annual' 
+              ? Math.round(plan.annualPrice / 12) // Annual price divided by 12 months
+              : plan.monthlyPrice;
             const savings = getAnnualSavings(plan.monthlyPrice, plan.annualPrice);
             const isSelected = currentPlan === plan.id;
             const planIcon = getPlanIcon(plan.id);
@@ -189,8 +197,13 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
                             {formatPrice(price)}
                           </div>
                           <div className="text-sm text-muted-foreground">
-                            per user / {billingCycle === 'annual' ? 'year' : 'month'}
+                            per user / month
                           </div>
+                          {billingCycle === 'annual' && (
+                            <div className="text-xs text-muted-foreground">
+                              billed annually
+                            </div>
+                          )}
                           {billingCycle === 'annual' && savings > 0 && (
                             <div className="text-xs text-green-600 font-medium">
                               Save {savings}% annually
