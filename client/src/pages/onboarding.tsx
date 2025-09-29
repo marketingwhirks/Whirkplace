@@ -798,32 +798,36 @@ export function OnboardingPage() {
               <CreditCard className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
               <h3 className="font-semibold mb-2">Choose Your Plan</h3>
               <p className="text-sm text-muted-foreground mb-4">
-                Choose monthly or annual billing. Save 20% with annual plans.
+                Choose your plan to get started.
               </p>
               <div className="grid gap-4 mt-6">
                 <Card className="cursor-pointer hover:border-primary">
                   <CardHeader>
-                    <CardTitle>Starter</CardTitle>
-                    <CardDescription>$5/month per user or $4/month per user paid annually (save 20%)</CardDescription>
+                    <CardTitle>Standard</CardTitle>
+                    <CardDescription>Free forever - Perfect for small teams getting started</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
                       <li>✓ Weekly check-ins</li>
                       <li>✓ Shout outs & recognition</li>
                       <li>✓ Wins board</li>
+                      <li>✓ Basic reporting</li>
+                      <li>✓ Team management</li>
                     </ul>
                   </CardContent>
                 </Card>
                 <Card className="cursor-pointer hover:border-primary">
                   <CardHeader>
                     <CardTitle>Professional</CardTitle>
-                    <CardDescription>$10/month per user or $8/month per user paid annually (save 20%)</CardDescription>
+                    <CardDescription>$25/month per user - For teams that need advanced features</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
+                      <li>✓ Everything in Standard</li>
                       <li>✓ One-on-ones</li>
                       <li>✓ KRA management</li>
                       <li>✓ Advanced analytics</li>
+                      <li>✓ Priority support</li>
                     </ul>
                   </CardContent>
                 </Card>

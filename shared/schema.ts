@@ -1169,7 +1169,7 @@ export const bugReports = pgTable("bug_reports", {
 // Business Plans
 export const businessPlans = pgTable("business_plans", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(), // "Starter", "Professional", "Enterprise"
+  name: text("name").notNull(), // "Standard", "Professional", "Enterprise"
   displayName: text("display_name").notNull(),
   description: text("description"),
   price: integer("price").notNull().default(0), // Price in cents
@@ -1324,7 +1324,7 @@ export const systemSettings = pgTable("system_settings", {
 // Pricing Plans - System-wide plan management with Stripe integration
 export const pricingPlans = pgTable("pricing_plans", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(), // e.g., "Starter", "Professional", "Enterprise"
+  name: text("name").notNull(), // e.g., "Standard", "Professional", "Enterprise"
   description: text("description"),
   price: integer("price").notNull(), // Price in cents
   currency: text("currency").notNull().default("usd"),

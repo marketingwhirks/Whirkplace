@@ -37,10 +37,18 @@ import { resolveRedirectUri } from "./utils/redirect-uri";
 import { sendWelcomeEmail } from "./services/emailService";
 import { sanitizeUser, sanitizeUsers } from "./utils/sanitizeUser";
 
-// Initialize Stripe if available
+// Initialize Stripe with appropriate keys based on environment
 let stripe: Stripe | null = null;
-if (process.env.STRIPE_SECRET_KEY) {
-  stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const isDevelopment = process.env.NODE_ENV !== 'production';
+const stripeSecretKey = isDevelopment 
+  ? process.env.STRIPE_TEST_SECRET_KEY 
+  : process.env.STRIPE_SECRET_KEY;
+
+if (stripeSecretKey) {
+  stripe = new Stripe(stripeSecretKey);
+  console.log(`💳 Stripe initialized in ${isDevelopment ? 'TEST' : 'LIVE'} mode`);
+} else {
+  console.warn('⚠️ Stripe keys not configured');
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -2133,7 +2141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: "Redirecting to Stripe checkout..."
         });
       } else {
-        // Starter plan - no payment required
+        // Standard plan - no payment required
         await storage.updateOrganization(data.organizationId, {
           plan: data.planId,
         });
@@ -8779,7 +8787,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: "Redirecting to Stripe checkout..."
         });
       } else {
-        // Starter plan - no payment required
+        // Standard plan - no payment required
         await storage.updateOrganization(data.organizationId, {
           plan: data.planId,
         });
