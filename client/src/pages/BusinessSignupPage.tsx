@@ -24,7 +24,13 @@ interface SignupData {
   selectedPlan?: {
     planId: string;
     billingCycle: 'monthly' | 'annual';
+    discountCode?: string;
   };
+  organizationId?: string;
+  userId?: string;
+  sessionId?: string;
+  teams?: any[];
+  userInvites?: any[];
   themeData?: any;
   onboardingData?: any;
 }
@@ -137,8 +143,15 @@ export default function BusinessSignupPage() {
   // Plan selection mutation
   const planMutation = useMutation({
     mutationFn: async ({ planId, billingCycle, discountCode }: { planId: string; billingCycle: 'monthly' | 'annual'; discountCode?: string }) => {
+      // Get organizationId from either location it might be stored
+      const organizationId = signupData.businessInfo?.organizationId || signupData.organizationId;
+      
+      if (!organizationId) {
+        throw new Error("Organization ID not found. Please try signing up again.");
+      }
+      
       const response = await apiRequest('POST', '/api/business/select-plan', {
-        organizationId: signupData.businessInfo?.organizationId,
+        organizationId,
         planId,
         billingCycle,
         discountCode,
@@ -232,6 +245,18 @@ export default function BusinessSignupPage() {
       ...prev, 
       selectedPlan: { planId, billingCycle, discountCode }
     }));
+    
+    // Make sure we have an organizationId before proceeding
+    const orgId = signupData.businessInfo?.organizationId || signupData.organizationId;
+    if (!orgId) {
+      toast({
+        title: "Error",
+        description: "Organization ID not found. Please try signing up again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     // Then process the plan selection with discount code
     planMutation.mutate({ planId, billingCycle, discountCode });
   };
