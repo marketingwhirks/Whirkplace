@@ -2259,8 +2259,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pendingCheckoutSessionId: null,
       });
 
-      // Redirect to the theme step with success
-      res.redirect(`/business-signup?step=theme&organizationId=${organizationId}&payment=success`);
+      // Redirect to the teams step with success
+      res.redirect(`/business-signup?step=teams&organizationId=${organizationId}&payment=success`);
       
     } catch (error) {
       console.error("Checkout success error:", error);
@@ -8960,8 +8960,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pendingCheckoutSessionId: null,
       });
 
-      // Redirect to the theme step with success
-      res.redirect(`/business-signup?step=theme&organizationId=${organizationId}&payment=success`);
+      // Redirect to the teams step with success
+      res.redirect(`/business-signup?step=teams&organizationId=${organizationId}&payment=success`);
       
     } catch (error) {
       console.error("Checkout success error:", error);
