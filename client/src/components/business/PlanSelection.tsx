@@ -83,12 +83,8 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
   };
 
   const handlePlanChange = (planId: string) => {
-    // Allow deselecting by clicking on already selected plan
-    if (currentPlan === planId) {
-      setCurrentPlan('');
-    } else {
-      setCurrentPlan(planId);
-    }
+    // Always set the selected plan (no toggle/deselect)
+    setCurrentPlan(planId);
     // Don't auto-select, just update the UI state
   };
 
@@ -99,6 +95,10 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
   };
   
   const handleContinue = () => {
+    if (!currentPlan) {
+      // Guard against empty selection
+      return;
+    }
     onPlanSelect(currentPlan, billingCycle, appliedDiscount?.code);
   };
 
@@ -297,7 +297,7 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
             
             return (
               <div key={plan.id} className="relative">
-                <RadioGroupItem value={plan.id} className="sr-only" data-testid={`plan-${plan.id}`} />
+                <RadioGroupItem id={plan.id} value={plan.id} className="sr-only" data-testid={`plan-${plan.id}`} />
                 <Label htmlFor={plan.id} className="cursor-pointer">
                   <Card className={`relative overflow-hidden transition-all hover:shadow-lg ${
                     isSelected ? 'ring-2 ring-primary shadow-lg' : ''
@@ -398,7 +398,10 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
         <div className="flex justify-center mt-6">
           <Button 
             size="lg" 
-            onClick={handleContinue}
+            onClick={(e) => {
+              e.stopPropagation(); // Prevent event bubbling
+              handleContinue();
+            }}
             disabled={isLoading || !currentPlan}
             data-testid="continue-plan-selection"
             className="min-w-[200px]"
