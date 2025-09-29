@@ -2338,7 +2338,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Update organization onboarding status
-      const onboarding = await storage.completeOrganizationOnboarding(data.organizationId);
+      await storage.updateOrganization(data.organizationId, {
+        onboardingStatus: 'completed',
+        onboardingCompletedAt: new Date().toISOString(),
+        onboardingSettingsCompleted: true
+      });
 
       res.json({
         success: true,
