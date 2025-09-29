@@ -371,13 +371,16 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
                   </CardContent>
                   
                   <CardFooter>
-                    <Button 
-                      className="w-full" 
-                      variant={isSelected ? "default" : "outline"}
+                    <div 
+                      className={`w-full py-2 px-4 rounded-md text-center font-medium ${
+                        isSelected 
+                          ? 'bg-primary text-primary-foreground' 
+                          : 'border border-input bg-background hover:bg-accent hover:text-accent-foreground'
+                      }`}
                       data-testid={`select-${plan.id}`}
                     >
                       {isSelected ? "Selected" : "Select Plan"}
-                    </Button>
+                    </div>
                   </CardFooter>
                 </Card>
               </Label>

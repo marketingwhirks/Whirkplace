@@ -376,6 +376,7 @@ export default function BusinessSignupPage() {
             selectedPlan={signupData.selectedPlan?.planId}
             onPlanSelect={handlePlanSelection}
             isLoading={planMutation.isPending || plansLoading}
+            showContinueButton={true}
           />
         );
       
