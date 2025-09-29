@@ -280,7 +280,7 @@ export default function LandingPage() {
               Simple, transparent pricing
             </h2>
             <p className="text-xl text-muted-foreground" data-testid="text-pricing-description">
-              Choose monthly or annual billing • Save 20% with annual plans
+              Choose the plan that's right for your team. Save with annual plans!
             </p>
           </div>
 
@@ -313,11 +313,11 @@ export default function LandingPage() {
                     }
                     
                     try {
-                      // For landing page, we'll validate with a sample price of 1000 (representing $10)
+                      // For landing page, we'll validate with a sample price of 800 (representing $8)
                       const response = await apiRequest('POST', '/api/discount-codes/validate', {
                         code,
                         planId: 'professional', // Default to professional for validation
-                        orderAmount: 1000, // $10 in cents
+                        orderAmount: 800, // $8 in cents
                       });
                       
                       const validation = await response.json();
@@ -331,8 +331,8 @@ export default function LandingPage() {
                           discountPercentage = discount.discountValue;
                           description = description || `${discountPercentage}% off`;
                         } else if (discount.discountType === 'fixed_amount') {
-                          // For fixed amount, calculate percentage based on base price
-                          discountPercentage = Math.round((discount.discountValue / 1000) * 100);
+                          // For fixed amount, calculate percentage based on base price ($8)
+                          discountPercentage = Math.round((discount.discountValue / 800) * 100);
                           description = description || `$${(discount.discountValue / 100).toFixed(2)} off`;
                         }
                         
@@ -400,11 +400,15 @@ export default function LandingPage() {
             >
               <CardHeader>
                 <CardTitle>Standard</CardTitle>
-                <div className="text-3xl font-bold">${appliedDiscount ? Math.round(5 * (1 - appliedDiscount.percentage / 100)) : 5}<span className="text-sm font-normal">/user/month</span></div>
-                <div className="text-sm text-muted-foreground">or ${appliedDiscount ? Math.round(4 * (1 - appliedDiscount.percentage / 100)) : 4}/month billed annually</div>
-                <CardDescription>Perfect for small teams getting started</CardDescription>
+                <div className="text-3xl font-bold">
+                  ${appliedDiscount ? Math.round(5 * (1 - appliedDiscount.percentage / 100)) : 5}
+                  <span className="text-sm font-normal">/user/month</span>
+                </div>
+                <div className="text-sm text-muted-foreground">$4/month billed annually</div>
+                <Badge className="mt-2" variant="secondary">Save 20% annually</Badge>
+                <CardDescription className="mt-2">Perfect for small teams getting started</CardDescription>
                 {appliedDiscount && (
-                  <Badge className="text-xs" variant="default">
+                  <Badge className="text-xs mt-2" variant="default">
                     {appliedDiscount.percentage}% off applied
                   </Badge>
                 )}
@@ -428,11 +432,15 @@ export default function LandingPage() {
               <Badge className="absolute -top-2 left-1/2 transform -translate-x-1/2">Most Popular</Badge>
               <CardHeader>
                 <CardTitle>Professional</CardTitle>
-                <div className="text-3xl font-bold">${appliedDiscount ? Math.round(8 * (1 - appliedDiscount.percentage / 100)) : 8}<span className="text-sm font-normal">/user/month</span></div>
-                <div className="text-sm text-muted-foreground">or ${appliedDiscount ? Math.round(6 * (1 - appliedDiscount.percentage / 100)) : 6}/month billed annually</div>
-                <CardDescription>Advanced features for growing teams</CardDescription>
+                <div className="text-3xl font-bold">
+                  ${appliedDiscount ? Math.round(8 * (1 - appliedDiscount.percentage / 100)) : 8}
+                  <span className="text-sm font-normal">/user/month</span>
+                </div>
+                <div className="text-sm text-muted-foreground">$6/month billed annually</div>
+                <Badge className="mt-2" variant="secondary">Save 25% annually</Badge>
+                <CardDescription className="mt-2">Advanced features for growing teams</CardDescription>
                 {appliedDiscount && (
-                  <Badge className="text-xs" variant="default">
+                  <Badge className="text-xs mt-2" variant="default">
                     {appliedDiscount.percentage}% off applied
                   </Badge>
                 )}

@@ -804,7 +804,7 @@ export function OnboardingPage() {
                 <Card className="cursor-pointer hover:border-primary">
                   <CardHeader>
                     <CardTitle>Standard</CardTitle>
-                    <CardDescription>Free forever - Perfect for small teams getting started</CardDescription>
+                    <CardDescription>$5/user/month or $4/month if paid annually (save 20%)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
@@ -819,7 +819,7 @@ export function OnboardingPage() {
                 <Card className="cursor-pointer hover:border-primary">
                   <CardHeader>
                     <CardTitle>Professional</CardTitle>
-                    <CardDescription>$25/month per user - For teams that need advanced features</CardDescription>
+                    <CardDescription>$8/user/month or $6/month if paid annually (save 25%)</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ul className="text-sm space-y-1">
