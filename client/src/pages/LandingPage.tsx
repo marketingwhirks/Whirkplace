@@ -1,20 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Heart, Users, MessageSquare, BarChart3, CheckCircle, Star, ArrowRight, Building, Zap, Shield, Play, Tag, Check } from "lucide-react";
-import { useState, useEffect } from "react";
+import { Heart, Users, MessageSquare, BarChart3, CheckCircle, Star, ArrowRight, Building, Zap, Shield, Play } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocation } from "wouter";
-import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
 
 
 export default function LandingPage() {
   const [location, setLocation] = useLocation();
-  const [discountCode, setDiscountCode] = useState('');
-  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; percentage: number; description: string } | null>(null);
-  const { toast } = useToast();
 
   // Check authentication status using the proper hook
   const { data: user, isLoading } = useCurrentUser();
@@ -284,114 +277,6 @@ export default function LandingPage() {
             </p>
           </div>
 
-          {/* Discount Code Section */}
-          <div className="max-w-md mx-auto mb-8">
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="text"
-                  placeholder="Enter discount code"
-                  value={discountCode}
-                  onChange={(e) => setDiscountCode(e.target.value)}
-                  className="pl-10 pr-3"
-                  data-testid="input-discount-code-landing"
-                  disabled={!!appliedDiscount}
-                />
-              </div>
-              {!appliedDiscount ? (
-                <Button
-                  onClick={async () => {
-                    const code = discountCode.toUpperCase().trim();
-                    if (!code) {
-                      toast({
-                        title: "Invalid Code",
-                        description: "Please enter a discount code",
-                        variant: "destructive",
-                      });
-                      return;
-                    }
-                    
-                    try {
-                      // For landing page, we'll validate with a sample price of 800 (representing $8)
-                      const response = await apiRequest('POST', '/api/discount-codes/validate', {
-                        code,
-                        planId: 'professional', // Default to professional for validation
-                        orderAmount: 800, // $8 in cents
-                      });
-                      
-                      const validation = await response.json();
-                      
-                      if (validation.valid && validation.discountCode) {
-                        const { discountCode: discount } = validation;
-                        let discountPercentage = 0;
-                        let description = discount.description || discount.name;
-                        
-                        if (discount.discountType === 'percentage') {
-                          discountPercentage = discount.discountValue;
-                          description = description || `${discountPercentage}% off`;
-                        } else if (discount.discountType === 'fixed_amount') {
-                          // For fixed amount, calculate percentage based on base price ($8)
-                          discountPercentage = Math.round((discount.discountValue / 800) * 100);
-                          description = description || `$${(discount.discountValue / 100).toFixed(2)} off`;
-                        }
-                        
-                        setAppliedDiscount({ 
-                          code, 
-                          percentage: discountPercentage, 
-                          description 
-                        });
-                        toast({
-                          title: "Discount Applied!",
-                          description: `${description} has been applied to pricing`,
-                        });
-                      } else {
-                        toast({
-                          title: "Invalid Code",
-                          description: validation.reason || "The discount code you entered is not valid",
-                          variant: "destructive",
-                        });
-                        setDiscountCode('');
-                      }
-                    } catch (error) {
-                      toast({
-                        title: "Error",
-                        description: "Failed to validate discount code. Please try again.",
-                        variant: "destructive",
-                      });
-                      setDiscountCode('');
-                    }
-                  }}
-                  variant="outline"
-                  data-testid="button-apply-discount-landing"
-                >
-                  Apply
-                </Button>
-              ) : (
-                <Button
-                  onClick={() => {
-                    setAppliedDiscount(null);
-                    setDiscountCode('');
-                    toast({
-                      title: "Discount Removed",
-                      description: "The discount has been removed",
-                    });
-                  }}
-                  variant="outline"
-                  data-testid="button-remove-discount-landing"
-                >
-                  Remove
-                </Button>
-              )}
-            </div>
-            {appliedDiscount && (
-              <div className="mt-2 flex items-center gap-2 text-sm text-green-600">
-                <Check className="h-4 w-4" />
-                <span>{appliedDiscount.description}</span>
-              </div>
-            )}
-          </div>
-
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             <Card 
               className="border-2 cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-105" 
@@ -401,17 +286,12 @@ export default function LandingPage() {
               <CardHeader>
                 <CardTitle>Standard</CardTitle>
                 <div className="text-3xl font-bold">
-                  ${appliedDiscount ? Math.round(5 * (1 - appliedDiscount.percentage / 100)) : 5}
+                  $5
                   <span className="text-sm font-normal">/user/month</span>
                 </div>
                 <div className="text-sm text-muted-foreground">$4/month billed annually</div>
                 <Badge className="mt-2" variant="secondary">Save 20% annually</Badge>
                 <CardDescription className="mt-2">Perfect for small teams getting started</CardDescription>
-                {appliedDiscount && (
-                  <Badge className="text-xs mt-2" variant="default">
-                    {appliedDiscount.percentage}% off applied
-                  </Badge>
-                )}
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
@@ -433,17 +313,12 @@ export default function LandingPage() {
               <CardHeader>
                 <CardTitle>Professional</CardTitle>
                 <div className="text-3xl font-bold">
-                  ${appliedDiscount ? Math.round(8 * (1 - appliedDiscount.percentage / 100)) : 8}
+                  $8
                   <span className="text-sm font-normal">/user/month</span>
                 </div>
                 <div className="text-sm text-muted-foreground">$6/month billed annually</div>
                 <Badge className="mt-2" variant="secondary">Save 25% annually</Badge>
                 <CardDescription className="mt-2">Advanced features for growing teams</CardDescription>
-                {appliedDiscount && (
-                  <Badge className="text-xs mt-2" variant="default">
-                    {appliedDiscount.percentage}% off applied
-                  </Badge>
-                )}
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2">
