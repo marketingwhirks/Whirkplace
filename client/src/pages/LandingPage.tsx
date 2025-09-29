@@ -7,14 +7,8 @@ import { useState, useEffect } from "react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
-// Hardcoded discount codes for testing
-const DISCOUNT_CODES: { [key: string]: { percentage: number; description: string } } = {
-  'LAUNCH50': { percentage: 50, description: 'Launch Special - 50% off' },
-  'FOUNDERS20': { percentage: 20, description: 'Founders Discount - 20% off' },
-  'EARLY10': { percentage: 10, description: 'Early Bird - 10% off' },
-  'WHIRKS30': { percentage: 30, description: 'Whirks Special - 30% off' },
-};
 
 export default function LandingPage() {
   const [location, setLocation] = useLocation();
@@ -307,7 +301,7 @@ export default function LandingPage() {
               </div>
               {!appliedDiscount ? (
                 <Button
-                  onClick={() => {
+                  onClick={async () => {
                     const code = discountCode.toUpperCase().trim();
                     if (!code) {
                       toast({
@@ -317,17 +311,52 @@ export default function LandingPage() {
                       });
                       return;
                     }
-                    if (DISCOUNT_CODES[code]) {
-                      const discount = DISCOUNT_CODES[code];
-                      setAppliedDiscount({ code, ...discount });
-                      toast({
-                        title: "Discount Applied!",
-                        description: `${discount.description} has been applied to pricing`,
+                    
+                    try {
+                      // For landing page, we'll validate with a sample price of 1000 (representing $10)
+                      const response = await apiRequest('POST', '/api/discount-codes/validate', {
+                        code,
+                        planId: 'professional', // Default to professional for validation
+                        orderAmount: 1000, // $10 in cents
                       });
-                    } else {
+                      
+                      const validation = await response.json();
+                      
+                      if (validation.valid && validation.discountCode) {
+                        const { discountCode: discount } = validation;
+                        let discountPercentage = 0;
+                        let description = discount.description || discount.name;
+                        
+                        if (discount.discountType === 'percentage') {
+                          discountPercentage = discount.discountValue;
+                          description = description || `${discountPercentage}% off`;
+                        } else if (discount.discountType === 'fixed_amount') {
+                          // For fixed amount, calculate percentage based on base price
+                          discountPercentage = Math.round((discount.discountValue / 1000) * 100);
+                          description = description || `$${(discount.discountValue / 100).toFixed(2)} off`;
+                        }
+                        
+                        setAppliedDiscount({ 
+                          code, 
+                          percentage: discountPercentage, 
+                          description 
+                        });
+                        toast({
+                          title: "Discount Applied!",
+                          description: `${description} has been applied to pricing`,
+                        });
+                      } else {
+                        toast({
+                          title: "Invalid Code",
+                          description: validation.reason || "The discount code you entered is not valid",
+                          variant: "destructive",
+                        });
+                        setDiscountCode('');
+                      }
+                    } catch (error) {
                       toast({
-                        title: "Invalid Code",
-                        description: "The discount code you entered is not valid",
+                        title: "Error",
+                        description: "Failed to validate discount code. Please try again.",
                         variant: "destructive",
                       });
                       setDiscountCode('');

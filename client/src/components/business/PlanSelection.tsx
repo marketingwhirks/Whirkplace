@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 interface Plan {
   id: string;
@@ -37,13 +38,6 @@ const getPlanIcon = (planId: string) => {
   }
 };
 
-// Hardcoded discount codes for testing
-const DISCOUNT_CODES: { [key: string]: { percentage: number; description: string } } = {
-  'LAUNCH50': { percentage: 50, description: 'Launch Special - 50% off' },
-  'FOUNDERS20': { percentage: 20, description: 'Founders Discount - 20% off' },
-  'EARLY10': { percentage: 10, description: 'Early Bird - 10% off' },
-  'WHIRKS30': { percentage: 30, description: 'Whirks Special - 30% off' },
-};
 
 const getPlanBadge = (planId: string) => {
   switch (planId) {
@@ -59,7 +53,7 @@ const getPlanBadge = (planId: string) => {
 interface PlanSelectionProps {
   plans: Plan[];
   selectedPlan?: string;
-  onPlanSelect: (planId: string, billingCycle: 'monthly' | 'annual', discountCode?: string, discountPercentage?: number) => void;
+  onPlanSelect: (planId: string, billingCycle: 'monthly' | 'annual', discountCode?: string) => void;
   isLoading?: boolean;
   className?: string;
   showContinueButton?: boolean;
@@ -105,10 +99,10 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
   };
   
   const handleContinue = () => {
-    onPlanSelect(currentPlan, billingCycle, appliedDiscount?.code, appliedDiscount?.percentage);
+    onPlanSelect(currentPlan, billingCycle, appliedDiscount?.code);
   };
 
-  const handleApplyDiscount = () => {
+  const handleApplyDiscount = async () => {
     const code = discountCode.toUpperCase().trim();
     if (!code) {
       toast({
@@ -119,17 +113,59 @@ export function PlanSelection({ plans, selectedPlan, onPlanSelect, isLoading = f
       return;
     }
 
-    if (DISCOUNT_CODES[code]) {
-      const discount = DISCOUNT_CODES[code];
-      setAppliedDiscount({ code, ...discount });
-      toast({
-        title: "Discount Applied!",
-        description: `${discount.description} has been applied to your order`,
+    try {
+      // Get the current price for validation
+      const price = currentPlan && plans.find(p => p.id === currentPlan)
+        ? (billingCycle === 'monthly' 
+            ? plans.find(p => p.id === currentPlan)!.monthlyPrice 
+            : plans.find(p => p.id === currentPlan)!.annualPrice)
+        : 0;
+      
+      const response = await apiRequest('POST', '/api/discount-codes/validate', {
+        code,
+        planId: currentPlan,
+        orderAmount: price,
       });
-    } else {
+      
+      const validation = await response.json();
+      
+      if (validation.valid && validation.discountCode) {
+        const { discountCode: discount } = validation;
+        let discountPercentage = 0;
+        let description = discount.description || discount.name;
+        
+        if (discount.discountType === 'percentage') {
+          discountPercentage = discount.discountValue;
+          description = description || `${discountPercentage}% off`;
+        } else if (discount.discountType === 'fixed_amount') {
+          // Calculate percentage for display purposes
+          if (price > 0) {
+            discountPercentage = Math.round((discount.discountValue / price) * 100);
+          }
+          description = description || `$${(discount.discountValue / 100).toFixed(2)} off`;
+        }
+        
+        setAppliedDiscount({ 
+          code, 
+          percentage: discountPercentage, 
+          description 
+        });
+        toast({
+          title: "Discount Applied!",
+          description: `${description} has been applied to your order`,
+        });
+      } else {
+        toast({
+          title: "Invalid Code",
+          description: validation.reason || "The discount code you entered is not valid",
+          variant: "destructive",
+        });
+        setDiscountCode('');
+      }
+    } catch (error) {
       toast({
-        title: "Invalid Code",
-        description: "The discount code you entered is not valid",
+        title: "Error",
+        description: "Failed to validate discount code. Please try again.",
         variant: "destructive",
       });
       setDiscountCode('');

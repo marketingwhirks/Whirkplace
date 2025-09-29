@@ -2039,6 +2039,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         organizationId: z.string(),
         planId: z.string(),
         billingCycle: z.enum(["monthly", "annual"]),
+        discountCode: z.string().optional(),
       });
 
       const data = planSchema.parse(req.body);
@@ -2084,9 +2085,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         };
 
-        const price = plans[data.planId]?.[data.billingCycle];
+        let price = plans[data.planId]?.[data.billingCycle];
         if (!price) {
           return res.status(400).json({ message: "Invalid plan or billing cycle" });
+        }
+
+        // Validate and apply discount code if provided
+        let discountAmount = 0;
+        let discountPercentage = 0;
+        let validatedDiscountCode = null;
+        
+        if (data.discountCode) {
+          const validation = await storage.validateDiscountCode(
+            data.discountCode.toUpperCase(), 
+            data.planId, 
+            price
+          );
+          
+          if (validation.valid && validation.discountCode) {
+            validatedDiscountCode = validation.discountCode;
+            
+            // Calculate discount amount
+            if (validation.discountCode.discountType === 'percentage') {
+              discountPercentage = validation.discountCode.discountValue;
+              discountAmount = Math.round(price * (validation.discountCode.discountValue / 100));
+              
+              // Apply maximum discount limit if set
+              if (validation.discountCode.maximumDiscount && discountAmount > validation.discountCode.maximumDiscount) {
+                discountAmount = validation.discountCode.maximumDiscount;
+              }
+            } else if (validation.discountCode.discountType === 'fixed_amount') {
+              discountAmount = validation.discountCode.discountValue;
+            }
+            
+            // Ensure discount doesn't exceed order amount
+            discountAmount = Math.min(discountAmount, price);
+          } else {
+            console.log('Invalid discount code:', validation.reason);
+            // Continue without discount rather than failing
+          }
         }
 
         // Get the base URL for redirects
@@ -2107,7 +2144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   name: `Whirkplace ${data.planId.charAt(0).toUpperCase() + data.planId.slice(1)} Plan`,
                   description: `${data.billingCycle === 'monthly' ? 'Monthly' : 'Annual'} subscription for ${organization.name}`,
                 },
-                unit_amount: price,
+                unit_amount: price - discountAmount, // Apply discount to the price
                 ...(data.billingCycle === 'monthly' ? {
                   recurring: {
                     interval: 'month' as const,
@@ -2124,14 +2161,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             organizationId: data.organizationId,
             planId: data.planId,
             billingCycle: data.billingCycle,
+            ...(validatedDiscountCode && {
+              discountCode: validatedDiscountCode.code,
+              discountAmount: discountAmount.toString(),
+              discountPercentage: discountPercentage.toString(),
+            }),
           },
         });
 
-        // Store the session ID for verification
+        // Store the session ID for verification and discount info
         await storage.updateOrganization(data.organizationId, {
           plan: data.planId,
           pendingCheckoutSessionId: session.id,
+          ...(validatedDiscountCode && {
+            discountCode: validatedDiscountCode.code,
+            discountPercentage: discountPercentage,
+          }),
         });
+        
+        // Record discount code usage if applied
+        if (validatedDiscountCode) {
+          await storage.applyDiscountCode({
+            discountCodeId: validatedDiscountCode.id,
+            organizationId: data.organizationId,
+            orderAmount: price,
+            discountAmount: discountAmount,
+          });
+        }
 
         res.json({
           success: true,
@@ -8730,9 +8786,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         };
 
-        const price = plans[data.planId]?.[data.billingCycle];
+        let price = plans[data.planId]?.[data.billingCycle];
         if (!price) {
           return res.status(400).json({ message: "Invalid plan or billing cycle" });
+        }
+
+        // Validate and apply discount code if provided
+        let discountAmount = 0;
+        let discountPercentage = 0;
+        let validatedDiscountCode = null;
+        
+        if (data.discountCode) {
+          const validation = await storage.validateDiscountCode(
+            data.discountCode.toUpperCase(), 
+            data.planId, 
+            price
+          );
+          
+          if (validation.valid && validation.discountCode) {
+            validatedDiscountCode = validation.discountCode;
+            
+            // Calculate discount amount
+            if (validation.discountCode.discountType === 'percentage') {
+              discountPercentage = validation.discountCode.discountValue;
+              discountAmount = Math.round(price * (validation.discountCode.discountValue / 100));
+              
+              // Apply maximum discount limit if set
+              if (validation.discountCode.maximumDiscount && discountAmount > validation.discountCode.maximumDiscount) {
+                discountAmount = validation.discountCode.maximumDiscount;
+              }
+            } else if (validation.discountCode.discountType === 'fixed_amount') {
+              discountAmount = validation.discountCode.discountValue;
+            }
+            
+            // Ensure discount doesn't exceed order amount
+            discountAmount = Math.min(discountAmount, price);
+          } else {
+            console.log('Invalid discount code:', validation.reason);
+            // Continue without discount rather than failing
+          }
         }
 
         // Get the base URL for redirects
@@ -8753,7 +8845,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   name: `Whirkplace ${data.planId.charAt(0).toUpperCase() + data.planId.slice(1)} Plan`,
                   description: `${data.billingCycle === 'monthly' ? 'Monthly' : 'Annual'} subscription for ${organization.name}`,
                 },
-                unit_amount: price,
+                unit_amount: price - discountAmount, // Apply discount to the price
                 ...(data.billingCycle === 'monthly' ? {
                   recurring: {
                     interval: 'month' as const,
@@ -8770,14 +8862,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             organizationId: data.organizationId,
             planId: data.planId,
             billingCycle: data.billingCycle,
+            ...(validatedDiscountCode && {
+              discountCode: validatedDiscountCode.code,
+              discountAmount: discountAmount.toString(),
+              discountPercentage: discountPercentage.toString(),
+            }),
           },
         });
 
-        // Store the session ID for verification
+        // Store the session ID for verification and discount info
         await storage.updateOrganization(data.organizationId, {
           plan: data.planId,
           pendingCheckoutSessionId: session.id,
+          ...(validatedDiscountCode && {
+            discountCode: validatedDiscountCode.code,
+            discountPercentage: discountPercentage,
+          }),
         });
+        
+        // Record discount code usage if applied
+        if (validatedDiscountCode) {
+          await storage.applyDiscountCode({
+            discountCodeId: validatedDiscountCode.id,
+            organizationId: data.organizationId,
+            orderAmount: price,
+            discountAmount: discountAmount,
+          });
+        }
 
         res.json({
           success: true,

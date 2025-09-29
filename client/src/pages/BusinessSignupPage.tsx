@@ -136,11 +136,12 @@ export default function BusinessSignupPage() {
 
   // Plan selection mutation
   const planMutation = useMutation({
-    mutationFn: async ({ planId, billingCycle }: { planId: string; billingCycle: 'monthly' | 'annual' }) => {
+    mutationFn: async ({ planId, billingCycle, discountCode }: { planId: string; billingCycle: 'monthly' | 'annual'; discountCode?: string }) => {
       const response = await apiRequest('POST', '/api/business/select-plan', {
         organizationId: signupData.businessInfo?.organizationId,
         planId,
         billingCycle,
+        discountCode,
       });
       return response.json();
     },
@@ -225,14 +226,14 @@ export default function BusinessSignupPage() {
     signupMutation.mutate(businessInfo);
   };
 
-  const handlePlanSelection = async (planId: string, billingCycle: 'monthly' | 'annual', discountCode?: string, discountPercentage?: number) => {
+  const handlePlanSelection = async (planId: string, billingCycle: 'monthly' | 'annual', discountCode?: string) => {
     // Store the selected plan and discount info in state
     setSignupData(prev => ({ 
       ...prev, 
-      selectedPlan: { planId, billingCycle, discountCode, discountPercentage }
+      selectedPlan: { planId, billingCycle, discountCode }
     }));
-    // Then process the plan selection
-    planMutation.mutate({ planId, billingCycle });
+    // Then process the plan selection with discount code
+    planMutation.mutate({ planId, billingCycle, discountCode });
   };
 
 
