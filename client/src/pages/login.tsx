@@ -9,9 +9,6 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
 export default function LoginPage() {
-  const [backdoorUser, setBackdoorUser] = useState('');
-  const [backdoorKey, setBackdoorKey] = useState('');
-  const [isBackdoorLogin, setIsBackdoorLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -275,78 +272,6 @@ export default function LoginPage() {
     }
   };
 
-  const handleBackdoorLogin = async () => {
-    // Clear any existing demo tokens before backdoor login
-    localStorage.removeItem('demo_token');
-    localStorage.removeItem('demo_user');
-    localStorage.removeItem('demo_org');
-    
-    try {
-      console.log("🔄 Starting FRESH backdoor login with:", { username: backdoorUser, key: backdoorKey.substring(0, 3) + "***" });
-      console.log("🌐 Making request to:", `${window.location.origin}/api/auth/dev-login-fresh?org=${organizationSlug || 'whirkplace'}`);
-      
-      const response = await fetch(`/api/auth/dev-login-fresh?org=${organizationSlug || 'whirkplace'}`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-          'X-Requested-With': 'XMLHttpRequest'
-        },
-        credentials: 'include',
-        cache: 'no-store',
-        body: JSON.stringify({ username: backdoorUser, key: backdoorKey })
-      });
-      
-      console.log("📡 Response received:", { 
-        status: response.status, 
-        statusText: response.statusText,
-        ok: response.ok 
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log("✅ Login successful, data:", data);
-        toast({ title: "Success", description: data.message });
-        
-        // Clear all cached data and force fresh authentication
-        queryClient.clear();
-        
-        // Clear any role switching state from previous sessions
-        sessionStorage.removeItem('viewAsRole');
-        
-        console.log("🚀 Login successful! Storing user data...");
-        
-        // BYPASS COOKIE ISSUES: Store authentication in localStorage for immediate access
-        localStorage.setItem('auth_user_id', data.user.id);
-        localStorage.setItem('auth_user_data', JSON.stringify(data.user));
-        
-        // Clear cached queries and redirect immediately
-        queryClient.clear();
-        
-        console.log("🔄 Redirecting to dashboard...");
-        window.location.href = "/";
-      } else {
-        console.error("❌ Login failed with status:", response.status);
-        const error = await response.json();
-        console.error("❌ Error details:", error);
-        toast({ 
-          title: "Login failed", 
-          description: error.message,
-          variant: "destructive" 
-        });
-      }
-    } catch (error: any) {
-      console.error("🚨 Network/Fetch error:", error);
-      console.error("🚨 Error type:", error?.name);
-      console.error("🚨 Error message:", error?.message);
-      toast({ 
-        title: "Error", 
-        description: `Network error: ${error?.message || 'Unknown error'}`,
-        variant: "destructive" 
-      });
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
@@ -379,7 +304,7 @@ export default function LoginPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {!isBackdoorLogin ? (
+            {(
               loginStep === 'organization' ? (
                 /* Step 1: Organization Selection */
                 <>
@@ -632,52 +557,6 @@ export default function LoginPage() {
                   </div>
                 </>
               )
-            ) : (
-              <>
-                <div className="space-y-3">
-                  <div>
-                    <Label htmlFor="backdoor-user">Username</Label>
-                    <Input 
-                      id="backdoor-user"
-                      value={backdoorUser}
-                      onChange={(e) => setBackdoorUser(e.target.value)}
-                      placeholder="Enter username"
-                      data-testid="input-backdoor-user"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="backdoor-key">Key</Label>
-                    <Input 
-                      id="backdoor-key"
-                      type="password"
-                      value={backdoorKey}
-                      onChange={(e) => setBackdoorKey(e.target.value)}
-                      placeholder="Enter key"
-                      data-testid="input-backdoor-key"
-                    />
-                  </div>
-                </div>
-                
-                <Button 
-                  onClick={handleBackdoorLogin}
-                  className="w-full"
-                  size="lg"
-                  data-testid="button-backdoor-login"
-                >
-                  Developer Login
-                </Button>
-                
-                <div className="text-center text-sm text-muted-foreground">
-                  <button 
-                    type="button"
-                    onClick={() => setIsBackdoorLogin(false)}
-                    className="underline hover:no-underline"
-                    data-testid="back-toggle"
-                  >
-                    Back to Login
-                  </button>
-                </div>
-              </>
             )}
 
             <div className="border-t pt-4">

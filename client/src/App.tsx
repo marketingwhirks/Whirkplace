@@ -28,7 +28,6 @@ import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import LandingPage from "@/pages/LandingPage";
 import PartnerPage from "@/pages/PartnerPage";
-import DevLogin from "@/pages/DevLogin";
 import SelectOrganizationPage from "@/pages/select-organization";
 import DemoPage from "@/pages/demo";
 import DemoLoginPage from "@/pages/demo-login";
@@ -121,7 +120,6 @@ function App() {
               <Route path="/login" component={LoginPage} />
               <Route path="/forgot-password" component={ForgotPasswordPage} />
               <Route path="/partners" component={PartnerPage} />
-              <Route path="/dev-login" component={DevLogin} />
               <Route path="/onboarding" component={OnboardingPage} />
               <Route path="/oauth-callback" component={OAuthCallbackPage} />
               <Route component={AuthenticatedApp} />
