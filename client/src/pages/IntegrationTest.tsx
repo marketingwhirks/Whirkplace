@@ -3,8 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { CheckCircle2, XCircle, Loader2, Slack, Users, Bot } from 'lucide-react';
-import { SiMicrosoft, SiOpenai } from 'react-icons/si';
+import { CheckCircle2, XCircle, Loader2, Slack, Users, Bot, Building2, Brain } from 'lucide-react';
 
 export default function IntegrationTest() {
   const [loading, setLoading] = useState(false);
@@ -139,8 +138,8 @@ export default function IntegrationTest() {
         <div>
           <h2 className="text-xl font-semibold mb-4">Test Results</h2>
           {renderTestResult('Slack', <Slack className="w-5 h-5" />, results.slack)}
-          {renderTestResult('Microsoft 365', <SiMicrosoft className="w-5 h-5" />, results.microsoft)}
-          {renderTestResult('OpenAI', <SiOpenai className="w-5 h-5" />, results.openai)}
+          {renderTestResult('Microsoft 365', <Building2 className="w-5 h-5" />, results.microsoft)}
+          {renderTestResult('OpenAI', <Brain className="w-5 h-5" />, results.openai)}
           
           <div className="mt-4 text-sm text-muted-foreground">
             Tested at: {results.timestamp ? new Date(results.timestamp).toLocaleString() : 'Unknown'}
