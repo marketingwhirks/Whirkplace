@@ -174,13 +174,8 @@ export default function LoginPage() {
       // Clear any old authentication data first
       await clearAuthData();
       
-      // Check if this is a backdoor login attempt (mpatrick@whirks.com with backdoor key)
-      const isBackdoorAttempt = email === 'mpatrick@whirks.com';
-      
-      // Use appropriate endpoint based on whether it's a backdoor login
-      const endpoint = isBackdoorAttempt ? '/api/auth/login' : `/auth/local/login?org=${organizationSlug || 'whirkplace'}`;
-      
-      const response = await fetch(endpoint, {
+      // Always use the standard login endpoint
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json'
