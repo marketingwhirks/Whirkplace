@@ -56,21 +56,57 @@ export function resolveOrganization() {
       
       // Method 3: Domain-based organization resolution
       if (!organization && host) {
-        // Handle root domains (whirkplace.com, localhost:5000, etc.)
-        if (host === 'whirkplace.com' || 
-            host === 'www.whirkplace.com' || 
-            host.startsWith('localhost') || 
-            host.includes('.replit.') ||
-            host.includes('.repl.co')) {
-          // Use the enterprise organization for main domain
-          organization = await storage.getOrganizationBySlug('whirkplace');
-          console.log(`🏠 Root domain (${host}) - using default org:`, organization ? 'found' : 'not found');
-        } else {
-          // Extract subdomain for company.whirkplace.com format
-          const subdomain = host.split('.')[0];
-          if (subdomain && subdomain !== 'www') {
-            organization = await storage.getOrganizationBySlug(subdomain);
-            console.log(`🏢 Subdomain lookup (${subdomain}):`, organization ? 'found' : 'not found');
+        // Extract subdomain from the host
+        const hostParts = host.split('.');
+        const hostWithoutPort = host.split(':')[0];
+        const hostPartsNoPort = hostWithoutPort.split('.');
+        
+        // Check if this is a subdomain (not www and has at least 2 parts)
+        let subdomain = null;
+        
+        // For production: organization.whirkplace.com
+        if (hostPartsNoPort.length >= 2 && hostPartsNoPort[0] !== 'www') {
+          // For whirkplace.com domains
+          if (host.includes('whirkplace.com')) {
+            if (hostPartsNoPort.length > 2) {
+              subdomain = hostPartsNoPort[0]; // e.g., "patrickaccounting" from "patrickaccounting.whirkplace.com"
+            }
+          }
+          // For development: In Replit, we can simulate with org query param or use subdomain if configured
+          else if (host.includes('.replit.') || host.includes('.repl.co')) {
+            // In Replit dev environment, extract first part of domain if it's not a system subdomain
+            const firstPart = hostPartsNoPort[0];
+            // Only treat as subdomain if it's not a Replit system identifier (UUIDs, etc)
+            if (firstPart && !firstPart.match(/^[a-f0-9]{8}-/) && firstPart !== 'www') {
+              subdomain = firstPart;
+            }
+          }
+          // For localhost development with port: subdomain.localhost:5000
+          else if (hostWithoutPort === 'localhost' || hostWithoutPort.startsWith('subdomain.')) {
+            if (hostPartsNoPort.length > 1 && hostPartsNoPort[0] !== 'localhost') {
+              subdomain = hostPartsNoPort[0]; // e.g., "patrickaccounting" from "patrickaccounting.localhost"
+            }
+          }
+        }
+        
+        // Try to find organization by subdomain
+        if (subdomain) {
+          organization = await storage.getOrganizationBySlug(subdomain);
+          console.log(`🏢 Subdomain lookup (${subdomain}):`, organization ? 'found' : 'not found');
+        }
+        
+        // If no subdomain or organization not found, check if this is the root domain
+        if (!organization) {
+          const isRootDomain = host === 'whirkplace.com' || 
+                               host === 'www.whirkplace.com' ||
+                               host.startsWith('localhost') ||
+                               (host.includes('.replit.') && !subdomain) ||
+                               (host.includes('.repl.co') && !subdomain);
+          
+          if (isRootDomain) {
+            // Use the enterprise organization for main domain
+            organization = await storage.getOrganizationBySlug('whirkplace');
+            console.log(`🏠 Root domain (${host}) - using default org:`, organization ? 'found' : 'not found');
           }
         }
       }

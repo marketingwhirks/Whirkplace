@@ -352,6 +352,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get current organization context (public endpoint for subdomain display)
+  app.get("/api/organization/context", requireOrganization(), async (req, res) => {
+    try {
+      const organization = (req as any).organization;
+      
+      if (!organization) {
+        return res.status(404).json({ 
+          message: "No organization context found" 
+        });
+      }
+      
+      // Return basic organization info for display purposes
+      res.json({
+        id: organization.id,
+        name: organization.name,
+        slug: organization.slug,
+        logoUrl: organization.logoUrl || null
+      });
+    } catch (error) {
+      console.error("Error getting organization context:", error);
+      res.status(500).json({ message: "Failed to get organization context" });
+    }
+  });
+
   // Local authentication login for super admin
   app.post("/auth/local/login", requireOrganization(), async (req, res) => {
     try {
@@ -391,14 +415,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Get user by email - first try the resolved organization
+      // Get user by email - check if we have a specific organization context
       console.log(`🔐 Local login attempt for ${email} in org ${req.orgId}`);
       let user = await storage.getUserByEmail(req.orgId, email);
       let actualOrgId = req.orgId;
       
-      // If user not found in default org, search all organizations
-      if (!user) {
-        console.log(`🔍 User not found in ${req.orgId}, searching all organizations...`);
+      // Check if this is a subdomain-specific login or root domain
+      const currentOrg = (req as any).organization;
+      const isRootDomain = currentOrg?.slug === 'whirkplace';
+      
+      // Only search other organizations if we're on the root domain
+      // If on a subdomain, users must exist in that specific organization
+      if (!user && isRootDomain) {
+        console.log(`🔍 User not found in default org, searching all organizations (root domain access)...`);
         const allOrgs = await storage.getOrganizations();
         for (const org of allOrgs) {
           const foundUser = await storage.getUserByEmail(org.id, email);
@@ -412,7 +441,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       if (!user) {
-        console.log(`❌ User not found: ${email} in any organization`);
+        const errorContext = isRootDomain ? 'any organization' : `organization ${currentOrg?.name}`;
+        console.log(`❌ User not found: ${email} in ${errorContext}`);
         return res.status(401).json({ 
           message: "Invalid email or password" 
         });

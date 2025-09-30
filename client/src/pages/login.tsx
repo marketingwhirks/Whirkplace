@@ -18,6 +18,7 @@ export default function LoginPage() {
   const [authProviders, setAuthProviders] = useState<any[]>([]);
   const [loginStep, setLoginStep] = useState<'organization' | 'auth'>('auth');
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
+  const [orgContext, setOrgContext] = useState<any>(null);
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -32,28 +33,14 @@ export default function LoginPage() {
     const plan = urlParams.get('plan');
     setSelectedPlan(plan);
     
-    // Get organization from URL or subdomain
+    // Fetch organization context based on subdomain
+    fetchOrganizationContext();
+    
+    // Get organization from URL parameter if provided
     const orgParam = urlParams.get('org');
     if (orgParam) {
       setOrganizationSlug(orgParam);
       fetchAuthProviders(orgParam);
-    } else {
-      // Check subdomain
-      const hostname = window.location.hostname;
-      if (hostname.includes('.whirkplace.com') && 
-          !hostname.startsWith('www.') && 
-          !hostname.startsWith('app.')) {
-        const subdomain = hostname.split('.')[0];
-        if (subdomain && subdomain !== 'whirkplace') {
-          setOrganizationSlug(subdomain);
-          fetchAuthProviders(subdomain);
-        }
-      } else {
-        // Default: Show basic auth providers for general login
-        setAuthProviders([
-          { provider: 'local', enabled: true }
-        ]);
-      }
     }
     
     // Only clear auth if explicitly logging out
@@ -61,6 +48,38 @@ export default function LoginPage() {
       clearOldAuthTokens();
     }
   }, []);
+  
+  const fetchOrganizationContext = async () => {
+    try {
+      const response = await fetch('/api/organization/context');
+      if (response.ok) {
+        const data = await response.json();
+        setOrgContext(data);
+        setOrganizationSlug(data.slug);
+        
+        // If we have an org context from subdomain, fetch its auth providers
+        if (data.slug && data.slug !== 'whirkplace') {
+          fetchAuthProviders(data.slug);
+        } else {
+          // Default providers for root domain
+          setAuthProviders([
+            { provider: 'local', enabled: true }
+          ]);
+        }
+      } else {
+        // No org context, use default providers
+        setAuthProviders([
+          { provider: 'local', enabled: true }
+        ]);
+      }
+    } catch (error) {
+      console.error('Failed to fetch organization context:', error);
+      // Default providers on error
+      setAuthProviders([
+        { provider: 'local', enabled: true }
+      ]);
+    }
+  };
   
   const fetchAuthProviders = async (slug: string) => {
     setIsLoadingProviders(true);
@@ -295,12 +314,14 @@ export default function LoginPage() {
             <CardTitle>
               {isSignUpMode ? 'Create Your Account' : 
                loginStep === 'organization' ? 'Welcome to Whirkplace' : 
-               'Sign In to Whirkplace'}
+               orgContext?.name ? `Sign In to ${orgContext.name}` : 'Sign In to Whirkplace'}
             </CardTitle>
             <CardDescription>
               {isSignUpMode ? 'Get started with your team culture platform' : 
                loginStep === 'organization' ? 'Enter your organization to continue' :
-               organizationSlug ? `Signing in to ${organizationSlug}` : 'Sign in to your account'}
+               orgContext && orgContext.slug !== 'whirkplace' ? 
+                 `Access your ${orgContext.name} team account` : 
+                 'Sign in to your organization account'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
