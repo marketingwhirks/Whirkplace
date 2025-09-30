@@ -2762,6 +2762,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // SECURITY: Session-based authentication only - no auth cookies
       
+      // Generate a simple auth token for Replit environment
+      const authToken = Buffer.from(JSON.stringify({
+        userId: user.id,
+        organizationId: actualOrgId,
+        email: user.email,
+        role: user.role,
+        timestamp: Date.now()
+      })).toString('base64');
+      
       // Now send response - express-session should have set the cookie
       res.json({ 
         message: "Login successful",
@@ -2771,7 +2780,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           email: user.email,
           role: user.role,
           organizationId: actualOrgId
-        }
+        },
+        token: authToken
       });
       
     } catch (error) {
