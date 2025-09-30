@@ -2715,18 +2715,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (user && user.isActive) {
           // Check password (handle both plain text and hashed passwords)
           let isValidPassword = false;
+          console.log(`🔑 Checking password for user: ${user.email}`);
+          console.log(`🔑 User has password field: ${!!user.password}`);
+          console.log(`🔑 Password field starts with: ${user.password?.substring(0, 7)}...`);
+          
           if (user.password) {
             if (user.password.startsWith('$2a$') || user.password.startsWith('$2b$')) {
               // Password is already hashed with bcrypt
+              console.log(`🔐 Using bcrypt to compare passwords`);
+              console.log(`🔐 Input password: ${password}`);
               isValidPassword = await bcrypt.compare(password, user.password);
+              console.log(`🔐 Bcrypt comparison result: ${isValidPassword}`);
             } else {
               // Password is plain text (legacy), compare directly for now
+              console.log(`🔐 Using plain text comparison`);
               isValidPassword = user.password === password;
             }
+          } else {
+            console.log(`❌ User has no password field!`);
           }
           
           if (!isValidPassword) {
+            console.log(`❌ Password validation failed`);
             user = null; // Reset user if password is invalid
+          } else {
+            console.log(`✅ Password validation successful`);
           }
         }
       }
