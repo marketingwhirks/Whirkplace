@@ -205,7 +205,7 @@ export default function LoginPage() {
         
         // Clear cached data and redirect
         queryClient.clear();
-        window.location.href = "/";
+        window.location.href = "/dashboard";
       } else {
         const error = await response.json();
         toast({ 
@@ -254,7 +254,7 @@ export default function LoginPage() {
         
         // Clear cached data and redirect
         queryClient.clear();
-        window.location.href = "/";
+        window.location.href = "/dashboard";
       } else {
         const error = await response.json();
         toast({ 
