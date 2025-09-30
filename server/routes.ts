@@ -391,12 +391,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Get user by email
+      // Get user by email - first try the resolved organization
       console.log(`🔐 Local login attempt for ${email} in org ${req.orgId}`);
-      const user = await storage.getUserByEmail(req.orgId, email);
+      let user = await storage.getUserByEmail(req.orgId, email);
+      let actualOrgId = req.orgId;
+      
+      // If user not found in default org, search all organizations
+      if (!user) {
+        console.log(`🔍 User not found in ${req.orgId}, searching all organizations...`);
+        const allOrgs = await storage.getOrganizations();
+        for (const org of allOrgs) {
+          const foundUser = await storage.getUserByEmail(org.id, email);
+          if (foundUser) {
+            user = foundUser;
+            actualOrgId = org.id;
+            console.log(`✅ Found user in organization: ${org.name} (${org.id})`);
+            break;
+          }
+        }
+      }
       
       if (!user) {
-        console.log(`❌ User not found: ${email} in org ${req.orgId}`);
+        console.log(`❌ User not found: ${email} in any organization`);
         return res.status(401).json({ 
           message: "Invalid email or password" 
         });
@@ -433,15 +449,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(500).json({ message: "Session regeneration failed" });
         }
         
-        // Set session after regeneration
+        // Set session after regeneration with the actual organization where user was found
         req.session.userId = user.id;
-        (req.session as any).organizationId = req.orgId;
+        (req.session as any).organizationId = actualOrgId;
         
         console.log(`📝 Session after setting:`, {
           sessionId: req.sessionID,
           userId: req.session.userId,
           organizationId: (req.session as any).organizationId,
-          orgIdFromReq: req.orgId
+          orgIdFromReq: req.orgId,
+          actualOrgId: actualOrgId
         });
         
         // FIX: Let express-session automatically save and set cookie
