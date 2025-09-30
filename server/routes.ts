@@ -9684,14 +9684,20 @@ Return the response as a JSON object with this structure:
 
   app.delete("/api/super-admin/organizations/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
     try {
-      // Don't allow deletion of the main Whirkplace organization
-      if (req.params.id === 'enterprise-whirkplace') {
+      // Don't allow deletion of the main Whirkplace organization or demo org
+      if (req.params.id === 'whirkplace') {
         return res.status(400).json({ message: "Cannot delete the main Whirkplace organization" });
+      }
+      
+      // Check if it's the Fictitious Delicious demo org
+      const org = await storage.getOrganization(req.params.id);
+      if (org && org.slug === 'fictitious-delicious') {
+        return res.status(400).json({ message: "Cannot delete the demo organization (Fictitious Delicious)" });
       }
       
       const success = await storage.deleteOrganization(req.params.id);
       if (!success) {
-        return res.status(404).json({ message: "Organization not found" });
+        return res.status(404).json({ message: "Organization not found or cannot be deleted" });
       }
       res.json({ success });
     } catch (error) {

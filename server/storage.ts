@@ -790,21 +790,69 @@ export class DatabaseStorage implements IStorage {
 
   async deleteOrganization(organizationId: string): Promise<boolean> {
     try {
-      // First delete all users in the organization
-      await db
-        .delete(users)
-        .where(eq(users.organizationId, organizationId));
+      // Don't allow deletion of the main Whirkplace organization
+      if (organizationId === 'whirkplace') {
+        console.error("Cannot delete the main Whirkplace organization");
+        return false;
+      }
+
+      // Delete all related data in the correct order to avoid foreign key conflicts
       
-      // Then delete all teams in the organization
-      await db
-        .delete(teams)
-        .where(eq(teams.organizationId, organizationId));
+      // Delete comments
+      await db.delete(comments).where(eq(comments.organizationId, organizationId));
+      
+      // Delete shoutouts/kudos
+      await db.delete(shoutouts).where(eq(shoutouts.organizationId, organizationId));
+      
+      // Delete wins
+      await db.delete(wins).where(eq(wins.organizationId, organizationId));
+      
+      // Delete check-ins
+      await db.delete(checkIns).where(eq(checkIns.organizationId, organizationId));
+      
+      // Delete questions and categories
+      await db.delete(questions).where(eq(questions.organizationId, organizationId));
+      await db.delete(questionCategories).where(eq(questionCategories.organizationId, organizationId));
+      await db.delete(questionBank).where(eq(questionBank.organizationId, organizationId));
+      
+      // Delete notifications
+      await db.delete(notifications).where(eq(notifications.organizationId, organizationId));
+      
+      // Delete team hierarchies
+      await db.delete(teamHierarchies).where(eq(teamHierarchies.organizationId, organizationId));
+      
+      // Delete action items
+      await db.delete(actionItems).where(eq(actionItems.organizationId, organizationId));
+      
+      // Delete one-on-ones
+      await db.delete(oneOnOnes).where(eq(oneOnOnes.organizationId, organizationId));
+      await db.delete(oneOnOneSeries).where(eq(oneOnOneSeries.organizationId, organizationId));
+      
+      // Delete KRAs
+      await db.delete(userKras).where(eq(userKras.organizationId, organizationId));
+      await db.delete(kraTemplates).where(eq(kraTemplates.organizationId, organizationId));
+      
+      // Delete user tours
+      await db.delete(userTours).where(eq(userTours.organizationId, organizationId));
+      
+      // Delete auth providers and identities
+      await db.delete(organizationAuthProviders).where(eq(organizationAuthProviders.organizationId, organizationId));
+      
+      // Delete metrics/aggregates
+      await db.delete(checkInMetricsDaily).where(eq(checkInMetricsDaily.organizationId, organizationId));
+      await db.delete(shoutoutMetricsDaily).where(eq(shoutoutMetricsDaily.organizationId, organizationId));
+      await db.delete(winsMetricsDaily).where(eq(winsMetricsDaily.organizationId, organizationId));
+      
+      // Delete users in the organization
+      await db.delete(users).where(eq(users.organizationId, organizationId));
+      
+      // Delete teams in the organization
+      await db.delete(teams).where(eq(teams.organizationId, organizationId));
       
       // Finally delete the organization
-      const result = await db
-        .delete(organizations)
-        .where(eq(organizations.id, organizationId));
+      const result = await db.delete(organizations).where(eq(organizations.id, organizationId));
       
+      console.log(`✅ Successfully deleted organization ${organizationId} and all related data`);
       return (result.rowCount ?? 0) > 0;
     } catch (error) {
       console.error("Failed to delete organization:", error);

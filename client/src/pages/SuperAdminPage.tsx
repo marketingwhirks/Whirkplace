@@ -26,7 +26,8 @@ import {
   Building,
   ShieldAlert,
   TrendingUp,
-  Database
+  Database,
+  Trash2
 } from "lucide-react";
 
 interface Organization {
@@ -116,6 +117,33 @@ export default function SuperAdminPage() {
       toast({
         title: "Deactivation Failed",
         description: error.message || "Failed to deactivate organization.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete organization mutation
+  const deleteOrgMutation = useMutation({
+    mutationFn: async (orgId: string) => {
+      const response = await apiRequest('DELETE', `/api/super-admin/organizations/${orgId}`);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to delete organization');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/super-admin/organizations'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/super-admin/stats'] });
+      toast({
+        title: "Organization Deleted",
+        description: "The organization and all its data have been permanently deleted.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Deletion Failed",
+        description: error.message || "Failed to delete organization.",
         variant: "destructive",
       });
     },
@@ -356,37 +384,81 @@ export default function SuperAdminPage() {
                             {formatDistanceToNow(new Date(org.createdAt), { addSuffix: true })}
                           </TableCell>
                           <TableCell>
-                            {org.isActive && (
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button 
-                                    variant="destructive" 
-                                    size="sm"
-                                    data-testid={`button-deactivate-${org.id}`}
-                                  >
-                                    <UserX className="h-4 w-4 mr-1" />
-                                    Deactivate
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>Deactivate Organization</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      Are you sure you want to deactivate "{org.name}"? This will disable access for all users in this organization.
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => deactivateOrgMutation.mutate(org.id)}
-                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            <div className="flex gap-2">
+                              {org.isActive && (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm"
+                                      data-testid={`button-deactivate-${org.id}`}
                                     >
+                                      <UserX className="h-4 w-4 mr-1" />
                                       Deactivate
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
-                            )}
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Deactivate Organization</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to deactivate "{org.name}"? This will disable access for all users in this organization.
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => deactivateOrgMutation.mutate(org.id)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Deactivate
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
+                              {org.slug !== 'whirkplace' && org.slug !== 'fictitious-delicious' && (
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button 
+                                      variant="destructive" 
+                                      size="sm"
+                                      data-testid={`button-delete-${org.id}`}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-1" />
+                                      Delete
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Organization</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        <div className="space-y-2">
+                                          <p className="font-semibold text-destructive">⚠️ This action cannot be undone!</p>
+                                          <p>You are about to permanently delete "{org.name}" and ALL of its data including:</p>
+                                          <ul className="list-disc list-inside ml-4">
+                                            <li>All users and their accounts</li>
+                                            <li>All teams and hierarchies</li>
+                                            <li>All check-ins and feedback</li>
+                                            <li>All wins and kudos</li>
+                                            <li>All notifications and settings</li>
+                                          </ul>
+                                          <p className="font-semibold mt-2">Are you absolutely sure?</p>
+                                        </div>
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => deleteOrgMutation.mutate(org.id)}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Delete Permanently
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
