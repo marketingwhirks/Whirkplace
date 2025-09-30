@@ -9616,6 +9616,23 @@ Return the response as a JSON object with this structure:
     }
   });
 
+  // Test integrations endpoint (admin/super admin only)
+  app.get('/api/test-integrations', requireAuth(), async (req, res) => {
+    try {
+      // Only admins can test integrations
+      if (req.user?.role !== 'admin' && !req.user?.isSuperAdmin) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const { testAllIntegrations } = await import('./test-integrations');
+      const results = await testAllIntegrations();
+      res.json(results);
+    } catch (error) {
+      console.error('Integration test error:', error);
+      res.status(500).json({ message: 'Failed to test integrations', error });
+    }
+  });
+
   app.delete("/api/super-admin/organizations/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
     try {
       // Don't allow deletion of the main Whirkplace organization
