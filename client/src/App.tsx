@@ -49,6 +49,7 @@ function Router() {
         <main className="flex-1 overflow-auto">
           <Switch>
             <Route path="/" component={Dashboard} />
+            <Route path="/dashboard" component={Dashboard} />
             <Route path="/checkins" component={Checkins} />
             <Route path="/one-on-ones" component={OneOnOnesPage} />
             <Route path="/kra-management" component={KraManagementPage} />
