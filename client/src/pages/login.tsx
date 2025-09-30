@@ -320,8 +320,8 @@ export default function LoginPage() {
               {isSignUpMode ? 'Get started with your team culture platform' : 
                loginStep === 'organization' ? 'Enter your organization to continue' :
                orgContext && orgContext.slug !== 'whirkplace' ? 
-                 `Access your ${orgContext.name} team account` : 
-                 'Sign in to your organization account'}
+                 `Currently viewing: ${orgContext.name}` : 
+                 'Sign in with your email from any organization'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
