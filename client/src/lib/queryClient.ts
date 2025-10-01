@@ -79,7 +79,7 @@ export async function apiRequest(
 
   // Add CSRF token for state-changing requests
   const needsCsrf = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
-  if (needsCsrf && !demoToken) { // Demo users don't need CSRF
+  if (needsCsrf) { // Always attach CSRF token for state-changing requests
     let token = await getCsrfToken();
     
     // If token is null, try once more with force refresh
@@ -106,7 +106,7 @@ export async function apiRequest(
   });
 
   // If we get a CSRF error, try to refresh the token and retry once
-  if (res.status === 403 && needsCsrf && !demoToken) {
+  if (res.status === 403 && needsCsrf) {
     const errorText = await res.text();
     if (errorText.includes('CSRF')) {
       console.log('CSRF error detected, refreshing token and retrying...');

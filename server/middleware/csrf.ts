@@ -73,6 +73,20 @@ export function generateCSRF() {
     // Also add to headers for API consumers
     res.set('X-CSRF-Token', token);
     
+    // Set CSRF cookie with proper attributes for production
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isReplit = !!process.env.REPL_ID;
+    const secure = isProduction || isReplit;
+    
+    res.cookie('csrf-token', token, {
+      httpOnly: true,
+      secure: secure,
+      sameSite: (isProduction || isReplit) ? 'none' : 'lax',
+      partitioned: isProduction || isReplit,
+      path: '/',
+      maxAge: 3600000 // 1 hour
+    });
+    
     next();
   };
 }
@@ -163,5 +177,20 @@ export function csrfTokenEndpoint(req: Request, res: Response) {
   }
   
   const token = generateCSRFToken(req.session.csrfSecret);
+  
+  // Set CSRF cookie with proper attributes for production
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isReplit = !!process.env.REPL_ID;
+  const secure = isProduction || isReplit;
+  
+  res.cookie('csrf-token', token, {
+    httpOnly: true,
+    secure: secure,
+    sameSite: (isProduction || isReplit) ? 'none' : 'lax',
+    partitioned: isProduction || isReplit,
+    path: '/',
+    maxAge: 3600000 // 1 hour
+  });
+  
   res.json({ csrfToken: token });
 }
