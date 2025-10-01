@@ -9615,13 +9615,16 @@ Return the response as a JSON object with this structure:
   app.get("/api/super-admin/organizations", requireAuth(), requireSuperAdmin(), async (req, res) => {
     try {
       const organizations = await storage.getAllOrganizations();
-      const stats = await Promise.all(
-        organizations.map(async (org) => ({
-          ...org,
-          stats: await storage.getOrganizationStats(org.id)
-        }))
+      const orgsWithStats = await Promise.all(
+        organizations.map(async (org) => {
+          const stats = await storage.getOrganizationStats(org.id);
+          return {
+            ...org,
+            ...stats  // Flatten the stats fields into the organization object
+          };
+        })
       );
-      res.json(stats);
+      res.json(orgsWithStats);
     } catch (error) {
       console.error("Failed to get organizations:", error);
       res.status(500).json({ message: "Failed to get organizations" });
