@@ -12,10 +12,16 @@ async function throwIfResNotOk(res: Response) {
 let csrfToken: string | null = null;
 let csrfTokenExpiry: number = 0;
 
-async function getCsrfToken(): Promise<string | null> {
-  // Check if we have a valid cached token
-  if (csrfToken && csrfTokenExpiry > Date.now()) {
+async function getCsrfToken(forceRefresh: boolean = false): Promise<string | null> {
+  // Check if we have a valid cached token (unless force refresh is requested)
+  if (!forceRefresh && csrfToken && csrfTokenExpiry > Date.now()) {
     return csrfToken;
+  }
+
+  // Clear cache if forcing refresh
+  if (forceRefresh) {
+    csrfToken = null;
+    csrfTokenExpiry = 0;
   }
 
   try {
@@ -37,7 +43,16 @@ async function getCsrfToken(): Promise<string | null> {
       csrfToken = data.csrfToken;
       // Cache for 30 minutes (CSRF tokens are valid for 1 hour)
       csrfTokenExpiry = Date.now() + 30 * 60 * 1000;
+      console.log('CSRF token fetched and cached successfully');
       return csrfToken;
+    } else if (response.status === 401) {
+      // Authentication required - clear cache
+      console.warn('CSRF token fetch failed: authentication required (401)');
+      csrfToken = null;
+      csrfTokenExpiry = 0;
+      // Don't throw here, let the actual request handle auth errors
+    } else {
+      console.error(`CSRF token fetch failed: ${response.status} ${response.statusText}`);
     }
   } catch (error) {
     console.error('Failed to fetch CSRF token:', error);
@@ -65,18 +80,55 @@ export async function apiRequest(
   // Add CSRF token for state-changing requests
   const needsCsrf = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
   if (needsCsrf && !demoToken) { // Demo users don't need CSRF
-    const token = await getCsrfToken();
+    let token = await getCsrfToken();
+    
+    // If token is null, try once more with force refresh
+    // This handles cases where the cached token might be invalid
+    if (!token) {
+      console.warn('CSRF token not available, attempting force refresh...');
+      token = await getCsrfToken(true);
+    }
+    
     if (token) {
       headers['X-CSRF-Token'] = token;
+      console.log(`CSRF token added to ${method} request to ${url}`);
+    } else {
+      // Still no token - warn but proceed (server will reject if CSRF is required)
+      console.error(`Warning: No CSRF token available for ${method} ${url}`);
     }
   }
 
-  const res = await fetch(url, {
+  let res = await fetch(url, {
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
+
+  // If we get a CSRF error, try to refresh the token and retry once
+  if (res.status === 403 && needsCsrf && !demoToken) {
+    const errorText = await res.text();
+    if (errorText.includes('CSRF')) {
+      console.log('CSRF error detected, refreshing token and retrying...');
+      
+      // Force refresh the CSRF token
+      const newToken = await getCsrfToken(true);
+      if (newToken) {
+        headers['X-CSRF-Token'] = newToken;
+        
+        // Retry the request with the new token
+        res = await fetch(url, {
+          method,
+          headers,
+          body: data ? JSON.stringify(data) : undefined,
+          credentials: "include",
+        });
+      }
+    } else {
+      // Not a CSRF error, throw the original error
+      throw new Error(`${res.status}: ${errorText}`);
+    }
+  }
 
   await throwIfResNotOk(res);
   return res;
