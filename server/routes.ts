@@ -146,13 +146,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const allUsers = await storage.getAllUsersGlobal(false);
       let superAdmin = allUsers.find(u => u.email === email && u.isSuperAdmin);
       
+      // Get whirkplace organization first (we need it either way)
+      const whirkplaceOrg = await storage.getOrganizationBySlug('whirkplace');
+      if (!whirkplaceOrg) {
+        return res.status(404).json({ message: "Whirkplace organization not found" });
+      }
+      
       if (!superAdmin) {
         // Create super admin in whirkplace organization
-        const whirkplaceOrg = await storage.getOrganizationBySlug('whirkplace');
-        if (!whirkplaceOrg) {
-          return res.status(404).json({ message: "Organization not found" });
-        }
-        
         superAdmin = await storage.createUser(whirkplaceOrg.id, {
           username: 'mpatrick',
           password: await bcrypt.hash(randomBytes(32).toString('hex'), 10),
@@ -168,24 +169,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('✅ Created super admin user');
       }
       
-      // Create session
-      req.session.regenerate((err) => {
-        if (err) {
-          console.error('Session regeneration failed:', err);
-          return res.status(500).json({ message: "Session error" });
-        }
+      // Use setSessionUser to properly establish the session with all required data
+      try {
+        await setSessionUser(req, superAdmin.id, whirkplaceOrg.id, whirkplaceOrg.slug);
+        console.log(`✅ Super admin ${email} logged in successfully with properly set session`);
         
-        req.session.userId = superAdmin.id;
-        req.session.organizationId = superAdmin.organizationId;
-        
-        // FIX: Let express-session automatically save and set cookie
-        console.log(`✅ Super admin ${email} logged in successfully`);
-        console.log(`🍪 Session will auto-save with Set-Cookie header`);
+        // Send response after session is properly set
         res.json({ 
           message: "Super admin login successful",
           user: sanitizeUser(superAdmin)
         });
-      });
+      } catch (sessionError) {
+        console.error('Failed to set session for super admin:', sessionError);
+        return res.status(500).json({ message: "Session creation failed" });
+      }
     } catch (error) {
       console.error("Super admin login error:", error);
       res.status(500).json({ message: "Login failed" });
