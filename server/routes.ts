@@ -247,23 +247,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const matthewUser = await ensureBackdoorUser(organizationId);
       console.log(`✅ Fresh backdoor user confirmed: ${matthewUser.name} (${matthewUser.email})`);
       
-      // SECURITY: Regenerate session ID to prevent session fixation attacks
-      req.session.regenerate((regenerateErr) => {
-        if (regenerateErr) {
-          console.error('Failed to regenerate session:', regenerateErr);
-          return res.status(500).json({ message: "Session regeneration failed" });
-        }
-        
-        console.log("🔄 Session regenerated successfully");
-        
-        // Set session after regeneration
-        req.session.userId = matthewUser.id;
-        req.session.organizationId = organizationId;
-        req.session.organizationSlug = org[0].slug;
-        
-        // FIX: Let express-session automatically save and set cookie
-        console.log(`💾 Session will auto-save for user: ${matthewUser.id}`);
-        console.log(`🍪 Set-Cookie header will be added automatically`);
+      // Use setSessionUser to properly regenerate and set session with all required data
+      try {
+        await setSessionUser(req, matthewUser.id, organizationId, org[0].slug);
+        console.log(`✅ Session properly regenerated and saved for user: ${matthewUser.id} in org: ${organizationId}`);
         
         // SECURITY: No longer setting auth cookies - sessions are the only authentication method
         // Cookies like auth_user_id were a critical vulnerability allowing user impersonation
@@ -279,7 +266,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             role: matthewUser.role 
           } 
         });
-      });
+      } catch (sessionError) {
+        console.error('Failed to set session:', sessionError);
+        return res.status(500).json({ message: "Session creation failed" });
+      }
     } catch (error) {
       console.error("Fresh backdoor login error:", error);
       res.status(500).json({ message: "Fresh backdoor login failed" });
@@ -316,19 +306,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Ensure Matthew Patrick's backdoor user exists
       const matthewUser = await ensureBackdoorUser(req.orgId);
       
-      // SECURITY: Regenerate session ID to prevent session fixation attacks
-      req.session.regenerate((regenerateErr) => {
-        if (regenerateErr) {
-          console.error('Failed to regenerate session:', regenerateErr);
-          return res.status(500).json({ message: "Session regeneration failed" });
-        }
-        
-        // Set session after regeneration
-        req.session.userId = matthewUser.id;
-        req.session.organizationId = req.orgId;  // Also set the organizationId
-        
-        // FIX: Let express-session automatically save and set cookie
-        console.log(`🍪 Session will auto-save with Set-Cookie header`);
+      // Get organization slug for session
+      const organization = await storage.getOrganization(req.orgId);
+      const orgSlug = organization?.slug || undefined;
+      
+      // Use setSessionUser to properly regenerate and set session with all required data
+      try {
+        await setSessionUser(req, matthewUser.id, req.orgId, orgSlug);
+        console.log(`✅ Session properly regenerated and saved for user: ${matthewUser.id} in org: ${req.orgId}`);
         
         // SECURITY: No auth cookies - sessions only
         // Removed dangerous auth cookies that allowed user impersonation
@@ -342,7 +327,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             role: matthewUser.role 
           } 
         });
-      });
+      } catch (sessionError) {
+        console.error('Failed to set session:', sessionError);
+        return res.status(500).json({ message: "Session creation failed" });
+      }
     } catch (error) {
       console.error("Backdoor login error:", error);
       res.status(500).json({ message: "Backdoor login failed" });
@@ -2785,26 +2773,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`✅ Login successful for: ${user.name} (${user.email}) from org: ${actualOrgId}`);
       
-      // Set session properties
-      req.session.userId = user.id;
-      req.session.organizationId = actualOrgId;  // CRITICAL: Use the user's actual organization ID
+      // Get organization slug for session
+      const organization = await storage.getOrganization(actualOrgId);
+      const orgSlug = organization?.slug || undefined;
       
-      console.log(`💾 Session configured for user: ${user.id} in org: ${actualOrgId}`);
-      console.log(`🍪 Session ID: ${req.sessionID}`);
-      
-      // CRITICAL FIX: Explicitly save session with promise to ensure it's saved
-      // BUT let express-session handle the Set-Cookie header by continuing the response
-      await new Promise<void>((resolve, reject) => {
-        req.session.save((err) => {
-          if (err) {
-            console.error('Session save error:', err);
-            reject(err);
-          } else {
-            console.log(`✅ Session explicitly saved for user: ${user.id}`);
-            resolve();
-          }
-        });
-      });
+      // Use setSessionUser to properly regenerate and set session with all required data
+      // This handles session regeneration to prevent session fixation attacks
+      try {
+        await setSessionUser(req, user.id, actualOrgId, orgSlug);
+        console.log(`✅ Session properly regenerated and saved for user: ${user.id} in org: ${actualOrgId}`);
+      } catch (sessionError) {
+        console.error('Failed to set session:', sessionError);
+        return res.status(500).json({ message: "Session creation failed" });
+      }
       
       // SECURITY: Session-based authentication only - no auth cookies
       

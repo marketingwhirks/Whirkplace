@@ -39,8 +39,10 @@ console.log('📡 Node version:', process.version);
 
 const app = express();
 
-// Enable trust proxy for proper header handling in production
+// CRITICAL: Enable trust proxy BEFORE any middleware that depends on it
+// This MUST come before session middleware to properly handle secure cookies behind proxies
 app.set('trust proxy', 1);
+console.log('✅ Trust proxy enabled (must be before session middleware)');
 
 // Security headers middleware
 app.use((req, res, next) => {

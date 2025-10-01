@@ -75,7 +75,7 @@ export function generateCSRF() {
     
     // Set CSRF cookie with proper attributes for production
     const isProduction = process.env.NODE_ENV === 'production';
-    const isReplit = !!process.env.REPL_ID;
+    const isReplit = !!process.env.REPL_SLUG;
     const secure = isProduction || isReplit;
     
     res.cookie('csrf-token', token, {
@@ -180,7 +180,7 @@ export function csrfTokenEndpoint(req: Request, res: Response) {
   
   // Set CSRF cookie with proper attributes for production
   const isProduction = process.env.NODE_ENV === 'production';
-  const isReplit = !!process.env.REPL_ID;
+  const isReplit = !!process.env.REPL_SLUG;
   const secure = isProduction || isReplit;
   
   res.cookie('csrf-token', token, {
