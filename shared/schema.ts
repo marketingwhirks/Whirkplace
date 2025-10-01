@@ -32,6 +32,19 @@ export const AuthProvider = {
 
 export type AuthProviderType = typeof AuthProvider[keyof typeof AuthProvider];
 
+// Session data type for admin viewing
+export interface SessionData {
+  sessionId: string;
+  userId: string | null;
+  userName: string | null;
+  userEmail: string | null;
+  organizationId: string | null;
+  organizationName: string | null;
+  loginTime: Date;
+  expiryTime: Date;
+  timeRemaining: string;
+}
+
 // Team Type Constants
 export const TeamType = {
   TEAM: "team", // Top level - everyone is on a team

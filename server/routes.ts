@@ -9839,6 +9839,72 @@ Return the response as a JSON object with this structure:
     }
   });
 
+  // Super Admin: Get all active sessions
+  app.get("/api/super-admin/sessions", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      // Query the user_sessions table directly
+      const query = sql`
+        SELECT 
+          s.sid as session_id,
+          s.sess->>'userId' as user_id,
+          u.name as user_name,
+          u.email as user_email,
+          s.sess->>'organizationId' as organization_id,
+          o.name as organization_name,
+          s.expire as expiry_time,
+          (s.expire - INTERVAL '30 days') as login_time
+        FROM user_sessions s
+        LEFT JOIN users u ON (s.sess->>'userId')::text = u.id
+        LEFT JOIN organizations o ON (s.sess->>'organizationId')::text = o.id
+        WHERE s.expire > NOW()
+        ORDER BY (s.expire - INTERVAL '30 days') DESC
+      `;
+      
+      const sessions = await db.execute(query);
+      
+      // Calculate time remaining for each session
+      const formattedSessions = sessions.rows.map((session: any) => {
+        const now = new Date();
+        const expiryTime = new Date(session.expiry_time);
+        const loginTime = new Date(session.login_time);
+        const msRemaining = expiryTime.getTime() - now.getTime();
+        
+        // Format time remaining
+        let timeRemaining = 'Expired';
+        if (msRemaining > 0) {
+          const days = Math.floor(msRemaining / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((msRemaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+          const minutes = Math.floor((msRemaining % (1000 * 60 * 60)) / (1000 * 60));
+          
+          if (days > 0) {
+            timeRemaining = `${days} day${days > 1 ? 's' : ''}`;
+          } else if (hours > 0) {
+            timeRemaining = `${hours} hour${hours > 1 ? 's' : ''}`;
+          } else {
+            timeRemaining = `${minutes} minute${minutes > 1 ? 's' : ''}`;
+          }
+        }
+        
+        return {
+          sessionId: session.session_id,
+          userId: session.user_id,
+          userName: session.user_name || 'Unknown',
+          userEmail: session.user_email || 'No email',
+          organizationId: session.organization_id,
+          organizationName: session.organization_name || 'No organization',
+          loginTime: loginTime.toISOString(),
+          expiryTime: expiryTime.toISOString(),
+          timeRemaining
+        };
+      });
+      
+      res.json(formattedSessions);
+    } catch (error) {
+      console.error("Error fetching active sessions:", error);
+      res.status(500).json({ message: "Failed to fetch active sessions" });
+    }
+  });
+
   // Register additional route modules
   registerMicrosoftTeamsRoutes(app);
   registerMicrosoftAuthRoutes(app);

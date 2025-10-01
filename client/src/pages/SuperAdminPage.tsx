@@ -14,7 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { 
   Building2, 
   Users, 
@@ -27,7 +27,9 @@ import {
   ShieldAlert,
   TrendingUp,
   Database,
-  Trash2
+  Trash2,
+  Clock,
+  RefreshCw
 } from "lucide-react";
 
 interface Organization {
@@ -63,6 +65,18 @@ interface SystemStats {
   activeUsers: number;
 }
 
+interface SessionData {
+  sessionId: string;
+  userId: string | null;
+  userName: string | null;
+  userEmail: string | null;
+  organizationId: string | null;
+  organizationName: string | null;
+  loginTime: string;
+  expiryTime: string;
+  timeRemaining: string;
+}
+
 export default function SuperAdminPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [userSearchTerm, setUserSearchTerm] = useState("");
@@ -96,6 +110,15 @@ export default function SuperAdminPage() {
     queryFn: async () => {
       const response = await apiRequest('GET', `/api/super-admin/users?includeInactive=${includeInactive}`);
       return response.json() as Promise<User[]>;
+    },
+  });
+
+  // Fetch all active sessions
+  const { data: sessions, isLoading: sessionsLoading, refetch: refetchSessions } = useQuery({
+    queryKey: ['/api/super-admin/sessions'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', '/api/super-admin/sessions');
+      return response.json() as Promise<SessionData[]>;
     },
   });
 
@@ -309,6 +332,14 @@ export default function SuperAdminPage() {
           <TabsList>
             <TabsTrigger value="organizations" data-testid="tab-organizations">Organizations</TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
+            <TabsTrigger value="sessions" data-testid="tab-sessions">
+              Sessions
+              {sessions && sessions.length > 0 && (
+                <Badge variant="secondary" className="ml-2">
+                  {sessions.length}
+                </Badge>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           {/* Organizations Management */}
@@ -557,6 +588,90 @@ export default function SuperAdminPage() {
                               <Edit className="h-4 w-4 mr-1" />
                               Edit
                             </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Sessions Management */}
+          <TabsContent value="sessions" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Clock className="h-5 w-5" />
+                    Active Sessions
+                    {sessions && sessions.length > 0 && (
+                      <Badge variant="default" className="ml-2">
+                        {sessions.length} active
+                      </Badge>
+                    )}
+                  </CardTitle>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => refetchSessions()}
+                    data-testid="button-refresh-sessions"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-1" />
+                    Refresh
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>User</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Organization</TableHead>
+                      <TableHead>Login Time</TableHead>
+                      <TableHead>Expires</TableHead>
+                      <TableHead>Time Remaining</TableHead>
+                      <TableHead>Session ID</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sessionsLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center">Loading sessions...</TableCell>
+                      </TableRow>
+                    ) : !sessions || sessions.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center">No active sessions</TableCell>
+                      </TableRow>
+                    ) : (
+                      sessions.map((session) => (
+                        <TableRow key={session.sessionId} data-testid={`row-session-${session.sessionId}`}>
+                          <TableCell>
+                            <div className="font-medium">
+                              {session.userName || 'Unknown User'}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {session.userEmail || 'No email'}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {session.organizationName || 'No organization'}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {format(new Date(session.loginTime), 'MMM d, yyyy HH:mm')}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {format(new Date(session.expiryTime), 'MMM d, yyyy HH:mm')}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={session.timeRemaining.includes('day') ? 'default' : 'secondary'}>
+                              {session.timeRemaining}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground font-mono">
+                            {session.sessionId.substring(0, 8)}...
                           </TableCell>
                         </TableRow>
                       ))
