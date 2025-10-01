@@ -73,6 +73,7 @@ Successfully implemented interactive tour guides using react-joyride for onboard
 - **Outlook Calendar Sync**: Enhanced calendar integration for One-on-One meetings
 
 ### Short-term Enhancements (1-3 months)
+- **AI-Powered Productivity Tips**: Smart, personalized productivity tips on the dashboard using AI to analyze team patterns and suggest improvements
 - **Enhanced Analytics**: Advanced reporting and data visualization
 - **Multi-Provider Authentication**: Seamless switching between Slack and Microsoft 365 authentication
 - **Teams Notification Center**: Configurable notification preferences for Microsoft Teams
