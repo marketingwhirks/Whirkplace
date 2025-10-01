@@ -352,7 +352,7 @@ export default function SuperAdminPage() {
         <RoleSwitcher />
         
         {/* Super Admin Authentication Section */}
-        {!isSuperAdmin && (
+        {!isSuperAdmin && currentUser?.email === 'mpatrick@whirks.com' && (
           <Alert variant="destructive" className="mb-6">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Super Admin Authentication Required</AlertTitle>
@@ -406,7 +406,7 @@ export default function SuperAdminPage() {
             </div>
             
             {/* Authentication Form */}
-            {!isSuperAdmin && (
+            {(!isSuperAdmin && currentUser?.email === 'mpatrick@whirks.com') && (
               <div className="border-t pt-4">
                 <Label className="text-base font-semibold mb-3 block">
                   Authenticate as Super Admin
