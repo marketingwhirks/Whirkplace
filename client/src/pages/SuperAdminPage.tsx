@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import RoleSwitcher from "@/components/admin/role-switcher";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,9 +12,14 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { format, formatDistanceToNow } from "date-fns";
+import type { User as CurrentUser } from "@shared/schema";
 import { 
   Building2, 
   Users, 
@@ -29,7 +34,14 @@ import {
   Database,
   Trash2,
   Clock,
-  RefreshCw
+  RefreshCw,
+  Lock,
+  CheckCircle2,
+  AlertCircle,
+  ChevronDown,
+  Key,
+  Info,
+  LogOut
 } from "lucide-react";
 
 interface Organization {
@@ -83,8 +95,85 @@ export default function SuperAdminPage() {
   const [includeInactive, setIncludeInactive] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [editUserDialogOpen, setEditUserDialogOpen] = useState(false);
+  const [backdoorKey, setBackdoorKey] = useState("");
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Get current user to check super admin status
+  const { data: currentUser } = useCurrentUser();
+  const isSuperAdmin = (currentUser as CurrentUser)?.isSuperAdmin || false;
+  
+  // Fetch session debug info
+  const { data: sessionDebug, refetch: refetchDebug } = useQuery({
+    queryKey: ['/api/auth/session-debug'],
+    queryFn: async () => {
+      const response = await fetch('/api/auth/session-debug', {
+        credentials: 'include'
+      });
+      return response.json();
+    },
+    enabled: debugOpen, // Only fetch when debug section is open
+  });
+  
+  // Handle super admin authentication
+  const handleSuperAdminLogin = async () => {
+    if (!backdoorKey) {
+      toast({
+        title: "Error",
+        description: "Please enter the backdoor key",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setIsAuthenticating(true);
+    try {
+      // First logout current session
+      const logoutResponse = await fetch('/api/auth/logout', { 
+        method: 'POST', 
+        credentials: 'include' 
+      });
+      
+      if (!logoutResponse.ok) {
+        throw new Error('Failed to logout current session');
+      }
+      
+      // Then login as super admin
+      const response = await fetch('/api/auth/super-admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          email: 'mpatrick@whirks.com',
+          key: backdoorKey
+        })
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Success",
+          description: "Authenticated as super admin! Reloading...",
+        });
+        // Reload page to get new session
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } else {
+        const error = await response.json();
+        throw new Error(error.message || 'Authentication failed');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Authentication Failed",
+        description: error.message || "Failed to authenticate as super admin",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
 
   // Fetch system statistics
   const { data: systemStats, isLoading: statsLoading } = useQuery({
@@ -261,6 +350,144 @@ export default function SuperAdminPage() {
       <div className="flex-1 overflow-auto p-6 space-y-6">
         {/* Role Switcher for testing */}
         <RoleSwitcher />
+        
+        {/* Super Admin Authentication Section */}
+        {!isSuperAdmin && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Super Admin Authentication Required</AlertTitle>
+            <AlertDescription>
+              You are not authenticated as super admin. Please authenticate below to access super admin features.
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5" />
+              Super Admin Status
+            </CardTitle>
+            <CardDescription>
+              Current authentication status and super admin controls
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Current Status */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Current User</Label>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium" data-testid="text-current-email">
+                    {currentUser?.email || 'Not logged in'}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Super Admin Status</Label>
+                <div className="flex items-center gap-2">
+                  {isSuperAdmin ? (
+                    <>
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <span className="font-medium text-green-600" data-testid="text-super-admin-status">
+                        ✓ Authenticated as Super Admin
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-5 w-5 text-amber-600" />
+                      <span className="font-medium text-amber-600" data-testid="text-super-admin-status">
+                        ⚠️ Not authenticated as Super Admin
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Authentication Form */}
+            {!isSuperAdmin && (
+              <div className="border-t pt-4">
+                <Label className="text-base font-semibold mb-3 block">
+                  Authenticate as Super Admin
+                </Label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="super-admin-email">Email</Label>
+                    <Input
+                      id="super-admin-email"
+                      type="email"
+                      value="mpatrick@whirks.com"
+                      disabled
+                      data-testid="input-super-admin-email"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="backdoor-key">Backdoor Key</Label>
+                    <Input
+                      id="backdoor-key"
+                      type="password"
+                      placeholder="Enter backdoor key"
+                      value={backdoorKey}
+                      onChange={(e) => setBackdoorKey(e.target.value)}
+                      disabled={isAuthenticating}
+                      data-testid="input-backdoor-key"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      onClick={handleSuperAdminLogin}
+                      disabled={isAuthenticating || !backdoorKey}
+                      className="w-full"
+                      data-testid="button-authenticate-super-admin"
+                    >
+                      {isAuthenticating ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Authenticating...
+                        </>
+                      ) : (
+                        <>
+                          <Key className="mr-2 h-4 w-4" />
+                          Authenticate as Super Admin
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {/* Session Debug Info */}
+            <Collapsible open={debugOpen} onOpenChange={setDebugOpen} className="border-t pt-4">
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2" data-testid="button-toggle-debug">
+                  <Info className="h-4 w-4" />
+                  Debug Info
+                  <ChevronDown className={`h-4 w-4 transition-transform ${debugOpen ? 'rotate-180' : ''}`} />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-4">
+                <div className="rounded-lg bg-muted p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-sm font-medium">Session Debug Information</Label>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => refetchDebug()}
+                      data-testid="button-refresh-debug"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <pre className="text-xs overflow-auto max-h-64" data-testid="text-session-debug">
+                    {sessionDebug ? JSON.stringify(sessionDebug, null, 2) : 'Click to load debug info...'}
+                  </pre>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </CardContent>
+        </Card>
         
         {/* System Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -448,46 +675,60 @@ export default function SuperAdminPage() {
                                 </AlertDialog>
                               )}
                               {org.slug !== 'whirkplace' && org.slug !== 'fictitious-delicious' && (
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button 
-                                      variant="destructive" 
-                                      size="sm"
-                                      data-testid={`button-delete-${org.id}`}
-                                    >
-                                      <Trash2 className="h-4 w-4 mr-1" />
-                                      Delete
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete Organization</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        <div className="space-y-2">
-                                          <p className="font-semibold text-destructive">⚠️ This action cannot be undone!</p>
-                                          <p>You are about to permanently delete "{org.name}" and ALL of its data including:</p>
-                                          <ul className="list-disc list-inside ml-4">
-                                            <li>All users and their accounts</li>
-                                            <li>All teams and hierarchies</li>
-                                            <li>All check-ins and feedback</li>
-                                            <li>All wins and kudos</li>
-                                            <li>All notifications and settings</li>
-                                          </ul>
-                                          <p className="font-semibold mt-2">Are you absolutely sure?</p>
-                                        </div>
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        onClick={() => deleteOrgMutation.mutate(org.id)}
-                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                      >
-                                        Delete Permanently
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span>
+                                        <AlertDialog>
+                                          <AlertDialogTrigger asChild>
+                                            <Button 
+                                              variant="destructive" 
+                                              size="sm"
+                                              disabled={!isSuperAdmin}
+                                              data-testid={`button-delete-${org.id}`}
+                                            >
+                                              <Trash2 className="h-4 w-4 mr-1" />
+                                              Delete
+                                            </Button>
+                                          </AlertDialogTrigger>
+                                          <AlertDialogContent>
+                                            <AlertDialogHeader>
+                                              <AlertDialogTitle>Delete Organization</AlertDialogTitle>
+                                              <AlertDialogDescription>
+                                                <div className="space-y-2">
+                                                  <p className="font-semibold text-destructive">⚠️ This action cannot be undone!</p>
+                                                  <p>You are about to permanently delete "{org.name}" and ALL of its data including:</p>
+                                                  <ul className="list-disc list-inside ml-4">
+                                                    <li>All users and their accounts</li>
+                                                    <li>All teams and hierarchies</li>
+                                                    <li>All check-ins and feedback</li>
+                                                    <li>All wins and kudos</li>
+                                                    <li>All notifications and settings</li>
+                                                  </ul>
+                                                  <p className="font-semibold mt-2">Are you absolutely sure?</p>
+                                                </div>
+                                              </AlertDialogDescription>
+                                            </AlertDialogHeader>
+                                            <AlertDialogFooter>
+                                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                              <AlertDialogAction
+                                                onClick={() => deleteOrgMutation.mutate(org.id)}
+                                                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                              >
+                                                Delete Permanently
+                                              </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                          </AlertDialogContent>
+                                        </AlertDialog>
+                                      </span>
+                                    </TooltipTrigger>
+                                    {!isSuperAdmin && (
+                                      <TooltipContent>
+                                        <p>Super admin authentication required</p>
+                                      </TooltipContent>
+                                    )}
+                                  </Tooltip>
+                                </TooltipProvider>
                               )}
                             </div>
                           </TableCell>

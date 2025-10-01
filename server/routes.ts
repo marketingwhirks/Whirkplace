@@ -1456,6 +1456,62 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Session Debug Endpoint (for diagnosing auth issues)
+  app.get("/api/auth/session-debug", async (req, res) => {
+    try {
+      const sessionData = {
+        hasSession: !!req.session,
+        sessionId: req.sessionID || null,
+        session: req.session ? {
+          userId: req.session.userId || null,
+          organizationId: req.session.organizationId || null,
+          organizationSlug: req.session.organizationSlug || null,
+          isSuperAdmin: req.session.is_super_admin || false,
+          loginTime: req.session.loginTime || null,
+          cookie: {
+            expires: req.session.cookie?.expires || null,
+            maxAge: req.session.cookie?.maxAge || null,
+            originalMaxAge: req.session.cookie?.originalMaxAge || null,
+          }
+        } : null,
+        user: null as any,
+        environment: {
+          nodeEnv: process.env.NODE_ENV,
+          isProduction: process.env.NODE_ENV === 'production',
+          hasBackdoorKey: !!process.env.BACKDOOR_KEY,
+        }
+      };
+
+      // Try to get user info if we have a session
+      if (req.session?.userId && req.session?.organizationId) {
+        try {
+          const user = await storage.getUser(req.session.organizationId, req.session.userId);
+          if (user) {
+            sessionData.user = {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              role: user.role,
+              isSuperAdmin: user.isSuperAdmin || false,
+              organizationId: user.organizationId,
+            };
+          }
+        } catch (userError) {
+          console.error("Failed to fetch user for session debug:", userError);
+        }
+      }
+
+      console.log("🔍 Session debug info:", JSON.stringify(sessionData, null, 2));
+      res.json(sessionData);
+    } catch (error) {
+      console.error("Session debug error:", error);
+      res.status(500).json({ 
+        message: "Failed to get session debug info",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+  
   // Get authentication context - provider info and available data
   app.get("/api/auth/context", authenticateUser(), async (req, res) => {
     try {
