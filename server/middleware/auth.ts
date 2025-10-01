@@ -51,7 +51,7 @@ function isBackdoorAuthAllowed() {
  * 
  * Options for fixing production deployment errors:
  * 1. RECOMMENDED: Remove development environment variables: BACKDOOR_USER, BACKDOOR_KEY
- * 2. TEMPORARY: Set ALLOW_PRODUCTION_BACKDOOR=true (use with extreme caution)
+ * 2. SUPER ADMIN: Set ALLOW_PRODUCTION_BACKDOOR=true (allowed only for mpatrick@whirks.com)
  * 3. BYPASS: Set SKIP_AUTH_VALIDATION=true (not recommended for security)
  */
 export function validateAuthConfiguration() {
@@ -90,10 +90,18 @@ export function validateAuthConfiguration() {
       }
     }
     
-    // Never allow production backdoor override
+    // Check production backdoor override - only allow for super admin
     if (process.env.ALLOW_PRODUCTION_BACKDOOR === 'true') {
-      console.error(`🚨 CRITICAL: ALLOW_PRODUCTION_BACKDOOR cannot be true in production`);
-      throw new Error('Production backdoor override is not allowed');
+      // Verify it's for the super admin backdoor
+      const isSuperAdminBackdoor = process.env.BACKDOOR_USER === 'mpatrick@whirks.com' && 
+                                    process.env.BACKDOOR_PROFILE_EMAIL === 'mpatrick@whirks.com';
+      
+      if (!isSuperAdminBackdoor) {
+        console.error(`🚨 CRITICAL: ALLOW_PRODUCTION_BACKDOOR cannot be true in production for non-super-admin users`);
+        throw new Error('Production backdoor override is only allowed for the system super admin (mpatrick@whirks.com)');
+      } else {
+        console.log(`✅ Production backdoor allowed for super admin mpatrick@whirks.com`);
+      }
     }
   }
   
