@@ -9683,25 +9683,33 @@ Return the response as a JSON object with this structure:
   });
 
   app.delete("/api/super-admin/organizations/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    console.log(`🗑️ Delete request for org ${req.params.id}`);
+    console.log(`👤 User: ${req.currentUser?.email} (Super Admin: ${req.currentUser?.isSuperAdmin})`);
+    
     try {
       // Don't allow deletion of the main Whirkplace organization or demo org
       if (req.params.id === 'whirkplace') {
+        console.log("❌ Blocked: Cannot delete main Whirkplace org");
         return res.status(400).json({ message: "Cannot delete the main Whirkplace organization" });
       }
       
       // Check if it's the Fictitious Delicious demo org
       const org = await storage.getOrganization(req.params.id);
       if (org && org.slug === 'fictitious-delicious') {
+        console.log("❌ Blocked: Cannot delete demo org");
         return res.status(400).json({ message: "Cannot delete the demo organization (Fictitious Delicious)" });
       }
       
+      console.log(`🗑️ Attempting to delete organization: ${org?.name} (${org?.slug})`);
       const success = await storage.deleteOrganization(req.params.id);
       if (!success) {
+        console.log("❌ Delete failed: Organization not found or cannot be deleted");
         return res.status(404).json({ message: "Organization not found or cannot be deleted" });
       }
+      console.log("✅ Organization deleted successfully");
       res.json({ success });
     } catch (error) {
-      console.error("Failed to delete organization:", error);
+      console.error("❌ Failed to delete organization:", error);
       res.status(500).json({ message: "Failed to delete organization" });
     }
   });
