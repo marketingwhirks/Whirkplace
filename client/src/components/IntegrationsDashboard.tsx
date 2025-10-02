@@ -492,6 +492,10 @@ export function IntegrationsDashboard() {
         queryClient.invalidateQueries({ 
           queryKey: ["/api/organizations", currentUser?.organizationId, "integrations"] 
         });
+        // Refresh current user to update Slack workspace ID in settings
+        queryClient.invalidateQueries({ 
+          queryKey: ["/api/users/current"] 
+        });
       } else if (event.data.type === 'SLACK_OAUTH_ERROR') {
         toast({
           title: "Slack Integration Failed",

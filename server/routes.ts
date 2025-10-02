@@ -20,6 +20,7 @@ import {
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
+import { WebClient } from "@slack/web-api";
 import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo } from "./services/slack";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
@@ -1808,20 +1809,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Determine the provider and fetch users accordingly
-      let availableUsers = [];
+      let availableUsers: Array<{
+        id: string;
+        email: string;
+        name: string;
+        department: string | null;
+        title: string | null;
+        avatar: string | null;
+      }> = [];
       let provider = 'email';
       
       if (organization.enableSlackIntegration && organization.slackWorkspaceId) {
         provider = 'slack';
-        // In production, this would fetch from Slack API using organization.slackBotToken
-        // For now, return sample data for development
-        availableUsers = [
-          { id: 'slack_user_1', email: 'john.doe@company.com', name: 'John Doe', department: 'Engineering', title: 'Senior Developer', avatar: null },
-          { id: 'slack_user_2', email: 'jane.smith@company.com', name: 'Jane Smith', department: 'Product', title: 'Product Manager', avatar: null },
-          { id: 'slack_user_3', email: 'bob.wilson@company.com', name: 'Bob Wilson', department: 'Sales', title: 'Sales Director', avatar: null },
-          { id: 'slack_user_4', email: 'alice.johnson@company.com', name: 'Alice Johnson', department: 'Engineering', title: 'Tech Lead', avatar: null },
-          { id: 'slack_user_5', email: 'charlie.brown@company.com', name: 'Charlie Brown', department: 'Marketing', title: 'Marketing Manager', avatar: null },
-        ];
+        
+        // Use organization's bot token or fall back to environment variable
+        const botToken = organization.slackBotToken || process.env.SLACK_BOT_TOKEN;
+        
+        if (!botToken) {
+          console.warn('No Slack bot token available for organization:', organization.id);
+          return res.status(400).json({ 
+            message: 'Slack integration is not properly configured. Please ensure a bot token is available.' 
+          });
+        }
+        
+        try {
+          // Create Slack client with the bot token
+          const slackClient = new WebClient(botToken);
+          
+          // Fetch users from Slack workspace
+          console.log('Fetching users from Slack workspace:', organization.slackWorkspaceId);
+          const result = await slackClient.users.list({
+            limit: 200 // Fetch up to 200 users at a time
+          });
+          
+          if (!result.ok) {
+            throw new Error('Failed to fetch users from Slack');
+          }
+          
+          // Process and format Slack users
+          availableUsers = (result.members || [])
+            .filter(member => {
+              // Filter out bots, deleted users, and Slackbot
+              return !member.is_bot && 
+                     !member.deleted && 
+                     member.id !== 'USLACKBOT' &&
+                     member.profile?.email; // Only include users with email addresses
+            })
+            .map(member => {
+              // Extract profile information
+              const profile = member.profile || {};
+              
+              return {
+                id: member.id || '',
+                email: profile.email || '',
+                name: profile.real_name || profile.display_name || member.name || '',
+                // Access custom fields safely - they may be in different formats
+                department: (profile.fields as any)?.Department?.value || profile.team || null,
+                title: profile.title || profile.status_text || null,
+                avatar: profile.image_192 || profile.image_72 || profile.image_48 || null
+              };
+            })
+            .filter(user => user.email); // Final filter to ensure we have email addresses
+          
+          console.log(`Successfully fetched ${availableUsers.length} users from Slack`);
+          
+        } catch (error) {
+          console.error('Error fetching users from Slack:', error);
+          
+          // Provide specific error messages based on the error type
+          let errorMessage = 'Failed to fetch users from Slack';
+          if (error instanceof Error) {
+            if (error.message.includes('invalid_auth')) {
+              errorMessage = 'Invalid Slack authentication token. Please reconfigure Slack integration.';
+            } else if (error.message.includes('account_inactive')) {
+              errorMessage = 'Slack account is inactive. Please check your Slack workspace status.';
+            } else if (error.message.includes('rate_limited')) {
+              errorMessage = 'Slack API rate limit exceeded. Please try again later.';
+            } else {
+              errorMessage = `Slack API error: ${error.message}`;
+            }
+          }
+          
+          return res.status(500).json({ message: errorMessage });
+        }
       } else if (organization.enableMicrosoftAuth) {
         provider = 'microsoft';
         // In production, this would fetch from Microsoft Graph API
