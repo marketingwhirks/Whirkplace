@@ -487,65 +487,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // SECURITY: Regenerate session ID to prevent session fixation attacks
-      console.log(`🔐 Starting session regeneration for user: ${user.email}`);
-      req.session.regenerate(async (regenerateErr) => {
-        if (regenerateErr) {
-          console.error('❌ Failed to regenerate session:', regenerateErr);
-          return res.status(500).json({ message: "Session regeneration failed" });
-        }
+      // CRITICAL FIX: Get organization slug before setting session
+      const orgData = await storage.getOrganization(actualOrgId);
+      const orgSlug = orgData?.slug || undefined;
+      
+      if (!orgData) {
+        console.log(`⚠️ Could not find organization data for org ID: ${actualOrgId}`);
+      }
+      
+      // CRITICAL FIX: Use setSessionUser to properly handle session creation
+      console.log(`🔐 Setting session for user: ${user.email}`);
+      console.log(`📝 Organization: ID=${actualOrgId}, Slug=${orgSlug}`);
+      
+      try {
+        await setSessionUser(req, user.id, actualOrgId, orgSlug);
+        console.log(`✅ setSessionUser() completed successfully`);
+        console.log(`📋 Session ID after setSessionUser: ${req.sessionID}`);
         
-        console.log(`✅ Session regenerated successfully, new session ID: ${req.sessionID}`);
-        
-        // Set session after regeneration with the actual organization where user was found
-        req.session.userId = user.id;
-        (req.session as any).organizationId = actualOrgId;
-        
-        // CRITICAL: Get and set the organization slug for complete session data
-        const orgData = await storage.getOrganization(actualOrgId);
-        if (orgData) {
-          (req.session as any).organizationSlug = orgData.slug;
-          console.log(`📌 Organization slug set: ${orgData.slug}`);
-        } else {
-          console.log(`⚠️ Could not find organization for slug, org ID: ${actualOrgId}`);
-        }
-        
-        console.log(`📝 Session data BEFORE save:`, {
+        // Verify session data was actually saved
+        console.log(`🔍 Verifying session data after save:`, {
           sessionId: req.sessionID,
-          userId: req.session.userId,
-          organizationId: (req.session as any).organizationId,
-          organizationSlug: (req.session as any).organizationSlug,
-          orgIdFromReq: req.orgId,
-          actualOrgId: actualOrgId
+          userId: req.session?.userId,
+          organizationId: (req.session as any)?.organizationId,
+          organizationSlug: (req.session as any)?.organizationSlug
         });
         
-        // CRITICAL FIX: Explicitly save the session to ensure persistence
-        req.session.save((saveErr) => {
-          if (saveErr) {
-            console.error('❌ Failed to save session:', saveErr);
-            return res.status(500).json({ message: "Session save failed" });
-          }
-          
-          console.log(`✅ Local login successful for ${user.name} (${user.email})`);
-          console.log(`✅ Session saved successfully with ID: ${req.sessionID}`);
-          console.log(`📋 Session data persisted:`, {
-            userId: req.session.userId,
-            organizationId: (req.session as any).organizationId,
-            organizationSlug: (req.session as any).organizationSlug
-          });
-          
-          res.json({ 
-            message: "Login successful", 
-            user: { 
-              id: user.id, 
-              name: user.name, 
-              email: user.email, 
-              role: user.role,
-              isSuperAdmin: user.isSuperAdmin || false
-            } 
-          });
+        console.log(`✅ Local login successful for ${user.name} (${user.email})`);
+        
+        res.json({ 
+          message: "Login successful", 
+          user: { 
+            id: user.id, 
+            name: user.name, 
+            email: user.email, 
+            role: user.role,
+            isSuperAdmin: user.isSuperAdmin || false
+          } 
         });
-      });
+      } catch (sessionError) {
+        console.error('❌ Failed to save session:', sessionError);
+        return res.status(500).json({ message: 'Failed to save session' });
+      }
     } catch (error) {
       console.error("Local login error:", error);
       res.status(500).json({ message: "Login failed" });
@@ -1310,133 +1292,97 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Establish authentication session
       try {
-        // SECURITY: Regenerate session ID to prevent session fixation attacks
-        req.session.regenerate((regenerateErr) => {
-          if (regenerateErr) {
-            console.error('Failed to regenerate session:', regenerateErr);
-            return res.status(500).send(`
-              <!DOCTYPE html>
-              <html>
-                <head>
-                  <title>Authentication Error</title>
-                  <meta name="viewport" content="width=device-width, initial-scale=1">
-                  <style>
-                    body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
-                    .error { color: #dc3545; }
-                    button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
-                  </style>
-                </head>
-                <body>
-                  <h1 class="error">❌ Session Error</h1>
-                  <p>Failed to establish authentication session. Please try again.</p>
-                  <button onclick="window.location.href='/'">Try Again</button>
-                </body>
-              </html>
-            `);
-          }
+        // CRITICAL FIX: Use setSessionUser to properly set ALL required session data
+        // This ensures userId, organizationId, and organizationSlug are all set correctly
+        // The organization context comes from userOrganization which tracks the user's actual org
+        const actualOrganizationId = userOrganization?.id || organization.id;
+        const actualOrganizationSlug = userOrganization?.slug || organization.slug;
+        
+        console.log(`🔐 Setting session for Slack OAuth user: ${authenticatedUser.email}`);
+        console.log(`📝 Organization: ID=${actualOrganizationId}, Slug=${actualOrganizationSlug}`);
+        
+        try {
+          await setSessionUser(req, authenticatedUser.id, actualOrganizationId, actualOrganizationSlug);
+          console.log(`✅ setSessionUser() completed successfully for Slack OAuth`);
+          console.log(`📋 Session ID after setSessionUser: ${req.sessionID}`);
           
-          // CRITICAL FIX: Use setSessionUser to properly set ALL required session data
-          // This ensures userId, organizationId, and organizationSlug are all set correctly
-          // The organization context comes from userOrganization which tracks the user's actual org
-          const actualOrganizationId = userOrganization?.id || organization.id;
-          const actualOrganizationSlug = userOrganization?.slug || organization.slug;
-          
-          // Clear OAuth state before setting new session
-          req.session.slackOAuthState = undefined;
-          req.session.slackOrgSlug = undefined;
-          
-          // CRITICAL: Set ALL required session fields before saving
-          console.log(`🔐 Setting session data for Slack OAuth user: ${authenticatedUser.email}`);
-          
-          req.session.userId = authenticatedUser.id;
-          req.session.organizationId = actualOrganizationId;
-          req.session.organizationSlug = actualOrganizationSlug;
-          
-          console.log(`📋 Slack OAuth session data BEFORE save:`, {
+          // Verify session data was actually saved
+          console.log(`🔍 Verifying Slack OAuth session data after save:`, {
             sessionId: req.sessionID,
-            userId: req.session.userId,
-            organizationId: req.session.organizationId,
-            organizationSlug: req.session.organizationSlug,
-            actualOrgId: actualOrganizationId,
-            actualOrgSlug: actualOrganizationSlug
+            userId: req.session?.userId,
+            organizationId: (req.session as any)?.organizationId,
+            organizationSlug: (req.session as any)?.organizationSlug
           });
           
-          // CRITICAL FIX: Explicitly save the session to ensure persistence
-          console.log(`💾 Calling session.save() to persist session data...`);
-          req.session.save((saveErr) => {
-            if (saveErr) {
-              console.error('❌ Failed to save Slack OAuth session:', saveErr);
-              return res.status(500).send(`
-                <!DOCTYPE html>
-                <html>
-                  <head>
-                    <title>Session Error</title>
-                    <meta name="viewport" content="width=device-width, initial-scale=1">
-                    <style>
-                      body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
-                      .error { color: #dc3545; }
-                      button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
-                    </style>
-                  </head>
-                  <body>
-                    <h1 class="error">❌ Session Save Failed</h1>
-                    <p>Failed to save your authentication session. Please try again.</p>
-                    <button onclick="window.location.href='/'">Try Again</button>
-                  </body>
-                </html>
-              `);
-            }
-            
-            console.log(`✅ Slack OAuth session saved successfully with ID: ${req.sessionID}`);
-            console.log(`✅ User ${authenticatedUser.name} (${authenticatedUser.email}) authenticated via Slack OAuth for organization ${organization.name}`);
-            
-            // Redirect to the organization's dashboard
-            // Use the centralized redirect URI resolver to get the base URL
-            const baseRedirectUri = resolveRedirectUri(req, '/');
-            // Remove the trailing slash to get the base URL
-            const appUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
-            
-            // Check if organization needs onboarding
-            const needsOnboarding = isNewOrganization || 
-              !organization.onboardingStatus || 
-              organization.onboardingStatus === 'not_started' || 
-              organization.onboardingStatus === 'in_progress';
-            
-            // For super admin users, redirect to organization selection
-            // For new organizations or those still in onboarding, redirect to onboarding
-            // Otherwise, redirect to the specific organization dashboard
-            const actualOrgSlug = organization.slug || organizationSlug;
-            
-            // Redirect directly to the appropriate page with auth params
-            // The page will handle setting up localStorage authentication
-            const authParams = new URLSearchParams({
-              auth_user_id: authenticatedUser.id,
-              auth_org_id: organization.id,
-              auth_session: req.sessionID  // Use the actual session ID instead of undefined sessionToken
-            });
-            
-            let redirectPath: string;
-            if (isSuperAdmin) {
-              // Super admins go to organization selection
-              redirectPath = `${appUrl}/select-organization?${authParams.toString()}`;
-            } else if (needsOnboarding) {
-              // New organizations go to onboarding with org slug and auth
-              authParams.append('org', actualOrgSlug);
-              redirectPath = `${appUrl}/onboarding?${authParams.toString()}`;
-            } else {
-              // Existing organizations go to dashboard
-              authParams.append('org', actualOrgSlug);
-              redirectPath = `${appUrl}/dashboard?${authParams.toString()}`;
-            }
-            
-            console.log(`🚀 Redirecting after OAuth authentication`);
-            console.log(`   User: ${authenticatedUser.email}`);
-            console.log(`   Organization: ${actualOrgSlug} (new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
-            console.log(`   Redirect: ${redirectPath.replace(/auth_session=[^&]+/, 'auth_session=[REDACTED]')}`);
-            
-            res.redirect(redirectPath);
-          }); // Close the session.save callback
-        });
+          console.log(`✅ User ${authenticatedUser.name} (${authenticatedUser.email}) authenticated via Slack OAuth for organization ${organization.name}`);
+          
+          // Redirect to the organization's dashboard
+          // Use the centralized redirect URI resolver to get the base URL
+          const baseRedirectUri = resolveRedirectUri(req, '/');
+          // Remove the trailing slash to get the base URL
+          const appUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
+          
+          // Check if organization needs onboarding
+          const needsOnboarding = isNewOrganization || 
+            !organization.onboardingStatus || 
+            organization.onboardingStatus === 'not_started' || 
+            organization.onboardingStatus === 'in_progress';
+          
+          // For super admin users, redirect to organization selection
+          // For new organizations or those still in onboarding, redirect to onboarding
+          // Otherwise, redirect to the specific organization dashboard
+          const actualOrgSlug = organization.slug || organizationSlug;
+          
+          // Redirect directly to the appropriate page with auth params
+          // The page will handle setting up localStorage authentication
+          const authParams = new URLSearchParams({
+            auth_user_id: authenticatedUser.id,
+            auth_org_id: organization.id,
+            auth_session: req.sessionID  // Use the actual session ID instead of undefined sessionToken
+          });
+          
+          let redirectPath: string;
+          if (isSuperAdmin) {
+            // Super admins go to organization selection
+            redirectPath = `${appUrl}/select-organization?${authParams.toString()}`;
+          } else if (needsOnboarding) {
+            // New organizations go to onboarding with org slug and auth
+            authParams.append('org', actualOrgSlug);
+            redirectPath = `${appUrl}/onboarding?${authParams.toString()}`;
+          } else {
+            // Existing organizations go to dashboard
+            authParams.append('org', actualOrgSlug);
+            redirectPath = `${appUrl}/dashboard?${authParams.toString()}`;
+          }
+          
+          console.log(`🚀 Redirecting after OAuth authentication`);
+          console.log(`   User: ${authenticatedUser.email}`);
+          console.log(`   Organization: ${actualOrgSlug} (new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
+          console.log(`   Redirect: ${redirectPath.replace(/auth_session=[^&]+/, 'auth_session=[REDACTED]')}`);
+          
+          res.redirect(redirectPath);
+        } catch (sessionError) {
+          console.error('❌ Failed to save Slack OAuth session:', sessionError);
+          return res.status(500).send(`
+            <!DOCTYPE html>
+            <html>
+              <head>
+                <title>Session Error</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <style>
+                  body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                  .error { color: #dc3545; }
+                  button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+                </style>
+              </head>
+              <body>
+                <h1 class="error">❌ Session Save Failed</h1>
+                <p>Failed to save your authentication session. Please try again.</p>
+                <button onclick="window.location.href='/'">Try Again</button>
+              </body>
+            </html>
+          `);
+        }
       } catch (error) {
         console.error("Failed to establish session:", error);
         res.status(500).send(`
