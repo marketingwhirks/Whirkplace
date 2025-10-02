@@ -105,6 +105,7 @@ export function validateCSRF() {
     // 6. Business signup endpoints (public endpoints for new organization registration - but not complete-onboarding)
     // 7. Demo login endpoint (stateless JWT authentication)
     // 8. Stripe checkout callback (GET request)
+    // 9. Super-admin DELETE endpoints (to avoid body parsing issues with DELETE requests)
     const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const isOAuthCallback = (req.path.includes('/auth/') || req.originalUrl.includes('/auth/')) && 
                            (req.path.includes('/callback') || req.originalUrl.includes('/callback'));
@@ -115,9 +116,10 @@ export function validateCSRF() {
                             req.path.includes('/business/select-plan');
     const isDemoLogin = req.path.includes('/auth/demo-login');
     const isStripeCallback = req.path.includes('/business/checkout-success');
+    const isSuperAdminDelete = req.method === 'DELETE' && req.path.match(/^\/api\/super-admin\/(organizations|users)\/[^\/]+$/);
     
     if (!isStateChanging || isOAuthCallback || isBackdoorAuth || isLogout || 
-        isLocalStorageAuth || isBusinessSignup || isDemoLogin || isStripeCallback) {
+        isLocalStorageAuth || isBusinessSignup || isDemoLogin || isStripeCallback || isSuperAdminDelete) {
       return next();
     }
     
