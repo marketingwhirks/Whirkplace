@@ -116,7 +116,7 @@ export function validateCSRF() {
                             req.path.includes('/business/select-plan');
     const isDemoLogin = req.path.includes('/auth/demo-login');
     const isStripeCallback = req.path.includes('/business/checkout-success');
-    const isSuperAdminDelete = req.method === 'DELETE' && req.path.match(/^\/api\/super-admin\/(organizations|users)\/[^\/]+$/);
+    const isSuperAdminDelete = req.method === 'DELETE' && req.originalUrl.match(/^\/api\/super-admin\/(organizations|users)\/[^\/]+$/);
     
     if (!isStateChanging || isOAuthCallback || isBackdoorAuth || isLogout || 
         isLocalStorageAuth || isBusinessSignup || isDemoLogin || isStripeCallback || isSuperAdminDelete) {
