@@ -247,7 +247,7 @@ export default function Team() {
       const teamData = {
         name: data.name,
         description: data.description || null,
-        leaderId: data.leaderId,
+        leaderId: data.leaderId !== "no-leader" ? data.leaderId : undefined,
         parentTeamId: data.parentTeamId && data.parentTeamId !== "no-parent" ? data.parentTeamId : null,
         teamType: data.teamType,
       };

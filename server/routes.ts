@@ -3582,16 +3582,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/teams", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
+      console.log("POST /api/teams - Request body:", JSON.stringify(req.body, null, 2));
+      console.log("POST /api/teams - Organization ID:", req.orgId);
+      
       // Create team schema that excludes organizationId from client validation
       const createTeamSchema = insertTeamSchema.omit({ organizationId: true });
       
+      // Validate required fields before parsing
+      if (!req.body.name) {
+        return res.status(400).json({ 
+          message: "Team name is required",
+          field: "name" 
+        });
+      }
+      
+      if (!req.body.leaderId) {
+        return res.status(400).json({ 
+          message: "Team leader is required",
+          field: "leaderId" 
+        });
+      }
+      
+      // Ensure teamType has a valid value if provided, or set default
+      if (!req.body.teamType) {
+        req.body.teamType = "team"; // Set default if not provided
+      }
+      
       const teamData = createTeamSchema.parse(req.body);
       const sanitizedData = sanitizeForOrganization(teamData, req.orgId);
+      
+      // Verify the leader exists and has proper role
+      const leader = await storage.getUser(req.orgId, sanitizedData.leaderId);
+      if (!leader) {
+        return res.status(400).json({ 
+          message: "Selected team leader not found",
+          field: "leaderId" 
+        });
+      }
+      
+      if (leader.role !== "manager" && leader.role !== "admin") {
+        return res.status(400).json({ 
+          message: "Team leader must be a manager or admin",
+          field: "leaderId" 
+        });
+      }
+      
+      console.log("POST /api/teams - Creating team with data:", JSON.stringify(sanitizedData, null, 2));
+      
       const team = await storage.createTeam(req.orgId, sanitizedData);
+      console.log("POST /api/teams - Team created successfully:", team.id);
       res.status(201).json(team);
     } catch (error) {
-      console.error("POST /api/teams - Validation error:", error);
-      res.status(400).json({ message: "Invalid team data" });
+      console.error("POST /api/teams - Error details:", error);
+      
+      // Handle Zod validation errors
+      if (error instanceof z.ZodError) {
+        const errors = error.errors.map(err => ({
+          field: err.path.join('.'),
+          message: err.message
+        }));
+        console.error("POST /api/teams - Validation errors:", JSON.stringify(errors, null, 2));
+        return res.status(400).json({ 
+          message: "Team validation failed",
+          errors: errors
+        });
+      }
+      
+      // Handle database errors
+      if (error instanceof Error) {
+        console.error("POST /api/teams - Database/Server error:", error.message);
+        return res.status(500).json({ 
+          message: "Failed to create team",
+          error: error.message 
+        });
+      }
+      
+      res.status(500).json({ message: "An unexpected error occurred" });
     }
   });
 

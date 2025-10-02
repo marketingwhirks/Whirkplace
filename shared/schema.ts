@@ -227,7 +227,7 @@ export const teams = pgTable("teams", {
   name: text("name").notNull(),
   description: text("description"),
   organizationId: varchar("organization_id").notNull(),
-  leaderId: varchar("leader_id").notNull(),
+  leaderId: varchar("leader_id"), // Nullable - team leader can be assigned later
   parentTeamId: varchar("parent_team_id"), // For hierarchical team structure (Departments/Pods under teams)
   teamType: text("team_type").notNull().default("team"), // team (top level), department, pod
   depth: integer("depth").notNull().default(0), // 0 = top level, 1 = sub-team, 2 = sub-sub-team, etc.

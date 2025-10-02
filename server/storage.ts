@@ -951,15 +951,56 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createTeam(organizationId: string, insertTeam: InsertTeam): Promise<Team> {
-    const [team] = await db
-      .insert(teams)
-      .values({
-        ...insertTeam,
-        organizationId,
-        description: insertTeam.description ?? null,
-      })
-      .returning();
-    return team;
+    try {
+      // Calculate depth and path for hierarchical teams
+      let depth = 0;
+      let path: string | null = null;
+      
+      if (insertTeam.parentTeamId) {
+        // Fetch parent team to calculate depth and path
+        const [parentTeam] = await db
+          .select()
+          .from(teams)
+          .where(
+            and(
+              eq(teams.id, insertTeam.parentTeamId),
+              eq(teams.organizationId, organizationId)
+            )
+          );
+        
+        if (!parentTeam) {
+          throw new Error(`Parent team with ID ${insertTeam.parentTeamId} not found`);
+        }
+        
+        depth = (parentTeam.depth || 0) + 1;
+        // Build path: parentPath/teamName or just teamName if no parent path
+        const teamSlug = insertTeam.name.toLowerCase().replace(/\s+/g, '-');
+        path = parentTeam.path ? `${parentTeam.path}/${teamSlug}` : teamSlug;
+      } else {
+        // Top-level team
+        const teamSlug = insertTeam.name.toLowerCase().replace(/\s+/g, '-');
+        path = teamSlug;
+      }
+      
+      console.log(`Creating team: ${insertTeam.name} with depth: ${depth}, path: ${path}`);
+      
+      const [team] = await db
+        .insert(teams)
+        .values({
+          ...insertTeam,
+          organizationId,
+          description: insertTeam.description || null,
+          depth,
+          path,
+        })
+        .returning();
+      
+      console.log(`Team created successfully: ${team.id} - ${team.name}`);
+      return team;
+    } catch (error) {
+      console.error('Error creating team:', error);
+      throw error;
+    }
   }
 
   async updateTeam(organizationId: string, id: string, teamUpdate: Partial<InsertTeam>): Promise<Team | undefined> {
