@@ -202,37 +202,59 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         user = await storage.updateUser(orgId, user.id, updateData) || user;
       }
       
-      // Regenerate session to prevent session fixation
-      req.session.regenerate(async (err) => {
-        if (err) {
-          console.error('Failed to regenerate session:', err);
-          return res.status(500).json({ message: "Session regeneration failed" });
-        }
+      // Get organization slug for proper session handling
+      const organization = await storage.getOrganization(orgId);
+      const orgSlug = organization?.slug || undefined;
+      
+      // CRITICAL FIX: Use setSessionUser from session middleware to properly set ALL required session data
+      // This ensures userId, organizationId, and organizationSlug are all set correctly
+      const { setSessionUser } = require('../middleware/session');
+      
+      try {
+        // Use the centralized setSessionUser function which properly handles:
+        // - Session regeneration (prevents session fixation)
+        // - Setting userId, organizationId, and organizationSlug
+        // - Saving the session
+        await setSessionUser(req, user.id, orgId, orgSlug);
         
-        try {
-          // Set session data
-          req.session.userId = user.id;
-          req.session.microsoftAccessToken = tokenData.accessToken; // Store token in session only
-          req.session.microsoftAuthState = undefined; // Clear state
-          req.session.authOrgId = undefined; // Clear temp org ID
-          req.session.microsoftRedirectUri = undefined; // Clear stored redirect URI
+        console.log(`✅ Microsoft OAuth login successful for ${user.email}`);
+        console.log(`✅ Session properly set with userId: ${user.id}, organizationId: ${orgId}, orgSlug: ${orgSlug}`);
         
-          // SECURITY: Session-based authentication only - no auth cookies
-          // Removed dangerous auth_user_id cookies that allowed user impersonation
-          
-          // Redirect to dashboard using current request's base URL
-          const organization = await storage.getOrganization(orgId);
-          const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
-          const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
-          const baseUrl = `${protocol}://${host}`;
-          const dashboardUrl = `${baseUrl}/#/dashboard?org=${organization?.slug}`;
-          
-          res.redirect(dashboardUrl);
-        } catch (error) {
-          console.error('Error in session regeneration callback:', error);
-          res.status(500).json({ message: "Authentication failed" });
-        }
-      });
+        // Store Microsoft access token in session (for calendar/teams integration)
+        req.session.microsoftAccessToken = tokenData.accessToken;
+        
+        // Clear temporary OAuth state
+        req.session.microsoftAuthState = undefined;
+        req.session.authOrgId = undefined;
+        req.session.microsoftRedirectUri = undefined;
+        
+        // Save session with Microsoft token
+        await new Promise<void>((resolve, reject) => {
+          req.session.save((saveErr) => {
+            if (saveErr) {
+              console.error('❌ Failed to save session with Microsoft token:', saveErr);
+              reject(saveErr);
+            } else {
+              console.log('✅ Session saved with Microsoft access token');
+              resolve();
+            }
+          });
+        });
+        
+        // SECURITY: Session-based authentication only - no auth cookies
+        // Removed dangerous auth_user_id cookies that allowed user impersonation
+        
+        // Redirect to dashboard
+        const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
+        const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
+        const baseUrl = `${protocol}://${host}`;
+        const dashboardUrl = `${baseUrl}/#/dashboard?org=${organization?.slug}`;
+        
+        res.redirect(dashboardUrl);
+      } catch (sessionError) {
+        console.error('❌ Failed to set session for Microsoft OAuth:', sessionError);
+        res.status(500).json({ message: "Authentication failed - session creation error" });
+      }
     } catch (error) {
       console.error("Microsoft OAuth callback error:", error);
       res.status(500).json({ message: "Authentication failed" });

@@ -1283,14 +1283,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             `);
           }
           
-          // CRITICAL: Set session for production authentication 
-          req.session.userId = authenticatedUser.id;
+          // CRITICAL FIX: Use setSessionUser to properly set ALL required session data
+          // This ensures userId, organizationId, and organizationSlug are all set correctly
+          // The organization context comes from userOrganization which tracks the user's actual org
+          const actualOrganizationId = userOrganization?.id || organization.id;
+          const actualOrganizationSlug = userOrganization?.slug || organization.slug;
           
-          // Clear OAuth state after successful authentication
+          // Clear OAuth state before setting new session
           req.session.slackOAuthState = undefined;
           req.session.slackOrgSlug = undefined;
           
-          // FIX: Let express-session automatically save and set cookie
+          // Use the centralized setSessionUser function which properly handles:
+          // - Setting userId, organizationId, and organizationSlug
+          // - Saving the session
+          // Note: We don't need to regenerate since we already did that above
+          req.session.userId = authenticatedUser.id;
+          req.session.organizationId = actualOrganizationId;
+          req.session.organizationSlug = actualOrganizationSlug;
+          
+          console.log(`✅ Slack OAuth session set with userId: ${authenticatedUser.id}, organizationId: ${actualOrganizationId}, orgSlug: ${actualOrganizationSlug}`);
           console.log(`🍪 Session will auto-save with Set-Cookie header`);
           
           // SECURITY: Session-based authentication only
@@ -1320,7 +1331,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const authParams = new URLSearchParams({
             auth_user_id: authenticatedUser.id,
             auth_org_id: organization.id,
-            auth_session: sessionToken
+            auth_session: req.sessionID  // Use the actual session ID instead of undefined sessionToken
           });
           
           let redirectPath: string;

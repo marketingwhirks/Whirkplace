@@ -344,12 +344,37 @@ export function authenticateUser() {
       
       // Check for session-based authentication using centralized session management
       const sessionData = getSessionUser(req);
-      console.log(`🎫 Session check:`, {
+      
+      // ENHANCED LOGGING: Track session data in detail to debug authentication issues
+      console.log(`🎫 Session check for ${req.method} ${req.path}:`, {
         hasSession: !!req.session,
         sessionId: req.sessionID,
-        userId: sessionData?.userId,
-        organizationId: sessionData?.organizationId
+        sessionData: sessionData,
+        rawSession: req.session ? {
+          userId: req.session.userId,
+          organizationId: req.session.organizationId,
+          organizationSlug: req.session.organizationSlug,
+          microsoftAccessToken: !!req.session.microsoftAccessToken,
+          keys: Object.keys(req.session)
+        } : 'No session',
+        cookies: Object.keys(req.cookies || {}),
+        headers: {
+          cookie: !!req.headers.cookie,
+          authorization: !!req.headers.authorization
+        }
       });
+      
+      // CRITICAL DEBUG: Log if session data is missing critical fields
+      if (req.session) {
+        if (!req.session.userId) {
+          console.error(`❌ CRITICAL: Session exists but userId is UNDEFINED for ${req.path}`);
+          console.error(`   Session keys: ${Object.keys(req.session).join(', ')}`);
+        }
+        if (!req.session.organizationId) {
+          console.error(`❌ CRITICAL: Session exists but organizationId is UNDEFINED for ${req.path}`);
+          console.error(`   Session keys: ${Object.keys(req.session).join(', ')}`);
+        }
+      }
       
       // Check for Bearer token authentication for demo users
       const authHeader = req.headers.authorization;
