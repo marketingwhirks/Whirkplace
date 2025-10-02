@@ -109,6 +109,7 @@ export function getSessionUser(req: Request) {
 
 /**
  * Helper to set session user data
+ * FIXED: Skip regeneration in development to avoid session persistence issues
  */
 export async function setSessionUser(
   req: Request,
@@ -121,31 +122,82 @@ export async function setSessionUser(
       return reject(new Error('Session not initialized'));
     }
 
-    // Regenerate session ID to prevent session fixation
-    req.session.regenerate((err) => {
-      if (err) {
-        console.error('❌ Failed to regenerate session:', err);
-        return reject(err);
-      }
+    // Log initial session state
+    console.log('📝 setSessionUser called:', {
+      sessionId: req.sessionID,
+      userId,
+      organizationId,
+      organizationSlug,
+      existingUserId: req.session.userId,
+      existingOrgId: req.session.organizationId
+    });
 
-      // Set user data on new session
+    // In development, skip regeneration to avoid session loss issues
+    const saveSession = () => {
+      // Log before setting data
+      console.log('🔧 Setting session data:', {
+        sessionId: req.sessionID,
+        userId,
+        organizationId,
+        organizationSlug
+      });
+
       req.session.userId = userId;
       req.session.organizationId = organizationId;
       if (organizationSlug) {
         req.session.organizationSlug = organizationSlug;
       }
 
-      // Save session
+      // Log actual session object before save
+      console.log('💾 Session object before save:', {
+        sessionId: req.sessionID,
+        sessionData: {
+          userId: req.session.userId,
+          organizationId: req.session.organizationId,
+          organizationSlug: req.session.organizationSlug
+        }
+      });
+
       req.session.save((saveErr) => {
         if (saveErr) {
           console.error('❌ Failed to save session:', saveErr);
           return reject(saveErr);
         }
         
-        console.log(`✅ Session created for user ${userId} in org ${organizationId}`);
+        // Verify session data after save
+        console.log('✅ Session saved successfully:', {
+          sessionId: req.sessionID,
+          userId: req.session.userId,
+          organizationId: req.session.organizationId,
+          organizationSlug: req.session.organizationSlug,
+          cookie: {
+            maxAge: req.session.cookie.maxAge,
+            httpOnly: req.session.cookie.httpOnly,
+            secure: req.session.cookie.secure,
+            sameSite: req.session.cookie.sameSite
+          }
+        });
+        
         resolve();
       });
-    });
+    };
+
+    // Only regenerate in production for security
+    if (process.env.NODE_ENV === 'production') {
+      console.log('🔒 Production mode: Regenerating session for security');
+      req.session.regenerate((err) => {
+        if (err) {
+          console.error('❌ Failed to regenerate session:', err);
+          return reject(err);
+        }
+        console.log('🆕 Session regenerated, new ID:', req.sessionID);
+        saveSession();
+      });
+    } else {
+      console.log('🔓 Development mode: Skipping regeneration for stability');
+      // In development, just save without regenerating
+      saveSession();
+    }
   });
 }
 
