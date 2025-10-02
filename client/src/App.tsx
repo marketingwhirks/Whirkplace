@@ -22,7 +22,7 @@ import LeadershipDashboard from "@/pages/leadership-dashboard";
 import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import Admin from "@/pages/admin";
-import SuperAdmin from "@/pages/SuperAdmin";
+import SuperAdmin from "@/pages/super-admin";
 import IntegrationTest from "@/pages/IntegrationTest";
 import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";

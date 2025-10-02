@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,14 +10,18 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Crown, Settings, DollarSign, Ticket, Users, Building2, Trash2, Edit, Plus, Eye } from "lucide-react";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { Crown, Settings, DollarSign, Ticket, Users, Building2, Trash2, Edit, Plus, Eye, ShieldAlert, AlertCircle, CheckCircle2, RefreshCw, Key, Info, ChevronDown } from "lucide-react";
 import { format } from "date-fns";
+import type { User as CurrentUser } from "@shared/schema";
 
 // Types
 interface SuperAdminStats {
@@ -116,6 +120,71 @@ export default function SuperAdminPage() {
   const [selectedTab, setSelectedTab] = useState("dashboard");
   const [editingItem, setEditingItem] = useState<any>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [backdoorKey, setBackdoorKey] = useState("");
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(false);
+  
+  // Get current user to check super admin status
+  const { data: currentUser } = useCurrentUser();
+  const isSuperAdmin = (currentUser as CurrentUser)?.isSuperAdmin || false;
+  
+  // Handle super admin authentication
+  const handleSuperAdminLogin = async () => {
+    if (!backdoorKey) {
+      toast({
+        title: "Error",
+        description: "Please enter the backdoor key",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setIsAuthenticating(true);
+    try {
+      // First logout current session
+      const logoutResponse = await fetch('/api/auth/logout', { 
+        method: 'POST', 
+        credentials: 'include' 
+      });
+      
+      if (!logoutResponse.ok) {
+        throw new Error('Failed to logout current session');
+      }
+      
+      // Then login as super admin
+      const response = await fetch('/api/auth/super-admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          email: 'mpatrick@whirks.com',
+          key: backdoorKey
+        })
+      });
+      
+      if (response.ok) {
+        toast({
+          title: "Success",
+          description: "Authenticated as super admin! Reloading...",
+        });
+        // Reload page to get new session
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } else {
+        const error = await response.json();
+        throw new Error(error.message || 'Authentication failed');
+      }
+    } catch (error: any) {
+      toast({
+        title: "Authentication Failed",
+        description: error.message || "Failed to authenticate as super admin",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
 
   // Queries
   const { data: stats } = useQuery<SuperAdminStats>({
@@ -270,6 +339,116 @@ export default function SuperAdminPage() {
               </p>
             </div>
           </div>
+        
+        {/* Super Admin Authentication Section */}
+        {!isSuperAdmin && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Super Admin Authentication Required</AlertTitle>
+            <AlertDescription>
+              You are not authenticated as super admin. Please authenticate below to access super admin features.
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        {/* Authentication Status Card */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5" />
+              Super Admin Status
+            </CardTitle>
+            <CardDescription>
+              Current authentication status and super admin controls
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Current Status */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Current User</Label>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium" data-testid="text-current-email">
+                    {currentUser?.email || 'Not logged in'}
+                  </span>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-muted-foreground">Super Admin Status</Label>
+                <div className="flex items-center gap-2">
+                  {isSuperAdmin ? (
+                    <>
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
+                      <span className="font-medium text-green-600" data-testid="text-super-admin-status">
+                        ✓ Authenticated as Super Admin
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle className="h-5 w-5 text-amber-600" />
+                      <span className="font-medium text-amber-600" data-testid="text-super-admin-status">
+                        ⚠️ Not authenticated as Super Admin
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            {/* Authentication Form - Always visible when not super admin */}
+            {!isSuperAdmin && (
+              <div className="border-t pt-4">
+                <Label className="text-base font-semibold mb-3 block">
+                  Authenticate as Super Admin
+                </Label>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="super-admin-email">Email</Label>
+                    <Input
+                      id="super-admin-email"
+                      type="email"
+                      value="mpatrick@whirks.com"
+                      disabled
+                      data-testid="input-super-admin-email"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="backdoor-key">Backdoor Key</Label>
+                    <Input
+                      id="backdoor-key"
+                      type="password"
+                      placeholder="Enter backdoor key"
+                      value={backdoorKey}
+                      onChange={(e) => setBackdoorKey(e.target.value)}
+                      disabled={isAuthenticating}
+                      data-testid="input-backdoor-key"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      onClick={handleSuperAdminLogin}
+                      disabled={isAuthenticating || !backdoorKey}
+                      className="w-full"
+                      data-testid="button-authenticate-super-admin"
+                    >
+                      {isAuthenticating ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Authenticating...
+                        </>
+                      ) : (
+                        <>
+                          <Key className="mr-2 h-4 w-4" />
+                          Authenticate as Super Admin
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
           {/* Stats Overview */}
           {stats && (
