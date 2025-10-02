@@ -9,8 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useForm } from "react-hook-form";
@@ -123,10 +124,13 @@ export default function SuperAdminPage() {
   const [backdoorKey, setBackdoorKey] = useState("");
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [debugOpen, setDebugOpen] = useState(false);
+  const [orgToDelete, setOrgToDelete] = useState<any>(null);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   
   // Get current user to check super admin status
   const { data: currentUser } = useCurrentUser();
   const isSuperAdmin = (currentUser as CurrentUser)?.isSuperAdmin || false;
+  const currentOrganizationId = (currentUser as CurrentUser)?.organizationId;
   
   // Handle super admin authentication
   const handleSuperAdminLogin = async () => {
@@ -321,6 +325,36 @@ export default function SuperAdminPage() {
     },
   });
 
+  const deleteOrganizationMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/super-admin/organizations/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/organizations"] });
+      toast({ title: "Organization deleted successfully" });
+      setShowDeleteConfirmation(false);
+      setOrgToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Failed to delete organization", 
+        description: error.message || "An error occurred while deleting the organization",
+        variant: "destructive" 
+      });
+      setShowDeleteConfirmation(false);
+      setOrgToDelete(null);
+    },
+  });
+
+  const handleDeleteOrganization = (org: any) => {
+    setOrgToDelete(org);
+    setShowDeleteConfirmation(true);
+  };
+
+  const confirmDeleteOrganization = () => {
+    if (orgToDelete) {
+      deleteOrganizationMutation.mutate(orgToDelete.id);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-purple-900 dark:to-indigo-900">
       <div className="container mx-auto p-6">
@@ -506,8 +540,9 @@ export default function SuperAdminPage() {
 
         {/* Main Content */}
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:w-[600px]">
+          <TabsList className="grid w-full grid-cols-6 lg:w-[720px]">
             <TabsTrigger value="dashboard" data-testid="tab-dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="organizations" data-testid="tab-organizations">Organizations</TabsTrigger>
             <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
             <TabsTrigger value="pricing" data-testid="tab-pricing">Pricing</TabsTrigger>
             <TabsTrigger value="discounts" data-testid="tab-discounts">Discounts</TabsTrigger>
@@ -528,13 +563,27 @@ export default function SuperAdminPage() {
                   <div className="space-y-4">
                     {organizations?.slice(0, 5).map((org: any) => (
                       <div key={org.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                        <div>
+                        <div className="flex-1">
                           <p className="font-medium">{org.name}</p>
                           <p className="text-sm text-gray-600 dark:text-gray-400">{org.plan} plan</p>
                         </div>
-                        <Badge variant={org.isActive ? "default" : "secondary"}>
-                          {org.isActive ? "Active" : "Inactive"}
-                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={org.isActive ? "default" : "secondary"}>
+                            {org.isActive ? "Active" : "Inactive"}
+                          </Badge>
+                          {isSuperAdmin && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteOrganization(org)}
+                              disabled={org.id === currentOrganizationId}
+                              data-testid={`button-delete-org-${org.id}`}
+                              title={org.id === currentOrganizationId ? "Cannot delete your current organization" : "Delete organization"}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -569,6 +618,96 @@ export default function SuperAdminPage() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          {/* Organizations Tab */}
+          <TabsContent value="organizations" className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold">Organizations Management</h2>
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                Total: {organizations?.length || 0} organizations
+              </div>
+            </div>
+
+            <Card>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="border-b">
+                      <tr className="text-left">
+                        <th className="p-4 font-medium">Organization Name</th>
+                        <th className="p-4 font-medium">Plan</th>
+                        <th className="p-4 font-medium">Users</th>
+                        <th className="p-4 font-medium">Status</th>
+                        <th className="p-4 font-medium">Created</th>
+                        <th className="p-4 font-medium text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {organizations?.map((org: any) => (
+                        <tr key={org.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
+                          <td className="p-4">
+                            <div>
+                              <p className="font-medium">{org.name}</p>
+                              <p className="text-sm text-gray-600 dark:text-gray-400">{org.id}</p>
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <Badge variant="outline">{org.plan || 'Free'}</Badge>
+                          </td>
+                          <td className="p-4 text-gray-600 dark:text-gray-400">
+                            {org.userCount || 0}
+                          </td>
+                          <td className="p-4">
+                            <Badge variant={org.isActive ? "default" : "secondary"}>
+                              {org.isActive ? "Active" : "Inactive"}
+                            </Badge>
+                          </td>
+                          <td className="p-4 text-sm text-gray-600 dark:text-gray-400">
+                            {org.createdAt ? format(new Date(org.createdAt), "MMM dd, yyyy") : 'N/A'}
+                          </td>
+                          <td className="p-4 text-center">
+                            {isSuperAdmin ? (
+                              <div className="flex justify-center gap-2">
+                                {org.id === currentOrganizationId ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled
+                                    title="Cannot delete your current organization"
+                                    data-testid={`button-delete-org-disabled-${org.id}`}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteOrganization(org)}
+                                    data-testid={`button-delete-org-${org.id}`}
+                                    className="hover:bg-red-50 hover:text-red-600 hover:border-red-300 dark:hover:bg-red-900/20"
+                                    title="Delete organization"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-gray-500">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {(!organizations || organizations.length === 0) && (
+                    <div className="p-8 text-center text-gray-500">
+                      No organizations found
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* System Settings Tab */}
@@ -795,6 +934,35 @@ export default function SuperAdminPage() {
             </div>
           </TabsContent>
         </Tabs>
+        
+        {/* Delete Organization Confirmation Dialog */}
+        <AlertDialog open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the organization <strong>{orgToDelete?.name}</strong> and all associated data.
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => {
+                setShowDeleteConfirmation(false);
+                setOrgToDelete(null);
+              }}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={confirmDeleteOrganization}
+                className="bg-red-600 hover:bg-red-700"
+                disabled={deleteOrganizationMutation.isPending}
+                data-testid="button-confirm-delete-org"
+              >
+                {deleteOrganizationMutation.isPending ? "Deleting..." : "Delete Organization"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );
