@@ -98,12 +98,18 @@ export async function apiRequest(
     }
   }
 
-  let res = await fetch(url, {
+  const fetchOptions: RequestInit = {
     method,
     headers,
-    body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
-  });
+  };
+  
+  // Only include body if there's actual data to send
+  if (data) {
+    fetchOptions.body = JSON.stringify(data);
+  }
+  
+  let res = await fetch(url, fetchOptions);
 
   // If we get a CSRF error, try to refresh the token and retry once
   if (res.status === 403 && needsCsrf) {
@@ -117,12 +123,18 @@ export async function apiRequest(
         headers['X-CSRF-Token'] = newToken;
         
         // Retry the request with the new token
-        res = await fetch(url, {
+        const retryOptions: RequestInit = {
           method,
           headers,
-          body: data ? JSON.stringify(data) : undefined,
           credentials: "include",
-        });
+        };
+        
+        // Only include body if there's actual data to send
+        if (data) {
+          retryOptions.body = JSON.stringify(data);
+        }
+        
+        res = await fetch(url, retryOptions);
       }
     } else {
       // Not a CSRF error, throw the original error
