@@ -740,7 +740,7 @@ export function IntegrationsDashboard() {
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Current Configuration */}
-              {orgIntegrations?.enableSlackIntegration && (
+              {orgIntegrations?.enableSlackIntegration && orgIntegrations?.slackConnectionStatus === "connected" && (
                 <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
                   <div className="flex items-center gap-2 text-green-800 dark:text-green-200">
                     <CheckCircle className="h-4 w-4" />
@@ -860,7 +860,7 @@ export function IntegrationsDashboard() {
 
               {/* OAuth-based Configuration */}
               <div className="space-y-4">
-                {!orgIntegrations?.hasSlackBotToken ? (
+                {!orgIntegrations?.enableSlackIntegration || orgIntegrations?.slackConnectionStatus !== "connected" ? (
                   // Show "Add to Slack" button if not connected
                   <div className="text-center py-8 space-y-4">
                     <div className="space-y-2">
