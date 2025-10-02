@@ -461,9 +461,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // SECURITY: Regenerate session ID to prevent session fixation attacks
-      req.session.regenerate((regenerateErr) => {
+      req.session.regenerate(async (regenerateErr) => {
         if (regenerateErr) {
-          console.error('Failed to regenerate session:', regenerateErr);
+          console.error('❌ Failed to regenerate session:', regenerateErr);
           return res.status(500).json({ message: "Session regeneration failed" });
         }
         
@@ -471,27 +471,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         req.session.userId = user.id;
         (req.session as any).organizationId = actualOrgId;
         
+        // Get the organization slug for complete session data
+        const orgData = await storage.getOrganization(actualOrgId);
+        if (orgData) {
+          (req.session as any).organizationSlug = orgData.slug;
+        }
+        
         console.log(`📝 Session after setting:`, {
           sessionId: req.sessionID,
           userId: req.session.userId,
           organizationId: (req.session as any).organizationId,
+          organizationSlug: (req.session as any).organizationSlug,
           orgIdFromReq: req.orgId,
           actualOrgId: actualOrgId
         });
         
-        // FIX: Let express-session automatically save and set cookie
-        console.log(`✅ Local login successful for ${user.name} (${user.email})`);
-        console.log(`🍪 Session will auto-save with Set-Cookie header, ID: ${req.sessionID}`);
-        
-        res.json({ 
-          message: "Login successful", 
-          user: { 
-            id: user.id, 
-            name: user.name, 
-            email: user.email, 
-            role: user.role,
-            isSuperAdmin: user.isSuperAdmin || false
-          } 
+        // CRITICAL FIX: Explicitly save the session to ensure persistence
+        req.session.save((saveErr) => {
+          if (saveErr) {
+            console.error('❌ Failed to save session:', saveErr);
+            return res.status(500).json({ message: "Session save failed" });
+          }
+          
+          console.log(`✅ Local login successful for ${user.name} (${user.email})`);
+          console.log(`✅ Session saved successfully with ID: ${req.sessionID}`);
+          console.log(`📋 Session data persisted:`, {
+            userId: req.session.userId,
+            organizationId: (req.session as any).organizationId,
+            organizationSlug: (req.session as any).organizationSlug
+          });
+          
+          res.json({ 
+            message: "Login successful", 
+            user: { 
+              id: user.id, 
+              name: user.name, 
+              email: user.email, 
+              role: user.role,
+              isSuperAdmin: user.isSuperAdmin || false
+            } 
+          });
         });
       });
     } catch (error) {
@@ -1301,59 +1320,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
           req.session.organizationId = actualOrganizationId;
           req.session.organizationSlug = actualOrganizationSlug;
           
-          console.log(`✅ Slack OAuth session set with userId: ${authenticatedUser.id}, organizationId: ${actualOrganizationId}, orgSlug: ${actualOrganizationSlug}`);
-          console.log(`🍪 Session will auto-save with Set-Cookie header`);
-          
-          // SECURITY: Session-based authentication only
-          // No auth cookies are set - they were a critical vulnerability
-          
-          console.log(`User ${authenticatedUser.name} (${authenticatedUser.email}) successfully authenticated via Slack OAuth for organization ${organization.name}`);
-          
-          // Redirect to the organization's dashboard
-          // Use the centralized redirect URI resolver to get the base URL
-          const baseRedirectUri = resolveRedirectUri(req, '/');
-          // Remove the trailing slash to get the base URL
-          const appUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
-          
-          // Check if organization needs onboarding
-          const needsOnboarding = isNewOrganization || 
-            !organization.onboardingStatus || 
-            organization.onboardingStatus === 'not_started' || 
-            organization.onboardingStatus === 'in_progress';
-          
-          // For super admin users, redirect to organization selection
-          // For new organizations or those still in onboarding, redirect to onboarding
-          // Otherwise, redirect to the specific organization dashboard
-          const actualOrgSlug = organization.slug || organizationSlug;
-          
-          // Redirect directly to the appropriate page with auth params
-          // The page will handle setting up localStorage authentication
-          const authParams = new URLSearchParams({
-            auth_user_id: authenticatedUser.id,
-            auth_org_id: organization.id,
-            auth_session: req.sessionID  // Use the actual session ID instead of undefined sessionToken
+          console.log(`📋 Slack OAuth session data set:`, {
+            userId: authenticatedUser.id,
+            organizationId: actualOrganizationId,
+            organizationSlug: actualOrganizationSlug
           });
           
-          let redirectPath: string;
-          if (isSuperAdmin) {
-            // Super admins go to organization selection
-            redirectPath = `${appUrl}/select-organization?${authParams.toString()}`;
-          } else if (needsOnboarding) {
-            // New organizations go to onboarding with org slug and auth
-            authParams.append('org', actualOrgSlug);
-            redirectPath = `${appUrl}/onboarding?${authParams.toString()}`;
-          } else {
-            // Existing organizations go to dashboard
-            authParams.append('org', actualOrgSlug);
-            redirectPath = `${appUrl}/dashboard?${authParams.toString()}`;
-          }
-          
-          console.log(`🚀 Redirecting after OAuth authentication`);
-          console.log(`   User: ${authenticatedUser.email}`);
-          console.log(`   Organization: ${actualOrgSlug} (new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
-          console.log(`   Redirect: ${redirectPath.replace(/auth_session=[^&]+/, 'auth_session=[REDACTED]')}`);
-          
-          res.redirect(redirectPath);
+          // CRITICAL FIX: Explicitly save the session to ensure persistence
+          req.session.save((saveErr) => {
+            if (saveErr) {
+              console.error('❌ Failed to save Slack OAuth session:', saveErr);
+              return res.status(500).send(`
+                <!DOCTYPE html>
+                <html>
+                  <head>
+                    <title>Session Error</title>
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                      body { font-family: system-ui, -apple-system, sans-serif; margin: 40px; text-align: center; }
+                      .error { color: #dc3545; }
+                      button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
+                    </style>
+                  </head>
+                  <body>
+                    <h1 class="error">❌ Session Save Failed</h1>
+                    <p>Failed to save your authentication session. Please try again.</p>
+                    <button onclick="window.location.href='/'">Try Again</button>
+                  </body>
+                </html>
+              `);
+            }
+            
+            console.log(`✅ Slack OAuth session saved successfully with ID: ${req.sessionID}`);
+            console.log(`✅ User ${authenticatedUser.name} (${authenticatedUser.email}) authenticated via Slack OAuth for organization ${organization.name}`);
+            
+            // Redirect to the organization's dashboard
+            // Use the centralized redirect URI resolver to get the base URL
+            const baseRedirectUri = resolveRedirectUri(req, '/');
+            // Remove the trailing slash to get the base URL
+            const appUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
+            
+            // Check if organization needs onboarding
+            const needsOnboarding = isNewOrganization || 
+              !organization.onboardingStatus || 
+              organization.onboardingStatus === 'not_started' || 
+              organization.onboardingStatus === 'in_progress';
+            
+            // For super admin users, redirect to organization selection
+            // For new organizations or those still in onboarding, redirect to onboarding
+            // Otherwise, redirect to the specific organization dashboard
+            const actualOrgSlug = organization.slug || organizationSlug;
+            
+            // Redirect directly to the appropriate page with auth params
+            // The page will handle setting up localStorage authentication
+            const authParams = new URLSearchParams({
+              auth_user_id: authenticatedUser.id,
+              auth_org_id: organization.id,
+              auth_session: req.sessionID  // Use the actual session ID instead of undefined sessionToken
+            });
+            
+            let redirectPath: string;
+            if (isSuperAdmin) {
+              // Super admins go to organization selection
+              redirectPath = `${appUrl}/select-organization?${authParams.toString()}`;
+            } else if (needsOnboarding) {
+              // New organizations go to onboarding with org slug and auth
+              authParams.append('org', actualOrgSlug);
+              redirectPath = `${appUrl}/onboarding?${authParams.toString()}`;
+            } else {
+              // Existing organizations go to dashboard
+              authParams.append('org', actualOrgSlug);
+              redirectPath = `${appUrl}/dashboard?${authParams.toString()}`;
+            }
+            
+            console.log(`🚀 Redirecting after OAuth authentication`);
+            console.log(`   User: ${authenticatedUser.email}`);
+            console.log(`   Organization: ${actualOrgSlug} (new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
+            console.log(`   Redirect: ${redirectPath.replace(/auth_session=[^&]+/, 'auth_session=[REDACTED]')}`);
+            
+            res.redirect(redirectPath);
+          }); // Close the session.save callback
         });
       } catch (error) {
         console.error("Failed to establish session:", error);
@@ -6422,6 +6468,161 @@ export async function registerRoutes(app: Express): Promise<Server> {
         connected: false,
         error: error?.message || "Failed to check Slack integration status" 
       });
+    }
+  });
+
+  // NEW: Bot OAuth flow for Slack - Get bot token
+  app.get("/api/slack/bot-auth", requireAuth(), requireRole('admin'), async (req, res) => {
+    try {
+      console.log(`🤖 Bot OAuth initiated for org: ${req.orgId}`);
+      
+      const clientId = process.env.SLACK_CLIENT_ID;
+      const redirectUri = resolveRedirectUri(req, '/api/slack/bot-callback');
+      
+      if (!clientId) {
+        console.error("❌ Slack client ID not configured");
+        return res.status(500).json({ 
+          error: "Slack OAuth not configured" 
+        });
+      }
+      
+      // Generate state for CSRF protection
+      const state = randomBytes(32).toString('hex');
+      req.session.slackBotOAuthState = state;
+      req.session.slackBotOAuthOrgId = req.orgId;
+      
+      // Bot scopes needed for the application
+      const scopes = [
+        'channels:read',
+        'channels:join', 
+        'chat:write',
+        'users:read',
+        'users:read.email',
+        'team:read'
+      ].join(',');
+      
+      const params = new URLSearchParams({
+        client_id: clientId,
+        scope: scopes,
+        redirect_uri: redirectUri,
+        state: state
+      });
+      
+      const authUrl = `https://slack.com/oauth/v2/authorize?${params.toString()}`;
+      
+      console.log(`✅ Redirecting to Slack bot OAuth: ${authUrl}`);
+      console.log(`📋 Bot scopes requested: ${scopes}`);
+      
+      // Save session before redirect
+      req.session.save((err) => {
+        if (err) {
+          console.error('❌ Failed to save session for bot OAuth:', err);
+          return res.status(500).json({ error: "Session save failed" });
+        }
+        res.json({ url: authUrl });
+      });
+    } catch (error) {
+      console.error("❌ Bot OAuth error:", error);
+      res.status(500).json({ 
+        error: "Failed to initiate bot authentication" 
+      });
+    }
+  });
+  
+  // NEW: Bot OAuth callback - Store bot token
+  app.get("/api/slack/bot-callback", async (req, res) => {
+    try {
+      const { code, state, error: oauthError } = req.query;
+      
+      console.log('🤖 Bot OAuth callback received');
+      
+      if (oauthError) {
+        console.error("❌ Slack bot OAuth error:", oauthError);
+        return res.redirect(`/?error=slack_bot_auth_failed&message=${encodeURIComponent(oauthError as string)}`);
+      }
+      
+      if (!code || !state || typeof code !== 'string' || typeof state !== 'string') {
+        console.error('❌ Invalid bot callback parameters');
+        return res.redirect('/?error=invalid_bot_callback');
+      }
+      
+      // Validate state
+      if (req.session.slackBotOAuthState !== state) {
+        console.error('❌ Bot OAuth state mismatch');
+        return res.redirect('/?error=state_mismatch');
+      }
+      
+      const orgId = req.session.slackBotOAuthOrgId;
+      if (!orgId) {
+        console.error('❌ No organization ID in session');
+        return res.redirect('/?error=no_org_id');
+      }
+      
+      // Clear OAuth state
+      delete req.session.slackBotOAuthState;
+      delete req.session.slackBotOAuthOrgId;
+      
+      // Exchange code for access token
+      const clientId = process.env.SLACK_CLIENT_ID;
+      const clientSecret = process.env.SLACK_CLIENT_SECRET;
+      const redirectUri = resolveRedirectUri(req, '/api/slack/bot-callback');
+      
+      if (!clientId || !clientSecret) {
+        console.error('❌ Slack OAuth credentials not configured');
+        return res.redirect('/?error=oauth_not_configured');
+      }
+      
+      console.log(`📋 Exchanging bot OAuth code for token...`);
+      
+      const tokenResponse = await fetch('https://slack.com/api/oauth.v2.access', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code: code,
+          redirect_uri: redirectUri
+        }).toString()
+      });
+      
+      const tokenData = await tokenResponse.json();
+      
+      if (!tokenData.ok) {
+        console.error('❌ Failed to exchange bot OAuth code:', tokenData.error);
+        return res.redirect(`/?error=token_exchange_failed&message=${encodeURIComponent(tokenData.error)}`);
+      }
+      
+      console.log('✅ Bot token obtained successfully');
+      console.log(`📋 Team: ${tokenData.team?.name} (${tokenData.team?.id})`);
+      console.log(`📋 Bot scopes: ${tokenData.scope}`);
+      
+      // Store bot token in organization
+      const organization = await storage.getOrganization(orgId);
+      if (!organization) {
+        console.error('❌ Organization not found:', orgId);
+        return res.redirect('/?error=org_not_found');
+      }
+      
+      // Update organization with bot token
+      await storage.updateOrganization(orgId, {
+        slackBotToken: tokenData.access_token,
+        slackWorkspaceId: tokenData.team?.id,
+        slackConnectionStatus: 'connected',
+        slackLastConnected: new Date(),
+        enableSlackIntegration: true
+      });
+      
+      console.log(`✅ Bot token stored for organization: ${organization.name}`);
+      console.log(`📋 Workspace ID: ${tokenData.team?.id}`);
+      console.log(`📋 Bot token starts with: ${tokenData.access_token?.substring(0, 10)}...`);
+      
+      // Redirect to integrations page with success message
+      res.redirect('/integrations?success=slack_connected');
+    } catch (error) {
+      console.error('❌ Bot OAuth callback error:', error);
+      res.redirect('/?error=bot_oauth_failed');
     }
   });
 
