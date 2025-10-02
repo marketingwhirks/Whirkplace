@@ -126,6 +126,8 @@ export default function SuperAdminPage() {
   const [debugOpen, setDebugOpen] = useState(false);
   const [orgToDelete, setOrgToDelete] = useState<any>(null);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<any>(null);
+  const [showUserDeleteConfirmation, setShowUserDeleteConfirmation] = useState(false);
   
   // Get current user to check super admin status
   const { data: currentUser } = useCurrentUser();
@@ -360,6 +362,25 @@ export default function SuperAdminPage() {
     },
   });
 
+  const deleteUserMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/super-admin/users/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      toast({ title: "User deleted successfully" });
+      setShowUserDeleteConfirmation(false);
+      setUserToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Failed to delete user", 
+        description: error.message || "An error occurred while deleting the user",
+        variant: "destructive" 
+      });
+      setShowUserDeleteConfirmation(false);
+      setUserToDelete(null);
+    },
+  });
+
   const handleDeleteOrganization = (org: any) => {
     console.log('🗑️ handleDeleteOrganization called with org:', org);
     console.log('📊 Organization details:');
@@ -377,6 +398,17 @@ export default function SuperAdminPage() {
       console.log('📤 Passing ID to delete mutation:', orgToDelete.id);
       console.log('📊 Type of ID:', typeof orgToDelete.id);
       deleteOrganizationMutation.mutate(orgToDelete.id);
+    }
+  };
+
+  const handleDeleteUser = (user: any) => {
+    setUserToDelete(user);
+    setShowUserDeleteConfirmation(true);
+  };
+
+  const confirmDeleteUser = () => {
+    if (userToDelete) {
+      deleteUserMutation.mutate(userToDelete.id);
     }
   };
 
@@ -948,9 +980,31 @@ export default function SuperAdminPage() {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                           Created: {format(new Date(user.createdAt), "MMM dd, yyyy")}
                         </p>
+                        {isSuperAdmin && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteUser(user)}
+                            disabled={
+                              user.id === currentUser?.id || 
+                              user.email === "mpatrick@whirks.com"
+                            }
+                            data-testid={`button-delete-user-${user.id}`}
+                            className="hover:bg-red-50 hover:text-red-600 hover:border-red-300 dark:hover:bg-red-900/20"
+                            title={
+                              user.id === currentUser?.id 
+                                ? "Cannot delete your own account" 
+                                : user.email === "mpatrick@whirks.com"
+                                ? "Cannot delete the main super admin"
+                                : "Delete user"
+                            }
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -984,6 +1038,35 @@ export default function SuperAdminPage() {
                 data-testid="button-confirm-delete-org"
               >
                 {deleteOrganizationMutation.isPending ? "Deleting..." : "Delete Organization"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete User Confirmation Dialog */}
+        <AlertDialog open={showUserDeleteConfirmation} onOpenChange={setShowUserDeleteConfirmation}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the user <strong>{userToDelete?.name || userToDelete?.email}</strong> and all associated data.
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => {
+                setShowUserDeleteConfirmation(false);
+                setUserToDelete(null);
+              }}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={confirmDeleteUser}
+                className="bg-red-600 hover:bg-red-700"
+                disabled={deleteUserMutation.isPending}
+                data-testid="button-confirm-delete-user"
+              >
+                {deleteUserMutation.isPending ? "Deleting..." : "Delete User"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
