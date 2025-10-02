@@ -171,8 +171,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Use setSessionUser to properly establish the session with all required data
+      console.log(`🔐 Setting session for super admin: ${email}`);
+      console.log(`📝 Organization: ID=${whirkplaceOrg.id}, Slug=${whirkplaceOrg.slug}`);
+      
       try {
         await setSessionUser(req, superAdmin.id, whirkplaceOrg.id, whirkplaceOrg.slug);
+        console.log(`✅ setSessionUser() completed for super admin`);
+        console.log(`📋 Session ID after setSessionUser: ${req.sessionID}`);
+        
+        // CRITICAL: Verify session data was actually saved
+        console.log(`🔍 Verifying super admin session after save:`, {
+          sessionId: req.sessionID,
+          userId: req.session?.userId,
+          organizationId: (req.session as any)?.organizationId,
+          organizationSlug: (req.session as any)?.organizationSlug
+        });
+        
         console.log(`✅ Super admin ${email} logged in successfully with properly set session`);
         
         // Send response after session is properly set
@@ -249,9 +263,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`✅ Fresh backdoor user confirmed: ${matthewUser.name} (${matthewUser.email})`);
       
       // Use setSessionUser to properly regenerate and set session with all required data
+      console.log(`🔐 Setting session for fresh backdoor user: ${matthewUser.email}`);
+      console.log(`📝 Organization details: ID=${organizationId}, Slug=${org[0].slug}`);
+      
       try {
         await setSessionUser(req, matthewUser.id, organizationId, org[0].slug);
-        console.log(`✅ Session properly regenerated and saved for user: ${matthewUser.id} in org: ${organizationId}`);
+        console.log(`✅ setSessionUser() completed successfully`);
+        console.log(`📋 Session ID after setSessionUser: ${req.sessionID}`);
+        
+        // CRITICAL: Verify session data was actually saved
+        console.log(`🔍 Verifying session data after save:`, {
+          sessionId: req.sessionID,
+          userId: req.session?.userId,
+          organizationId: (req.session as any)?.organizationId,
+          organizationSlug: (req.session as any)?.organizationSlug,
+          sessionExists: !!req.session
+        });
         
         // SECURITY: No longer setting auth cookies - sessions are the only authentication method
         // Cookies like auth_user_id were a critical vulnerability allowing user impersonation
@@ -461,23 +488,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // SECURITY: Regenerate session ID to prevent session fixation attacks
+      console.log(`🔐 Starting session regeneration for user: ${user.email}`);
       req.session.regenerate(async (regenerateErr) => {
         if (regenerateErr) {
           console.error('❌ Failed to regenerate session:', regenerateErr);
           return res.status(500).json({ message: "Session regeneration failed" });
         }
         
+        console.log(`✅ Session regenerated successfully, new session ID: ${req.sessionID}`);
+        
         // Set session after regeneration with the actual organization where user was found
         req.session.userId = user.id;
         (req.session as any).organizationId = actualOrgId;
         
-        // Get the organization slug for complete session data
+        // CRITICAL: Get and set the organization slug for complete session data
         const orgData = await storage.getOrganization(actualOrgId);
         if (orgData) {
           (req.session as any).organizationSlug = orgData.slug;
+          console.log(`📌 Organization slug set: ${orgData.slug}`);
+        } else {
+          console.log(`⚠️ Could not find organization for slug, org ID: ${actualOrgId}`);
         }
         
-        console.log(`📝 Session after setting:`, {
+        console.log(`📝 Session data BEFORE save:`, {
           sessionId: req.sessionID,
           userId: req.session.userId,
           organizationId: (req.session as any).organizationId,
@@ -1312,21 +1345,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           req.session.slackOAuthState = undefined;
           req.session.slackOrgSlug = undefined;
           
-          // Use the centralized setSessionUser function which properly handles:
-          // - Setting userId, organizationId, and organizationSlug
-          // - Saving the session
-          // Note: We don't need to regenerate since we already did that above
+          // CRITICAL: Set ALL required session fields before saving
+          console.log(`🔐 Setting session data for Slack OAuth user: ${authenticatedUser.email}`);
+          
           req.session.userId = authenticatedUser.id;
           req.session.organizationId = actualOrganizationId;
           req.session.organizationSlug = actualOrganizationSlug;
           
-          console.log(`📋 Slack OAuth session data set:`, {
-            userId: authenticatedUser.id,
-            organizationId: actualOrganizationId,
-            organizationSlug: actualOrganizationSlug
+          console.log(`📋 Slack OAuth session data BEFORE save:`, {
+            sessionId: req.sessionID,
+            userId: req.session.userId,
+            organizationId: req.session.organizationId,
+            organizationSlug: req.session.organizationSlug,
+            actualOrgId: actualOrganizationId,
+            actualOrgSlug: actualOrganizationSlug
           });
           
           // CRITICAL FIX: Explicitly save the session to ensure persistence
+          console.log(`💾 Calling session.save() to persist session data...`);
           req.session.save((saveErr) => {
             if (saveErr) {
               console.error('❌ Failed to save Slack OAuth session:', saveErr);
@@ -10485,6 +10521,299 @@ Return the response as a JSON object with this structure:
     }
   });
 
+  // ===================================
+  // CRITICAL SESSION & SLACK ENDPOINTS
+  // ===================================
+  
+  // GET /api/users/current - Test session persistence (critical for debugging session issues)
+  app.get("/api/users/current", async (req, res) => {
+    console.log("🔍 GET /api/users/current - Checking session persistence");
+    console.log("📋 Session ID:", req.sessionID);
+    console.log("📦 Full session data:", JSON.stringify(req.session, null, 2));
+    
+    // Check if session exists
+    if (!req.session) {
+      console.log("❌ No session object exists");
+      return res.status(401).json({ 
+        error: "No session exists",
+        sessionId: null,
+        userId: null,
+        organizationId: null,
+        organizationSlug: null
+      });
+    }
+    
+    // Get session data
+    const sessionData = req.session as any;
+    const userId = sessionData.userId;
+    const organizationId = sessionData.organizationId;
+    const organizationSlug = sessionData.organizationSlug;
+    
+    console.log("🔑 Session userId:", userId || "UNDEFINED");
+    console.log("🏢 Session organizationId:", organizationId || "UNDEFINED");
+    console.log("🏷️ Session organizationSlug:", organizationSlug || "UNDEFINED");
+    
+    // Check if user is authenticated
+    if (!userId || !organizationId) {
+      console.log("⚠️ Session exists but userId or organizationId is UNDEFINED");
+      return res.status(401).json({ 
+        error: "Session exists but user data is missing",
+        sessionId: req.sessionID,
+        userId: userId || null,
+        organizationId: organizationId || null,
+        organizationSlug: organizationSlug || null
+      });
+    }
+    
+    // Try to fetch the user from storage
+    try {
+      const user = await storage.getUser(organizationId, userId);
+      
+      if (!user) {
+        console.log("❌ User not found in database");
+        return res.status(404).json({ 
+          error: "User not found",
+          sessionId: req.sessionID,
+          userId,
+          organizationId,
+          organizationSlug
+        });
+      }
+      
+      console.log("✅ Session valid, user found:", user.email);
+      
+      res.json({
+        authenticated: true,
+        sessionId: req.sessionID,
+        user: sanitizeUser(user),
+        organizationId,
+        organizationSlug
+      });
+    } catch (error) {
+      console.error("❌ Error fetching user:", error);
+      res.status(500).json({ 
+        error: "Failed to fetch user",
+        sessionId: req.sessionID,
+        userId,
+        organizationId,
+        organizationSlug
+      });
+    }
+  });
+  
+  // POST /api/admin/sync-users - Sync users from Slack (admin endpoint)
+  app.post("/api/admin/sync-users", requireAuth(), requireRole(['admin']), async (req, res) => {
+    console.log("🔄 POST /api/admin/sync-users - Starting Slack user sync");
+    console.log("🏢 Organization ID:", req.orgId);
+    
+    try {
+      // Get organization with Slack token
+      const organization = await storage.getOrganization(req.orgId);
+      
+      if (!organization) {
+        console.log("❌ Organization not found");
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      console.log("🏢 Organization:", organization.name);
+      console.log("🔑 Slack token exists:", !!organization.slackBotToken);
+      
+      // Check if Slack is configured
+      if (!organization.slackBotToken) {
+        console.log("⚠️ Slack not configured for organization");
+        return res.status(400).json({ 
+          message: "Slack integration is not configured. Please connect Slack first.",
+          slackConfigured: false
+        });
+      }
+      
+      // Initialize Slack client with organization's token
+      console.log("🚀 Initializing Slack client with organization token");
+      const slackClient = new WebClient(organization.slackBotToken);
+      
+      try {
+        // Get users from Slack
+        console.log("📡 Fetching users from Slack workspace");
+        const result = await slackClient.users.list({
+          limit: 200
+        });
+        
+        if (!result.ok || !result.members) {
+          console.log("❌ Failed to fetch Slack users");
+          return res.status(500).json({ message: "Failed to fetch users from Slack" });
+        }
+        
+        console.log(`✅ Found ${result.members.length} Slack users`);
+        
+        // Filter out bots and deleted users
+        const activeUsers = result.members.filter((member: any) => 
+          !member.is_bot && 
+          !member.deleted && 
+          member.profile?.email
+        );
+        
+        console.log(`🎯 ${activeUsers.length} active users to sync`);
+        
+        // Sync users to database
+        const syncResults = {
+          created: 0,
+          updated: 0,
+          skipped: 0,
+          errors: []
+        };
+        
+        for (const slackUser of activeUsers) {
+          try {
+            const email = slackUser.profile.email;
+            const name = slackUser.profile.real_name || slackUser.profile.display_name || slackUser.name;
+            
+            // Check if user exists
+            const existingUser = await storage.getUserByEmail(req.orgId, email);
+            
+            if (existingUser) {
+              // Update existing user with Slack ID if needed
+              if (!existingUser.slackUserId || existingUser.slackUserId !== slackUser.id) {
+                await storage.updateUser(req.orgId, existingUser.id, {
+                  slackUserId: slackUser.id
+                });
+                syncResults.updated++;
+                console.log(`📝 Updated user ${email} with Slack ID`);
+              } else {
+                syncResults.skipped++;
+              }
+            } else {
+              // Create new user
+              const newUser = await storage.createUser(req.orgId, {
+                email,
+                name,
+                username: email.split('@')[0],
+                slackUserId: slackUser.id,
+                role: 'member',
+                isActive: true,
+                authProvider: 'slack',
+                organizationId: req.orgId,
+                password: '' // No password for Slack users
+              });
+              syncResults.created++;
+              console.log(`✨ Created new user ${email}`);
+            }
+          } catch (userError: any) {
+            syncResults.errors.push(`Failed to sync user ${slackUser.profile.email}: ${userError.message}`);
+            console.error(`❌ Error syncing user:`, userError);
+          }
+        }
+        
+        console.log(`✅ Sync complete:`, syncResults);
+        
+        res.json({
+          message: "Slack user sync completed",
+          ...syncResults
+        });
+        
+      } catch (slackError: any) {
+        console.error("❌ Slack API error:", slackError);
+        return res.status(500).json({ 
+          message: "Failed to communicate with Slack",
+          error: slackError.message
+        });
+      }
+      
+    } catch (error: any) {
+      console.error("❌ Sync error:", error);
+      res.status(500).json({ 
+        message: "Failed to sync users",
+        error: error.message
+      });
+    }
+  });
+  
+  // POST /api/slack/sync-users - Alternative endpoint for Slack user sync
+  app.post("/api/slack/sync-users", requireAuth(), requireRole(['admin']), async (req, res) => {
+    console.log("🔄 POST /api/slack/sync-users - Redirecting to admin sync endpoint");
+    // Redirect to the admin endpoint
+    req.url = '/api/admin/sync-users';
+    return app.handle(req, res);
+  });
+  
+  // GET /api/integrations/slack/status - Check Slack connection status
+  app.get("/api/integrations/slack/status", requireAuth(), async (req, res) => {
+    console.log("🔍 GET /api/integrations/slack/status - Checking Slack connection");
+    console.log("🏢 Organization ID:", req.orgId);
+    
+    try {
+      // Get organization
+      const organization = await storage.getOrganization(req.orgId);
+      
+      if (!organization) {
+        console.log("❌ Organization not found");
+        return res.status(404).json({ 
+          connected: false,
+          error: "Organization not found"
+        });
+      }
+      
+      console.log("🏢 Organization:", organization.name);
+      console.log("🔑 Slack token exists:", !!organization.slackBotToken);
+      console.log("🔌 Slack enabled:", organization.enableSlackIntegration);
+      
+      // Check if Slack token exists
+      const connected = !!organization.slackBotToken;
+      
+      if (connected) {
+        // If token exists, optionally test the connection
+        if (req.query.test === 'true') {
+          console.log("🧪 Testing Slack connection with API call");
+          
+          try {
+            const slackClient = new WebClient(organization.slackBotToken);
+            const testResult = await slackClient.auth.test();
+            
+            if (testResult.ok) {
+              console.log("✅ Slack connection test successful");
+              return res.json({
+                connected: true,
+                workspaceId: organization.slackWorkspaceId,
+                teamName: (testResult as any).team,
+                botName: (testResult as any).user
+              });
+            } else {
+              console.log("❌ Slack connection test failed");
+              return res.json({
+                connected: false,
+                error: "Token validation failed"
+              });
+            }
+          } catch (testError: any) {
+            console.error("❌ Slack test error:", testError);
+            return res.json({
+              connected: false,
+              error: "Failed to validate token"
+            });
+          }
+        }
+        
+        // Return basic status
+        console.log("✅ Slack is connected");
+        res.json({
+          connected: true,
+          workspaceId: organization.slackWorkspaceId
+        });
+      } else {
+        console.log("⚠️ Slack is not connected");
+        res.json({
+          connected: false
+        });
+      }
+      
+    } catch (error: any) {
+      console.error("❌ Status check error:", error);
+      res.status(500).json({ 
+        connected: false,
+        error: "Failed to check status"
+      });
+    }
+  });
+  
   // Register additional route modules
   registerMicrosoftTeamsRoutes(app);
   registerMicrosoftAuthRoutes(app);
