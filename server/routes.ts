@@ -9720,30 +9720,63 @@ Return the response as a JSON object with this structure:
   });
 
   app.delete("/api/super-admin/organizations/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
-    console.log(`🗑️ Delete request for org ${req.params.id}`);
+    const orgIdParam = req.params.id;
+    console.log(`🗑️ Delete request for org ID: "${orgIdParam}"`);
     console.log(`👤 User: ${req.currentUser?.email} (Super Admin: ${req.currentUser?.isSuperAdmin})`);
+    console.log(`📊 Type of ID param: ${typeof orgIdParam}, Length: ${orgIdParam.length}`);
     
     try {
       // Don't allow deletion of the main Whirkplace organization or demo org
-      if (req.params.id === 'whirkplace') {
+      if (orgIdParam === 'whirkplace') {
         console.log("❌ Blocked: Cannot delete main Whirkplace org");
         return res.status(400).json({ message: "Cannot delete the main Whirkplace organization" });
       }
       
       // Check if it's the Fictitious Delicious demo org
-      const org = await storage.getOrganization(req.params.id);
-      if (org && org.slug === 'fictitious-delicious') {
+      console.log(`🔍 Looking up organization with ID: "${orgIdParam}"`);
+      const org = await storage.getOrganization(orgIdParam);
+      
+      if (!org) {
+        console.log(`❌ Organization not found with ID: "${orgIdParam}"`);
+        // Try to find all organizations and log them for debugging
+        const allOrgs = await storage.getAllOrganizations();
+        console.log(`📋 All organizations in database:`);
+        allOrgs.forEach(o => {
+          console.log(`  - ID: "${o.id}", Name: "${o.name}", Slug: "${o.slug}"`);
+        });
+        
+        // Check if the ID matches any organization name or slug
+        const matchByName = allOrgs.find(o => o.name.toLowerCase() === orgIdParam.toLowerCase());
+        const matchBySlug = allOrgs.find(o => o.slug === orgIdParam);
+        
+        if (matchByName) {
+          console.log(`⚠️ Found organization by name match: "${matchByName.name}" with ID: "${matchByName.id}"`);
+          console.log(`⚠️ Frontend might be passing the wrong field as ID`);
+        }
+        if (matchBySlug) {
+          console.log(`⚠️ Found organization by slug match: "${matchBySlug.slug}" with ID: "${matchBySlug.id}"`);
+          console.log(`⚠️ Frontend might be passing slug instead of ID`);
+        }
+        
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      console.log(`✅ Found organization: Name: "${org.name}", Slug: "${org.slug}", ID: "${org.id}"`);
+      
+      if (org.slug === 'fictitious-delicious') {
         console.log("❌ Blocked: Cannot delete demo org");
         return res.status(400).json({ message: "Cannot delete the demo organization (Fictitious Delicious)" });
       }
       
-      console.log(`🗑️ Attempting to delete organization: ${org?.name} (${org?.slug})`);
-      const success = await storage.deleteOrganization(req.params.id);
+      console.log(`🗑️ Attempting to delete organization: "${org.name}" (${org.slug}) with ID: "${org.id}"`);
+      const success = await storage.deleteOrganization(orgIdParam);
+      
       if (!success) {
-        console.log("❌ Delete failed: Organization not found or cannot be deleted");
+        console.log(`❌ Delete failed: storage.deleteOrganization returned false for ID: "${orgIdParam}"`);
         return res.status(404).json({ message: "Organization not found or cannot be deleted" });
       }
-      console.log("✅ Organization deleted successfully");
+      
+      console.log(`✅ Organization "${org.name}" deleted successfully`);
       res.json({ success });
     } catch (error) {
       console.error("❌ Failed to delete organization:", error);

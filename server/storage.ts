@@ -789,12 +789,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteOrganization(organizationId: string): Promise<boolean> {
+    console.log(`🗑️ storage.deleteOrganization called with ID: "${organizationId}"`);
+    console.log(`📊 Type of organizationId: ${typeof organizationId}, Length: ${organizationId.length}`);
+    
     try {
       // Don't allow deletion of the main Whirkplace organization
       if (organizationId === 'whirkplace') {
         console.error("Cannot delete the main Whirkplace organization");
         return false;
       }
+      
+      // First, verify the organization exists
+      const [orgToDelete] = await db.select().from(organizations).where(eq(organizations.id, organizationId));
+      if (!orgToDelete) {
+        console.log(`❌ Organization not found in database with ID: "${organizationId}"`);
+        
+        // Try to find if there's a mismatch
+        const allOrgs = await db.select().from(organizations);
+        console.log(`📋 All organizations in storage:`);
+        allOrgs.forEach(o => {
+          console.log(`  - ID: "${o.id}", Name: "${o.name}", Slug: "${o.slug}"`);
+        });
+        
+        return false;
+      }
+      
+      console.log(`✅ Found organization to delete: Name: "${orgToDelete.name}", Slug: "${orgToDelete.slug}", ID: "${orgToDelete.id}"`);
 
       // Delete all related data in the correct order to avoid foreign key conflicts
       
@@ -808,25 +828,20 @@ export class DatabaseStorage implements IStorage {
       await db.delete(wins).where(eq(wins.organizationId, organizationId));
       
       // Delete check-ins
-      await db.delete(checkIns).where(eq(checkIns.organizationId, organizationId));
+      await db.delete(checkins).where(eq(checkins.organizationId, organizationId));
       
-      // Delete questions and categories
+      // Delete questions (organization-specific)
       await db.delete(questions).where(eq(questions.organizationId, organizationId));
-      await db.delete(questionCategories).where(eq(questionCategories.organizationId, organizationId));
-      await db.delete(questionBank).where(eq(questionBank.organizationId, organizationId));
+      // Note: questionCategories and questionBank are global tables without organizationId
       
       // Delete notifications
       await db.delete(notifications).where(eq(notifications.organizationId, organizationId));
-      
-      // Delete team hierarchies
-      await db.delete(teamHierarchies).where(eq(teamHierarchies.organizationId, organizationId));
       
       // Delete action items
       await db.delete(actionItems).where(eq(actionItems.organizationId, organizationId));
       
       // Delete one-on-ones
       await db.delete(oneOnOnes).where(eq(oneOnOnes.organizationId, organizationId));
-      await db.delete(oneOnOneSeries).where(eq(oneOnOneSeries.organizationId, organizationId));
       
       // Delete KRAs
       await db.delete(userKras).where(eq(userKras.organizationId, organizationId));
@@ -839,9 +854,9 @@ export class DatabaseStorage implements IStorage {
       await db.delete(organizationAuthProviders).where(eq(organizationAuthProviders.organizationId, organizationId));
       
       // Delete metrics/aggregates
-      await db.delete(checkInMetricsDaily).where(eq(checkInMetricsDaily.organizationId, organizationId));
+      await db.delete(pulseMetricsDaily).where(eq(pulseMetricsDaily.organizationId, organizationId));
       await db.delete(shoutoutMetricsDaily).where(eq(shoutoutMetricsDaily.organizationId, organizationId));
-      await db.delete(winsMetricsDaily).where(eq(winsMetricsDaily.organizationId, organizationId));
+      await db.delete(complianceMetricsDaily).where(eq(complianceMetricsDaily.organizationId, organizationId));
       
       // Delete users in the organization
       await db.delete(users).where(eq(users.organizationId, organizationId));
