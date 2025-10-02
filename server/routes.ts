@@ -6226,16 +6226,107 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { syncUsersFromSlack } = await import("./services/slack");
-      const result = await syncUsersFromSlack(req.orgId, storage);
+      console.log(`📋 Admin sync-users endpoint called for org: ${req.orgId}`);
       
+      // Get organization to fetch Slack token
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        console.error("❌ Organization not found:", req.orgId);
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Use organization's bot token or fall back to environment variable
+      const botToken = organization.slackBotToken || process.env.SLACK_BOT_TOKEN;
+      
+      console.log(`🔑 Using ${organization.slackBotToken ? 'organization-specific' : 'environment'} Slack token`);
+      console.log(`📺 Channel to sync: ${req.body?.channelName || 'whirkplace-pulse'}`);
+      
+      if (!botToken) {
+        console.error("❌ No Slack bot token available for organization:", organization.name);
+        return res.status(400).json({ 
+          message: "Slack integration not configured. Please connect your Slack workspace first.",
+          error: "missing_token"
+        });
+      }
+
+      const { syncUsersFromSlack } = await import("./services/slack");
+      const channelName = req.body?.channelName || 'whirkplace-pulse';
+      const result = await syncUsersFromSlack(req.orgId, storage, botToken, channelName);
+      
+      if (result.error) {
+        console.error(`⚠️ Sync completed with error: ${result.error}`);
+        return res.status(400).json({
+          message: result.error,
+          ...result
+        });
+      }
+      
+      console.log(`✅ Sync completed: Created ${result.created}, Activated ${result.activated}, Deactivated ${result.deactivated}`);
       res.json({
         message: "User sync completed successfully",
         ...result
       });
-    } catch (error) {
-      console.error("Manual user sync failed:", error);
-      res.status(500).json({ message: "User sync failed" });
+    } catch (error: any) {
+      console.error("❌ Manual user sync failed:", error);
+      const errorMessage = error?.message || "User sync failed";
+      res.status(500).json({ 
+        message: errorMessage,
+        error: errorMessage
+      });
+    }
+  });
+
+  // NEW: Alternative sync endpoint for better compatibility
+  app.post("/api/slack/sync-users", requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
+    try {
+      console.log(`📋 Slack sync-users endpoint called for org: ${req.orgId}`);
+      console.log(`👤 User role: ${req.currentUser?.role}`);
+      
+      // Get organization to fetch Slack token
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        console.error("❌ Organization not found:", req.orgId);
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Use organization's bot token or fall back to environment variable
+      const botToken = organization.slackBotToken || process.env.SLACK_BOT_TOKEN;
+      
+      console.log(`🔑 Using ${organization.slackBotToken ? 'organization-specific' : 'environment'} Slack token`);
+      console.log(`📺 Channel to sync: ${req.body?.channelName || 'whirkplace-pulse'}`);
+      
+      if (!botToken) {
+        console.error("❌ No Slack bot token available for organization:", organization.name);
+        return res.status(400).json({ 
+          message: "Slack integration not configured. Please connect your Slack workspace first.",
+          error: "missing_token"
+        });
+      }
+
+      const { syncUsersFromSlack } = await import("./services/slack");
+      const channelName = req.body?.channelName || 'whirkplace-pulse';
+      const result = await syncUsersFromSlack(req.orgId, storage, botToken, channelName);
+      
+      if (result.error) {
+        console.error(`⚠️ Sync completed with error: ${result.error}`);
+        return res.status(400).json({
+          message: result.error,
+          ...result
+        });
+      }
+      
+      console.log(`✅ Sync completed: Created ${result.created}, Activated ${result.activated}, Deactivated ${result.deactivated}`);
+      res.json({
+        message: "User sync completed successfully",
+        ...result
+      });
+    } catch (error: any) {
+      console.error("❌ Slack sync failed:", error);
+      const errorMessage = error?.message || "Failed to sync users from Slack channel";
+      res.status(500).json({ 
+        message: `Sync failed: ${errorMessage}`,
+        error: errorMessage
+      });
     }
   });
 
@@ -6246,17 +6337,91 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Admin access required" });
       }
 
+      console.log(`📋 Channel members endpoint called for org: ${req.orgId}`);
+      
+      // Get organization to fetch Slack token
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Use organization's bot token or fall back to environment variable
+      const botToken = organization.slackBotToken || process.env.SLACK_BOT_TOKEN;
+      const channelName = req.query.channel || 'whirkplace-pulse';
+      
+      console.log(`🔑 Using ${organization.slackBotToken ? 'organization-specific' : 'environment'} Slack token`);
+      
+      if (!botToken) {
+        return res.status(400).json({ 
+          message: "Slack integration not configured",
+          members: [],
+          count: 0,
+          channelName: channelName as string
+        });
+      }
+
       const { getChannelMembers } = await import("./services/slack");
-      const members = await getChannelMembers();
+      const members = await getChannelMembers(botToken, channelName as string);
       
       res.json({
         members,
         count: members.length,
-        channelName: "whirkplace-pulse"
+        channelName: channelName as string
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to fetch channel members:", error);
-      res.status(500).json({ message: "Failed to fetch channel members" });
+      res.status(500).json({ 
+        message: error?.message || "Failed to fetch channel members",
+        members: [],
+        count: 0
+      });
+    }
+  });
+
+  // Slack integration status endpoint
+  app.get("/api/integrations/slack/status", requireAuth(), async (req, res) => {
+    try {
+      console.log(`📋 Slack status check for org: ${req.orgId}`);
+      
+      // Get organization to check Slack integration status
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        console.error("❌ Organization not found:", req.orgId);
+        return res.status(404).json({ 
+          connected: false,
+          message: "Organization not found" 
+        });
+      }
+      
+      // Check if Slack is connected by looking for the bot token
+      const isConnected = !!organization.slackBotToken;
+      const hasWorkspace = !!organization.slackWorkspaceId;
+      
+      console.log(`🔌 Slack connection status:`, {
+        connected: isConnected,
+        hasToken: !!organization.slackBotToken,
+        hasWorkspace: hasWorkspace,
+        workspaceId: organization.slackWorkspaceId,
+        connectionStatus: organization.slackConnectionStatus,
+        lastConnected: organization.slackLastConnected
+      });
+      
+      // Return detailed status
+      res.json({
+        connected: isConnected,
+        hasToken: isConnected,
+        workspaceId: organization.slackWorkspaceId || null,
+        channelId: organization.slackChannelId || null,
+        connectionStatus: organization.slackConnectionStatus || (isConnected ? 'connected' : 'not_configured'),
+        lastConnected: organization.slackLastConnected || null,
+        integrationEnabled: organization.enableSlackIntegration || false
+      });
+    } catch (error: any) {
+      console.error("❌ Failed to check Slack status:", error);
+      res.status(500).json({ 
+        connected: false,
+        error: error?.message || "Failed to check Slack integration status" 
+      });
     }
   });
 
