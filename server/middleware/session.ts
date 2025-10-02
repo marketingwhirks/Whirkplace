@@ -46,9 +46,12 @@ export function getSessionConfig() {
   });
   
   // Determine if we should use secure cookies
-  // In Replit, we need secure cookies with sameSite=none for iframe context
-  // This is required even in development because Replit runs in HTTPS iframe
-  const useSecureCookies = isReplit || isProduction;
+  // CRITICAL FIX: Only use secure cookies for actual HTTPS production
+  // In Replit development (localhost:5000), we're on HTTP, not HTTPS
+  // Browsers refuse to set secure cookies over HTTP, causing sessions to fail
+  // Logic: If we're on localhost, NEVER use secure cookies (they don't work over HTTP)
+  // Otherwise, use secure cookies if we're in production Replit (for iframe context)
+  const useSecureCookies = !isLocalhost && (isReplit && isProduction);
   
   // Session store configuration
   const sessionStore = new PgSession({
@@ -189,7 +192,7 @@ export function logSessionConfig() {
     port === '5000' || 
     (!isProduction);
   
-  const useSecureCookies = isReplit || isProduction;
+  const useSecureCookies = !isLocalhost && (isReplit && isProduction);
   const sameSite = useSecureCookies ? 'none' : 'lax';
   
   console.log('🔐 Session configuration:', {
