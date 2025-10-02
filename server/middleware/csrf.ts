@@ -127,9 +127,10 @@ export function validateCSRF() {
     }
     
     // Get CSRF token from various sources
+    // For DELETE requests, don't try to read from body since they typically don't have one
     const token = req.headers['x-csrf-token'] as string ||
                   req.headers['csrf-token'] as string ||
-                  req.body._csrf ||
+                  (req.method !== 'DELETE' ? req.body._csrf : undefined) ||
                   req.query._csrf;
     
     if (!token) {
