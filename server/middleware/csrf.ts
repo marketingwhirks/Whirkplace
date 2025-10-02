@@ -106,6 +106,7 @@ export function validateCSRF() {
     // 7. Demo login endpoint (stateless JWT authentication)
     // 8. Stripe checkout callback (GET request)
     // 9. Super-admin DELETE endpoints (to avoid body parsing issues with DELETE requests)
+    // 10. Admin sync endpoints (already protected by authentication and admin role checks)
     const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const isOAuthCallback = (req.path.includes('/auth/') || req.originalUrl.includes('/auth/')) && 
                            (req.path.includes('/callback') || req.originalUrl.includes('/callback'));
@@ -117,9 +118,11 @@ export function validateCSRF() {
     const isDemoLogin = req.path.includes('/auth/demo-login');
     const isStripeCallback = req.path.includes('/business/checkout-success');
     const isSuperAdminDelete = req.method === 'DELETE' && req.originalUrl.match(/^\/api\/super-admin\/(organizations|users)\/[^\/]+$/);
+    const isAdminSync = req.path.includes('/admin/sync-users') || req.path.includes('/slack/sync-users') ||
+                        req.originalUrl.includes('/admin/sync-users') || req.originalUrl.includes('/slack/sync-users');
     
     if (!isStateChanging || isOAuthCallback || isBackdoorAuth || isLogout || 
-        isLocalStorageAuth || isBusinessSignup || isDemoLogin || isStripeCallback || isSuperAdminDelete) {
+        isLocalStorageAuth || isBusinessSignup || isDemoLogin || isStripeCallback || isSuperAdminDelete || isAdminSync) {
       return next();
     }
     

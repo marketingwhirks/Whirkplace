@@ -6251,16 +6251,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Check if user is admin
       if (!req.currentUser || req.currentUser.role !== 'admin') {
-        return res.status(403).json({ message: "Admin access required" });
+        return res.status(403).json({ 
+          message: "Admin access required to sync users",
+          error: "insufficient_permissions"
+        });
       }
 
       console.log(`📋 Admin sync-users endpoint called for org: ${req.orgId}`);
+      console.log(`👤 Requested by: ${req.currentUser.name} (${req.currentUser.email})`);
       
       // Get organization to fetch Slack token
       const organization = await storage.getOrganization(req.orgId);
       if (!organization) {
         console.error("❌ Organization not found:", req.orgId);
-        return res.status(404).json({ message: "Organization not found" });
+        return res.status(404).json({ 
+          message: "Organization not found",
+          error: "organization_not_found"
+        });
       }
       
       // Use organization's bot token or fall back to environment variable
@@ -6272,34 +6279,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!botToken) {
         console.error("❌ No Slack bot token available for organization:", organization.name);
         return res.status(400).json({ 
-          message: "Slack integration not configured. Please connect your Slack workspace first.",
-          error: "missing_token"
+          message: "Slack integration not configured. Please add your Slack Bot Token in the Integrations settings.",
+          error: "missing_token",
+          details: "Navigate to Settings → Integrations → Slack to configure your bot token."
         });
       }
 
       const { syncUsersFromSlack } = await import("./services/slack");
       const channelName = req.body?.channelName || 'whirkplace-pulse';
+      
+      console.log(`🚀 Starting user sync from channel: #${channelName}`);
       const result = await syncUsersFromSlack(req.orgId, storage, botToken, channelName);
       
       if (result.error) {
         console.error(`⚠️ Sync completed with error: ${result.error}`);
+        
+        // Provide more helpful error messages based on common issues
+        if (result.error.includes('missing_scope')) {
+          return res.status(403).json({
+            message: "Missing Slack permissions. Your Slack app needs the following scopes: channels:read, groups:read, users:read, users:read.email",
+            error: "missing_scope",
+            details: "Please update your Slack app permissions at https://api.slack.com/apps",
+            ...result
+          });
+        } else if (result.error.includes('invalid_auth')) {
+          return res.status(401).json({
+            message: "Invalid Slack authentication. Your bot token may be expired or incorrect.",
+            error: "invalid_auth",
+            details: "Please check your Slack bot token in Settings → Integrations → Slack",
+            ...result
+          });
+        } else if (result.error.includes('channel_not_found')) {
+          return res.status(404).json({
+            message: `Slack channel "${channelName}" not found. Please ensure the channel exists and the bot has been added to it.`,
+            error: "channel_not_found",
+            details: `Invite your bot to the channel using: /invite @your-bot-name in #${channelName}`,
+            ...result
+          });
+        } else if (result.error.includes('No members found')) {
+          return res.status(404).json({
+            message: `No members found in channel "${channelName}". Please ensure the channel has members and the bot can see them.`,
+            error: "no_members",
+            details: "The bot may need to be invited to the channel or the channel might be private.",
+            ...result
+          });
+        }
+        
+        // Generic error response
         return res.status(400).json({
           message: result.error,
+          error: "sync_failed",
           ...result
         });
       }
       
       console.log(`✅ Sync completed: Created ${result.created}, Activated ${result.activated}, Deactivated ${result.deactivated}`);
       res.json({
-        message: "User sync completed successfully",
+        message: `Successfully synced users from #${channelName}`,
+        details: `Created ${result.created} new users, reactivated ${result.activated} users, deactivated ${result.deactivated} users`,
         ...result
       });
     } catch (error: any) {
       console.error("❌ Manual user sync failed:", error);
+      console.error("Error stack:", error.stack);
+      
+      // Provide more helpful error messages for common issues
+      if (error.message?.includes('rate_limited')) {
+        return res.status(429).json({ 
+          message: "Slack API rate limit exceeded. Please wait a moment and try again.",
+          error: "rate_limited",
+          details: "Slack limits API calls to prevent abuse. Try again in 60 seconds."
+        });
+      }
+      
       const errorMessage = error?.message || "User sync failed";
       res.status(500).json({ 
-        message: errorMessage,
-        error: errorMessage
+        message: `Failed to sync users: ${errorMessage}`,
+        error: "internal_error",
+        details: "Check the server logs for more information."
       });
     }
   });
@@ -6308,13 +6365,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/slack/sync-users", requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       console.log(`📋 Slack sync-users endpoint called for org: ${req.orgId}`);
-      console.log(`👤 User role: ${req.currentUser?.role}`);
+      console.log(`👤 User role: ${req.currentUser?.role}, Name: ${req.currentUser?.name}`);
       
       // Get organization to fetch Slack token
       const organization = await storage.getOrganization(req.orgId);
       if (!organization) {
         console.error("❌ Organization not found:", req.orgId);
-        return res.status(404).json({ message: "Organization not found" });
+        return res.status(404).json({ 
+          message: "Organization not found",
+          error: "organization_not_found"
+        });
       }
       
       // Use organization's bot token or fall back to environment variable
@@ -6326,34 +6386,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!botToken) {
         console.error("❌ No Slack bot token available for organization:", organization.name);
         return res.status(400).json({ 
-          message: "Slack integration not configured. Please connect your Slack workspace first.",
-          error: "missing_token"
+          message: "Slack integration not configured. Please add your Slack Bot Token in the Integrations settings.",
+          error: "missing_token",
+          details: "Navigate to Settings → Integrations → Slack to configure your bot token."
         });
       }
 
       const { syncUsersFromSlack } = await import("./services/slack");
       const channelName = req.body?.channelName || 'whirkplace-pulse';
+      
+      console.log(`🚀 Starting user sync from channel: #${channelName}`);
       const result = await syncUsersFromSlack(req.orgId, storage, botToken, channelName);
       
       if (result.error) {
         console.error(`⚠️ Sync completed with error: ${result.error}`);
+        
+        // Provide more helpful error messages based on common issues
+        if (result.error.includes('missing_scope')) {
+          return res.status(403).json({
+            message: "Missing Slack permissions. Your Slack app needs the following scopes: channels:read, groups:read, users:read, users:read.email",
+            error: "missing_scope",
+            details: "Please update your Slack app permissions at https://api.slack.com/apps",
+            ...result
+          });
+        } else if (result.error.includes('invalid_auth')) {
+          return res.status(401).json({
+            message: "Invalid Slack authentication. Your bot token may be expired or incorrect.",
+            error: "invalid_auth",
+            details: "Please check your Slack bot token in Settings → Integrations → Slack",
+            ...result
+          });
+        } else if (result.error.includes('channel_not_found')) {
+          return res.status(404).json({
+            message: `Slack channel "${channelName}" not found. Please ensure the channel exists and the bot has been added to it.`,
+            error: "channel_not_found",
+            details: `Invite your bot to the channel using: /invite @your-bot-name in #${channelName}`,
+            ...result
+          });
+        } else if (result.error.includes('No members found')) {
+          return res.status(404).json({
+            message: `No members found in channel "${channelName}". Please ensure the channel has members and the bot can see them.`,
+            error: "no_members",
+            details: "The bot may need to be invited to the channel or the channel might be private.",
+            ...result
+          });
+        }
+        
+        // Generic error response
         return res.status(400).json({
           message: result.error,
+          error: "sync_failed",
           ...result
         });
       }
       
       console.log(`✅ Sync completed: Created ${result.created}, Activated ${result.activated}, Deactivated ${result.deactivated}`);
       res.json({
-        message: "User sync completed successfully",
+        message: `Successfully synced users from #${channelName}`,
+        details: `Created ${result.created} new users, reactivated ${result.activated} users, deactivated ${result.deactivated} users`,
         ...result
       });
     } catch (error: any) {
       console.error("❌ Slack sync failed:", error);
+      console.error("Error stack:", error.stack);
+      
+      // Provide more helpful error messages for common issues
+      if (error.message?.includes('rate_limited')) {
+        return res.status(429).json({ 
+          message: "Slack API rate limit exceeded. Please wait a moment and try again.",
+          error: "rate_limited",
+          details: "Slack limits API calls to prevent abuse. Try again in 60 seconds."
+        });
+      }
+      
       const errorMessage = error?.message || "Failed to sync users from Slack channel";
       res.status(500).json({ 
-        message: `Sync failed: ${errorMessage}`,
-        error: errorMessage
+        message: `Failed to sync users: ${errorMessage}`,
+        error: "internal_error",
+        details: "Check the server logs for more information."
       });
     }
   });
@@ -10547,139 +10657,9 @@ Return the response as a JSON object with this structure:
     }
   });
   
-  // POST /api/admin/sync-users - Sync users from Slack (admin endpoint)
-  app.post("/api/admin/sync-users", requireAuth(), requireRole(['admin']), async (req, res) => {
-    console.log("🔄 POST /api/admin/sync-users - Starting Slack user sync");
-    console.log("🏢 Organization ID:", req.orgId);
-    
-    try {
-      // Get organization with Slack token
-      const organization = await storage.getOrganization(req.orgId);
-      
-      if (!organization) {
-        console.log("❌ Organization not found");
-        return res.status(404).json({ message: "Organization not found" });
-      }
-      
-      console.log("🏢 Organization:", organization.name);
-      console.log("🔑 Slack token exists:", !!organization.slackBotToken);
-      
-      // Check if Slack is configured
-      if (!organization.slackBotToken) {
-        console.log("⚠️ Slack not configured for organization");
-        return res.status(400).json({ 
-          message: "Slack integration is not configured. Please connect Slack first.",
-          slackConfigured: false
-        });
-      }
-      
-      // Initialize Slack client with organization's token
-      console.log("🚀 Initializing Slack client with organization token");
-      const slackClient = new WebClient(organization.slackBotToken);
-      
-      try {
-        // Get users from Slack
-        console.log("📡 Fetching users from Slack workspace");
-        const result = await slackClient.users.list({
-          limit: 200
-        });
-        
-        if (!result.ok || !result.members) {
-          console.log("❌ Failed to fetch Slack users");
-          return res.status(500).json({ message: "Failed to fetch users from Slack" });
-        }
-        
-        console.log(`✅ Found ${result.members.length} Slack users`);
-        
-        // Filter out bots and deleted users
-        const activeUsers = result.members.filter((member: any) => 
-          !member.is_bot && 
-          !member.deleted && 
-          member.profile?.email
-        );
-        
-        console.log(`🎯 ${activeUsers.length} active users to sync`);
-        
-        // Sync users to database
-        const syncResults = {
-          created: 0,
-          updated: 0,
-          skipped: 0,
-          errors: []
-        };
-        
-        for (const slackUser of activeUsers) {
-          try {
-            const email = slackUser.profile.email;
-            const name = slackUser.profile.real_name || slackUser.profile.display_name || slackUser.name;
-            
-            // Check if user exists
-            const existingUser = await storage.getUserByEmail(req.orgId, email);
-            
-            if (existingUser) {
-              // Update existing user with Slack ID if needed
-              if (!existingUser.slackUserId || existingUser.slackUserId !== slackUser.id) {
-                await storage.updateUser(req.orgId, existingUser.id, {
-                  slackUserId: slackUser.id
-                });
-                syncResults.updated++;
-                console.log(`📝 Updated user ${email} with Slack ID`);
-              } else {
-                syncResults.skipped++;
-              }
-            } else {
-              // Create new user
-              const newUser = await storage.createUser(req.orgId, {
-                email,
-                name,
-                username: email.split('@')[0],
-                slackUserId: slackUser.id,
-                role: 'member',
-                isActive: true,
-                authProvider: 'slack',
-                organizationId: req.orgId,
-                password: '' // No password for Slack users
-              });
-              syncResults.created++;
-              console.log(`✨ Created new user ${email}`);
-            }
-          } catch (userError: any) {
-            syncResults.errors.push(`Failed to sync user ${slackUser.profile.email}: ${userError.message}`);
-            console.error(`❌ Error syncing user:`, userError);
-          }
-        }
-        
-        console.log(`✅ Sync complete:`, syncResults);
-        
-        res.json({
-          message: "Slack user sync completed",
-          ...syncResults
-        });
-        
-      } catch (slackError: any) {
-        console.error("❌ Slack API error:", slackError);
-        return res.status(500).json({ 
-          message: "Failed to communicate with Slack",
-          error: slackError.message
-        });
-      }
-      
-    } catch (error: any) {
-      console.error("❌ Sync error:", error);
-      res.status(500).json({ 
-        message: "Failed to sync users",
-        error: error.message
-      });
-    }
-  });
-  
-  // POST /api/slack/sync-users - Alternative endpoint for Slack user sync
-  app.post("/api/slack/sync-users", requireAuth(), requireRole(['admin']), async (req, res) => {
-    console.log("🔄 POST /api/slack/sync-users - Redirecting to admin sync endpoint");
-    // Redirect to the admin endpoint
-    req.url = '/api/admin/sync-users';
-    return app.handle(req, res);
-  });
+  // These duplicate endpoints have been removed to avoid conflicts
+  // The proper sync-users endpoints are defined earlier in the file around line 6250
+  // Those endpoints use the channel-based sync which is the correct approach
   
   // GET /api/integrations/slack/status - Check Slack connection status
   app.get("/api/integrations/slack/status", requireAuth(), async (req, res) => {
