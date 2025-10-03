@@ -1,6 +1,6 @@
 import session from 'express-session';
 import connectPgSimple from 'connect-pg-simple';
-import type { Request, Response } from 'express';
+import type { Request, Response, NextFunction } from 'express';
 
 // Extend session data with our custom properties
 declare module 'express-session' {
@@ -17,42 +17,80 @@ declare module 'express-session' {
 const PgSession = connectPgSimple(session);
 
 /**
- * Get proper session configuration based on environment
+ * Detect if we're in a production environment based on multiple signals
+ * This is more reliable than just checking NODE_ENV which stays 'development' in published Replit apps
  */
-export function getSessionConfig() {
-  // CRITICAL FIX: Simplified and reliable environment detection
+function isProductionEnvironment(req?: Request): boolean {
+  // Check static environment variables first
   const nodeEnv = process.env.NODE_ENV || 'development';
-  const isProduction = nodeEnv === 'production';
-  const isDevelopment = nodeEnv === 'development' || nodeEnv !== 'production';
   const port = process.env.PORT || '5000';
   const isReplit = !!process.env.REPL_SLUG;
   
-  // CRITICAL FIX: Simple and clear detection logic
-  // Development = explicitly development mode OR port 5000 (dev default) OR explicit localhost flag
-  // Production = NODE_ENV is production OR we're in Replit and NOT on port 5000
-  const isLocalDevelopment = 
-    isDevelopment && (port === '5000' || process.env.TESTING_LOCALHOST === 'true');
+  // Check Replit-specific deployment indicators
+  const replitDeployment = process.env.REPLIT_DEPLOYMENT === '1';
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN || '';
   
-  // CRITICAL FIX: Properly detect production environments
-  // This includes:
-  // - NODE_ENV=production
-  // - Replit apps that are published (not on port 5000)
-  // - Any HTTPS sites (custom domains, etc)
-  const isProductionEnvironment = 
-    isProduction || // Explicit production
-    (isReplit && port !== '5000' && !process.env.TESTING_LOCALHOST); // Published Replit app
+  // Static checks (when no request available)
+  // FIXED: More specific checks for production
+  const staticProduction = 
+    nodeEnv === 'production' || // Explicit production
+    replitDeployment === true || // Replit deployment flag (explicit check)
+    (replitDevDomain.length > 0 && 
+     replitDevDomain.includes('.replit.app') && 
+     !replitDevDomain.includes(':5000')); // Published Replit domain without dev port
   
-  // Log detection details for debugging
-  console.log('🔍 Session environment detection (FIXED):', {
-    NODE_ENV: nodeEnv,
-    PORT: port,
-    REPL_SLUG: isReplit ? 'present' : 'absent',
-    isLocalDevelopment,
-    isProductionEnvironment,
-    decision: isProductionEnvironment ? 'PRODUCTION (secure cookies)' : 'DEVELOPMENT (non-secure cookies)'
-  });
+  // If we have a request, check dynamic indicators
+  if (req) {
+    // Check protocol (HTTPS indicates production)
+    const protocol = req.get('x-forwarded-proto') || req.protocol;
+    const isHttps = protocol === 'https';
+    
+    // Check hostname for production domains
+    const host = req.get('host') || req.hostname || '';
+    
+    // FIXED: More specific domain checks to avoid false positives
+    const isProductionDomain = 
+      (host.includes('.replit.app') && !host.includes(':5000')) || // Published Replit app
+      host.includes('whirkplace.com') || // Custom domain
+      (isHttps && !host.includes('localhost') && !host.includes('127.0.0.1')); // HTTPS non-local
+    
+    // Special case: if we're on port 5000 with local IPs, it's always development
+    const isDevelopmentOverride = 
+      (host.includes(':5000') || port === '5000') && 
+      (host.includes('localhost') || host.includes('127.0.0.1') || host.includes('0.0.0.0'));
+    
+    // If development override is true, it's definitely development
+    if (isDevelopmentOverride) {
+      return false;
+    }
+    
+    // Log request-based detection for debugging (only for potential production)
+    if (isProductionDomain || isHttps) {
+      console.log('🔍 Request-based production detection:', {
+        protocol,
+        host,
+        isHttps,
+        isProductionDomain,
+        staticProduction,
+        headers: {
+          'x-forwarded-proto': req.get('x-forwarded-proto'),
+          'host': req.get('host')
+        }
+      });
+    }
+    
+    return staticProduction || isHttps || isProductionDomain;
+  }
   
-  // Session store configuration
+  return staticProduction;
+}
+
+/**
+ * Create session middleware with dynamic cookie configuration
+ * Returns a middleware function that creates appropriate session based on request
+ */
+export function createDynamicSessionMiddleware() {
+  // Session store configuration (shared for all environments)
   const sessionStore = new PgSession({
     conString: process.env.DATABASE_URL,
     tableName: 'user_sessions',
@@ -63,66 +101,89 @@ export function getSessionConfig() {
     }
   });
 
-  // CRITICAL FIX: Simplified cookie configuration based on environment
-  let cookieConfig;
+  // Log initial environment details
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const port = process.env.PORT || '5000';
+  const isReplit = !!process.env.REPL_SLUG;
+  const replitDeployment = process.env.REPLIT_DEPLOYMENT === '1';
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN || '';
   
-  if (isProductionEnvironment) {
-    // PRODUCTION: All HTTPS sites (custom domains, published Replit apps, etc.)
-    // MUST use secure cookies with sameSite='none' for HTTPS to work
-    cookieConfig = {
-      secure: true, // REQUIRED for HTTPS
-      httpOnly: true, // Security best practice
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      sameSite: 'none' as const, // Required for cross-origin contexts (iframes, OAuth)
-      domain: undefined, // Let browser handle domain automatically
-      path: '/',
-      partitioned: true // Chrome's CHIPS for iframe contexts
-    } as any;
-    
-    console.log('🔒 PRODUCTION COOKIES: secure=true, sameSite=none (for HTTPS sites)');
-  } else {
-    // DEVELOPMENT: Local development, HTTP localhost
-    // Cannot use secure cookies over HTTP
-    cookieConfig = {
-      secure: false, // MUST be false for HTTP
-      httpOnly: true, // Security best practice
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      sameSite: 'lax' as const, // Allows same-site requests
-      domain: undefined, // Let browser handle domain automatically
-      path: '/'
-      // No partitioned flag in development
-    } as any;
-    
-    console.log('🔓 DEVELOPMENT COOKIES: secure=false, sameSite=lax (for HTTP/localhost)');
-  }
-  
-  // Enhanced logging for cookie configuration
-  console.log('🍪 Cookie configuration details:', {
-    environment: isProductionEnvironment ? 'PRODUCTION' : 'DEVELOPMENT',
-    nodeEnv,
-    port,
-    isReplit,
-    cookie: {
-      secure: cookieConfig.secure,
-      httpOnly: cookieConfig.httpOnly,
-      sameSite: cookieConfig.sameSite,
-      domain: cookieConfig.domain || '[browser-default]',
-      path: cookieConfig.path,
-      maxAge: `${cookieConfig.maxAge / (24 * 60 * 60 * 1000)} days`,
-      partitioned: cookieConfig.partitioned || false
-    }
+  console.log('🔍 Session environment detection (ENHANCED):', {
+    NODE_ENV: nodeEnv,
+    PORT: port,
+    REPL_SLUG: isReplit ? 'present' : 'absent',
+    REPLIT_DEPLOYMENT: replitDeployment,
+    REPLIT_DEV_DOMAIN: replitDevDomain || '[not set]',
+    initialDetection: isProductionEnvironment() ? 'PRODUCTION' : 'DEVELOPMENT',
+    note: 'Cookie settings will be determined per-request for better accuracy'
   });
 
-  // Session configuration
-  return {
+  // Create two session middleware instances with different cookie configurations
+  const prodSessionMiddleware = session({
     store: sessionStore,
     secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
     resave: false,
-    saveUninitialized: false, // Don't create sessions until we store data
-    name: 'whirkplace.sid', // Custom session name to avoid conflicts
-    proxy: true, // Trust proxy headers
-    cookie: cookieConfig
+    saveUninitialized: false,
+    name: 'whirkplace.sid',
+    proxy: true,
+    cookie: {
+      secure: true,
+      httpOnly: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      sameSite: 'none' as const,
+      domain: undefined,
+      path: '/',
+      partitioned: true
+    } as any
+  });
+
+  const devSessionMiddleware = session({
+    store: sessionStore,
+    secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    name: 'whirkplace.sid',
+    proxy: true,
+    cookie: {
+      secure: false,
+      httpOnly: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      sameSite: 'lax' as const,
+      domain: undefined,
+      path: '/'
+    }
+  });
+
+  // Return a middleware function that chooses the appropriate session config
+  return (req: Request, res: Response, next: NextFunction) => {
+    const isProd = isProductionEnvironment(req);
+    
+    // Log detection result for first request or environment changes
+    if (!req.path.includes('/api/') || req.path === '/') {
+      console.log('🍪 Dynamic session detection:', {
+        path: req.path,
+        isProd,
+        protocol: req.get('x-forwarded-proto') || req.protocol,
+        host: req.get('host'),
+        usingConfig: isProd ? 'PRODUCTION (secure cookies)' : 'DEVELOPMENT (non-secure cookies)'
+      });
+    }
+    
+    // Use the appropriate session middleware
+    if (isProd) {
+      prodSessionMiddleware(req, res, next);
+    } else {
+      devSessionMiddleware(req, res, next);
+    }
   };
+}
+
+/**
+ * Get proper session configuration based on environment
+ * Legacy function for backwards compatibility - now just returns the dynamic middleware
+ */
+export function getSessionConfig() {
+  return createDynamicSessionMiddleware();
 }
 
 /**
@@ -270,46 +331,42 @@ export async function clearSessionUser(req: Request): Promise<void> {
  * Log session configuration on startup
  */
 export function logSessionConfig() {
-  // Match the exact detection logic from getSessionConfig
+  // Use the enhanced detection logic
   const nodeEnv = process.env.NODE_ENV || 'development';
-  const isProduction = nodeEnv === 'production';
-  const isDevelopment = nodeEnv === 'development' || nodeEnv !== 'production';
   const port = process.env.PORT || '5000';
   const isReplit = !!process.env.REPL_SLUG;
+  const replitDeployment = process.env.REPLIT_DEPLOYMENT === '1';
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN || '';
   
-  // Match detection from getSessionConfig
-  const isLocalDevelopment = 
-    isDevelopment && (port === '5000' || process.env.TESTING_LOCALHOST === 'true');
-  
-  const isProductionEnvironment = 
-    isProduction || // Explicit production
-    (isReplit && port !== '5000' && !process.env.TESTING_LOCALHOST); // Published Replit app
-  
-  const useSecureCookies = isProductionEnvironment;
+  // Use the new isProductionEnvironment function for consistent detection
+  const isProdEnvironment = isProductionEnvironment();
+  const useSecureCookies = isProdEnvironment;
   const sameSite = useSecureCookies ? 'none' : 'lax';
   
   console.log('🔐 Session configuration on startup:', {
-    environment: isProductionEnvironment ? 'PRODUCTION' : 'DEVELOPMENT',
+    environment: isProdEnvironment ? 'PRODUCTION' : 'DEVELOPMENT',
     nodeEnv,
     port,
     replit: isReplit,
-    isLocalDevelopment,
-    isProductionEnvironment,
+    replitDeployment,
+    replitDevDomain: replitDevDomain || '[not set]',
+    isProductionEnvironment: isProdEnvironment,
     secureCookies: useSecureCookies,
     sameSite: sameSite,
     partitioned: useSecureCookies,
     sessionName: 'whirkplace.sid',
     trustProxy: true,
     maxAge: '30 days',
-    decision: isProductionEnvironment ? '🔒 Using SECURE cookies for HTTPS' : '🔓 Using NON-SECURE cookies for HTTP/localhost'
+    decision: isProdEnvironment ? '🔒 Using SECURE cookies for HTTPS' : '🔓 Using NON-SECURE cookies for HTTP/localhost',
+    note: 'Actual cookie settings will be determined per-request for better accuracy'
   });
   
   // Extra warning for common misconfigurations
-  if (!isProductionEnvironment && useSecureCookies) {
+  if (!isProdEnvironment && useSecureCookies) {
     console.warn('⚠️  WARNING: Secure cookies enabled in non-production environment. This will cause session failures over HTTP!');
   }
   
-  if (isProductionEnvironment && !useSecureCookies) {
+  if (isProdEnvironment && !useSecureCookies) {
     console.error('❌ CRITICAL ERROR: Production environment detected but secure cookies disabled! Sessions will fail on HTTPS!');
   }
 }

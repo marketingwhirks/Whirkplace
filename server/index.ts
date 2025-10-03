@@ -94,9 +94,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 
-// Use centralized session configuration
-const sessionConfig = getSessionConfig();
-app.use(session(sessionConfig));
+// Use dynamic session middleware
+const sessionMiddleware = getSessionConfig();
+app.use(sessionMiddleware);
 
 // Log session configuration on startup
 logSessionConfig();
