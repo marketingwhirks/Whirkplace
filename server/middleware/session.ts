@@ -20,38 +20,37 @@ const PgSession = connectPgSimple(session);
  * Get proper session configuration based on environment
  */
 export function getSessionConfig() {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isReplit = !!process.env.REPL_SLUG;
-  const isDevelopment = process.env.NODE_ENV === 'development';
+  // CRITICAL FIX: Simplified and reliable environment detection
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const isProduction = nodeEnv === 'production';
+  const isDevelopment = nodeEnv === 'development' || nodeEnv !== 'production';
   const port = process.env.PORT || '5000';
+  const isReplit = !!process.env.REPL_SLUG;
   
-  // CRITICAL FIX: Comprehensive localhost detection
-  // In Replit development, we're still on localhost even though REPL_SLUG is set
-  // We need to detect when we're running on HTTP localhost vs HTTPS production
-  const isLocalhost = 
-    process.env.TESTING_LOCALHOST === 'true' || // Explicit env var
-    isDevelopment || // Development mode always means localhost
-    port === '5000' || // Default dev port indicates localhost
-    (!isProduction); // Any non-production is treated as localhost for cookies
+  // CRITICAL FIX: Simple and clear detection logic
+  // Development = explicitly development mode OR port 5000 (dev default) OR explicit localhost flag
+  // Production = NODE_ENV is production OR we're in Replit and NOT on port 5000
+  const isLocalDevelopment = 
+    isDevelopment && (port === '5000' || process.env.TESTING_LOCALHOST === 'true');
+  
+  // CRITICAL FIX: Properly detect production environments
+  // This includes:
+  // - NODE_ENV=production
+  // - Replit apps that are published (not on port 5000)
+  // - Any HTTPS sites (custom domains, etc)
+  const isProductionEnvironment = 
+    isProduction || // Explicit production
+    (isReplit && port !== '5000' && !process.env.TESTING_LOCALHOST); // Published Replit app
   
   // Log detection details for debugging
-  console.log('🔍 Session environment detection:', {
-    NODE_ENV: process.env.NODE_ENV,
-    REPL_SLUG: !!process.env.REPL_SLUG,
+  console.log('🔍 Session environment detection (FIXED):', {
+    NODE_ENV: nodeEnv,
     PORT: port,
-    isProduction,
-    isDevelopment,
-    isReplit,
-    isLocalhost
+    REPL_SLUG: isReplit ? 'present' : 'absent',
+    isLocalDevelopment,
+    isProductionEnvironment,
+    decision: isProductionEnvironment ? 'PRODUCTION (secure cookies)' : 'DEVELOPMENT (non-secure cookies)'
   });
-  
-  // Determine if we should use secure cookies
-  // CRITICAL FIX: Only use secure cookies for actual HTTPS production
-  // In Replit development (localhost:5000), we're on HTTP, not HTTPS
-  // Browsers refuse to set secure cookies over HTTP, causing sessions to fail
-  // Logic: If we're on localhost, NEVER use secure cookies (they don't work over HTTP)
-  // Otherwise, use secure cookies if we're in production Replit (for iframe context)
-  const useSecureCookies = !isLocalhost && (isReplit && isProduction);
   
   // Session store configuration
   const sessionStore = new PgSession({
@@ -64,45 +63,50 @@ export function getSessionConfig() {
     }
   });
 
-  // Cookie configuration - SIMPLIFIED for better browser compatibility
-  // CRITICAL FIX: Use explicit, simple settings based on environment
+  // CRITICAL FIX: Simplified cookie configuration based on environment
   let cookieConfig;
   
-  if (isProduction && isReplit) {
-    // Production Replit (iframe) needs sameSite=none with secure
+  if (isProductionEnvironment) {
+    // PRODUCTION: All HTTPS sites (custom domains, published Replit apps, etc.)
+    // MUST use secure cookies with sameSite='none' for HTTPS to work
     cookieConfig = {
-      secure: true,
-      httpOnly: true,
+      secure: true, // REQUIRED for HTTPS
+      httpOnly: true, // Security best practice
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      sameSite: 'none' as const,
-      domain: undefined, // Let browser set domain automatically
+      sameSite: 'none' as const, // Required for cross-origin contexts (iframes, OAuth)
+      domain: undefined, // Let browser handle domain automatically
       path: '/',
       partitioned: true // Chrome's CHIPS for iframe contexts
     } as any;
+    
+    console.log('🔒 PRODUCTION COOKIES: secure=true, sameSite=none (for HTTPS sites)');
   } else {
-    // Development/localhost - USE SIMPLE SETTINGS FOR BROWSER COMPATIBILITY
-    // CRITICAL FIX: Always use secure=false for HTTP localhost
+    // DEVELOPMENT: Local development, HTTP localhost
+    // Cannot use secure cookies over HTTP
     cookieConfig = {
-      secure: false, // MUST be false for HTTP (localhost:5000)
-      httpOnly: true,
+      secure: false, // MUST be false for HTTP
+      httpOnly: true, // Security best practice
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      sameSite: 'lax' as const, // 'lax' allows same-site requests
-      domain: undefined, // Let browser set domain automatically
-      path: '/',
+      sameSite: 'lax' as const, // Allows same-site requests
+      domain: undefined, // Let browser handle domain automatically
+      path: '/'
       // No partitioned flag in development
     } as any;
+    
+    console.log('🔓 DEVELOPMENT COOKIES: secure=false, sameSite=lax (for HTTP/localhost)');
   }
   
   // Enhanced logging for cookie configuration
-  console.log('🍪 Cookie configuration (FIXED):', {
-    environment: isProduction ? 'production' : 'development',
-    isLocalhost,
+  console.log('🍪 Cookie configuration details:', {
+    environment: isProductionEnvironment ? 'PRODUCTION' : 'DEVELOPMENT',
+    nodeEnv,
+    port,
     isReplit,
     cookie: {
       secure: cookieConfig.secure,
       httpOnly: cookieConfig.httpOnly,
       sameSite: cookieConfig.sameSite,
-      domain: cookieConfig.domain || '[auto]',
+      domain: cookieConfig.domain || '[browser-default]',
       path: cookieConfig.path,
       maxAge: `${cookieConfig.maxAge / (24 * 60 * 60 * 1000)} days`,
       partitioned: cookieConfig.partitioned || false
@@ -266,37 +270,46 @@ export async function clearSessionUser(req: Request): Promise<void> {
  * Log session configuration on startup
  */
 export function logSessionConfig() {
-  const isProduction = process.env.NODE_ENV === 'production';
-  const isReplit = !!process.env.REPL_SLUG;
-  const isDevelopment = process.env.NODE_ENV === 'development';
+  // Match the exact detection logic from getSessionConfig
+  const nodeEnv = process.env.NODE_ENV || 'development';
+  const isProduction = nodeEnv === 'production';
+  const isDevelopment = nodeEnv === 'development' || nodeEnv !== 'production';
   const port = process.env.PORT || '5000';
+  const isReplit = !!process.env.REPL_SLUG;
   
-  // Match the detection logic from getSessionConfig  
-  const isLocalhost = 
-    process.env.TESTING_LOCALHOST === 'true' || 
-    isDevelopment || 
-    port === '5000' || 
-    (!isProduction);
+  // Match detection from getSessionConfig
+  const isLocalDevelopment = 
+    isDevelopment && (port === '5000' || process.env.TESTING_LOCALHOST === 'true');
   
-  // Simplified logic - production Replit uses secure, everything else doesn't
-  const useSecureCookies = isProduction && isReplit;
+  const isProductionEnvironment = 
+    isProduction || // Explicit production
+    (isReplit && port !== '5000' && !process.env.TESTING_LOCALHOST); // Published Replit app
+  
+  const useSecureCookies = isProductionEnvironment;
   const sameSite = useSecureCookies ? 'none' : 'lax';
   
-  console.log('🔐 Session configuration (FIXED):', {
-    environment: isProduction ? 'production' : 'development',
+  console.log('🔐 Session configuration on startup:', {
+    environment: isProductionEnvironment ? 'PRODUCTION' : 'DEVELOPMENT',
+    nodeEnv,
+    port,
     replit: isReplit,
-    localhost: isLocalhost,
+    isLocalDevelopment,
+    isProductionEnvironment,
     secureCookies: useSecureCookies,
     sameSite: sameSite,
     partitioned: useSecureCookies,
     sessionName: 'whirkplace.sid',
     trustProxy: true,
     maxAge: '30 days',
-    port: process.env.PORT || '5000'
+    decision: isProductionEnvironment ? '🔒 Using SECURE cookies for HTTPS' : '🔓 Using NON-SECURE cookies for HTTP/localhost'
   });
   
   // Extra warning for common misconfigurations
-  if (!isProduction && useSecureCookies) {
+  if (!isProductionEnvironment && useSecureCookies) {
     console.warn('⚠️  WARNING: Secure cookies enabled in non-production environment. This will cause session failures over HTTP!');
+  }
+  
+  if (isProductionEnvironment && !useSecureCookies) {
+    console.error('❌ CRITICAL ERROR: Production environment detected but secure cookies disabled! Sessions will fail on HTTPS!');
   }
 }
