@@ -6992,6 +6992,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // NEW: Simplified integrations endpoint that uses current user's organization
+  // This endpoint serves as a wrapper for the existing /api/organizations/:id/integrations endpoint
+  // It automatically uses the authenticated user's organization ID from req.orgId
+  app.get("/api/integrations", requireAuth(), requireOrganization(), async (req, res) => {
+    try {
+      console.log(`📋 Fetching integrations for org: ${req.orgId}`);
+      
+      // Get the organization data using the orgId from the middleware
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Return integration-specific fields only - NEVER return secrets
+      // This matches the exact response format of /api/organizations/:id/integrations
+      const integrationData = {
+        id: organization.id,
+        name: organization.name,
+        slackWorkspaceId: organization.slackWorkspaceId,
+        slackChannelId: organization.slackChannelId,
+        hasSlackBotToken: !!organization.slackBotToken, // Only boolean indicator
+        enableSlackIntegration: organization.enableSlackIntegration,
+        slackConnectionStatus: organization.slackConnectionStatus,
+        slackLastConnected: organization.slackLastConnected,
+        microsoftTenantId: organization.microsoftTenantId,
+        microsoftClientId: organization.microsoftClientId,
+        hasMicrosoftClientSecret: !!organization.microsoftClientSecret, // Only boolean indicator
+        enableMicrosoftAuth: organization.enableMicrosoftAuth,
+        enableTeamsIntegration: organization.enableTeamsIntegration,
+        microsoftConnectionStatus: organization.microsoftConnectionStatus,
+        microsoftLastConnected: organization.microsoftLastConnected,
+      };
+      
+      res.json(integrationData);
+    } catch (error) {
+      console.error("GET /api/integrations - Error:", error);
+      res.status(500).json({ message: "Failed to fetch organization integrations" });
+    }
+  });
+
   // Slack integration status endpoint
   app.get("/api/integrations/slack/status", requireAuth(), async (req, res) => {
     try {
