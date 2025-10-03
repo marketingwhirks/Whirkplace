@@ -276,6 +276,7 @@ export function authenticateUser() {
       const skipAuthPaths = [
         '/auth/logout', 
         '/auth/login',  // Add login endpoint to skip auth
+        '/csrf-token',  // CSRF token endpoint - must be public for pre-auth token fetching
         '/business/plans',  // Public endpoint for viewing business plans
         '/business/signup',
         '/business/select-plan',

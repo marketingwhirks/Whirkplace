@@ -52,12 +52,15 @@ function validateCSRFToken(secret: string, token: string): boolean {
 }
 
 /**
- * Generates CSRF token for authenticated users
+ * Generates CSRF token for all users with sessions
+ * NOTE: This must work for both authenticated and unauthenticated users
+ * since CSRF tokens are needed before login
  */
 export function generateCSRF() {
   return (req: Request, res: Response, next: NextFunction) => {
-    // Only generate CSRF tokens for authenticated users with sessions
-    if (!req.session || !req.currentUser) {
+    // Generate CSRF tokens for any user with a session (authenticated or not)
+    // Sessions are created automatically for all users
+    if (!req.session) {
       return next();
     }
     
@@ -171,13 +174,18 @@ export function validateCSRF() {
 }
 
 /**
- * Endpoint to get CSRF token for authenticated users
+ * Endpoint to get CSRF token
+ * NOTE: This endpoint must be publicly accessible (no auth required)
+ * since CSRF tokens need to be fetched before login
  */
 export function csrfTokenEndpoint(req: Request, res: Response) {
-  if (!req.session || !req.currentUser) {
-    return res.status(401).json({ message: "Authentication required" });
+  // CSRF tokens should work with sessions only, not authentication
+  // Sessions are created automatically even for unauthenticated users
+  if (!req.session) {
+    return res.status(500).json({ message: "Session not initialized" });
   }
   
+  // Generate or reuse existing secret
   if (!req.session.csrfSecret) {
     req.session.csrfSecret = generateCSRFSecret();
   }
