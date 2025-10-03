@@ -131,10 +131,10 @@ export function createDynamicSessionMiddleware() {
       httpOnly: true,
       maxAge: 30 * 24 * 60 * 60 * 1000,
       sameSite: 'none' as const,
-      domain: undefined,
-      path: '/',
-      partitioned: true
-    } as any
+      domain: undefined, // Let browser handle domain automatically
+      path: '/'
+      // Removed partitioned flag - can cause issues with some browsers
+    }
   });
 
   const devSessionMiddleware = session({
