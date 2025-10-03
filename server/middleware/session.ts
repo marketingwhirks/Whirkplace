@@ -119,17 +119,21 @@ export async function setSessionUser(
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     if (!req.session) {
+      console.error('❌ CRITICAL: Session not initialized in setSessionUser');
       return reject(new Error('Session not initialized'));
     }
 
-    // Log initial session state
-    console.log('📝 setSessionUser called:', {
+    // Enhanced logging for session operations
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('📝 setSessionUser START:', {
       sessionId: req.sessionID,
-      userId,
-      organizationId,
-      organizationSlug,
+      newUserId: userId,
+      newOrganizationId: organizationId,
+      newOrganizationSlug: organizationSlug,
       existingUserId: req.session.userId,
-      existingOrgId: req.session.organizationId
+      existingOrgId: req.session.organizationId,
+      existingOrgSlug: req.session.organizationSlug,
+      caller: new Error().stack?.split('\n')[2]?.trim() // Get calling function for debugging
     });
 
     // In development, skip regeneration to avoid session loss issues
@@ -164,8 +168,8 @@ export async function setSessionUser(
           return reject(saveErr);
         }
         
-        // Verify session data after save
-        console.log('✅ Session saved successfully:', {
+        // Verify session data after save with enhanced logging
+        console.log('✅ SESSION SAVE SUCCESSFUL!', {
           sessionId: req.sessionID,
           userId: req.session.userId,
           organizationId: req.session.organizationId,
@@ -177,6 +181,7 @@ export async function setSessionUser(
             sameSite: req.session.cookie.sameSite
           }
         });
+        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         
         resolve();
       });

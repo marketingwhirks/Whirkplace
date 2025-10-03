@@ -2168,36 +2168,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create initial onboarding record
       const onboardingId = randomBytes(16).toString('hex');
       
-      // Regenerate session for security and proper initialization
-      console.log("Setting session for user:", adminUser.id, "with role:", adminUser.role);
+      // CRITICAL FIX: Use setSessionUser to properly set and save session
+      console.log(`🔐 Setting session for new business admin: ${adminUser.email}`);
+      console.log(`📝 Organization: ID=${organization.id}, Slug=${orgSlug}`);
       
-      await new Promise((resolve, reject) => {
-        req.session.regenerate((regenerateErr) => {
-          if (regenerateErr) {
-            console.error('Failed to regenerate session:', regenerateErr);
-            return reject(regenerateErr);
-          }
-          
-          // Set session properties after regeneration
-          req.session.userId = adminUser.id;
-          req.session.organizationId = organization.id;
-          
-          console.log(`💾 Session configured for user: ${adminUser.id} in org: ${organization.id}`);
-          
-          // CRITICAL FIX: Don't call session.save() - let express-session handle it
-          // The session will be automatically saved and Set-Cookie header added when response is sent
-          console.log("🍪 Session will auto-save with Set-Cookie header on response");
-          resolve(true);
+      try {
+        await setSessionUser(req, adminUser.id, organization.id, orgSlug);
+        console.log(`✅ setSessionUser() completed successfully for business signup`);
+        console.log(`📋 Session ID after setSessionUser: ${req.sessionID}`);
+        
+        // Verify session data was actually saved
+        console.log(`🔍 Verifying business signup session data after save:`, {
+          sessionId: req.sessionID,
+          userId: req.session?.userId,
+          organizationId: req.session?.organizationId,
+          organizationSlug: req.session?.organizationSlug
         });
-      });
-      
-      // CRITICAL: Set auth cookies for Replit/iframe environment
-      const isReplit = !!process.env.REPL_SLUG;
-      const isProduction = process.env.NODE_ENV === 'production';
-      const useSecure = isProduction || isReplit;
-      const useSameSiteNone = isProduction || isReplit;
-      
-      console.log(`🍪 Setting auth cookies for new admin - secure=${useSecure}, sameSite=${useSameSiteNone ? 'none' : 'lax'}, isReplit=${isReplit}`);
+      } catch (sessionError) {
+        console.error('❌ Failed to set session for business signup:', sessionError);
+        // Clean up created user and organization on session failure
+        if (adminUser.id) {
+          await storage.deleteUser(organization.id, adminUser.id).catch(e => console.error('Failed to clean up user:', e));
+        }
+        if (organization.id) {
+          await storage.deleteOrganization(organization.id).catch(e => console.error('Failed to clean up organization:', e));
+        }
+        return res.status(500).json({ message: 'Session creation failed' });
+      }
       
       // SECURITY: Session-based authentication only - no auth cookies
       
