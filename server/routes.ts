@@ -1574,6 +1574,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Cookie Diagnostic Endpoint - CRITICAL for debugging production issues
+  app.get("/api/auth/cookie-diagnostic", async (req, res) => {
+    const protocol = req.protocol;
+    const forwardedProto = req.get('x-forwarded-proto');
+    const host = req.get('host');
+    const origin = req.get('origin');
+    const referer = req.get('referer');
+    const cookie = req.get('cookie');
+    
+    // Test setting a simple cookie to see if browser accepts it
+    const testCookieName = 'test_cookie';
+    const testCookieValue = `test_${Date.now()}`;
+    
+    // Set test cookie with same config as session cookie
+    const isProduction = forwardedProto === 'https' || 
+                        (host && (host.includes('.replit.app') || host.includes('whirkplace.com')));
+    
+    res.cookie(testCookieName, testCookieValue, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
+      maxAge: 60000, // 1 minute
+      path: '/'
+    });
+    
+    const diagnostic = {
+      timestamp: new Date().toISOString(),
+      request: {
+        protocol,
+        forwardedProto,
+        host,
+        origin,
+        referer,
+        url: req.url,
+        method: req.method,
+        secure: req.secure,
+        hostname: req.hostname,
+        baseUrl: req.baseUrl,
+        originalUrl: req.originalUrl
+      },
+      cookies: {
+        raw: cookie || 'NO COOKIES SENT',
+        parsed: req.cookies || {},
+        sessionId: req.sessionID || 'NO SESSION ID',
+        hasSessionCookie: !!req.cookies['whirkplace.sid'],
+        testCookieSet: {
+          name: testCookieName,
+          value: testCookieValue,
+          config: {
+            httpOnly: true,
+            secure: isProduction,
+            sameSite: isProduction ? 'none' : 'lax',
+            maxAge: 60000,
+            path: '/'
+          }
+        }
+      },
+      session: {
+        exists: !!req.session,
+        userId: req.session?.userId || 'NO USER ID',
+        organizationId: req.session?.organizationId || 'NO ORG ID',
+        cookieConfig: req.session?.cookie || {}
+      },
+      environment: {
+        NODE_ENV: process.env.NODE_ENV,
+        isProduction,
+        isReplit: !!process.env.REPL_SLUG,
+        replitDomain: process.env.REPLIT_DEV_DOMAIN || 'NOT SET'
+      },
+      diagnosticSummary: {
+        browserSendingCookies: !!cookie,
+        sessionCookiePresent: !!req.cookies['whirkplace.sid'],
+        sessionDataPresent: !!req.session?.userId,
+        expectedCookieConfig: isProduction ? 'PRODUCTION (secure:true, sameSite:none)' : 'DEVELOPMENT (secure:false, sameSite:lax)',
+        likelyIssue: !cookie ? 'Browser not sending any cookies' : 
+                     !req.cookies['whirkplace.sid'] ? 'Session cookie not in request' :
+                     !req.session?.userId ? 'Session exists but no user data' : 
+                     'Session appears to be working'
+      }
+    };
+    
+    res.json(diagnostic);
+  });
+  
   // Session Debug Endpoint (for diagnosing auth issues)
   app.get("/api/auth/session-debug", async (req, res) => {
     try {
