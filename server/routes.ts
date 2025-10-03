@@ -977,6 +977,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           existingUser = await storage.getUserBySlackId(organization.id, user.sub);
           console.log('🔍 Found by Slack ID in current org?', existingUser ? 'YES' : 'NO');
           
+          // CRITICAL FIX: If user found in current org, ensure userOrganization is set properly
+          if (existingUser) {
+            userOrganization = organization; // User belongs to this organization
+            console.log('✅ User found in current organization:', organization.id, organization.name);
+          }
+          
           // If not found in current org, check if user exists in ANY org (for duplicate prevention)
           // BUT allow creating new organizations even if Slack ID exists elsewhere
           if (!existingUser && !isNewOrganization) {
@@ -1049,6 +1055,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           console.log('🔍 Looking for user with email:', user.email, 'in org:', organization.id);
           existingUser = await storage.getUserByEmail(organization.id, user.email);
           console.log('🔍 Found by email in current org?', existingUser ? 'YES' : 'NO');
+          
+          // CRITICAL FIX: If user found by email in current org, ensure userOrganization is set properly
+          if (existingUser) {
+            userOrganization = organization; // User belongs to this organization  
+            console.log('✅ User found by email in current organization:', organization.id, organization.name);
+          }
           
           // If not found in current org but has email, check if this is a super admin in ANY org
           if (!existingUser) {
@@ -1295,11 +1307,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // CRITICAL FIX: Use setSessionUser to properly set ALL required session data
         // This ensures userId, organizationId, and organizationSlug are all set correctly
         // The organization context comes from userOrganization which tracks the user's actual org
-        const actualOrganizationId = userOrganization?.id || organization.id;
+        // IMPORTANT: Get the actual organization ID from the authenticated user's organizationId field
+        // This is the source of truth for which organization the user belongs to
+        const actualOrganizationId = authenticatedUser.organizationId || userOrganization?.id || organization.id;
         const actualOrganizationSlug = userOrganization?.slug || organization.slug;
         
-        console.log(`🔐 Setting session for Slack OAuth user: ${authenticatedUser.email}`);
-        console.log(`📝 Organization: ID=${actualOrganizationId}, Slug=${actualOrganizationSlug}`);
+        console.log(`🔐 DETERMINING CORRECT ORGANIZATION FOR SESSION AND UPDATE`);
+        console.log(`   Authenticated User Org ID: ${authenticatedUser.organizationId}`);
+        console.log(`   UserOrganization ID: ${userOrganization?.id}`);
+        console.log(`   OAuth State Organization ID: ${organization.id}`);
+        console.log(`   Final Actual Org ID to use: ${actualOrganizationId}`);
+        console.log(`   Final Actual Org Slug: ${actualOrganizationSlug}`);
         
         try {
           await setSessionUser(req, authenticatedUser.id, actualOrganizationId, actualOrganizationSlug);
@@ -1320,11 +1338,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Use actualOrganizationId (which tracks the user's actual org) instead of organization.id
           try {
             const workspaceId = team?.id || user["https://slack.com/team_id"];
-            console.log(`🔌 Updating organization Slack connection status`);
-            console.log(`   Organization to update: ${actualOrganizationId} (${actualOrganizationSlug})`);
-            console.log(`   Workspace ID: ${workspaceId}`);
+            const workspaceName = team?.name || 'Unknown Workspace';
+            
+            console.log(`🔌 UPDATING ORGANIZATION SLACK CONNECTION STATUS`);
+            console.log(`   User: ${authenticatedUser.email} (ID: ${authenticatedUser.id})`);
+            console.log(`   User's Organization ID: ${authenticatedUser.organizationId}`);
+            console.log(`   UserOrganization Object: ${userOrganization?.id} (${userOrganization?.name})`);
+            console.log(`   Original OAuth Organization: ${organization.id} (${organization.name})`);
+            console.log(`   Actual Organization to update: ${actualOrganizationId} (${actualOrganizationSlug})`);
+            console.log(`   Slack Workspace ID: ${workspaceId}`);
+            console.log(`   Slack Workspace Name: ${workspaceName}`);
+            console.log(`   Timestamp: ${new Date().toISOString()}`);
             
             // CRITICAL: Update the actual organization the user belongs to
+            // Ensure we await the update properly before proceeding
             const updateResult = await storage.updateOrganization(actualOrganizationId, {
               slackConnectionStatus: 'connected',
               slackLastConnected: new Date(),
@@ -1333,16 +1360,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
             
             if (updateResult) {
-              console.log(`✅ Organization Slack integration marked as connected`);
-              console.log(`   Updated org: ${updateResult.name} (${updateResult.id})`);
-              console.log(`   Status: ${updateResult.slackConnectionStatus}`);
+              console.log(`✅ ORGANIZATION SLACK INTEGRATION SUCCESSFULLY UPDATED`);
+              console.log(`   Updated org ID: ${updateResult.id}`);
+              console.log(`   Updated org Name: ${updateResult.name}`);
+              console.log(`   Slack Connection Status: ${updateResult.slackConnectionStatus}`);
+              console.log(`   Slack Workspace ID: ${updateResult.slackWorkspaceId}`);
+              console.log(`   Slack Integration Enabled: ${updateResult.enableSlackIntegration}`);
+              console.log(`   Last Connected: ${updateResult.slackLastConnected}`);
+              
+              // Verify the update actually persisted by fetching it again
+              const verifyOrg = await storage.getOrganization(actualOrganizationId);
+              if (verifyOrg) {
+                console.log(`🔍 VERIFICATION: Organization re-fetched from database`);
+                console.log(`   Verified Status: ${verifyOrg.slackConnectionStatus}`);
+                console.log(`   Verified Workspace ID: ${verifyOrg.slackWorkspaceId}`);
+                
+                if (verifyOrg.slackConnectionStatus !== 'connected') {
+                  console.error(`❌ WARNING: Database verification shows status is still: ${verifyOrg.slackConnectionStatus}`);
+                } else {
+                  console.log(`✅ Database verification confirmed: Status is 'connected'`);
+                }
+              }
             } else {
-              console.error(`❌ Failed to update organization - no result returned`);
+              console.error(`❌ CRITICAL: Failed to update organization - no result returned`);
+              console.error(`   Attempted to update org ID: ${actualOrganizationId}`);
             }
           } catch (updateError) {
             console.error('❌ CRITICAL: Failed to update organization Slack status:', updateError);
-            console.error('   Organization ID:', actualOrganizationId);
-            console.error('   Error details:', updateError instanceof Error ? updateError.message : updateError);
+            console.error('   Organization ID attempted:', actualOrganizationId);
+            console.error('   Error type:', updateError?.constructor?.name);
+            console.error('   Error message:', updateError instanceof Error ? updateError.message : String(updateError));
+            console.error('   Error stack:', updateError instanceof Error ? updateError.stack : 'No stack trace');
             // Continue even if update fails - user is authenticated
           }
           
