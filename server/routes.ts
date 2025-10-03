@@ -1187,6 +1187,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...userData,
             isAccountOwner: isNewOrganization ? true : false,  // Account owner flag for new org creator
           });
+          
+          // Send welcome message via Slack DM if user has Slack ID
+          if (authenticatedUser.slackUserId) {
+            try {
+              const { sendWelcomeMessage } = await import("./services/slack");
+              await sendWelcomeMessage(
+                authenticatedUser.slackUserId,
+                authenticatedUser.name || authenticatedUser.username,
+                null, // Channel ID not needed for DM
+                organization.name
+              );
+              console.log(`✅ Welcome message sent to new user: ${authenticatedUser.name}`);
+            } catch (welcomeError) {
+              console.error(`Failed to send welcome message to ${authenticatedUser.name}:`, welcomeError);
+            }
+          }
         } catch (error) {
           console.error("🔴 CRITICAL: Failed to create user from Slack:", error);
           console.error("🔴 User creation attempted for email:", user.email || "unknown");
@@ -6540,6 +6556,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Test Welcome Message (for development/testing)
+  app.post("/api/slack/test-welcome-message", requireOrganization(), requireAuth(), requireRole('admin'), requireFeatureAccess('slack_integration'), async (req, res) => {
+    try {
+      const { userId } = req.body;
+      
+      if (!userId) {
+        return res.status(400).json({ message: "User ID is required" });
+      }
+      
+      // Get the user and organization
+      const user = await storage.getUser(req.orgId, userId);
+      const organization = await storage.getOrganization(req.orgId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      if (!user.slackUserId) {
+        return res.status(400).json({ message: "User does not have a Slack user ID" });
+      }
+      
+      // Send welcome message
+      const { sendWelcomeMessage } = await import("./services/slack");
+      await sendWelcomeMessage(
+        user.slackUserId,
+        user.name || user.username,
+        null, // Channel ID not needed for DM
+        organization?.name
+      );
+      
+      res.json({
+        message: "Welcome message sent successfully",
+        user: user.name,
+        slackUserId: user.slackUserId,
+        organization: organization?.name
+      });
+    } catch (error) {
+      console.error("Failed to send test welcome message:", error);
+      res.status(500).json({ message: "Failed to send test welcome message" });
+    }
+  });
+
   // Slack Events Endpoint - Handle event subscriptions and verification
   app.post("/slack/events", async (req, res) => {
     try {
@@ -8899,6 +8957,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ success: false, message: "Bot token is required" });
       }
       
+      // Get the organization name for display
+      const organization = await storage.getOrganization(req.orgId);
+      const organizationName = organization?.name || "Unknown Organization";
+      
       // Test the Slack bot token by calling the auth.test API
       const response = await fetch("https://slack.com/api/auth.test", {
         method: "POST",
@@ -8916,11 +8978,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: "Slack connection successful",
           workspaceName: data.team,
           userId: data.user_id,
+          organization: organizationName, // Include the organization name in the response
         });
       } else {
         res.json({
           success: false,
           message: data.error || "Failed to connect to Slack",
+          organization: organizationName, // Include even in failure for consistency
         });
       }
     } catch (error) {
@@ -9047,10 +9111,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use centralized redirect URI resolver for consistent URL handling
       const redirectUri = resolveRedirectUri(req, '/api/auth/slack/callback');
       
-      // Slack OAuth v2 scopes for bot functionality
+      // Slack OAuth v2 scopes for bot functionality including DM capabilities
       const scopes = [
         'channels:read',
         'chat:write',
+        'im:write',              // Send direct messages to users
+        'im:read',               // Read direct message conversations
         'users:read',
         'users:read.email',
         'team:read',
