@@ -64,21 +64,50 @@ export function getSessionConfig() {
     }
   });
 
-  // Cookie configuration
-  // Production Replit (iframe) needs sameSite=none with secure
-  // Development/localhost needs sameSite=lax without secure
-  const sameSite = useSecureCookies ? 'none' as const : 'lax' as const;
+  // Cookie configuration - SIMPLIFIED for better browser compatibility
+  // CRITICAL FIX: Use explicit, simple settings based on environment
+  let cookieConfig;
   
-  const cookieConfig = {
-    secure: useSecureCookies,
-    httpOnly: true,
-    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    sameSite: sameSite,
-    domain: undefined, // Let browser set domain automatically
-    path: '/',
-    // Add partitioned flag only when using secure cookies for Chrome's CHIPS
-    ...(useSecureCookies ? { partitioned: true } : {})
-  } as any;
+  if (isProduction && isReplit) {
+    // Production Replit (iframe) needs sameSite=none with secure
+    cookieConfig = {
+      secure: true,
+      httpOnly: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      sameSite: 'none' as const,
+      domain: undefined, // Let browser set domain automatically
+      path: '/',
+      partitioned: true // Chrome's CHIPS for iframe contexts
+    } as any;
+  } else {
+    // Development/localhost - USE SIMPLE SETTINGS FOR BROWSER COMPATIBILITY
+    // CRITICAL FIX: Always use secure=false for HTTP localhost
+    cookieConfig = {
+      secure: false, // MUST be false for HTTP (localhost:5000)
+      httpOnly: true,
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      sameSite: 'lax' as const, // 'lax' allows same-site requests
+      domain: undefined, // Let browser set domain automatically
+      path: '/',
+      // No partitioned flag in development
+    } as any;
+  }
+  
+  // Enhanced logging for cookie configuration
+  console.log('🍪 Cookie configuration (FIXED):', {
+    environment: isProduction ? 'production' : 'development',
+    isLocalhost,
+    isReplit,
+    cookie: {
+      secure: cookieConfig.secure,
+      httpOnly: cookieConfig.httpOnly,
+      sameSite: cookieConfig.sameSite,
+      domain: cookieConfig.domain || '[auto]',
+      path: cookieConfig.path,
+      maxAge: `${cookieConfig.maxAge / (24 * 60 * 60 * 1000)} days`,
+      partitioned: cookieConfig.partitioned || false
+    }
+  });
 
   // Session configuration
   return {
@@ -249,10 +278,11 @@ export function logSessionConfig() {
     port === '5000' || 
     (!isProduction);
   
-  const useSecureCookies = !isLocalhost && (isReplit && isProduction);
+  // Simplified logic - production Replit uses secure, everything else doesn't
+  const useSecureCookies = isProduction && isReplit;
   const sameSite = useSecureCookies ? 'none' : 'lax';
   
-  console.log('🔐 Session configuration:', {
+  console.log('🔐 Session configuration (FIXED):', {
     environment: isProduction ? 'production' : 'development',
     replit: isReplit,
     localhost: isLocalhost,
@@ -264,4 +294,9 @@ export function logSessionConfig() {
     maxAge: '30 days',
     port: process.env.PORT || '5000'
   });
+  
+  // Extra warning for common misconfigurations
+  if (!isProduction && useSecureCookies) {
+    console.warn('⚠️  WARNING: Secure cookies enabled in non-production environment. This will cause session failures over HTTP!');
+  }
 }

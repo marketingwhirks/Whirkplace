@@ -1316,20 +1316,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           console.log(`✅ User ${authenticatedUser.name} (${authenticatedUser.email}) authenticated via Slack OAuth for organization ${organization.name}`);
           
-          // Update organization's Slack connection status after successful OAuth
+          // CRITICAL FIX: Update the CORRECT organization's Slack connection status
+          // Use actualOrganizationId (which tracks the user's actual org) instead of organization.id
           try {
             const workspaceId = team?.id || user["https://slack.com/team_id"];
             console.log(`🔌 Updating organization Slack connection status`);
+            console.log(`   Organization to update: ${actualOrganizationId} (${actualOrganizationSlug})`);
             console.log(`   Workspace ID: ${workspaceId}`);
-            await storage.updateOrganization(organization.id, {
+            
+            // CRITICAL: Update the actual organization the user belongs to
+            const updateResult = await storage.updateOrganization(actualOrganizationId, {
               slackConnectionStatus: 'connected',
               slackLastConnected: new Date(),
               slackWorkspaceId: workspaceId,
               enableSlackIntegration: true
             });
-            console.log(`✅ Organization Slack integration marked as connected`);
+            
+            if (updateResult) {
+              console.log(`✅ Organization Slack integration marked as connected`);
+              console.log(`   Updated org: ${updateResult.name} (${updateResult.id})`);
+              console.log(`   Status: ${updateResult.slackConnectionStatus}`);
+            } else {
+              console.error(`❌ Failed to update organization - no result returned`);
+            }
           } catch (updateError) {
-            console.error('⚠️ Failed to update organization Slack status:', updateError);
+            console.error('❌ CRITICAL: Failed to update organization Slack status:', updateError);
+            console.error('   Organization ID:', actualOrganizationId);
+            console.error('   Error details:', updateError instanceof Error ? updateError.message : updateError);
             // Continue even if update fails - user is authenticated
           }
           
@@ -1529,13 +1542,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             expires: req.session.cookie?.expires || null,
             maxAge: req.session.cookie?.maxAge || null,
             originalMaxAge: req.session.cookie?.originalMaxAge || null,
+            httpOnly: req.session.cookie?.httpOnly || null,
+            secure: req.session.cookie?.secure || null,
+            sameSite: req.session.cookie?.sameSite || null,
+            domain: req.session.cookie?.domain || null,
+            path: req.session.cookie?.path || null,
           }
         } : null,
+        headers: {
+          cookie: req.headers.cookie ? '[PRESENT]' : '[MISSING]',
+          host: req.headers.host,
+          origin: req.headers.origin,
+          referer: req.headers.referer,
+          userAgent: req.headers['user-agent'],
+        },
+        request: {
+          protocol: req.protocol,
+          secure: req.secure,
+          hostname: req.hostname,
+          url: req.url,
+        },
         user: null as any,
         environment: {
           nodeEnv: process.env.NODE_ENV,
           isProduction: process.env.NODE_ENV === 'production',
           hasBackdoorKey: !!process.env.BACKDOOR_KEY,
+          port: process.env.PORT,
+          isReplit: !!process.env.REPL_SLUG,
         }
       };
 
@@ -1564,6 +1597,178 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Session debug error:", error);
       res.status(500).json({ 
         message: "Failed to get session debug info",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+  
+  // Cookie Test Endpoint - Test cookie setting and reading
+  app.get("/api/auth/test-cookies", async (req, res) => {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isReplit = !!process.env.REPL_SLUG;
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const port = process.env.PORT || '5000';
+    
+    // Use same detection logic as session config
+    const isLocalhost = 
+      process.env.TESTING_LOCALHOST === 'true' || 
+      isDevelopment || 
+      port === '5000' || 
+      (!isProduction);
+    
+    const useSecureCookies = !isLocalhost && (isReplit && isProduction);
+    const sameSite = useSecureCookies ? 'none' as const : 'lax' as const;
+    
+    // Log incoming request details
+    console.log('🍪 Cookie Test Request:', {
+      headers: {
+        cookie: req.headers.cookie ? '[PRESENT]' : '[MISSING]',
+        host: req.headers.host,
+        origin: req.headers.origin,
+      },
+      protocol: req.protocol,
+      secure: req.secure,
+      hostname: req.hostname,
+    });
+    
+    // Set a test cookie with same config as session
+    const testCookieName = 'whirkplace-test-cookie';
+    const testValue = `test-${Date.now()}`;
+    
+    res.cookie(testCookieName, testValue, {
+      httpOnly: true,
+      secure: useSecureCookies,
+      sameSite: sameSite,
+      maxAge: 60 * 1000, // 1 minute
+      path: '/',
+    });
+    
+    // Also try setting a non-httpOnly cookie for browser visibility
+    res.cookie('whirkplace-visible-test', testValue, {
+      httpOnly: false, // Visible in browser
+      secure: useSecureCookies,
+      sameSite: sameSite,
+      maxAge: 60 * 1000,
+      path: '/',
+    });
+    
+    res.json({
+      message: 'Test cookies set',
+      cookiesSet: [
+        {
+          name: testCookieName,
+          value: testValue,
+          httpOnly: true,
+          secure: useSecureCookies,
+          sameSite: sameSite,
+        },
+        {
+          name: 'whirkplace-visible-test',
+          value: testValue,
+          httpOnly: false,
+          secure: useSecureCookies,
+          sameSite: sameSite,
+        }
+      ],
+      receivedCookies: req.headers.cookie || 'none',
+      sessionCookie: req.cookies?.['whirkplace.sid'] ? '[PRESENT]' : '[MISSING]',
+      testCookie: req.cookies?.[testCookieName] ? '[PRESENT]' : '[MISSING]',
+      environment: {
+        isProduction,
+        isDevelopment,
+        isReplit,
+        isLocalhost,
+        useSecureCookies,
+        sameSite,
+        port,
+      },
+      request: {
+        protocol: req.protocol,
+        secure: req.secure,
+        hostname: req.hostname,
+        host: req.headers.host,
+        origin: req.headers.origin,
+      }
+    });
+  });
+  
+  // NEW: Slack OAuth Status Verification Endpoint
+  app.get("/api/auth/slack-oauth-status", async (req, res) => {
+    try {
+      console.log("🔍 Slack OAuth status check requested");
+      
+      // Get session information
+      const sessionInfo = {
+        hasSession: !!req.session,
+        sessionId: req.sessionID,
+        userId: req.session?.userId,
+        organizationId: (req.session as any)?.organizationId,
+        organizationSlug: (req.session as any)?.organizationSlug,
+      };
+      
+      console.log("📋 Session info:", sessionInfo);
+      
+      // If we have organization ID, fetch the organization to check Slack status
+      let organizationStatus = null;
+      if (sessionInfo.organizationId) {
+        try {
+          const org = await storage.getOrganization(sessionInfo.organizationId);
+          if (org) {
+            organizationStatus = {
+              id: org.id,
+              name: org.name,
+              slug: org.slug,
+              slackConnectionStatus: org.slackConnectionStatus,
+              slackWorkspaceId: org.slackWorkspaceId,
+              slackLastConnected: org.slackLastConnected,
+              enableSlackIntegration: org.enableSlackIntegration,
+            };
+            console.log("✅ Organization found:", organizationStatus);
+          } else {
+            console.log("❌ Organization not found for ID:", sessionInfo.organizationId);
+          }
+        } catch (orgError) {
+          console.error("Error fetching organization:", orgError);
+        }
+      }
+      
+      // If we have user ID, fetch the user to check Slack fields
+      let userSlackStatus = null;
+      if (sessionInfo.userId && sessionInfo.organizationId) {
+        try {
+          const user = await storage.getUser(sessionInfo.organizationId, sessionInfo.userId);
+          if (user) {
+            userSlackStatus = {
+              id: user.id,
+              email: user.email,
+              slackUserId: user.slackUserId,
+              slackWorkspaceId: user.slackWorkspaceId,
+              authProvider: user.authProvider,
+            };
+            console.log("✅ User found:", userSlackStatus);
+          } else {
+            console.log("❌ User not found");
+          }
+        } catch (userError) {
+          console.error("Error fetching user:", userError);
+        }
+      }
+      
+      res.json({
+        timestamp: new Date().toISOString(),
+        session: sessionInfo,
+        organization: organizationStatus,
+        user: userSlackStatus,
+        diagnostics: {
+          hasValidSession: !!(sessionInfo.userId && sessionInfo.organizationId),
+          isSlackConnected: organizationStatus?.slackConnectionStatus === 'connected',
+          hasWorkspaceId: !!organizationStatus?.slackWorkspaceId,
+        }
+      });
+    } catch (error) {
+      console.error("Error checking Slack OAuth status:", error);
+      res.status(500).json({ 
+        message: "Failed to check Slack OAuth status",
         error: error instanceof Error ? error.message : String(error)
       });
     }
@@ -2887,6 +3092,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log("🔐 Email/password login attempt");
       
+      // Enhanced logging for cookie/session debugging
+      console.log("📍 Login Request Details:", {
+        headers: {
+          cookie: req.headers.cookie ? '[PRESENT]' : '[MISSING]',
+          host: req.headers.host,
+          origin: req.headers.origin,
+          'content-type': req.headers['content-type']
+        },
+        sessionId: req.sessionID || '[NONE]',
+        sessionData: req.session ? {
+          userId: req.session.userId || '[NONE]',
+          organizationId: req.session.organizationId || '[NONE]'
+        } : '[NO SESSION]',
+        cookieConfig: req.session?.cookie || '[NO COOKIE CONFIG]'
+      });
+      
       const { email, password } = req.body;
       
       if (!email || !password) {
@@ -2976,6 +3197,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         role: user.role,
         timestamp: Date.now()
       })).toString('base64');
+      
+      // Log the Set-Cookie header that will be sent
+      console.log('🍪 Response Cookie Headers:', {
+        setCookie: res.getHeaders()['set-cookie'] || '[NONE]',
+        sessionId: req.sessionID,
+        sessionData: {
+          userId: req.session?.userId,
+          organizationId: req.session?.organizationId,
+          organizationSlug: req.session?.organizationSlug
+        }
+      });
       
       // Now send response - express-session should have set the cookie
       res.json({ 
@@ -6265,35 +6497,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Check if user is admin
       if (!req.currentUser || req.currentUser.role !== 'admin') {
+        console.log(`❌ Non-admin user attempted sync: ${req.currentUser?.email}, role: ${req.currentUser?.role}`);
         return res.status(403).json({ 
           message: "Admin access required to sync users",
           error: "insufficient_permissions"
         });
       }
 
-      console.log(`📋 Admin sync-users endpoint called for org: ${req.orgId}`);
-      console.log(`👤 Requested by: ${req.currentUser.name} (${req.currentUser.email})`);
+      console.log(`📋 Admin sync-users endpoint called`);
+      console.log(`   Organization ID: ${req.orgId}`);
+      console.log(`   User: ${req.currentUser.name} (${req.currentUser.email})`);
+      console.log(`   User role: ${req.currentUser.role}`);
+      console.log(`   Session ID: ${req.sessionID}`);
       
       // Get organization to fetch Slack token
       const organization = await storage.getOrganization(req.orgId);
       if (!organization) {
-        console.error("❌ Organization not found:", req.orgId);
+        console.error("❌ Organization not found for ID:", req.orgId);
         return res.status(404).json({ 
           message: "Organization not found",
-          error: "organization_not_found"
+          error: "organization_not_found",
+          organizationId: req.orgId
+        });
+      }
+      
+      console.log(`✅ Found organization: ${organization.name}`);
+      console.log(`   Slack status: ${organization.slackConnectionStatus}`);
+      console.log(`   Slack workspace ID: ${organization.slackWorkspaceId}`);
+      console.log(`   Has bot token: ${!!organization.slackBotToken}`);
+      console.log(`   Slack integration enabled: ${organization.enableSlackIntegration}`);
+      
+      // Check if Slack is properly connected
+      if (organization.slackConnectionStatus !== 'connected') {
+        console.error(`❌ Slack not connected for org ${organization.name}`);
+        console.error(`   Current status: ${organization.slackConnectionStatus}`);
+        return res.status(400).json({
+          message: "Slack is not connected. Please complete the Slack OAuth flow first.",
+          error: "slack_not_connected",
+          currentStatus: organization.slackConnectionStatus
         });
       }
       
       // Use organization's bot token or fall back to environment variable
       const botToken = organization.slackBotToken || process.env.SLACK_BOT_TOKEN;
       
-      console.log(`🔑 Using ${organization.slackBotToken ? 'organization-specific' : 'environment'} Slack token`);
+      console.log(`🔑 Bot token source: ${organization.slackBotToken ? 'organization-specific' : 'environment variable'}`);
+      console.log(`   Has token: ${!!botToken}`);
       console.log(`📺 Channel to sync: ${req.body?.channelName || 'whirkplace-pulse'}`);
       
       if (!botToken) {
-        console.error("❌ No Slack bot token available for organization:", organization.name);
+        console.error("❌ No Slack bot token available");
+        console.error(`   Org has token: ${!!organization.slackBotToken}`);
+        console.error(`   ENV has token: ${!!process.env.SLACK_BOT_TOKEN}`);
         return res.status(400).json({ 
-          message: "Slack integration not configured. Please add your Slack Bot Token in the Integrations settings.",
+          message: "Slack bot token not configured. Please add your Slack Bot Token in the Integrations settings.",
           error: "missing_token",
           details: "Navigate to Settings → Integrations → Slack to configure your bot token."
         });
@@ -6378,31 +6635,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // NEW: Alternative sync endpoint for better compatibility
   app.post("/api/slack/sync-users", requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
-      console.log(`📋 Slack sync-users endpoint called for org: ${req.orgId}`);
-      console.log(`👤 User role: ${req.currentUser?.role}, Name: ${req.currentUser?.name}`);
+      console.log(`📋 Slack sync-users endpoint called`);
+      console.log(`   Organization ID: ${req.orgId}`);
+      console.log(`   User: ${req.currentUser?.name} (${req.currentUser?.email})`);
+      console.log(`   User role: ${req.currentUser?.role}`);
+      console.log(`   Session ID: ${req.sessionID}`);
+      console.log(`   Session has userId: ${!!req.session?.userId}`);
+      console.log(`   Session has organizationId: ${!!(req.session as any)?.organizationId}`);
       
       // Get organization to fetch Slack token
       const organization = await storage.getOrganization(req.orgId);
       if (!organization) {
-        console.error("❌ Organization not found:", req.orgId);
+        console.error("❌ Organization not found for ID:", req.orgId);
         return res.status(404).json({ 
           message: "Organization not found",
-          error: "organization_not_found"
+          error: "organization_not_found",
+          organizationId: req.orgId,
+          debug: {
+            requestOrgId: req.orgId,
+            sessionOrgId: (req.session as any)?.organizationId
+          }
+        });
+      }
+      
+      console.log(`✅ Found organization: ${organization.name}`);
+      console.log(`   Slack status: ${organization.slackConnectionStatus}`);
+      console.log(`   Slack workspace ID: ${organization.slackWorkspaceId}`);
+      console.log(`   Has bot token: ${!!organization.slackBotToken}`);
+      console.log(`   Slack integration enabled: ${organization.enableSlackIntegration}`);
+      
+      // Check if Slack is properly connected
+      if (organization.slackConnectionStatus !== 'connected') {
+        console.error(`❌ Slack not connected for org ${organization.name}`);
+        console.error(`   Current status: ${organization.slackConnectionStatus}`);
+        return res.status(400).json({
+          message: "Slack is not connected. Please complete the Slack OAuth flow first.",
+          error: "slack_not_connected",
+          currentStatus: organization.slackConnectionStatus,
+          hasWorkspaceId: !!organization.slackWorkspaceId
         });
       }
       
       // Use organization's bot token or fall back to environment variable
       const botToken = organization.slackBotToken || process.env.SLACK_BOT_TOKEN;
       
-      console.log(`🔑 Using ${organization.slackBotToken ? 'organization-specific' : 'environment'} Slack token`);
+      console.log(`🔑 Bot token source: ${organization.slackBotToken ? 'organization-specific' : 'environment variable'}`);
+      console.log(`   Has token: ${!!botToken}`);
       console.log(`📺 Channel to sync: ${req.body?.channelName || 'whirkplace-pulse'}`);
       
       if (!botToken) {
-        console.error("❌ No Slack bot token available for organization:", organization.name);
+        console.error("❌ No Slack bot token available");
+        console.error(`   Org has token: ${!!organization.slackBotToken}`);
+        console.error(`   ENV has token: ${!!process.env.SLACK_BOT_TOKEN}`);
         return res.status(400).json({ 
-          message: "Slack integration not configured. Please add your Slack Bot Token in the Integrations settings.",
+          message: "Slack bot token not configured. Please add your Slack Bot Token in the Integrations settings.",
           error: "missing_token",
-          details: "Navigate to Settings → Integrations → Slack to configure your bot token."
+          details: "Navigate to Settings → Integrations → Slack to configure your bot token.",
+          debug: {
+            hasOrgToken: !!organization.slackBotToken,
+            hasEnvToken: !!process.env.SLACK_BOT_TOKEN
+          }
         });
       }
 
