@@ -425,8 +425,8 @@ export function IntegrationsDashboard() {
   const { toast } = useToast();
   const { data: userData } = useCurrentUser();
   
-  // Extract the actual user object and organizationId from the API response structure
-  const currentUser = userData?.user;
+  // userData IS the user object directly from the API
+  const currentUser = userData;
   const organizationId = userData?.organizationId;
   
   const [activeTab, setActiveTab] = useState("authentication");
