@@ -1316,6 +1316,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           console.log(`✅ User ${authenticatedUser.name} (${authenticatedUser.email}) authenticated via Slack OAuth for organization ${organization.name}`);
           
+          // Update organization's Slack connection status after successful OAuth
+          try {
+            const workspaceId = team?.id || user["https://slack.com/team_id"];
+            console.log(`🔌 Updating organization Slack connection status`);
+            console.log(`   Workspace ID: ${workspaceId}`);
+            await storage.updateOrganization(organization.id, {
+              slackConnectionStatus: 'connected',
+              slackLastConnected: new Date(),
+              slackWorkspaceId: workspaceId,
+              enableSlackIntegration: true
+            });
+            console.log(`✅ Organization Slack integration marked as connected`);
+          } catch (updateError) {
+            console.error('⚠️ Failed to update organization Slack status:', updateError);
+            // Continue even if update fails - user is authenticated
+          }
+          
           // Redirect to the organization's dashboard
           // Use the centralized redirect URI resolver to get the base URL
           const baseRedirectUri = resolveRedirectUri(req, '/');
