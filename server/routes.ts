@@ -1307,11 +1307,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // CRITICAL FIX: Use setSessionUser to properly set ALL required session data
         // This ensures userId, organizationId, and organizationSlug are all set correctly
         // The organization context comes from userOrganization which tracks the user's actual org
-        // IMPORTANT: Get the actual organization ID from the userOrganization object
-        // userOrganization tracks where the user was actually found/belongs to
-        // authenticatedUser.organizationId may not be populated correctly after update/create
-        const actualOrganizationId = userOrganization?.id || organization.id;
+        // IMPORTANT: Get the actual organization ID from multiple sources
+        // Priority: session authOrgId > userOrganization > organization from state
+        // authOrgId is set when initiating the OAuth from the integrations page
+        const sessionOrgId = (req.session as any).authOrgId;
+        const actualOrganizationId = sessionOrgId || userOrganization?.id || organization.id;
         const actualOrganizationSlug = userOrganization?.slug || organization.slug;
+        
+        if (sessionOrgId) {
+          console.log(`📍 Using organization ID from session authOrgId: ${sessionOrgId}`);
+        }
         
         console.log(`🔐 DETERMINING CORRECT ORGANIZATION FOR SESSION AND UPDATE`);
         console.log(`   Authenticated User Org ID: ${authenticatedUser.organizationId}`);
