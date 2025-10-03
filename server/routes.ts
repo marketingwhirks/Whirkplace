@@ -1307,9 +1307,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // CRITICAL FIX: Use setSessionUser to properly set ALL required session data
         // This ensures userId, organizationId, and organizationSlug are all set correctly
         // The organization context comes from userOrganization which tracks the user's actual org
-        // IMPORTANT: Get the actual organization ID from the authenticated user's organizationId field
-        // This is the source of truth for which organization the user belongs to
-        const actualOrganizationId = authenticatedUser.organizationId || userOrganization?.id || organization.id;
+        // IMPORTANT: Get the actual organization ID from the userOrganization object
+        // userOrganization tracks where the user was actually found/belongs to
+        // authenticatedUser.organizationId may not be populated correctly after update/create
+        const actualOrganizationId = userOrganization?.id || organization.id;
         const actualOrganizationSlug = userOrganization?.slug || organization.slug;
         
         console.log(`🔐 DETERMINING CORRECT ORGANIZATION FOR SESSION AND UPDATE`);
@@ -1368,15 +1369,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`   Slack Integration Enabled: ${updateResult.enableSlackIntegration}`);
               console.log(`   Last Connected: ${updateResult.slackLastConnected}`);
               
-              // Verify the update actually persisted by fetching it again
-              const verifyOrg = await storage.getOrganization(actualOrganizationId);
-              if (verifyOrg) {
+              // Verify the update actually persisted
+              const verifyUpdate = await storage.getOrganization(actualOrganizationId);
+              if (verifyUpdate?.slackWorkspaceId !== workspaceId) {
+                console.error(`❌ CRITICAL: Slack workspace ID not persisted! Expected: ${workspaceId}, Got: ${verifyUpdate?.slackWorkspaceId}`);
+              } else {
+                console.log(`✅ VERIFIED: Slack workspace ID ${workspaceId} successfully persisted to organization ${actualOrganizationId}`);
+              }
+              
+              if (verifyUpdate) {
                 console.log(`🔍 VERIFICATION: Organization re-fetched from database`);
-                console.log(`   Verified Status: ${verifyOrg.slackConnectionStatus}`);
-                console.log(`   Verified Workspace ID: ${verifyOrg.slackWorkspaceId}`);
+                console.log(`   Verified Status: ${verifyUpdate.slackConnectionStatus}`);
+                console.log(`   Verified Workspace ID: ${verifyUpdate.slackWorkspaceId}`);
                 
-                if (verifyOrg.slackConnectionStatus !== 'connected') {
-                  console.error(`❌ WARNING: Database verification shows status is still: ${verifyOrg.slackConnectionStatus}`);
+                if (verifyUpdate.slackConnectionStatus !== 'connected') {
+                  console.error(`❌ WARNING: Database verification shows status is still: ${verifyUpdate.slackConnectionStatus}`);
                 } else {
                   console.log(`✅ Database verification confirmed: Status is 'connected'`);
                 }
