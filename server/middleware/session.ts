@@ -281,20 +281,25 @@ export async function setSessionUser(
       });
     };
 
-    // Only regenerate in production for security
-    if (process.env.NODE_ENV === 'production') {
-      console.log('🔒 Production mode: Regenerating session for security');
+    // Check if we should regenerate based on environment
+    const shouldRegenerate = process.env.NODE_ENV === 'production' && !req.session.userId;
+    
+    if (shouldRegenerate) {
+      console.log('🔒 Production mode with no existing user: Regenerating session for security');
       req.session.regenerate((err) => {
         if (err) {
           console.error('❌ Failed to regenerate session:', err);
-          return reject(err);
+          // Fallback: try to save without regeneration
+          console.log('⚠️ Fallback: Saving without regeneration');
+          saveSession();
+          return;
         }
         console.log('🆕 Session regenerated, new ID:', req.sessionID);
         saveSession();
       });
     } else {
-      console.log('🔓 Development mode: Skipping regeneration for stability');
-      // In development, just save without regenerating
+      console.log('📝 Saving session without regeneration (existing user or development mode)');
+      // In development or when updating existing session, just save without regenerating
       saveSession();
     }
   });

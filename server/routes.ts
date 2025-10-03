@@ -1574,6 +1574,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Test Session Endpoint - Simple test to verify sessions work
+  app.post("/api/auth/test-session", async (req, res) => {
+    const { action, data } = req.body;
+    
+    if (action === 'set') {
+      // Test setting session data
+      req.session.testData = data || 'test-value-' + Date.now();
+      req.session.testTime = new Date().toISOString();
+      
+      // Force save the session
+      req.session.save((err) => {
+        if (err) {
+          console.error('Session save error:', err);
+          return res.status(500).json({ error: 'Failed to save session' });
+        }
+        
+        res.json({
+          message: 'Session data set',
+          sessionId: req.sessionID,
+          data: req.session.testData,
+          time: req.session.testTime
+        });
+      });
+    } else if (action === 'get') {
+      // Test retrieving session data
+      res.json({
+        message: 'Session data retrieved',
+        sessionId: req.sessionID,
+        data: req.session.testData || null,
+        time: req.session.testTime || null,
+        userId: req.session.userId || null,
+        organizationId: req.session.organizationId || null
+      });
+    } else {
+      res.status(400).json({ error: 'Invalid action. Use "set" or "get"' });
+    }
+  });
+  
   // Cookie Diagnostic Endpoint - CRITICAL for debugging production issues
   app.get("/api/auth/cookie-diagnostic", async (req, res) => {
     const protocol = req.protocol;
