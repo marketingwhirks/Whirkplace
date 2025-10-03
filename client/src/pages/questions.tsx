@@ -77,7 +77,7 @@ export default function Questions() {
   const { data: questionBank = [], isLoading: bankLoading } = useQuery<QuestionBank[]>({
     queryKey: ["/api/question-bank", selectedCategory],
     queryFn: async () => {
-      const params = selectedCategory ? `?categoryId=${selectedCategory}` : "";
+      const params = selectedCategory && selectedCategory !== "all" ? `?categoryId=${selectedCategory}` : "";
       const response = await fetch(`/api/question-bank${params}`, {
         credentials: "include",
       });
@@ -428,7 +428,7 @@ export default function Questions() {
                                 <SelectValue placeholder="All Categories" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="">All Categories</SelectItem>
+                                <SelectItem value="all">All Categories</SelectItem>
                                 {categories.map(cat => (
                                   <SelectItem key={cat.id} value={cat.id} data-testid={`category-${cat.id}`}>
                                     {cat.icon && <span className="mr-2">{cat.icon}</span>}
@@ -755,7 +755,7 @@ export default function Questions() {
                   <SelectValue placeholder="All Categories" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Categories</SelectItem>
+                  <SelectItem value="all">All Categories</SelectItem>
                   {categories.map(cat => (
                     <SelectItem key={cat.id} value={cat.id}>
                       {cat.icon && <span className="mr-2">{cat.icon}</span>}
