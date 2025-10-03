@@ -860,29 +860,7 @@ export function IntegrationsDashboard() {
 
               {/* OAuth-based Configuration */}
               <div className="space-y-4">
-                {!orgIntegrations?.enableSlackIntegration || orgIntegrations?.slackConnectionStatus !== "connected" ? (
-                  // Show "Add to Slack" button if not connected
-                  <div className="text-center py-8 space-y-4">
-                    <div className="space-y-2">
-                      <h4 className="font-medium">Connect Your Slack Workspace</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Click the button below to securely connect your Slack workspace with OAuth 2.0.
-                      </p>
-                    </div>
-                    <Button
-                      onClick={() => getSlackInstallUrl.mutate()}
-                      disabled={getSlackInstallUrl.isPending}
-                      className="bg-[#4A154B] hover:bg-[#4A154B]/90 text-white"
-                      data-testid="button-add-to-slack"
-                    >
-                      <Slack className="w-4 h-4 mr-2" />
-                      {getSlackInstallUrl.isPending ? "Generating Install URL..." : "Add to Slack"}
-                    </Button>
-                    <p className="text-xs text-muted-foreground">
-                      You'll be redirected to Slack to authorize the integration.
-                    </p>
-                  </div>
-                ) : (
+                {orgIntegrations?.slackConnectionStatus === "connected" ? (
                   // Show channel configuration if already connected
                   <div className="space-y-4">
                     <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
@@ -933,6 +911,28 @@ export function IntegrationsDashboard() {
                         Reconnect Workspace
                       </Button>
                     </div>
+                  </div>
+                ) : (
+                  // Show "Add to Slack" button if not connected
+                  <div className="text-center py-8 space-y-4">
+                    <div className="space-y-2">
+                      <h4 className="font-medium">Connect Your Slack Workspace</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Click the button below to securely connect your Slack workspace with OAuth 2.0.
+                      </p>
+                    </div>
+                    <Button
+                      onClick={() => getSlackInstallUrl.mutate()}
+                      disabled={getSlackInstallUrl.isPending}
+                      className="bg-[#4A154B] hover:bg-[#4A154B]/90 text-white"
+                      data-testid="button-add-to-slack"
+                    >
+                      <Slack className="w-4 h-4 mr-2" />
+                      {getSlackInstallUrl.isPending ? "Generating Install URL..." : "Add to Slack"}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      You'll be redirected to Slack to authorize the integration.
+                    </p>
                   </div>
                 )}
               </div>
