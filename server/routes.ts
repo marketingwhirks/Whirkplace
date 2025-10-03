@@ -7150,31 +7150,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { code, state, error: oauthError } = req.query;
       
-      console.log('🤖 Bot OAuth callback received');
+      console.log('🤖 BOT OAUTH CALLBACK RECEIVED');
+      console.log(`   Session ID: ${req.sessionID}`);
+      console.log(`   Has Code: ${!!code}`);
+      console.log(`   Has State: ${!!state}`);
+      console.log(`   Has Error: ${!!oauthError}`);
       
       if (oauthError) {
-        console.error("❌ Slack bot OAuth error:", oauthError);
+        console.error("❌ Slack bot OAuth error from provider:", oauthError);
         return res.redirect(`/?error=slack_bot_auth_failed&message=${encodeURIComponent(oauthError as string)}`);
       }
       
       if (!code || !state || typeof code !== 'string' || typeof state !== 'string') {
         console.error('❌ Invalid bot callback parameters');
+        console.error(`   Code type: ${typeof code}, State type: ${typeof state}`);
         return res.redirect('/?error=invalid_bot_callback');
       }
       
       // Validate state
-      if (req.session.slackBotOAuthState !== state) {
-        console.error('❌ Bot OAuth state mismatch');
+      const sessionState = req.session.slackBotOAuthState;
+      console.log(`🔑 Bot OAuth state validation:`);
+      console.log(`   Session state: ${sessionState?.substring(0, 8)}...`);
+      console.log(`   Received state: ${state.substring(0, 8)}...`);
+      
+      if (!sessionState || sessionState !== state) {
+        console.error('❌ Bot OAuth state mismatch - possible CSRF attack');
         return res.redirect('/?error=state_mismatch');
       }
       
       const orgId = req.session.slackBotOAuthOrgId;
+      console.log(`🏢 Organization ID from session: ${orgId}`);
+      
       if (!orgId) {
-        console.error('❌ No organization ID in session');
+        console.error('❌ No organization ID in session - bot OAuth flow was not properly initiated');
         return res.redirect('/?error=no_org_id');
       }
       
-      // Clear OAuth state
+      // Fetch the organization to verify it exists
+      const organization = await storage.getOrganization(orgId);
+      if (!organization) {
+        console.error(`❌ Organization not found in database: ${orgId}`);
+        return res.redirect('/?error=org_not_found');
+      }
+      
+      console.log(`✅ Found organization: ${organization.name} (ID: ${organization.id}, Slug: ${organization.slug})`);
+      
+      // Clear OAuth state early to prevent replay attacks
       delete req.session.slackBotOAuthState;
       delete req.session.slackBotOAuthOrgId;
       
@@ -7184,11 +7205,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const redirectUri = resolveRedirectUri(req, '/api/slack/bot-callback');
       
       if (!clientId || !clientSecret) {
-        console.error('❌ Slack OAuth credentials not configured');
+        console.error('❌ Slack OAuth credentials not configured in environment');
         return res.redirect('/?error=oauth_not_configured');
       }
       
-      console.log(`📋 Exchanging bot OAuth code for token...`);
+      console.log(`🔄 Exchanging bot OAuth code for access token...`);
+      console.log(`   Redirect URI: ${redirectUri}`);
       
       const tokenResponse = await fetch('https://slack.com/api/oauth.v2.access', {
         method: 'POST',
@@ -7207,31 +7229,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (!tokenData.ok) {
         console.error('❌ Failed to exchange bot OAuth code:', tokenData.error);
+        console.error(`   Error description: ${tokenData.error_description || 'None provided'}`);
         return res.redirect(`/?error=token_exchange_failed&message=${encodeURIComponent(tokenData.error)}`);
       }
       
-      console.log('✅ Bot token obtained successfully');
-      console.log(`📋 Team: ${tokenData.team?.name} (${tokenData.team?.id})`);
-      console.log(`📋 Bot scopes: ${tokenData.scope}`);
-      
-      // Store bot token in organization
-      const organization = await storage.getOrganization(orgId);
-      if (!organization) {
-        console.error('❌ Organization not found:', orgId);
-        return res.redirect('/?error=org_not_found');
-      }
+      console.log('✅ Bot token exchange successful');
+      console.log(`   Team ID: ${tokenData.team?.id}`);
+      console.log(`   Team Name: ${tokenData.team?.name}`);
+      console.log(`   Access Token: ${tokenData.access_token?.substring(0, 10)}...`);
+      console.log(`   Bot User ID: ${tokenData.bot_user_id}`);
+      console.log(`   Bot Scopes: ${tokenData.scope}`);
       
       // Update organization with bot token
-      await storage.updateOrganization(orgId, {
+      const updateData = {
         slackBotToken: tokenData.access_token,
-        slackWorkspaceId: tokenData.team?.id,
-        slackConnectionStatus: 'connected',
+        slackWorkspaceId: tokenData.team?.id || tokenData.team_id,
+        slackConnectionStatus: 'connected' as const,
         slackLastConnected: new Date(),
         enableSlackIntegration: true
-      });
+      };
       
-      console.log(`✅ Bot token stored for organization: ${organization.name}`);
-      console.log(`📋 Workspace ID: ${tokenData.team?.id}`);
+      console.log(`📝 Updating organization ${orgId} with bot token...`);
+      console.log(`   Bot Token: ${updateData.slackBotToken?.substring(0, 10)}...`);
+      console.log(`   Workspace ID: ${updateData.slackWorkspaceId}`);
+      console.log(`   Connection Status: ${updateData.slackConnectionStatus}`);
+      console.log(`   Last Connected: ${updateData.slackLastConnected.toISOString()}`);
+      
+      const updatedOrg = await storage.updateOrganization(orgId, updateData);
+      
+      if (!updatedOrg) {
+        console.error(`❌ CRITICAL: Failed to update organization with bot token`);
+        console.error(`   Organization ID: ${orgId}`);
+        console.error(`   Organization Name: ${organization.name}`);
+        return res.redirect('/?error=org_update_failed');
+      }
+      
+      console.log(`✅ Organization update returned successfully`);
+      console.log(`   Updated Org Name: ${updatedOrg.name}`);
+      console.log(`   Slack Workspace ID in result: ${updatedOrg.slackWorkspaceId}`);
+      
+      // Verify the update actually persisted
+      console.log(`🔍 Verifying bot token persisted to database...`);
+      const verificationOrg = await storage.getOrganization(orgId);
+      
+      if (!verificationOrg) {
+        console.error(`❌ CRITICAL: Organization disappeared after update!`);
+        return res.redirect('/?error=verification_failed');
+      }
+      
+      if (verificationOrg.slackWorkspaceId !== updateData.slackWorkspaceId) {
+        console.error(`❌ CRITICAL: Bot workspace ID not persisted!`);
+        console.error(`   Expected: ${updateData.slackWorkspaceId}`);
+        console.error(`   Got: ${verificationOrg.slackWorkspaceId}`);
+      } else {
+        console.log(`✅ VERIFIED: Bot workspace ID ${verificationOrg.slackWorkspaceId} successfully persisted`);
+      }
+      
+      if (verificationOrg.slackBotToken !== updateData.slackBotToken) {
+        console.error(`❌ CRITICAL: Bot token not persisted!`);
+      } else {
+        console.log(`✅ VERIFIED: Bot token successfully persisted`);
+      }
+      
+      console.log(`✅ BOT OAUTH COMPLETE: Organization ${updatedOrg.name} connected to Slack workspace ${tokenData.team?.name} (${tokenData.team?.id})`);
       console.log(`📋 Bot token starts with: ${tokenData.access_token?.substring(0, 10)}...`);
       
       // Redirect to integrations page with success message
@@ -8942,21 +9002,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Generate Slack OAuth install URL for organization
   app.get("/api/organizations/:id/integrations/slack/install", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
+      console.log('🚀 SLACK OAUTH INSTALL INITIATED');
+      console.log(`   Request Param ID: ${req.params.id}`);
+      console.log(`   Request orgId (from middleware): ${req.orgId}`);
+      console.log(`   Session ID: ${req.sessionID}`);
+      
       // Verify the organization ID matches the authenticated user's organization
       if (req.params.id !== req.orgId) {
+        console.error(`❌ Organization mismatch: param=${req.params.id}, orgId=${req.orgId}`);
         return res.status(403).json({ message: "You can only install integrations for your own organization" });
       }
       
       if (!process.env.SLACK_CLIENT_ID) {
+        console.error('❌ SLACK_CLIENT_ID not configured');
         return res.status(500).json({ message: "Slack integration is not configured on this server" });
       }
+      
+      // Fetch organization to verify it exists
+      const organization = await storage.getOrganization(req.params.id);
+      if (!organization) {
+        console.error(`❌ Organization not found: ${req.params.id}`);
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      console.log(`✅ Verified organization: ${organization.name} (ID: ${organization.id}, Slug: ${organization.slug})`);
       
       // Generate secure state parameter to prevent CSRF
       const state = randomBytes(32).toString('hex');
       
-      // Store state in session for verification in callback
+      // Store state and organization ID in session for verification in callback
       req.session.slackOAuthState = state;
       (req.session as any).slackOrgId = req.params.id;
+      
+      console.log(`📝 Stored in session:`);
+      console.log(`   OAuth State: ${state.substring(0, 8)}...`);
+      console.log(`   Organization ID: ${req.params.id}`);
+      console.log(`   Organization Name: ${organization.name}`);
       
       // Use centralized redirect URI resolver for consistent URL handling
       const redirectUri = resolveRedirectUri(req, '/api/auth/slack/callback');
@@ -9450,35 +9531,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { code, state, error } = req.query;
       
+      console.log('🔌 SLACK OAUTH CALLBACK INITIATED');
+      console.log(`   Session ID: ${req.sessionID}`);
+      console.log(`   Has Code: ${!!code}`);
+      console.log(`   Has State: ${!!state}`);
+      console.log(`   Has Error: ${!!error}`);
+      
       // Get base URL using the centralized resolver
       const baseRedirectUri = resolveRedirectUri(req, '/');
       const appBaseUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
       
       if (error) {
-        console.error("Slack OAuth error:", error);
+        console.error("❌ Slack OAuth error from provider:", error);
         return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_denied`);
       }
       
       if (!code || !state) {
+        console.error("❌ Missing required OAuth parameters");
         return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_missing_params`);
       }
       
       // Verify state to prevent CSRF attacks
-      if (!req.session.slackOAuthState || req.session.slackOAuthState !== state) {
+      const sessionState = req.session.slackOAuthState;
+      console.log(`🔑 State validation:`);
+      console.log(`   Session state: ${sessionState?.substring(0, 8)}...`);
+      console.log(`   Received state: ${(state as string).substring(0, 8)}...`);
+      
+      if (!sessionState || sessionState !== state) {
+        console.error("❌ OAuth state mismatch - possible CSRF attack");
         return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_invalid_state`);
       }
       
       const orgId = (req.session as any).slackOrgId;
+      console.log(`🏢 Organization ID from session: ${orgId}`);
+      
       if (!orgId) {
+        console.error("❌ No organization ID in session - OAuth flow was not properly initiated");
         return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_missing_org`);
       }
       
+      // Fetch the organization to verify it exists and get its details
+      const organization = await storage.getOrganization(orgId);
+      if (!organization) {
+        console.error(`❌ Organization not found: ${orgId}`);
+        return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_org_not_found`);
+      }
+      
+      console.log(`✅ Found organization: ${organization.name} (ID: ${organization.id}, Slug: ${organization.slug})`);
+      
       if (!process.env.SLACK_CLIENT_ID || !process.env.SLACK_CLIENT_SECRET) {
+        console.error("❌ Slack OAuth credentials not configured");
         return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_not_configured`);
       }
       
       // Use centralized redirect URI resolver for consistent URL handling
       const redirectUri = resolveRedirectUri(req, '/api/auth/slack/callback');
+      
+      console.log(`🔄 Exchanging OAuth code for access token...`);
+      console.log(`   Redirect URI: ${redirectUri}`);
       
       const tokenResponse = await fetch("https://slack.com/api/oauth.v2.access", {
         method: "POST",
@@ -9496,30 +9606,87 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const tokenData = await tokenResponse.json();
       
       if (!tokenData.ok) {
-        console.error("Slack token exchange error:", tokenData.error);
+        console.error("❌ Slack token exchange failed:", tokenData.error);
+        console.error(`   Error description: ${tokenData.error_description || 'None provided'}`);
         return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_token_failed`);
       }
+      
+      console.log(`✅ Token exchange successful`);
+      console.log(`   Team ID: ${tokenData.team?.id}`);
+      console.log(`   Team Name: ${tokenData.team?.name}`);
+      console.log(`   Access Token: ${tokenData.access_token?.substring(0, 10)}...`);
+      console.log(`   Bot User ID: ${tokenData.bot_user_id}`);
+      console.log(`   Scopes: ${tokenData.scope}`);
       
       // Update organization with Slack integration data
       const updateData = {
         slackBotToken: tokenData.access_token,
-        slackWorkspaceId: tokenData.team.id,
+        slackWorkspaceId: tokenData.team?.id || tokenData.team_id,
         slackChannelId: null, // Will be set separately by admin
         enableSlackIntegration: true,
-        slackConnectionStatus: "connected",
+        slackConnectionStatus: "connected" as const,
         slackLastConnected: new Date(),
       };
       
+      console.log(`📝 Updating organization ${orgId} with Slack data...`);
+      console.log(`   Bot Token: ${updateData.slackBotToken?.substring(0, 10)}...`);
+      console.log(`   Workspace ID: ${updateData.slackWorkspaceId}`);
+      console.log(`   Connection Status: ${updateData.slackConnectionStatus}`);
+      console.log(`   Last Connected: ${updateData.slackLastConnected.toISOString()}`);
+      
       const updatedOrg = await storage.updateOrganization(orgId, updateData);
+      
       if (!updatedOrg) {
+        console.error(`❌ CRITICAL: Failed to update organization - updateOrganization returned null/undefined`);
+        console.error(`   Organization ID: ${orgId}`);
+        console.error(`   Organization Name: ${organization.name}`);
         return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_org_update_failed`);
+      }
+      
+      console.log(`✅ Organization update returned successfully`);
+      console.log(`   Updated Org ID: ${updatedOrg.id}`);
+      console.log(`   Updated Org Name: ${updatedOrg.name}`);
+      console.log(`   Slack Workspace ID in result: ${updatedOrg.slackWorkspaceId}`);
+      console.log(`   Slack Connection Status in result: ${updatedOrg.slackConnectionStatus}`);
+      
+      // Verify the update actually persisted by re-fetching
+      console.log(`🔍 Verifying update persisted to database...`);
+      const verificationOrg = await storage.getOrganization(orgId);
+      
+      if (!verificationOrg) {
+        console.error(`❌ CRITICAL: Organization disappeared after update!`);
+        return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_verification_failed`);
+      }
+      
+      if (verificationOrg.slackWorkspaceId !== updateData.slackWorkspaceId) {
+        console.error(`❌ CRITICAL: Slack workspace ID not persisted!`);
+        console.error(`   Expected: ${updateData.slackWorkspaceId}`);
+        console.error(`   Got: ${verificationOrg.slackWorkspaceId}`);
+        console.error(`   Organization: ${verificationOrg.name} (${verificationOrg.id})`);
+        // Don't fail the user experience, but log this critical error
+      } else {
+        console.log(`✅ VERIFIED: Slack workspace ID ${verificationOrg.slackWorkspaceId} successfully persisted`);
+      }
+      
+      if (verificationOrg.slackBotToken !== updateData.slackBotToken) {
+        console.error(`❌ CRITICAL: Slack bot token not persisted!`);
+        console.error(`   Organization: ${verificationOrg.name} (${verificationOrg.id})`);
+        // Don't fail the user experience, but log this critical error
+      } else {
+        console.log(`✅ VERIFIED: Slack bot token successfully persisted`);
+      }
+      
+      if (verificationOrg.slackConnectionStatus !== 'connected') {
+        console.error(`❌ WARNING: Slack connection status is ${verificationOrg.slackConnectionStatus} instead of 'connected'`);
+      } else {
+        console.log(`✅ VERIFIED: Slack connection status is 'connected'`);
       }
       
       // Clear OAuth state
       req.session.slackOAuthState = undefined;
       (req.session as any).slackOrgId = undefined;
       
-      console.log(`Slack integration installed for organization ${updatedOrg.name} (${tokenData.team.name})`);
+      console.log(`✅ SLACK OAUTH COMPLETE: Organization ${updatedOrg.name} connected to Slack workspace ${tokenData.team?.name} (${tokenData.team?.id})`);
       
       // Return HTML page that notifies parent window and closes popup
       const successHtml = `
