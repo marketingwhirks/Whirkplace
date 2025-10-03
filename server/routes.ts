@@ -3579,7 +3579,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       '/wins',  // Allow wins
       '/shoutouts',  // Allow shoutouts
       '/analytics/',  // Allow analytics
-      '/features'  // Allow feature flags
+      '/features',  // Allow feature flags
+      '/integrations'  // Allow integrations without onboarding
     ];
     
     // Check if the request path starts with any of the exempt paths
