@@ -501,10 +501,24 @@ export class DatabaseStorage implements IStorage {
 
   // Users
   async getUser(organizationId: string, id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(
-      and(eq(users.id, id), eq(users.organizationId, organizationId))
-    );
-    return user || undefined;
+    const [result] = await db
+      .select({
+        user: users,
+        organization: organizations
+      })
+      .from(users)
+      .leftJoin(organizations, eq(users.organizationId, organizations.id))
+      .where(
+        and(eq(users.id, id), eq(users.organizationId, organizationId))
+      );
+    
+    if (!result?.user) return undefined;
+    
+    // Return user with organization data attached
+    return {
+      ...result.user,
+      organization: result.organization || undefined
+    } as User;
   }
 
   async getUserByUsername(organizationId: string, username: string): Promise<User | undefined> {
