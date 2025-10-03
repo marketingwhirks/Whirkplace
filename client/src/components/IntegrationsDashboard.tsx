@@ -423,7 +423,12 @@ function AuthProviderManagement({ organizationSlug }: { organizationSlug: string
 
 export function IntegrationsDashboard() {
   const { toast } = useToast();
-  const { data: currentUser } = useCurrentUser();
+  const { data: userData } = useCurrentUser();
+  
+  // Extract the actual user object and organizationId from the API response structure
+  const currentUser = userData?.user;
+  const organizationId = userData?.organizationId;
+  
   const [activeTab, setActiveTab] = useState("authentication");
   const [showSlackToken, setShowSlackToken] = useState(false);
   const [showMicrosoftSecret, setShowMicrosoftSecret] = useState(false);
@@ -440,21 +445,21 @@ export function IntegrationsDashboard() {
 
   // Fetch organization integration data
   const { data: orgIntegrations, isLoading: integrationsLoading } = useQuery<OrganizationIntegrations>({
-    queryKey: ["/api/organizations", currentUser?.organizationId, "integrations"],
+    queryKey: ["/api/organizations", organizationId, "integrations"],
     queryFn: async () => {
-      if (!currentUser?.organizationId) throw new Error("No organization ID");
-      const response = await fetch(`/api/organizations/${currentUser.organizationId}/integrations`);
+      if (!organizationId) throw new Error("No organization ID");
+      const response = await fetch(`/api/organizations/${organizationId}/integrations`);
       if (!response.ok) throw new Error('Failed to fetch organization integrations');
       return response.json();
     },
-    enabled: !!currentUser?.organizationId && currentUser?.role === "admin",
+    enabled: !!organizationId && currentUser?.role === "admin",
   });
 
   // Slack OAuth installation flow
   const getSlackInstallUrl = useMutation({
     mutationFn: async () => {
-      if (!currentUser?.organizationId) throw new Error("No organization found");
-      const response = await apiRequest("GET", `/api/organizations/${currentUser.organizationId}/integrations/slack/install`);
+      if (!organizationId) throw new Error("No organization found");
+      const response = await apiRequest("GET", `/api/organizations/${organizationId}/integrations/slack/install`);
       return await response.json() as {
         installUrl: string;
         scopes: string[];
@@ -491,7 +496,7 @@ export function IntegrationsDashboard() {
         });
         // Refresh integration data
         queryClient.invalidateQueries({ 
-          queryKey: ["/api/organizations", currentUser?.organizationId, "integrations"] 
+          queryKey: ["/api/organizations", organizationId, "integrations"] 
         });
         // Refresh current user to update Slack workspace ID in settings
         queryClient.invalidateQueries({ 
@@ -510,7 +515,7 @@ export function IntegrationsDashboard() {
         });
         // Refresh integration data
         queryClient.invalidateQueries({ 
-          queryKey: ["/api/organizations", currentUser?.organizationId, "integrations"] 
+          queryKey: ["/api/organizations", organizationId, "integrations"] 
         });
       } else if (event.data.type === 'MICROSOFT_OAUTH_ERROR') {
         toast({
@@ -523,12 +528,12 @@ export function IntegrationsDashboard() {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [currentUser?.organizationId, queryClient, toast]);
+  }, [organizationId, queryClient, toast]);
 
   // Get Microsoft OAuth install URL
   const getMicrosoftInstallUrl = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("GET", `/api/organizations/${currentUser?.organizationId}/integrations/microsoft/install`);
+      const response = await apiRequest("GET", `/api/organizations/${organizationId}/integrations/microsoft/install`);
       return await response.json() as { installUrl: string; scopes: string[]; redirectUri: string; state: string };
     },
     onSuccess: (data) => {
@@ -556,11 +561,11 @@ export function IntegrationsDashboard() {
   // Save Slack integration (channel settings only - token saved via OAuth)
   const saveSlackIntegration = useMutation({
     mutationFn: async (data: { channelId: string; enable: boolean }) => {
-      const response = await apiRequest("PUT", `/api/organizations/${currentUser?.organizationId}/integrations/slack`, data);
+      const response = await apiRequest("PUT", `/api/organizations/${organizationId}/integrations/slack`, data);
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organizations", currentUser?.organizationId, "integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", organizationId, "integrations"] });
       toast({
         title: "Slack integration saved",
         description: "Your Slack workspace has been configured successfully.",
@@ -578,11 +583,11 @@ export function IntegrationsDashboard() {
   // Save Slack settings including bot token
   const updateSlackSettings = useMutation({
     mutationFn: async (data: { botToken: string; channelId?: string }) => {
-      const response = await apiRequest("PUT", `/api/organizations/${currentUser?.organizationId}/integrations/slack/configure`, data);
+      const response = await apiRequest("PUT", `/api/organizations/${organizationId}/integrations/slack/configure`, data);
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organizations", currentUser?.organizationId, "integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", organizationId, "integrations"] });
       toast({
         title: "Slack configuration saved",
         description: "Your Slack workspace has been configured successfully.",
@@ -605,11 +610,11 @@ export function IntegrationsDashboard() {
   // Save Microsoft integration (settings only - tokens saved via OAuth)
   const saveMicrosoftIntegration = useMutation({
     mutationFn: async (data: { enableAuth: boolean; enableTeams: boolean }) => {
-      const response = await apiRequest("PUT", `/api/organizations/${currentUser?.organizationId}/integrations/microsoft`, data);
+      const response = await apiRequest("PUT", `/api/organizations/${organizationId}/integrations/microsoft`, data);
       return await response.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organizations", currentUser?.organizationId, "integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", organizationId, "integrations"] });
       toast({
         title: "Microsoft integration saved",
         description: "Your Microsoft 365 tenant has been configured successfully.",
