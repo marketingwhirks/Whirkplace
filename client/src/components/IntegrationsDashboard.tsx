@@ -429,6 +429,7 @@ export function IntegrationsDashboard() {
   const [showMicrosoftSecret, setShowMicrosoftSecret] = useState(false);
   const [slackSetupStep, setSlackSetupStep] = useState(1);
   const [microsoftSetupStep, setMicrosoftSetupStep] = useState(1);
+  const [showSlackSetup, setShowSlackSetup] = useState(false);
 
   // Form state for integrations
   const [slackBotToken, setSlackBotToken] = useState("");
@@ -569,6 +570,33 @@ export function IntegrationsDashboard() {
       toast({
         title: "Save failed",
         description: "Failed to save Slack integration. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Save Slack settings including bot token
+  const updateSlackSettings = useMutation({
+    mutationFn: async (data: { botToken: string; channelId?: string }) => {
+      const response = await apiRequest("PUT", `/api/organizations/${currentUser?.organizationId}/integrations/slack/configure`, data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", currentUser?.organizationId, "integrations"] });
+      toast({
+        title: "Slack configuration saved",
+        description: "Your Slack workspace has been configured successfully.",
+      });
+      // Close the modal after successful save
+      setShowSlackSetup(false);
+      // Clear the form
+      setSlackBotToken("");
+      setSlackChannelId("");
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Configuration failed",
+        description: error.message || "Failed to save Slack configuration. Please check your bot token and try again.",
         variant: "destructive",
       });
     },
@@ -758,13 +786,16 @@ export function IntegrationsDashboard() {
               )}
 
               {/* Setup Instructions */}
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button variant="outline" data-testid="button-slack-setup-instructions">
-                    <HelpCircle className="w-4 h-4 mr-2" />
-                    Setup Instructions
-                  </Button>
-                </DialogTrigger>
+              <Button 
+                variant="outline" 
+                data-testid="button-slack-setup-instructions"
+                onClick={() => setShowSlackSetup(true)}
+              >
+                <HelpCircle className="w-4 h-4 mr-2" />
+                Setup Instructions
+              </Button>
+              
+              <Dialog open={showSlackSetup} onOpenChange={setShowSlackSetup}>
                 <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Slack Workspace Setup Instructions</DialogTitle>
@@ -852,6 +883,93 @@ export function IntegrationsDashboard() {
                           <li>Copy the "Bot User OAuth Token" (starts with xoxb-)</li>
                           <li>Paste the token in the configuration below</li>
                         </ul>
+                      </div>
+                    </div>
+
+                    {/* Configuration Section */}
+                    <div className="border-t pt-6 space-y-4">
+                      <h4 className="font-medium">Configure Your Slack Integration</h4>
+                      
+                      {/* Bot Token Input */}
+                      <div className="space-y-2">
+                        <Label htmlFor="slack-bot-token">Bot User OAuth Token *</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="slack-bot-token"
+                            type={showSlackToken ? "text" : "password"}
+                            placeholder="xoxb-..."
+                            value={slackBotToken}
+                            onChange={(e) => setSlackBotToken(e.target.value)}
+                            data-testid="input-slack-bot-token"
+                            className="font-mono"
+                            required
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setShowSlackToken(!showSlackToken)}
+                            data-testid="button-toggle-slack-token"
+                          >
+                            {showSlackToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          The bot token from your Slack app's OAuth & Permissions page
+                        </p>
+                      </div>
+
+                      {/* Channel ID Input */}
+                      <div className="space-y-2">
+                        <Label htmlFor="slack-channel-id-modal">Default Channel ID (optional)</Label>
+                        <Input
+                          id="slack-channel-id-modal"
+                          type="text"
+                          placeholder="C1234567890"
+                          value={slackChannelId}
+                          onChange={(e) => setSlackChannelId(e.target.value)}
+                          data-testid="input-slack-channel-id-modal"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          The channel ID where notifications will be posted. You can find this in Slack channel settings.
+                        </p>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex justify-end gap-3 pt-4">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setShowSlackSetup(false);
+                            setSlackBotToken("");
+                            setSlackChannelId("");
+                          }}
+                          data-testid="button-cancel-slack-config"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            updateSlackSettings.mutate({
+                              botToken: slackBotToken,
+                              channelId: slackChannelId || undefined,
+                            });
+                          }}
+                          disabled={!slackBotToken || updateSlackSettings.isPending}
+                          data-testid="button-save-slack-config"
+                        >
+                          {updateSlackSettings.isPending ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              Saving...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Save Configuration
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </div>
                   </div>

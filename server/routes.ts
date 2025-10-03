@@ -9871,6 +9871,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Configure Slack with Bot Token (manual setup)
+  app.put("/api/organizations/:id/integrations/slack/configure", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only update your own organization" });
+      }
+      
+      const slackBotConfigSchema = z.object({
+        botToken: z.string().startsWith("xoxb-", "Bot token must start with xoxb-"),
+        channelId: z.string().optional()
+      });
+      
+      const slackBotConfig = slackBotConfigSchema.parse(req.body);
+      
+      // Update organization with Slack bot token configuration
+      const updateData = {
+        slackBotToken: slackBotConfig.botToken,
+        slackChannelId: slackBotConfig.channelId || null,
+        enableSlackIntegration: true,
+        slackConnectionStatus: 'connected' // Mark as connected since we have the bot token
+      };
+      
+      const updatedOrganization = await storage.updateOrganization(req.params.id, updateData);
+      if (!updatedOrganization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({ 
+        message: "Slack bot configured successfully",
+        status: "connected"
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid Slack bot configuration", errors: error.errors });
+      }
+      console.error("PUT /api/organizations/:id/integrations/slack/configure - Error:", error);
+      res.status(500).json({ message: "Failed to configure Slack bot token" });
+    }
+  });
+
   // Configure Slack OAuth integration
   app.put("/api/organizations/:id/integrations/slack", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
