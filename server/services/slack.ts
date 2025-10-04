@@ -1912,7 +1912,7 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
 
     console.log(`✅ Found ${channelMembers.length} channel members to process`);
 
-    const existingUsers = await storage.getAllUsers(organizationId);
+    const existingUsers = await storage.getAllUsers(organizationId, true); // Include inactive users for sync comparison
     const stats = { created: 0, activated: 0, deactivated: 0 };
 
   // Create map of existing users by Slack ID and email
@@ -2077,7 +2077,7 @@ export async function scheduleWeeklyReminders(organizationId: string, storage: a
     console.log(`Running weekly check-in reminders for organization ${organizationId}`);
     
     // Get all active users
-    const users = await storage.getAllUsers(organizationId);
+    const users = await storage.getAllUsers(organizationId, false); // Pass includeInactive=false
     const activeUsers = users.filter((user: any) => user.isActive && user.slackUserId);
     
     // Get current week check-ins to see who hasn't completed theirs
@@ -2482,7 +2482,7 @@ export async function triggerTestWeeklyReminders(organizationId: string, storage
  */
 export async function getWeeklyReminderStats(organizationId: string, storage: any) {
   try {
-    const users = await storage.getAllUsers(organizationId);
+    const users = await storage.getAllUsers(organizationId, true); // Include inactive users for stats
     const activeUsers = users.filter((user: any) => user.isActive);
     const slackUsers = activeUsers.filter((user: any) => user.slackUserId);
     

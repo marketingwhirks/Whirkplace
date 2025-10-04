@@ -649,6 +649,19 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(users).where(and(...conditions));
   }
 
+  async getAllUsers(organizationId: string, includeInactive = false): Promise<User[]> {
+    const conditions = [
+      eq(users.organizationId, organizationId)
+    ];
+    
+    // Only filter active users if includeInactive is false
+    if (!includeInactive) {
+      conditions.push(eq(users.isActive, true));
+    }
+    
+    return await db.select().from(users).where(and(...conditions));
+  }
+
   async getUserOrganizations(email: string): Promise<Array<{user: User; organization: Organization}>> {
     try {
       // Find all user records with this email across all organizations
