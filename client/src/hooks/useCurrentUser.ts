@@ -6,24 +6,17 @@ import type { User } from "@shared/schema";
  * Used for role-based access control in the UI
  */
 export function useCurrentUser() {
-  // Get the organization from URL parameters
-  const urlParams = new URLSearchParams(window.location.search);
-  const hashParams = window.location.hash.includes('?') 
-    ? new URLSearchParams(window.location.hash.split('?')[1])
-    : new URLSearchParams();
-  
-  // Check both regular URL params and hash params (for hash routing)
-  const orgFromUrl = urlParams.get('org') || hashParams.get('org');
+  // IMPORTANT: We don't pass org parameter from URL for regular users anymore
+  // to prevent organization context override issues. The server should use
+  // the organization from the user's session/authentication.
+  // Only demo mode uses special handling via Bearer token.
   
   return useQuery<User | null>({
-    queryKey: ["/api/users/current", { org: orgFromUrl }],
+    queryKey: ["/api/users/current"],
     queryFn: async () => {
       try {
-        // Build the URL, only append org param if it exists
-        let url = '/api/users/current';
-        if (orgFromUrl) {
-          url += `?org=${orgFromUrl}`;
-        }
+        // Build the URL - no org parameter for regular users
+        const url = '/api/users/current';
 
         // Make actual API call to check current user authentication
         // Use Bearer token if available (for demo users), otherwise rely on secure session cookies
