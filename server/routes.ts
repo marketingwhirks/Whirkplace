@@ -34,6 +34,7 @@ import { registerMicrosoftTeamsRoutes } from "./routes/microsoft-teams";
 import { registerMicrosoftAuthRoutes } from "./routes/microsoft-auth";
 import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
 import { registerAuthDiagnosticRoutes } from "./routes/auth-diagnostic";
+import { registerAuthRoutes } from "./routes/auth";
 import { resolveRedirectUri } from "./utils/redirect-uri";
 import { sendWelcomeEmail } from "./services/emailService";
 import { sanitizeUser, sanitizeUsers } from "./utils/sanitizeUser";
@@ -1567,6 +1568,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register authentication diagnostic routes
   registerAuthDiagnosticRoutes(app);
+  
+  // Register organization switching and auth routes
+  registerAuthRoutes(app);
   
   // ONBOARDING ROUTES - These must come BEFORE requireOrganization() middleware
   // to allow access during the initial onboarding flow after OAuth signup

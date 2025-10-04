@@ -2,6 +2,7 @@ import { MobileSidebarTrigger } from "./sidebar";
 import { UserProfile } from "./user-profile";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import NotificationsDropdown from "./notifications-dropdown";
+import OrganizationSwitcher from "./organization-switcher";
 
 interface HeaderProps {
   title: string;
@@ -22,6 +23,8 @@ export default function Header({ title, description }: HeaderProps) {
           </div>
         </div>
         <div className="flex items-center space-x-2 md:space-x-4">
+          {/* Organization Switcher */}
+          <OrganizationSwitcher />
           {/* Notifications */}
           <NotificationsDropdown />
           {/* Theme Toggle */}

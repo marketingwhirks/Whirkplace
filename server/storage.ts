@@ -139,6 +139,7 @@ export interface IStorage {
   getUsersByManager(organizationId: string, managerId: string, includeInactive?: boolean): Promise<User[]>;
   getUsersByTeamLeadership(organizationId: string, leaderId: string, includeInactive?: boolean): Promise<User[]>;
   getAllUsers(organizationId: string, includeInactive?: boolean): Promise<User[]>;
+  getUserOrganizations(email: string): Promise<Array<{user: User; organization: Organization}>>;
 
   // Teams
   getTeam(organizationId: string, id: string): Promise<Team | undefined>;
@@ -648,15 +649,39 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(users).where(and(...conditions));
   }
 
-  async getAllUsers(organizationId: string, includeInactive = false): Promise<User[]> {
-    const conditions = [eq(users.organizationId, organizationId)];
-    
-    // Only filter active users if includeInactive is false
-    if (!includeInactive) {
-      conditions.push(eq(users.isActive, true));
+  async getUserOrganizations(email: string): Promise<Array<{user: User; organization: Organization}>> {
+    try {
+      // Find all user records with this email across all organizations
+      const userRecords = await db
+        .select()
+        .from(users)
+        .where(and(
+          eq(users.email, email),
+          eq(users.isActive, true) // Only include active user accounts
+        ));
+      
+      // Get the organization details for each user record
+      const results = [];
+      for (const user of userRecords) {
+        const [org] = await db
+          .select()
+          .from(organizations)
+          .where(and(
+            eq(organizations.id, user.organizationId),
+            eq(organizations.isActive, true) // Only include active organizations
+          ));
+        
+        if (org) {
+          results.push({ user, organization: org });
+        }
+      }
+      
+      console.log(`📋 getUserOrganizations for ${email}: Found ${results.length} organizations`);
+      return results;
+    } catch (error) {
+      console.error("Failed to fetch user organizations:", error);
+      return [];
     }
-    
-    return await db.select().from(users).where(and(...conditions));
   }
 
   // Super Admin Methods - Cross-organization access
