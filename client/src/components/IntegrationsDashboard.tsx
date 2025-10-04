@@ -429,11 +429,17 @@ export function IntegrationsDashboard() {
   const currentUser = userData;
   const organizationId = userData?.organizationId;
   
-  // Debug logging for organizationId
+  // Enhanced debug logging for organizationId tracking
   useEffect(() => {
-    console.log('🔍 IntegrationsDashboard - userData:', userData);
-    console.log('🔍 IntegrationsDashboard - organizationId:', organizationId);
-    console.log('🔍 IntegrationsDashboard - userLoading:', userLoading);
+    console.log('🔍 IntegrationsDashboard - Full userData object:', userData);
+    console.log('🔍 IntegrationsDashboard - organizationId extracted:', organizationId);
+    console.log('🔍 IntegrationsDashboard - userLoading state:', userLoading);
+    
+    // Log error if user is loaded but organizationId is missing
+    if (userData && !organizationId) {
+      console.error('❌ CRITICAL: User data is loaded but organizationId is missing!');
+      console.error('❌ User data keys:', Object.keys(userData));
+    }
   }, [userData, organizationId, userLoading]);
   
   const [activeTab, setActiveTab] = useState("authentication");
@@ -450,22 +456,38 @@ export function IntegrationsDashboard() {
   const [microsoftClientId, setMicrosoftClientId] = useState("");
   const [microsoftClientSecret, setMicrosoftClientSecret] = useState("");
 
-  // Fetch organization integration data
+  // Fetch organization integration data - only when organizationId is available
   const { data: orgIntegrations, isLoading: integrationsLoading } = useQuery<OrganizationIntegrations>({
     queryKey: ["/api/organizations", organizationId, "integrations"],
     queryFn: async () => {
-      if (!organizationId) throw new Error("No organization ID");
+      // Double-check organizationId before making the request
+      if (!organizationId) {
+        console.error('❌ Query attempted without organizationId');
+        throw new Error("No organization ID available");
+      }
+      
+      console.log(`📡 Fetching integrations for org: ${organizationId}`);
       const response = await fetch(`/api/organizations/${organizationId}/integrations`);
-      if (!response.ok) throw new Error('Failed to fetch organization integrations');
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('❌ Failed to fetch integrations:', errorData);
+        throw new Error(errorData.message || 'Failed to fetch organization integrations');
+      }
+      
       return response.json();
     },
-    enabled: !!organizationId && currentUser?.role === "admin",
+    enabled: !!organizationId && !!userData && currentUser?.role === "admin",
   });
 
   // Slack OAuth installation flow
   const getSlackInstallUrl = useMutation({
     mutationFn: async () => {
-      if (!organizationId) throw new Error("No organization found");
+      if (!organizationId) {
+        console.error('❌ Slack install attempted without organizationId');
+        throw new Error("Organization ID is required. Please refresh the page and try again.");
+      }
+      console.log(`🚀 Getting Slack install URL for org: ${organizationId}`);
       const response = await apiRequest("GET", `/api/organizations/${organizationId}/integrations/slack/install`);
       return await response.json() as {
         installUrl: string;
@@ -694,13 +716,59 @@ export function IntegrationsDashboard() {
     "Calendars.ReadWrite"
   ];
 
-  if (integrationsLoading) {
+  // Show loading state while user data is loading
+  if (userLoading) {
     return (
       <div className="space-y-6">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-center">
               <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-muted-foreground">Loading user data...</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Critical: Check if organizationId is available before proceeding
+  if (userData && !organizationId) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+            Organization Context Missing
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Your organization information could not be loaded. Please try refreshing the page or logging out and back in.
+              If the problem persists, contact support.
+            </AlertDescription>
+          </Alert>
+          <div className="mt-4 p-3 bg-muted rounded-md">
+            <p className="text-xs text-muted-foreground">Debug Info:</p>
+            <p className="text-xs font-mono">User ID: {userData?.id}</p>
+            <p className="text-xs font-mono">Organization ID: {organizationId || 'undefined'}</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Show loading state while integrations are loading (after organizationId is available)
+  if (integrationsLoading && organizationId) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-center">
+              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
+              <span className="ml-2 text-muted-foreground">Loading integrations...</span>
             </div>
           </CardContent>
         </Card>
