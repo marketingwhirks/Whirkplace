@@ -43,7 +43,6 @@ export function useCurrentUser() {
         return response.json();
       } catch (error) {
         // Return null on any error to show landing page
-        console.error('Authentication check failed:', error);
         return null;
       }
     },

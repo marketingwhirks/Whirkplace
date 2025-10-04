@@ -429,13 +429,6 @@ export function IntegrationsDashboard() {
   const currentUser = userData;
   const organizationId = userData?.organizationId;
   
-  // Simple logging for organization context
-  useEffect(() => {
-    // Log error if user is loaded but organizationId is missing
-    if (userData && !organizationId) {
-      console.error('Organization context missing for user:', userData?.id);
-    }
-  }, [userData, organizationId]);
   
   const [activeTab, setActiveTab] = useState("authentication");
   const [showSlackToken, setShowSlackToken] = useState(false);
@@ -457,16 +450,12 @@ export function IntegrationsDashboard() {
     queryFn: async () => {
       // Double-check organizationId before making the request
       if (!organizationId) {
-        console.error('❌ Query attempted without organizationId');
         throw new Error("No organization ID available");
       }
-      
-      console.log(`📡 Fetching integrations for org: ${organizationId}`);
       const response = await fetch(`/api/organizations/${organizationId}/integrations`);
       
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('❌ Failed to fetch integrations:', errorData);
         throw new Error(errorData.message || 'Failed to fetch organization integrations');
       }
       
@@ -479,10 +468,8 @@ export function IntegrationsDashboard() {
   const getSlackInstallUrl = useMutation({
     mutationFn: async () => {
       if (!organizationId) {
-        console.error('❌ Slack install attempted without organizationId');
         throw new Error("Organization ID is required. Please refresh the page and try again.");
       }
-      console.log(`🚀 Getting Slack install URL for org: ${organizationId}`);
       const response = await apiRequest("GET", `/api/organizations/${organizationId}/integrations/slack/install`);
       return await response.json() as {
         installUrl: string;
@@ -559,7 +546,6 @@ export function IntegrationsDashboard() {
     mutationFn: async () => {
       // Validate organizationId before making API call
       if (!organizationId) {
-        console.error('getMicrosoftInstallUrl: organizationId is undefined!');
         throw new Error('Organization context is missing. Please refresh the page and try again.');
       }
       
@@ -593,7 +579,6 @@ export function IntegrationsDashboard() {
     mutationFn: async (data: { channelId: string; enable: boolean }) => {
       // Validate organizationId before making API call
       if (!organizationId) {
-        console.error('saveSlackIntegration: organizationId is undefined!');
         throw new Error('Organization context is missing. Please refresh the page and try again.');
       }
       

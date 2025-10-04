@@ -2,7 +2,6 @@
 // This is required for backdoor authentication to work
 if (process.env.NODE_ENV === 'development') {
   process.env.DEV_AUTH_ENABLED = 'true';
-  console.log('🔓 Development authentication enabled (DEV_AUTH_ENABLED=true)');
 }
 
 import express, { type Request, Response, NextFunction } from "express";
@@ -31,18 +30,12 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-// Add startup logging
-console.log('🚀 Starting application...');
-console.log('📊 Environment:', process.env.NODE_ENV || 'development');
-console.log('🌍 Platform:', process.platform);
-console.log('📡 Node version:', process.version);
 
 const app = express();
 
 // CRITICAL: Enable trust proxy BEFORE any middleware that depends on it
 // This MUST come before session middleware to properly handle secure cookies behind proxies
 app.set('trust proxy', 1);
-console.log('✅ Trust proxy enabled (must be before session middleware)');
 
 // Security headers middleware
 app.use((req, res, next) => {
@@ -105,18 +98,15 @@ app.use("/api", (req, res, next) => {
   // CRITICAL FIX: Skip authentication for auth endpoints - they CREATE authentication
   // Login, signup, and other auth endpoints should NOT require authentication
   if (req.path.startsWith("/auth/")) {
-    console.log('🔓 Auth endpoint - skipping authentication middleware:', req.path);
     return next();
   }
   
   // Also skip for specific public endpoints
   if (req.path === "/csrf-token" || req.path.startsWith("/partners/applications")) {
-    console.log('🔓 Public endpoint - skipping authentication:', req.path);
     return next();
   }
   
   // Apply authentication for all other routes
-  console.log(`🔐 [MIDDLEWARE ORDER] Applying authentication for: ${req.method} ${req.path}`);
   return authenticateUser()(req, res, next);
 });
 
@@ -132,18 +122,15 @@ app.use("/api", validateCSRF());
 app.use("/api", (req, res, next) => {
   // Skip organization resolution for auth endpoints (they set the organization)
   if (req.path.startsWith("/auth/")) {
-    console.log('🔓 Auth endpoint - skipping organization resolution:', req.path);
     return next();
   }
   
   // Skip for endpoints that don't need organization context
   if (req.path === "/csrf-token") {
-    console.log('🔓 CSRF endpoint - skipping organization resolution:', req.path);
     return next();
   }
   
   // Apply organization resolution AFTER authentication has loaded fresh user data
-  console.log(`🏢 [MIDDLEWARE ORDER] Applying organization resolution for: ${req.method} ${req.path}`);
   return resolveOrganization()(req, res, next);
 });
 
@@ -179,40 +166,27 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
-    console.log('🔧 Starting application setup...');
-    
     // Authentication configuration is now simpler and deterministic
     
     // Run development seeding before setting up routes
-    console.log('🌱 Running development seeding...');
     await runDevelopmentSeeding();
-    console.log('✅ Development seeding completed');
     
     // Ensure demo data exists (for both development and production)
-    console.log('🎬 Ensuring demo data exists...');
     await ensureDemoDataExists();
-    console.log('✅ Demo data check completed');
     
     // Ensure Whirkplace super admin account exists
-    console.log('👤 Ensuring Whirkplace super admin account...');
     const { ensureWhirkplaceSuperAdmin } = await import("./ensureSuperAdmin");
     await ensureWhirkplaceSuperAdmin();
-    console.log('✅ Super admin account verified');
     
     // Register routes
-    console.log('🛣️  Registering routes...');
     const server = await registerRoutes(app);
-    console.log('✅ Routes registered successfully');
     
     // Initialize Slack weekly reminder scheduler (runs every Monday at 9:05 AM)
-    console.log('⏰ Initializing weekly reminder scheduler...');
     try {
       const { initializeWeeklyReminderScheduler } = await import("./services/slack");
       const { storage } = await import("./storage");
       initializeWeeklyReminderScheduler(storage);
-      console.log('✅ Weekly reminder scheduler initialized successfully');
     } catch (error) {
-      console.error('❌ Failed to initialize weekly reminder scheduler:', error);
       // Don't throw here, as this is not critical for startup
     }
 
