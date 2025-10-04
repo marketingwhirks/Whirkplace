@@ -124,7 +124,7 @@ export function createDynamicSessionMiddleware() {
     secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
     resave: false,
     saveUninitialized: false,
-    name: 'whirkplace.sid',
+    name: 'connect.sid',
     proxy: true,
     cookie: {
       secure: true,
@@ -142,7 +142,7 @@ export function createDynamicSessionMiddleware() {
     secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
     resave: false,
     saveUninitialized: false,
-    name: 'whirkplace.sid',
+    name: 'connect.sid',
     proxy: true,
     cookie: {
       secure: false,
@@ -359,7 +359,7 @@ export function logSessionConfig() {
     secureCookies: useSecureCookies,
     sameSite: sameSite,
     partitioned: useSecureCookies,
-    sessionName: 'whirkplace.sid',
+    sessionName: 'connect.sid',
     trustProxy: true,
     maxAge: '30 days',
     decision: isProdEnvironment ? '🔒 Using SECURE cookies for HTTPS' : '🔓 Using NON-SECURE cookies for HTTP/localhost',

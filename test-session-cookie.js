@@ -32,8 +32,8 @@ async function testSessionCookie() {
     console.log('Cookie details:', setCookieHeader);
     
     // Check if it contains the session cookie name
-    if (setCookieHeader.includes('whirkplace.sid')) {
-      console.log('✅ Session cookie name is correct (whirkplace.sid)');
+    if (setCookieHeader.includes('connect.sid')) {
+      console.log('✅ Session cookie name is correct (connect.sid)');
     } else {
       console.log('⚠️ Session cookie name might be different');
     }

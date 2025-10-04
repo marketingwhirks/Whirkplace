@@ -82,8 +82,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const sameSite = (isProd || isReplit) ? 'none' : 'lax';
     const partitioned = isProd || isReplit;
     
-    // Clear the correct session cookie (using our custom name)
-    res.clearCookie('whirkplace.sid', {
+    // Clear the correct session cookie (using standard express-session name)
+    res.clearCookie('connect.sid', {
       secure,
       httpOnly: true,
       sameSite: sameSite as any,
@@ -91,8 +91,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ...(partitioned ? { partitioned: true } : {})
     });
     
-    // Also clear legacy session cookie if it exists
-    res.clearCookie('connect.sid', {
+    // Also clear legacy custom session cookie if it exists
+    res.clearCookie('whirkplace.sid', {
       secure,
       httpOnly: true,
       sameSite: sameSite as any,
@@ -1683,7 +1683,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         raw: cookie || 'NO COOKIES SENT',
         parsed: req.cookies || {},
         sessionId: req.sessionID || 'NO SESSION ID',
-        hasSessionCookie: !!req.cookies['whirkplace.sid'],
+        hasSessionCookie: !!req.cookies['connect.sid'],
         testCookieSet: {
           name: testCookieName,
           value: testCookieValue,
@@ -1710,11 +1710,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       },
       diagnosticSummary: {
         browserSendingCookies: !!cookie,
-        sessionCookiePresent: !!req.cookies['whirkplace.sid'],
+        sessionCookiePresent: !!req.cookies['connect.sid'],
         sessionDataPresent: !!req.session?.userId,
         expectedCookieConfig: isProduction ? 'PRODUCTION (secure:true, sameSite:none)' : 'DEVELOPMENT (secure:false, sameSite:lax)',
         likelyIssue: !cookie ? 'Browser not sending any cookies' : 
-                     !req.cookies['whirkplace.sid'] ? 'Session cookie not in request' :
+                     !req.cookies['connect.sid'] ? 'Session cookie not in request' :
                      !req.session?.userId ? 'Session exists but no user data' : 
                      'Session appears to be working'
       }
@@ -1868,7 +1868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       ],
       receivedCookies: req.headers.cookie || 'none',
-      sessionCookie: req.cookies?.['whirkplace.sid'] ? '[PRESENT]' : '[MISSING]',
+      sessionCookie: req.cookies?.['connect.sid'] ? '[PRESENT]' : '[MISSING]',
       testCookie: req.cookies?.[testCookieName] ? '[PRESENT]' : '[MISSING]',
       environment: {
         isProduction,
@@ -3249,7 +3249,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       // Clear the session cookies
-      res.clearCookie('whirkplace.sid', {
+      res.clearCookie('connect.sid', {
         secure,
         httpOnly: true,
         sameSite: sameSite as any,
@@ -3257,8 +3257,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...(partitioned ? { partitioned: true } : {})
       });
       
-      // Also clear legacy session cookie if it exists
-      res.clearCookie('connect.sid', {
+      // Also clear legacy custom session cookie if it exists
+      res.clearCookie('whirkplace.sid', {
         secure,
         httpOnly: true,
         sameSite: sameSite as any,
