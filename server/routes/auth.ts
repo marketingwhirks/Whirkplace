@@ -11,30 +11,23 @@ const switchOrganizationSchema = z.object({
 });
 
 export function registerAuthRoutes(app: Express) {
-  console.log("🔐 Registering auth routes");
 
   // Get all organizations the current user belongs to
   app.get("/api/auth/my-organizations", requireAuth, async (req, res) => {
     try {
       const sessionUser = getSessionUser(req);
       if (!sessionUser?.userId) {
-        console.log("❌ No authenticated user in session for my-organizations");
-        return res.status(401).json({ message: "Not authenticated" });
+          return res.status(401).json({ message: "Not authenticated" });
       }
 
       // Get the current user to find their email
       const currentUser = await storage.getUserGlobal(sessionUser.userId);
       if (!currentUser) {
-        console.log(`❌ User ${sessionUser.userId} not found in database`);
         return res.status(404).json({ message: "User not found" });
       }
-
-      console.log(`📋 Fetching organizations for user ${currentUser.email}`);
       
       // Get all organizations this user (by email) belongs to
       const userOrganizations = await storage.getUserOrganizations(currentUser.email);
-      
-      console.log(`✅ Found ${userOrganizations.length} organizations for ${currentUser.email}`);
       
       // Format the response with current organization marked
       const organizationsWithCurrent = userOrganizations.map(({ user, organization }) => ({
@@ -48,11 +41,6 @@ export function registerAuthRoutes(app: Express) {
         user: sanitizeUser(user),
         isCurrent: organization.id === sessionUser.organizationId,
       }));
-
-      // Log the organizations found
-      console.log(`🏢 Organizations for ${currentUser.email}:`, 
-        organizationsWithCurrent.map(o => `${o.organization.name} (${o.organization.slug}) - ${o.isCurrent ? 'CURRENT' : ''}`).join(", ")
-      );
 
       res.json({
         organizations: organizationsWithCurrent,
@@ -69,7 +57,6 @@ export function registerAuthRoutes(app: Express) {
     try {
       const sessionUser = getSessionUser(req);
       if (!sessionUser?.userId) {
-        console.log("❌ No authenticated user in session for switch-organization");
         return res.status(401).json({ message: "Not authenticated" });
       }
 
@@ -79,7 +66,6 @@ export function registerAuthRoutes(app: Express) {
       // Validate request body
       const validationResult = switchOrganizationSchema.safeParse(req.body);
       if (!validationResult.success) {
-        console.log("❌ Invalid request body:", validationResult.error);
         return res.status(400).json({ 
           message: "Invalid request", 
           errors: validationResult.error.errors 
@@ -87,13 +73,9 @@ export function registerAuthRoutes(app: Express) {
       }
 
       const { organizationId } = validationResult.data;
-      
-      console.log(`🔄 User ${sessionUser.userId} attempting to switch to organization ${organizationId}`);
-      console.log(`📍 Current organization: ${sessionUser.organizationId}`);
 
       // Check if already in the target organization
       if (sessionUser.organizationId === organizationId) {
-        console.log(`ℹ️ User is already in organization ${organizationId}`);
         return res.json({ 
           message: "Already in this organization",
           organization: await storage.getOrganization(organizationId)
@@ -104,7 +86,6 @@ export function registerAuthRoutes(app: Express) {
       const sessionData = await authService.switchOrganization(req, sessionUser.userId, organizationId);
       
       if (!sessionData) {
-        console.log(`❌ Failed to switch organization`);
         return res.status(403).json({ 
           message: "You do not have access to this organization" 
         });
@@ -133,18 +114,6 @@ export function registerAuthRoutes(app: Express) {
           customValues: organization.customValues,
         },
         user: authService.getSanitizedUser(user),
-      });
-
-      console.log(`🎉 Organization switch completed: ${sessionData.email} switched to ${organization.name}`);
-      
-      // Log for audit purposes
-      console.log(`[AUDIT] Organization switch:`, {
-        timestamp: new Date().toISOString(),
-        userEmail: sessionData.email,
-        fromOrganizationId: sessionUser.organizationId,
-        toOrganizationId: organizationId,
-        toOrganizationName: organization.name,
-        userIdInNewOrg: sessionData.userId,
       });
       
     } catch (error) {
@@ -183,70 +152,4 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  // Cleanup endpoint to detect and fix corrupted sessions
-  app.post("/api/auth/cleanup-session", async (req, res) => {
-    try {
-      const sessionUser = getSessionUser(req);
-      const corruptedIds = [
-        'c7008be0-1307-48c9-825c-a01ef11cc682',
-        'c70086e0-1307-48c9-825c-a01ef11cc682'
-      ];
-
-      // Check if session has a corrupted organization ID
-      if (sessionUser?.organizationId && corruptedIds.includes(sessionUser.organizationId)) {
-        console.log(`[CLEANUP] Detected corrupted organization ID in session: ${sessionUser.organizationId}`);
-        console.log(`[CLEANUP] User ID: ${sessionUser.userId}`);
-        console.log(`[CLEANUP] Clearing corrupted session...`);
-
-        // Clear the session completely
-        req.session.destroy((err) => {
-          if (err) {
-            console.error("[CLEANUP] Failed to destroy session:", err);
-          }
-        });
-
-        return res.json({
-          cleaned: true,
-          message: "Corrupted session detected and cleared. Please log in again.",
-          corruptedOrgId: sessionUser.organizationId
-        });
-      }
-
-      // Check if the organization ID exists in the database
-      if (sessionUser?.organizationId) {
-        try {
-          const org = await storage.getOrganization(sessionUser.organizationId);
-          if (!org) {
-            console.log(`[CLEANUP] Organization ID ${sessionUser.organizationId} not found in database`);
-            console.log(`[CLEANUP] Clearing invalid session...`);
-
-            // Clear the session
-            req.session.destroy((err) => {
-              if (err) {
-                console.error("[CLEANUP] Failed to destroy session:", err);
-              }
-            });
-
-            return res.json({
-              cleaned: true,
-              message: "Invalid organization in session. Session cleared.",
-              invalidOrgId: sessionUser.organizationId
-            });
-          }
-        } catch (error) {
-          console.error(`[CLEANUP] Error checking organization:`, error);
-        }
-      }
-
-      // Session is clean
-      return res.json({
-        cleaned: false,
-        message: "Session is valid.",
-        organizationId: sessionUser?.organizationId
-      });
-    } catch (error) {
-      console.error("Error in cleanup-session:", error);
-      res.status(500).json({ message: "Failed to cleanup session" });
-    }
-  });
 }

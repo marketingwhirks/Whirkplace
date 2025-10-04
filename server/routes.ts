@@ -64,309 +64,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.type('text/plain').send(JSON.stringify(verificationContent, null, 2));
   });
 
-  // CRITICAL: Logout endpoint MUST come first, before ANY middleware
-  // This endpoint needs no authentication, organization, or CSRF checks
-  app.post("/api/auth/logout", (req, res) => {
-    // Destroy session if it exists
-    if (req.session) {
-      req.session.destroy((err) => {
-        if (err) {
-          console.error("Session destroy error:", err);
-        }
-      });
-    }
-    
-    // Clear all auth-related cookies unconditionally
-    const isReplit = !!process.env.REPL_SLUG;
-    const isProd = process.env.NODE_ENV === 'production';
-    const secure = isProd || isReplit;
-    const sameSite = (isProd || isReplit) ? 'none' : 'lax';
-    const partitioned = isProd || isReplit;
-    
-    // Clear the correct session cookie (using standard express-session name)
-    res.clearCookie('connect.sid', {
-      secure,
-      httpOnly: true,
-      sameSite: sameSite as any,
-      path: '/',
-      ...(partitioned ? { partitioned: true } : {})
-    });
-    
-    // Also clear legacy custom session cookie if it exists
-    res.clearCookie('whirkplace.sid', {
-      secure,
-      httpOnly: true,
-      sameSite: sameSite as any,
-      path: '/',
-      ...(partitioned ? { partitioned: true } : {})
-    });
-    
-    // Clear auth cookies
-    ['auth_user_id', 'auth_org_id', 'auth_session_token'].forEach(cookieName => {
-      res.clearCookie(cookieName, {
-        httpOnly: true,
-        secure,
-        sameSite: sameSite as any,
-        path: '/',
-        ...(partitioned ? { partitioned: true } : {})
-      });
-    });
-    
-    // Always return success
-    return res.status(200).json({ message: "Logged out successfully" });
-  });
-  // Super Admin backdoor endpoint for production
-  // This endpoint is specifically for mpatrick@whirks.com super admin access
-  app.post("/api/auth/super-admin-login", async (req, res) => {
-    console.log("🔑 Super admin login attempt");
-    
+  // Logout endpoint using centralized AuthService
+  app.post("/api/auth/logout", async (req, res) => {
     try {
-      const { email, key } = req.body;
+      // Import the centralized AuthService
+      const { authService } = await import('./services/authService');
       
-      // SECURITY: Strict validation for production super admin
-      if (process.env.NODE_ENV === 'production') {
-        // Only allow specific super admin email in production
-        if (email !== 'mpatrick@whirks.com') {
-          console.log("❌ Invalid super admin email in production");
-          return res.status(401).json({ 
-            message: "Unauthorized" 
-          });
-        }
-        
-        // Verify production backdoor key
-        const validKey = process.env.BACKDOOR_KEY;
-        if (!validKey || key !== validKey) {
-          console.log("❌ Invalid super admin key");
-          return res.status(401).json({ 
-            message: "Unauthorized" 
-          });
-        }
-      }
+      // Use AuthService to destroy session
+      await authService.destroySession(req, res);
       
-      // Find or create super admin user
-      const allUsers = await storage.getAllUsersGlobal(false);
-      let superAdmin = allUsers.find(u => u.email === email && u.isSuperAdmin);
-      
-      // Get whirkplace organization first (we need it either way)
-      const whirkplaceOrg = await storage.getOrganizationBySlug('whirkplace');
-      if (!whirkplaceOrg) {
-        return res.status(404).json({ message: "Whirkplace organization not found" });
-      }
-      
-      if (!superAdmin) {
-        // Create super admin in whirkplace organization
-        superAdmin = await storage.createUser(whirkplaceOrg.id, {
-          username: 'mpatrick',
-          password: await bcrypt.hash(randomBytes(32).toString('hex'), 10),
-          name: 'Matthew Patrick',
-          email: 'mpatrick@whirks.com',
-          organizationId: whirkplaceOrg.id,
-          role: 'admin',
-          isSuperAdmin: true,
-          isAccountOwner: false,
-          isActive: true,
-          authProvider: 'local',
-        });
-        console.log('✅ Created super admin user');
-      }
-      
-      // Use setSessionUser to properly establish the session with all required data
-      console.log(`🔐 Setting session for super admin: ${email}`);
-      console.log(`📝 Organization: ID=${whirkplaceOrg.id}, Slug=${whirkplaceOrg.slug}`);
-      
-      try {
-        await setSessionUser(req, superAdmin.id, whirkplaceOrg.id, whirkplaceOrg.slug);
-        console.log(`✅ setSessionUser() completed for super admin`);
-        console.log(`📋 Session ID after setSessionUser: ${req.sessionID}`);
-        
-        // CRITICAL: Verify session data was actually saved
-        console.log(`🔍 Verifying super admin session after save:`, {
-          sessionId: req.sessionID,
-          userId: req.session?.userId,
-          organizationId: (req.session as any)?.organizationId,
-          organizationSlug: (req.session as any)?.organizationSlug
-        });
-        
-        console.log(`✅ Super admin ${email} logged in successfully with properly set session`);
-        
-        // Send response after session is properly set
-        res.json({ 
-          message: "Super admin login successful",
-          user: sanitizeUser(superAdmin)
-        });
-      } catch (sessionError) {
-        console.error('Failed to set session for super admin:', sessionError);
-        return res.status(500).json({ message: "Session creation failed" });
-      }
+      // Return success
+      res.status(200).json({ message: "Logged out successfully" });
     } catch (error) {
-      console.error("Super admin login error:", error);
-      res.status(500).json({ message: "Login failed" });
-    }
-  });
-  
-  // NEW: Fresh backdoor endpoint with proper Replit cookie handling
-  // NOTE: This endpoint does NOT use requireOrganization() since it needs to work without authentication
-  app.post("/api/auth/dev-login-fresh", async (req, res) => {
-    console.log("🚀 FRESH DEV LOGIN REQUEST RECEIVED:", JSON.stringify(req.body, null, 2));
-    console.log("🌐 Request headers:", JSON.stringify(req.headers, null, 2));
-    
-    try {
-      // SECURITY: Only allow backdoor login in development environment
-      if (process.env.NODE_ENV === 'production') {
-        console.log("❌ Fresh backdoor blocked in production");
-        return res.status(404).json({ 
-          message: "Endpoint not available in production" 
-        });
-      }
-      
-      const { username, key } = req.body;
-      
-      // Get organization ID from query param or use default
-      const orgSlug = req.query.org as string || 'whirkplace';
-      console.log(`🔑 Fresh login attempt: ${username} for org: ${orgSlug}`);
-      
-      // Look up the organization
-      const org = await db
-        .select()
-        .from(organizations)
-        .where(eq(organizations.slug, orgSlug))
-        .limit(1);
-      
-      if (!org || org.length === 0) {
-        console.log(`❌ Organization not found: ${orgSlug}`);
-        return res.status(404).json({ 
-          message: "Organization not found" 
-        });
-      }
-      
-      const organizationId = org[0].id;
-      console.log(`✅ Found organization: ${org[0].name} (${organizationId})`);
-      
-      // Verify backdoor credentials - use defaults for development if env vars not set
-      const validUsername = process.env.BACKDOOR_USER || "Matthew";
-      const validKey = process.env.BACKDOOR_KEY || "Dev123";
-      
-      // SECURITY: Log warning if using default credentials
-      if (!process.env.BACKDOOR_USER || !process.env.BACKDOOR_KEY) {
-        console.warn("⚠️  Using default backdoor credentials for development. Set BACKDOOR_USER and BACKDOOR_KEY environment variables for production security.");
-      }
-      
-      if (username !== validUsername || key !== validKey) {
-        console.log("❌ Invalid fresh backdoor credentials");
-        return res.status(401).json({ 
-          message: "Invalid backdoor credentials" 
-        });
-      }
-      
-      // Look up the user in the organization
-      const matthewUser = await storage.getUserByEmail(organizationId, 'mpatrick@whirks.com');
-      if (!matthewUser) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      
-      // Use setSessionUser to properly regenerate and set session with all required data
-      console.log(`🔐 Setting session for fresh backdoor user: ${matthewUser.email}`);
-      console.log(`📝 Organization details: ID=${organizationId}, Slug=${org[0].slug}`);
-      
-      try {
-        await setSessionUser(req, matthewUser.id, organizationId, org[0].slug);
-        console.log(`✅ setSessionUser() completed successfully`);
-        console.log(`📋 Session ID after setSessionUser: ${req.sessionID}`);
-        
-        // CRITICAL: Verify session data was actually saved
-        console.log(`🔍 Verifying session data after save:`, {
-          sessionId: req.sessionID,
-          userId: req.session?.userId,
-          organizationId: (req.session as any)?.organizationId,
-          organizationSlug: (req.session as any)?.organizationSlug,
-          sessionExists: !!req.session
-        });
-        
-        // SECURITY: No longer setting auth cookies - sessions are the only authentication method
-        // Cookies like auth_user_id were a critical vulnerability allowing user impersonation
-        
-        console.log(`✅ Fresh backdoor login successful for ${matthewUser.name}`);
-        
-        res.json({ 
-          message: "Fresh backdoor login successful", 
-          user: { 
-            id: matthewUser.id, 
-            name: matthewUser.name, 
-            email: matthewUser.email, 
-            role: matthewUser.role 
-          } 
-        });
-      } catch (sessionError) {
-        console.error('Failed to set session:', sessionError);
-        return res.status(500).json({ message: "Session creation failed" });
-      }
-    } catch (error) {
-      console.error("Fresh backdoor login error:", error);
-      res.status(500).json({ message: "Fresh backdoor login failed" });
-    }
-  });
-
-  // Original backdoor login endpoint (for development/testing when Slack is unavailable)
-  app.post("/auth/backdoor", requireOrganization(), async (req, res) => {
-    try {
-      // SECURITY: Only allow backdoor login in development environment
-      if (process.env.NODE_ENV === 'production') {
-        return res.status(404).json({ 
-          message: "Endpoint not available in production" 
-        });
-      }
-      
-      const { username, key } = req.body;
-      
-      // Verify backdoor credentials - use defaults for development if env vars not set
-      const validUsername = process.env.BACKDOOR_USER || "Matthew";
-      const validKey = process.env.BACKDOOR_KEY || "Dev123";
-      
-      // SECURITY: Log warning if using default credentials
-      if (!process.env.BACKDOOR_USER || !process.env.BACKDOOR_KEY) {
-        console.warn("⚠️  Using default backdoor credentials for development. Set BACKDOOR_USER and BACKDOOR_KEY environment variables for production security.");
-      }
-      
-      if (username !== validUsername || key !== validKey) {
-        return res.status(401).json({ 
-          message: "Invalid backdoor credentials" 
-        });
-      }
-      
-      // Look up the user in the organization
-      const matthewUser = await storage.getUserByEmail(req.orgId, 'mpatrick@whirks.com');
-      if (!matthewUser) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      
-      // Get organization slug for session
-      const organization = await storage.getOrganization(req.orgId);
-      const orgSlug = organization?.slug || undefined;
-      
-      // Use setSessionUser to properly regenerate and set session with all required data
-      try {
-        await setSessionUser(req, matthewUser.id, req.orgId, orgSlug);
-        console.log(`✅ Session properly regenerated and saved for user: ${matthewUser.id} in org: ${req.orgId}`);
-        
-        // SECURITY: No auth cookies - sessions only
-        // Removed dangerous auth cookies that allowed user impersonation
-        
-        res.json({ 
-          message: "Backdoor login successful", 
-          user: { 
-            id: matthewUser.id, 
-            name: matthewUser.name, 
-            email: matthewUser.email, 
-            role: matthewUser.role 
-          } 
-        });
-      } catch (sessionError) {
-        console.error('Failed to set session:', sessionError);
-        return res.status(500).json({ message: "Session creation failed" });
-      }
-    } catch (error) {
-      console.error("Backdoor login error:", error);
-      res.status(500).json({ message: "Backdoor login failed" });
+      console.error("Logout error:", error);
+      // Even if there's an error, we should still return success for logout
+      res.status(200).json({ message: "Logged out" });
     }
   });
 
@@ -408,40 +120,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Import the centralized AuthService
       const { authService } = await import('./services/authService');
       
-      // Special handling for demo users - works in all environments
-      const { getDemoUser, generateDemoToken } = await import('./demo-auth');
-      const demoUser = getDemoUser(email);
-      if (demoUser && demoUser.password === password) {
-        const token = generateDemoToken(email);
-        console.log(`🎪 Demo login successful for ${demoUser.name}`);
-        
-        // Set a simple demo session cookie
-        res.cookie('demo_token', token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' || !!process.env.REPL_SLUG,
-          sameSite: 'lax',
-          maxAge: 24 * 60 * 60 * 1000 // 24 hours
-        });
-        
-        return res.json({ 
-          message: "Login successful", 
-          user: { 
-            id: demoUser.id, 
-            name: demoUser.name, 
-            email: demoUser.email, 
-            role: demoUser.role,
-            isSuperAdmin: false
-          },
-          token: token // Include token for fallback
-        });
-      }
-      
       // Use the centralized AuthService to authenticate user
-      console.log(`🔐 Local login attempt for ${email} using AuthService`);
       const authResult = await authService.authenticateUser(email, password);
       
       if (!authResult) {
-        console.log(`❌ Authentication failed for ${email}`);
         return res.status(401).json({ 
           message: "Invalid email or password" 
         });
@@ -450,14 +132,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { user, organization } = authResult;
       
       // Create session using the centralized AuthService
-      console.log(`🔐 Creating session for user: ${user.email}`);
-      
       try {
-        const sessionData = await authService.createSession(req, user, organization);
-        console.log(`✅ Session created successfully`);
-        console.log(`📋 Session data:`, sessionData);
-        
-        console.log(`✅ Local login successful for ${user.name} (${user.email})`);
+        await authService.createSession(req, user, organization);
         
         // Return sanitized user data
         res.json({ 
@@ -465,7 +141,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           user: authService.getSanitizedUser(user)
         });
       } catch (sessionError) {
-        console.error('❌ Failed to create session:', sessionError);
+        console.error('Failed to create session:', sessionError);
         return res.status(500).json({ message: 'Failed to create session' });
       }
     } catch (error) {
@@ -474,47 +150,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Demo login endpoint - stateless JWT authentication for demo users
-  app.post("/api/auth/demo-login", async (req, res) => {
-    try {
-      const { email, password } = req.body;
-      
-      if (!email || !password) {
-        return res.status(400).json({ 
-          message: "Email and password are required" 
-        });
-      }
-      
-      const { getDemoUser, generateDemoToken } = await import('./demo-auth');
-      const demoUser = getDemoUser(email);
-      
-      if (!demoUser || demoUser.password !== password) {
-        return res.status(401).json({ 
-          message: "Invalid demo credentials" 
-        });
-      }
-      
-      const token = generateDemoToken(email);
-      console.log(`🎪 Demo JWT login successful for ${demoUser.name}`);
-      
-      return res.json({ 
-        message: "Demo login successful", 
-        user: { 
-          id: demoUser.id, 
-          name: demoUser.name, 
-          email: demoUser.email, 
-          role: demoUser.role,
-          isSuperAdmin: false,
-          organizationId: demoUser.organizationId
-        },
-        token: token,
-        organizationSlug: 'fictitious-delicious'
-      });
-    } catch (error) {
-      console.error("Demo login error:", error);
-      res.status(500).json({ message: "Demo login failed" });
-    }
-  });
 
   // Backward compatibility: redirect /auth to /login
   app.get("/auth", (req, res) => {
@@ -3229,27 +2864,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Email/Password Login endpoint (placed before auth middleware)
+  // Main Login endpoint using centralized AuthService
   app.post("/api/auth/login", async (req, res) => {
     try {
-      console.log("🔐 Email/password login attempt");
-      
-      // Enhanced logging for cookie/session debugging
-      console.log("📍 Login Request Details:", {
-        headers: {
-          cookie: req.headers.cookie ? '[PRESENT]' : '[MISSING]',
-          host: req.headers.host,
-          origin: req.headers.origin,
-          'content-type': req.headers['content-type']
-        },
-        sessionId: req.sessionID || '[NONE]',
-        sessionData: req.session ? {
-          userId: req.session.userId || '[NONE]',
-          organizationId: req.session.organizationId || '[NONE]'
-        } : '[NO SESSION]',
-        cookieConfig: req.session?.cookie || '[NO COOKIE CONFIG]'
-      });
-      
       const { email, password } = req.body;
       
       if (!email || !password) {
@@ -3258,112 +2875,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      let user = null;
-      let actualOrgId = req.orgId; // May be undefined if no org context
+      // Import the centralized AuthService
+      const { authService } = await import('./services/authService');
       
-      // Check for backdoor authentication
-      const backdoorUser = process.env.BACKDOOR_USER;
-      const backdoorKey = process.env.BACKDOOR_KEY;
+      // Use the centralized AuthService to authenticate user
+      const authResult = await authService.authenticateUser(email, password);
       
-      if (backdoorUser && backdoorKey && email === backdoorUser && password === backdoorKey) {
-        console.log("🔑 Backdoor authentication detected, searching across all organizations...");
-        
-        // Search for the user across ALL organizations
-        const allUsers = await storage.getAllUsersGlobal(false);
-        user = allUsers.find(u => u.email === backdoorUser && u.isActive);
-        
-        if (user) {
-          console.log(`✅ Found backdoor user in organization: ${user.organizationId}`);
-          actualOrgId = user.organizationId;
-        }
-      } else {
-        // Always search across all organizations for login
-        // This allows users from any organization to log in from the main login page
-        console.log("Searching for user across all organizations...");
-        const allUsers = await storage.getAllUsersGlobal(false);
-        user = allUsers.find(u => u.email === email.toLowerCase().trim() && u.isActive);
-        
-        if (user) {
-          actualOrgId = user.organizationId;
-          console.log(`Found user in organization: ${actualOrgId}`);
-        }
-        
-        if (user && user.isActive) {
-          // Check password (handle both plain text and hashed passwords)
-          let isValidPassword = false;
-          if (user.password) {
-            if (user.password.startsWith('$2a$') || user.password.startsWith('$2b$')) {
-              // Password is already hashed with bcrypt
-              isValidPassword = await bcrypt.compare(password, user.password);
-            } else {
-              // Password is plain text (legacy), compare directly for now
-              isValidPassword = user.password === password;
-            }
-          }
-          
-          if (!isValidPassword) {
-            user = null; // Reset user if password is invalid
-          }
-        }
-      }
-      
-      if (!user || !user.isActive) {
+      if (!authResult) {
         return res.status(401).json({ 
           message: "Invalid email or password" 
         });
       }
       
-      console.log(`✅ Login successful for: ${user.name} (${user.email}) from org: ${actualOrgId}`);
+      const { user, organization } = authResult;
       
-      // Get organization slug for session
-      const organization = await storage.getOrganization(actualOrgId);
-      const orgSlug = organization?.slug || undefined;
-      
-      // Use setSessionUser to properly regenerate and set session with all required data
-      // This handles session regeneration to prevent session fixation attacks
+      // Create session using the centralized AuthService
       try {
-        await setSessionUser(req, user.id, actualOrgId, orgSlug);
-        console.log(`✅ Session properly regenerated and saved for user: ${user.id} in org: ${actualOrgId}`);
+        await authService.createSession(req, user, organization);
+        
+        // Return sanitized user data
+        res.json({ 
+          message: "Login successful",
+          user: authService.getSanitizedUser(user),
+          organizationId: organization.id
+        });
       } catch (sessionError) {
-        console.error('Failed to set session:', sessionError);
+        console.error('Failed to create session:', sessionError);
         return res.status(500).json({ message: "Session creation failed" });
       }
-      
-      // SECURITY: Session-based authentication only - no auth cookies
-      
-      // Generate a simple auth token for Replit environment
-      const authToken = Buffer.from(JSON.stringify({
-        userId: user.id,
-        organizationId: actualOrgId,
-        email: user.email,
-        role: user.role,
-        timestamp: Date.now()
-      })).toString('base64');
-      
-      // Log the Set-Cookie header that will be sent
-      console.log('🍪 Response Cookie Headers:', {
-        setCookie: res.getHeaders()['set-cookie'] || '[NONE]',
-        sessionId: req.sessionID,
-        sessionData: {
-          userId: req.session?.userId,
-          organizationId: req.session?.organizationId,
-          organizationSlug: req.session?.organizationSlug
-        }
-      });
-      
-      // Now send response - express-session should have set the cookie
-      res.json({ 
-        message: "Login successful",
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          organizationId: actualOrgId
-        },
-        token: authToken
-      });
-      
     } catch (error) {
       console.error("Login error:", error);
       res.status(500).json({ message: "Login failed" });
