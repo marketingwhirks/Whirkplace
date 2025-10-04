@@ -315,6 +315,17 @@ export function authenticateUser() {
       // Priority: session > auth_org_id cookie > req.orgId (from requireOrganization)
       let resolvedOrgId = req.orgId; // Default from requireOrganization middleware
       
+      // SECURITY: Enhanced logging for organization ID tracking
+      console.log('🔐 ORGANIZATION TRACKING - Resolving organization ID:', {
+        source: 'authenticateUser',
+        path: req.path,
+        reqOrgId: req.orgId,
+        sessionOrgId: req.session?.organizationId,
+        cookieOrgId: req.cookies?.['auth_org_id'],
+        sessionUserId: req.session?.userId,
+        timestamp: new Date().toISOString()
+      });
+      
       // Try to get org ID from session first
       if (req.session?.organizationId) {
         resolvedOrgId = req.session.organizationId;
@@ -341,7 +352,11 @@ export function authenticateUser() {
         }
       }
       
-      console.log(`🏢 Final resolved organization ID: ${resolvedOrgId}`);
+      console.log(`🏢 Final resolved organization ID: ${resolvedOrgId} (source: ${
+        req.session?.organizationId ? 'session' : 
+        req.cookies?.['auth_org_id'] ? 'cookie' : 
+        'requireOrganization middleware'
+      })`);
       
       // Check for session-based authentication using centralized session management
       const sessionData = getSessionUser(req);

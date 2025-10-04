@@ -240,6 +240,15 @@ export async function setSessionUser(
         organizationSlug
       });
 
+      // SECURITY: Track organization ID source for debugging
+      console.log('🔐 ORGANIZATION TRACKING - Setting session organizationId:', {
+        source: 'setSessionUser',
+        userId: userId,
+        organizationId: organizationId,
+        organizationSlug: organizationSlug,
+        caller: new Error().stack?.split('\n')[3]?.trim() // Get calling function
+      });
+      
       req.session.userId = userId;
       req.session.organizationId = organizationId;
       if (organizationSlug) {
