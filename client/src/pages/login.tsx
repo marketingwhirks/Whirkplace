@@ -73,7 +73,6 @@ export default function LoginPage() {
         ]);
       }
     } catch (error) {
-      console.error('Failed to fetch organization context:', error);
       // Default providers on error
       setAuthProviders([
         { provider: 'local', enabled: true }
@@ -98,7 +97,6 @@ export default function LoginPage() {
         });
       }
     } catch (error) {
-      console.error('Failed to fetch auth providers:', error);
       toast({ 
         title: "Error", 
         description: "Failed to load authentication options",
@@ -141,8 +139,6 @@ export default function LoginPage() {
       localStorage.removeItem(item);
       sessionStorage.removeItem(item);
     });
-    
-    console.log('🧹 Cleared old authentication tokens from storage');
   };
   
   const clearAuthData = async () => {
@@ -155,10 +151,8 @@ export default function LoginPage() {
         method: 'POST',
         credentials: 'include'
       });
-      
-      console.log('🧹 Cleared all authentication data');
     } catch (error) {
-      console.log('Note: Could not clear server auth data (this is normal for new sessions)');
+      // Silently handle if server auth data cannot be cleared (normal for new sessions)
     }
   };
   
@@ -170,7 +164,6 @@ export default function LoginPage() {
     
     // Include the org parameter in the Slack auth URL
     const url = `/auth/slack/login?org=${organizationSlug}`;
-    console.log('Initiating Slack login for org:', organizationSlug);
     window.location.href = url;
   };
   
@@ -181,7 +174,6 @@ export default function LoginPage() {
     localStorage.removeItem('demo_org');
     
     // Redirect to the Microsoft OAuth endpoint with organization parameter
-    console.log('Initiating Microsoft login for org:', organizationSlug);
     window.location.href = `/auth/microsoft?org=${organizationSlug}`;
   };
   

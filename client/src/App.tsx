@@ -35,7 +35,6 @@ import DemoLoginPage from "@/pages/demo-login";
 import RoadmapPage from "@/pages/roadmap";
 import { OnboardingPage } from "@/pages/onboarding";
 import OAuthCallbackPage from "@/pages/oauth-callback";
-import ClearSession from "@/pages/clear-session";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
@@ -126,7 +125,6 @@ function App() {
               <Route path="/partners" component={PartnerPage} />
               <Route path="/onboarding" component={OnboardingPage} />
               <Route path="/oauth-callback" component={OAuthCallbackPage} />
-              <Route path="/clear-session" component={ClearSession} />
               <Route component={AuthenticatedApp} />
             </Switch>
           </RoleSwitchProvider>

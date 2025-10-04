@@ -643,7 +643,6 @@ export function IntegrationsDashboard() {
     mutationFn: async (data: { enableAuth: boolean; enableTeams: boolean }) => {
       // Validate organizationId before making API call
       if (!organizationId) {
-        console.error('saveMicrosoftIntegration: organizationId is undefined!');
         throw new Error('Organization context is missing. Please refresh the page and try again.');
       }
       
@@ -729,38 +728,12 @@ export function IntegrationsDashboard() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-orange-500" />
-            Organization Context Missing
-          </CardTitle>
+          <CardTitle>Organization Required</CardTitle>
         </CardHeader>
         <CardContent>
-          <Alert>
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              Your organization information could not be loaded. Please try refreshing the page or selecting an organization.
-            </AlertDescription>
-          </Alert>
-          <div className="mt-4 flex gap-2">
-            <Button 
-              onClick={() => {
-                queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
-                window.location.reload();
-              }}
-              variant="default"
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Refresh Page
-            </Button>
-            <Button 
-              onClick={() => {
-                window.location.href = '/select-organization';
-              }}
-              variant="outline"
-            >
-              Select Organization
-            </Button>
-          </div>
+          <p className="text-muted-foreground">
+            Please select an organization to manage integrations.
+          </p>
         </CardContent>
       </Card>
     );
@@ -1053,7 +1026,6 @@ export function IntegrationsDashboard() {
                         <Button
                           onClick={() => {
                             if (!organizationId) {
-                              console.error('❌ Cannot save: organizationId is missing');
                               toast({
                                 title: "Configuration Error",
                                 description: "Organization information is not loaded. Please refresh the page.",

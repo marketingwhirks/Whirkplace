@@ -137,11 +137,8 @@ export default function DemoLoginPage() {
         body: JSON.stringify({ email, password })
       });
 
-      console.log("Login response status:", response.status);
-      
       if (response.ok) {
         const data = await response.json();
-        console.log("Login response data:", data);
         
         // Store JWT token for API calls
         if (data.token) {
@@ -159,7 +156,6 @@ export default function DemoLoginPage() {
         window.location.href = '/dashboard?org=fictitious-delicious';
       } else {
         const error = await response.json();
-        console.error("Login failed:", error);
         toast({ 
           title: "Login failed", 
           description: error.message || "Invalid credentials",
@@ -167,7 +163,6 @@ export default function DemoLoginPage() {
         });
       }
     } catch (error: any) {
-      console.error("Login error:", error);
       toast({ 
         title: "Login failed", 
         description: "Network error. Please try again.",
@@ -196,11 +191,8 @@ export default function DemoLoginPage() {
         body: JSON.stringify({ email: demoEmail, password: demoPassword })
       });
 
-      console.log("Direct login response status:", response.status);
-
       if (response.ok) {
         const data = await response.json();
-        console.log("Direct login response data:", data);
         
         // Store JWT token for API calls
         if (data.token) {
@@ -218,7 +210,6 @@ export default function DemoLoginPage() {
         window.location.href = '/dashboard?org=fictitious-delicious';
       } else {
         const error = await response.json();
-        console.error("Direct login failed:", error);
         toast({ 
           title: "Login failed", 
           description: error.message || "Invalid credentials",
@@ -226,7 +217,6 @@ export default function DemoLoginPage() {
         });
       }
     } catch (error: any) {
-      console.error("Direct login error:", error);
       toast({ 
         title: "Login failed", 
         description: "Network error. Please try again.",

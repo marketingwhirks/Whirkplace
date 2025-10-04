@@ -214,21 +214,6 @@ export default function SuperAdminPage() {
     queryKey: ["/api/super-admin/organizations"],
   });
 
-  // Log organizations data when it changes
-  if (organizations && organizations.length > 0) {
-    console.log('📋 Organizations available:', organizations.length);
-    // Find any organization with "accounting" in the name
-    const accountingOrgs = organizations.filter((org: any) => 
-      org.name?.toLowerCase().includes('accounting') || 
-      org.slug?.toLowerCase().includes('accounting')
-    );
-    if (accountingOrgs.length > 0) {
-      console.log('🎯 Found accounting-related organizations:', accountingOrgs);
-      accountingOrgs.forEach((org: any) => {
-        console.log(`  - Name: "${org.name}", ID: "${org.id}", Slug: "${org.slug}"`);
-      });
-    }
-  }
 
   const { data: users } = useQuery({
     queryKey: ["/api/super-admin/users"],
@@ -382,21 +367,12 @@ export default function SuperAdminPage() {
   });
 
   const handleDeleteOrganization = (org: any) => {
-    console.log('🗑️ handleDeleteOrganization called with org:', org);
-    console.log('📊 Organization details:');
-    console.log('  - ID:', org.id);
-    console.log('  - Name:', org.name);
-    console.log('  - Slug:', org.slug);
-    console.log('  - Full object:', JSON.stringify(org, null, 2));
     setOrgToDelete(org);
     setShowDeleteConfirmation(true);
   };
 
   const confirmDeleteOrganization = () => {
     if (orgToDelete) {
-      console.log('✅ Confirming deletion for organization:', orgToDelete.name);
-      console.log('📤 Passing ID to delete mutation:', orgToDelete.id);
-      console.log('📊 Type of ID:', typeof orgToDelete.id);
       deleteOrganizationMutation.mutate(orgToDelete.id);
     }
   };

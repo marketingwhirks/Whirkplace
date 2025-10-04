@@ -24,25 +24,10 @@ export default function OAuthCallbackPage() {
         
         // Store auth info in localStorage for immediate recognition
         // Use the same key that the auth middleware expects
-        console.log('OAuth callback - Setting auth in localStorage:', {
-          userId,
-          orgId,
-          orgSlug,
-          needsOnboarding,
-          isSuperAdmin
-        });
-        
         localStorage.setItem('auth_user_id', userId);
         if (orgId) {
           localStorage.setItem('auth_org_id', orgId);
         }
-        
-        // Verify localStorage was set
-        const verifyUserId = localStorage.getItem('auth_user_id');
-        console.log('OAuth callback - Verified localStorage:', {
-          storedUserId: verifyUserId,
-          matches: verifyUserId === userId
-        });
         
         // Fetch the user data to populate the cache
         try {
@@ -65,7 +50,7 @@ export default function OAuthCallbackPage() {
             });
           }
         } catch (error) {
-          console.warn('Could not pre-fetch user data:', error);
+          // Silently handle if user data cannot be pre-fetched
         }
         
         // Small delay to ensure authentication state is ready
@@ -77,7 +62,6 @@ export default function OAuthCallbackPage() {
           setLocation('/select-organization');
         } else if (needsOnboarding && orgSlug) {
           // New organizations go to onboarding
-          console.log(`OAuth callback - Redirecting to onboarding with org: ${orgSlug}`);
           setLocation(`/onboarding?org=${orgSlug}`);
         } else if (orgSlug) {
           // Existing organizations go to dashboard
@@ -88,7 +72,6 @@ export default function OAuthCallbackPage() {
         }
       } else {
         // No user ID, something went wrong
-        console.error('OAuth callback missing user_id');
         setLocation('/login?error=oauth_failed');
       }
     };
