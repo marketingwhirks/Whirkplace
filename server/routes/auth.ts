@@ -214,4 +214,71 @@ export function registerAuthRoutes(app: Express) {
       res.status(500).json({ message: "Failed to fetch session info" });
     }
   });
+
+  // Cleanup endpoint to detect and fix corrupted sessions
+  app.post("/api/auth/cleanup-session", async (req, res) => {
+    try {
+      const sessionUser = getSessionUser(req);
+      const corruptedIds = [
+        'c7008be0-1307-48c9-825c-a01ef11cc682',
+        'c70086e0-1307-48c9-825c-a01ef11cc682'
+      ];
+
+      // Check if session has a corrupted organization ID
+      if (sessionUser?.organizationId && corruptedIds.includes(sessionUser.organizationId)) {
+        console.log(`[CLEANUP] Detected corrupted organization ID in session: ${sessionUser.organizationId}`);
+        console.log(`[CLEANUP] User ID: ${sessionUser.userId}`);
+        console.log(`[CLEANUP] Clearing corrupted session...`);
+
+        // Clear the session completely
+        req.session.destroy((err) => {
+          if (err) {
+            console.error("[CLEANUP] Failed to destroy session:", err);
+          }
+        });
+
+        return res.json({
+          cleaned: true,
+          message: "Corrupted session detected and cleared. Please log in again.",
+          corruptedOrgId: sessionUser.organizationId
+        });
+      }
+
+      // Check if the organization ID exists in the database
+      if (sessionUser?.organizationId) {
+        try {
+          const org = await storage.getOrganization(sessionUser.organizationId);
+          if (!org) {
+            console.log(`[CLEANUP] Organization ID ${sessionUser.organizationId} not found in database`);
+            console.log(`[CLEANUP] Clearing invalid session...`);
+
+            // Clear the session
+            req.session.destroy((err) => {
+              if (err) {
+                console.error("[CLEANUP] Failed to destroy session:", err);
+              }
+            });
+
+            return res.json({
+              cleaned: true,
+              message: "Invalid organization in session. Session cleared.",
+              invalidOrgId: sessionUser.organizationId
+            });
+          }
+        } catch (error) {
+          console.error(`[CLEANUP] Error checking organization:`, error);
+        }
+      }
+
+      // Session is clean
+      return res.json({
+        cleaned: false,
+        message: "Session is valid.",
+        organizationId: sessionUser?.organizationId
+      });
+    } catch (error) {
+      console.error("Error in cleanup-session:", error);
+      res.status(500).json({ message: "Failed to cleanup session" });
+    }
+  });
 }

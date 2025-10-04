@@ -33,7 +33,7 @@ import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } f
 import { registerMicrosoftTeamsRoutes } from "./routes/microsoft-teams";
 import { registerMicrosoftAuthRoutes } from "./routes/microsoft-auth";
 import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
-import { registerAuthDiagnosticRoutes } from "./routes/auth-diagnostic";
+// import { registerAuthDiagnosticRoutes } from "./routes/auth-diagnostic"; // Disabled - temporary debugging endpoint
 import { registerAuthRoutes } from "./routes/auth";
 import { resolveRedirectUri } from "./utils/redirect-uri";
 import { sendWelcomeEmail } from "./services/emailService";
@@ -1567,7 +1567,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerMicrosoftCalendarRoutes(app);
   
   // Register authentication diagnostic routes
-  registerAuthDiagnosticRoutes(app);
+  // Diagnostic routes disabled - cleanup of temporary debugging endpoints
+  // registerAuthDiagnosticRoutes(app);
   
   // Register organization switching and auth routes
   registerAuthRoutes(app);
