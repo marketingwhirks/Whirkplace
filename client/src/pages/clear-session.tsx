@@ -10,10 +10,31 @@ export default function ClearSession() {
     localStorage.removeItem('demo_user');
     localStorage.removeItem('demo_org_id');
     localStorage.removeItem('demo_org_slug');
+    localStorage.removeItem('organizationId');
+    localStorage.removeItem('auth_org_id');
     
-    // Clear all cookies by setting them to expire
+    // Clear sessionStorage too
+    sessionStorage.clear();
+    
+    // Clear all cookies by setting them to expire (more aggressive)
+    const clearCookie = (name: string) => {
+      // Try clearing with different path combinations
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=whirkplace.com`;
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.whirkplace.com`;
+    };
+    
+    // Clear specific auth cookies
+    clearCookie('connect.sid');
+    clearCookie('auth_org_id');
+    clearCookie('organizationId');
+    clearCookie('sessionId');
+    
+    // Clear all cookies
     document.cookie.split(";").forEach(function(c) { 
-      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+      const eqPos = c.indexOf("=");
+      const name = eqPos > -1 ? c.substr(0, eqPos).trim() : c.trim();
+      clearCookie(name);
     });
   }, []);
 
@@ -22,13 +43,22 @@ export default function ClearSession() {
     localStorage.clear();
     sessionStorage.clear();
     
+    // Clear all cookies more aggressively
+    const clearCookie = (name: string) => {
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=whirkplace.com`;
+      document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=.whirkplace.com`;
+    };
+    
     // Clear all cookies
     document.cookie.split(";").forEach(function(c) { 
-      document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+      const eqPos = c.indexOf("=");
+      const name = eqPos > -1 ? c.substr(0, eqPos).trim() : c.trim();
+      clearCookie(name);
     });
     
-    // Redirect to login
-    window.location.href = '/login';
+    // Force reload to login to ensure clean state
+    window.location.replace('/login');
   };
 
   return (
