@@ -583,6 +583,12 @@ export function IntegrationsDashboard() {
   // Save Slack settings including bot token
   const updateSlackSettings = useMutation({
     mutationFn: async (data: { botToken: string; channelId?: string }) => {
+      console.log(`🔧 Frontend: Calling Slack configure endpoint with organizationId: ${organizationId}`);
+      console.log(`🔧 Frontend: Full user data:`, userData);
+      if (!organizationId) {
+        console.error('❌ Frontend: organizationId is undefined or null!');
+        throw new Error('Organization ID is missing');
+      }
       const response = await apiRequest("PUT", `/api/organizations/${organizationId}/integrations/slack/configure`, data);
       return await response.json();
     },
@@ -955,12 +961,21 @@ export function IntegrationsDashboard() {
                         </Button>
                         <Button
                           onClick={() => {
+                            if (!organizationId) {
+                              console.error('❌ Cannot save: organizationId is missing');
+                              toast({
+                                title: "Configuration Error",
+                                description: "Organization information is not loaded. Please refresh the page.",
+                                variant: "destructive",
+                              });
+                              return;
+                            }
                             updateSlackSettings.mutate({
                               botToken: slackBotToken,
                               channelId: slackChannelId || undefined,
                             });
                           }}
-                          disabled={!slackBotToken || updateSlackSettings.isPending}
+                          disabled={!slackBotToken || !organizationId || updateSlackSettings.isPending}
                           data-testid="button-save-slack-config"
                         >
                           {updateSlackSettings.isPending ? (

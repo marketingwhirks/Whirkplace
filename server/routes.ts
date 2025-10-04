@@ -9940,8 +9940,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Configure Slack with Bot Token (manual setup)
   app.put("/api/organizations/:id/integrations/slack/configure", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
+      // Debug logging for organization IDs
+      console.log(`🔧 Slack configure endpoint - URL param id: ${req.params.id}`);
+      console.log(`🔧 Slack configure endpoint - Session orgId: ${req.orgId}`);
+      console.log(`🔧 Slack configure endpoint - CurrentUser orgId: ${req.currentUser?.organizationId}`);
+      
       // Verify the organization ID matches the authenticated user's organization
       if (req.params.id !== req.orgId) {
+        console.error(`❌ Organization ID mismatch - URL: ${req.params.id}, Session: ${req.orgId}`);
         return res.status(403).json({ message: "You can only update your own organization" });
       }
       
@@ -9960,8 +9966,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         slackConnectionStatus: 'connected' // Mark as connected since we have the bot token
       };
       
+      console.log(`🔧 Attempting to update organization: ${req.params.id} with Slack config`);
       const updatedOrganization = await storage.updateOrganization(req.params.id, updateData);
       if (!updatedOrganization) {
+        console.error(`❌ Organization not found with ID: ${req.params.id}`);
         return res.status(404).json({ message: "Organization not found" });
       }
       
