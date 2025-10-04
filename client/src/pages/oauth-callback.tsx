@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { Loader2 } from 'lucide-react';
+import { queryClient } from '@/lib/queryClient';
 
 export default function OAuthCallbackPage() {
   const [, setLocation] = useLocation();
@@ -43,24 +44,48 @@ export default function OAuthCallbackPage() {
           matches: verifyUserId === userId
         });
         
-        // Small delay to ensure localStorage is committed before redirect
-        setTimeout(() => {
-          // Redirect to the appropriate page
-          if (isSuperAdmin) {
-            // Super admins go to organization selection
-            setLocation('/select-organization');
-          } else if (needsOnboarding && orgSlug) {
-            // New organizations go to onboarding
-            console.log(`OAuth callback - Redirecting to onboarding with org: ${orgSlug}`);
-            setLocation(`/onboarding?org=${orgSlug}`);
-          } else if (orgSlug) {
-            // Existing organizations go to dashboard
-            setLocation(`/dashboard?org=${orgSlug}`);
-          } else {
-            // Fallback to dashboard
-            setLocation('/dashboard');
+        // Fetch the user data to populate the cache
+        try {
+          const userResponse = await fetch('/api/users/current', {
+            credentials: 'include',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (userResponse.ok) {
+            const userData = await userResponse.json();
+            // Set the user data in the query cache immediately
+            queryClient.setQueryData(["/api/users/current", { org: orgSlug }], userData);
+            
+            // Invalidate to ensure fresh data
+            await queryClient.invalidateQueries({ 
+              queryKey: ["/api/users/current"],
+              refetchType: 'all' 
+            });
           }
-        }, 100); // 100ms delay to ensure localStorage is committed
+        } catch (error) {
+          console.warn('Could not pre-fetch user data:', error);
+        }
+        
+        // Small delay to ensure authentication state is ready
+        await new Promise(resolve => setTimeout(resolve, 150));
+        
+        // Redirect to the appropriate page
+        if (isSuperAdmin) {
+          // Super admins go to organization selection
+          setLocation('/select-organization');
+        } else if (needsOnboarding && orgSlug) {
+          // New organizations go to onboarding
+          console.log(`OAuth callback - Redirecting to onboarding with org: ${orgSlug}`);
+          setLocation(`/onboarding?org=${orgSlug}`);
+        } else if (orgSlug) {
+          // Existing organizations go to dashboard
+          setLocation(`/dashboard?org=${orgSlug}`);
+        } else {
+          // Fallback to dashboard
+          setLocation('/dashboard');
+        }
       } else {
         // No user ID, something went wrong
         console.error('OAuth callback missing user_id');

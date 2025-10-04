@@ -220,10 +220,22 @@ export default function LoginPage() {
           // Use consistent key that queryClient expects
           localStorage.setItem('auth_user_id', data.user.id);
           localStorage.setItem('auth_user_data', JSON.stringify(data.user));
+          
+          // Immediately set the user data in the query cache to avoid race condition
+          const orgFromUrl = new URLSearchParams(window.location.search).get('org');
+          queryClient.setQueryData(["/api/users/current", { org: orgFromUrl }], data.user);
+          
+          // Invalidate and refetch the user query to ensure it's fresh
+          await queryClient.invalidateQueries({ 
+            queryKey: ["/api/users/current"],
+            refetchType: 'all' 
+          });
+          
+          // Wait a moment for the authentication to fully propagate
+          await new Promise(resolve => setTimeout(resolve, 100));
         }
         
-        // Clear cached data and redirect
-        queryClient.clear();
+        // Redirect to dashboard - authentication state is now properly set
         setLocation("/dashboard");
       } else {
         const error = await response.json();
@@ -271,8 +283,27 @@ export default function LoginPage() {
         const data = await response.json();
         toast({ title: "Welcome!", description: "Account created successfully" });
         
-        // Clear cached data and redirect
-        queryClient.clear();
+        // Store user data and set it in the query cache
+        if (data.user) {
+          localStorage.setItem('whirkplace-user', JSON.stringify(data.user));
+          localStorage.setItem('auth_user_id', data.user.id);
+          localStorage.setItem('auth_user_data', JSON.stringify(data.user));
+          
+          // Immediately set the user data in the query cache
+          const orgFromUrl = new URLSearchParams(window.location.search).get('org');
+          queryClient.setQueryData(["/api/users/current", { org: orgFromUrl }], data.user);
+          
+          // Invalidate and refetch the user query
+          await queryClient.invalidateQueries({ 
+            queryKey: ["/api/users/current"],
+            refetchType: 'all' 
+          });
+          
+          // Wait a moment for the authentication to propagate
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        // Redirect to dashboard
         setLocation("/dashboard");
       } else {
         const error = await response.json();
