@@ -441,9 +441,10 @@ export function IntegrationsDashboard() {
     if (organizationId) {
       console.log(`🎯 IntegrationsDashboard - ACTUAL organizationId value: "${organizationId}"`);
       
-      // Check for the specific wrong ID we're seeing
-      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682') {
-        console.error('❌❌❌ CRITICAL: Using non-existent organizationId c7008be0-1307-48c9-825c-a01ef11cc682!');
+      // Check for the specific wrong IDs we're seeing (both variants)
+      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682' || 
+          organizationId === 'c70086e0-1307-48c9-825c-a01ef11cc682') {
+        console.error(`❌❌❌ CRITICAL: Using non-existent organizationId ${organizationId}!`);
         console.error('This ID does not exist in the database!');
         console.error('Full userData when this happens:', JSON.stringify(userData, null, 2));
         
@@ -600,9 +601,10 @@ export function IntegrationsDashboard() {
         throw new Error('Organization context is missing. Please refresh the page and try again.');
       }
       
-      // Check for the specific wrong ID
-      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682') {
-        console.error('❌ getMicrosoftInstallUrl: Using non-existent organizationId!');
+      // Check for the specific wrong IDs (both variants)
+      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682' || 
+          organizationId === 'c70086e0-1307-48c9-825c-a01ef11cc682') {
+        console.error(`❌ getMicrosoftInstallUrl: Using non-existent organizationId ${organizationId}!`);
         queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
         throw new Error('Invalid organization ID detected. Please refresh the page.');
       }
@@ -642,9 +644,10 @@ export function IntegrationsDashboard() {
         throw new Error('Organization context is missing. Please refresh the page and try again.');
       }
       
-      // Check for the specific wrong ID
-      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682') {
-        console.error('❌ saveSlackIntegration: Using non-existent organizationId!');
+      // Check for the specific wrong IDs (both variants)
+      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682' || 
+          organizationId === 'c70086e0-1307-48c9-825c-a01ef11cc682') {
+        console.error(`❌ saveSlackIntegration: Using non-existent organizationId ${organizationId}!`);
         queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
         throw new Error('Invalid organization ID detected. Please refresh the page.');
       }
@@ -721,9 +724,10 @@ export function IntegrationsDashboard() {
         throw new Error('Organization context is missing. Please refresh the page and try again.');
       }
       
-      // Check for the specific wrong ID
-      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682') {
-        console.error('❌ saveMicrosoftIntegration: Using non-existent organizationId!');
+      // Check for the specific wrong IDs (both variants)
+      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682' || 
+          organizationId === 'c70086e0-1307-48c9-825c-a01ef11cc682') {
+        console.error(`❌ saveMicrosoftIntegration: Using non-existent organizationId ${organizationId}!`);
         queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
         throw new Error('Invalid organization ID detected. Please refresh the page.');
       }
@@ -846,9 +850,10 @@ export function IntegrationsDashboard() {
     );
   }
   
-  // Critical: Check for the specific invalid organizationId we've been seeing
-  if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682') {
-    console.error('❌❌❌ BLOCKED: Attempting to render with non-existent organizationId!');
+  // Critical: Check for the specific invalid organizationIds we've been seeing (both variants)
+  if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682' || 
+      organizationId === 'c70086e0-1307-48c9-825c-a01ef11cc682') {
+    console.error(`❌❌❌ BLOCKED: Attempting to render with non-existent organizationId ${organizationId}!`);
     
     // Force immediate refresh of user data
     queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
@@ -871,7 +876,7 @@ export function IntegrationsDashboard() {
           </Alert>
           <div className="mt-4 p-3 bg-muted rounded-md">
             <p className="text-xs text-muted-foreground">Debug Info:</p>
-            <p className="text-xs font-mono">Invalid Org ID Detected: c7008be0-1307-48c9-825c-a01ef11cc682</p>
+            <p className="text-xs font-mono">Invalid Org ID Detected: {organizationId}</p>
             <p className="text-xs font-mono">This ID does not exist in the database!</p>
             <p className="text-xs font-mono">User ID: {userData?.id}</p>
           </div>
