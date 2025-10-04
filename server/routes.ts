@@ -9945,9 +9945,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`🔧 Slack configure endpoint - Session orgId: ${req.orgId}`);
       console.log(`🔧 Slack configure endpoint - CurrentUser orgId: ${req.currentUser?.organizationId}`);
       
+      // CRITICAL FIX: Use organizationId from currentUser if req.orgId is not set
+      const effectiveOrgId = req.orgId || req.currentUser?.organizationId;
+      
+      if (!effectiveOrgId) {
+        console.error(`❌ No organization ID available - Session orgId: ${req.orgId}, User orgId: ${req.currentUser?.organizationId}`);
+        return res.status(400).json({ 
+          message: "Organization context not found. Please log in again.",
+          debug: {
+            hasSession: !!req.session,
+            hasCurrentUser: !!req.currentUser,
+            sessionOrgId: req.orgId,
+            userOrgId: req.currentUser?.organizationId
+          }
+        });
+      }
+      
       // Verify the organization ID matches the authenticated user's organization
-      if (req.params.id !== req.orgId) {
-        console.error(`❌ Organization ID mismatch - URL: ${req.params.id}, Session: ${req.orgId}`);
+      if (req.params.id !== effectiveOrgId) {
+        console.error(`❌ Organization ID mismatch - URL: ${req.params.id}, Effective: ${effectiveOrgId}`);
         return res.status(403).json({ message: "You can only update your own organization" });
       }
       
@@ -9966,10 +9982,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         slackConnectionStatus: 'connected' // Mark as connected since we have the bot token
       };
       
-      console.log(`🔧 Attempting to update organization: ${req.params.id} with Slack config`);
-      const updatedOrganization = await storage.updateOrganization(req.params.id, updateData);
+      console.log(`🔧 Attempting to update organization: ${effectiveOrgId} with Slack config`);
+      const updatedOrganization = await storage.updateOrganization(effectiveOrgId, updateData);
       if (!updatedOrganization) {
-        console.error(`❌ Organization not found with ID: ${req.params.id}`);
+        console.error(`❌ Organization not found with ID: ${effectiveOrgId}`);
         return res.status(404).json({ message: "Organization not found" });
       }
       

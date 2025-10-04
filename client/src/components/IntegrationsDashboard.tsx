@@ -423,11 +423,18 @@ function AuthProviderManagement({ organizationSlug }: { organizationSlug: string
 
 export function IntegrationsDashboard() {
   const { toast } = useToast();
-  const { data: userData } = useCurrentUser();
+  const { data: userData, isLoading: userLoading } = useCurrentUser();
   
   // userData IS the user object directly from the API
   const currentUser = userData;
   const organizationId = userData?.organizationId;
+  
+  // Debug logging for organizationId
+  useEffect(() => {
+    console.log('🔍 IntegrationsDashboard - userData:', userData);
+    console.log('🔍 IntegrationsDashboard - organizationId:', organizationId);
+    console.log('🔍 IntegrationsDashboard - userLoading:', userLoading);
+  }, [userData, organizationId, userLoading]);
   
   const [activeTab, setActiveTab] = useState("authentication");
   const [showSlackToken, setShowSlackToken] = useState(false);
@@ -585,10 +592,20 @@ export function IntegrationsDashboard() {
     mutationFn: async (data: { botToken: string; channelId?: string }) => {
       console.log(`🔧 Frontend: Calling Slack configure endpoint with organizationId: ${organizationId}`);
       console.log(`🔧 Frontend: Full user data:`, userData);
+      
       if (!organizationId) {
         console.error('❌ Frontend: organizationId is undefined or null!');
-        throw new Error('Organization ID is missing');
+        console.error('❌ Frontend: userData:', userData);
+        
+        // Check if user is not authenticated
+        if (!userData) {
+          throw new Error('You must be logged in to configure Slack integration. Please log in and try again.');
+        }
+        
+        // User is authenticated but organizationId is missing
+        throw new Error('Organization context is missing. Please refresh the page and try again.');
       }
+      
       const response = await apiRequest("PUT", `/api/organizations/${organizationId}/integrations/slack/configure`, data);
       return await response.json();
     },
