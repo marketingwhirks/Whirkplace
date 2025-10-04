@@ -434,6 +434,38 @@ export function IntegrationsDashboard() {
     console.log('🔍 IntegrationsDashboard - Full userData object:', userData);
     console.log('🔍 IntegrationsDashboard - organizationId extracted:', organizationId);
     console.log('🔍 IntegrationsDashboard - userLoading state:', userLoading);
+    console.log('🔍 IntegrationsDashboard - Window location:', window.location.href);
+    console.log('🔍 IntegrationsDashboard - Local storage demo_token:', localStorage.getItem('demo_token'));
+    
+    // CRITICAL: Log the actual organizationId value to detect the wrong ID
+    if (organizationId) {
+      console.log(`🎯 IntegrationsDashboard - ACTUAL organizationId value: "${organizationId}"`);
+      
+      // Check for the specific wrong ID we're seeing
+      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682') {
+        console.error('❌❌❌ CRITICAL: Using non-existent organizationId c7008be0-1307-48c9-825c-a01ef11cc682!');
+        console.error('This ID does not exist in the database!');
+        console.error('Full userData when this happens:', JSON.stringify(userData, null, 2));
+        
+        // Force a re-fetch of user data
+        console.log('🔄 Attempting to force re-fetch user data...');
+        queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
+      }
+      
+      // List of known valid organization IDs
+      const validOrgIds = [
+        'b74d00fd-e1ce-41ae-afca-4a0d55cb1fe1', // Fictitious Delicious
+        'c70086e0-1307-48c9-825c-a01ef11cc602', // Patrick Accounting
+        'whirkplace' // Whirkplace Super Admin
+      ];
+      
+      if (!validOrgIds.includes(organizationId)) {
+        console.error(`⚠️ WARNING: Using unknown organizationId: ${organizationId}`);
+        console.error('Known valid IDs:', validOrgIds);
+      } else {
+        console.log(`✅ IntegrationsDashboard - Using valid organization ID: ${organizationId}`);
+      }
+    }
     
     // Log error if user is loaded but organizationId is missing
     if (userData && !organizationId) {
@@ -562,6 +594,20 @@ export function IntegrationsDashboard() {
   // Get Microsoft OAuth install URL
   const getMicrosoftInstallUrl = useMutation({
     mutationFn: async () => {
+      // Validate organizationId before making API call
+      if (!organizationId) {
+        console.error('❌ getMicrosoftInstallUrl: organizationId is undefined!');
+        throw new Error('Organization context is missing. Please refresh the page and try again.');
+      }
+      
+      // Check for the specific wrong ID
+      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682') {
+        console.error('❌ getMicrosoftInstallUrl: Using non-existent organizationId!');
+        queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
+        throw new Error('Invalid organization ID detected. Please refresh the page.');
+      }
+      
+      console.log(`🔧 getMicrosoftInstallUrl: Using organizationId: ${organizationId}`);
       const response = await apiRequest("GET", `/api/organizations/${organizationId}/integrations/microsoft/install`);
       return await response.json() as { installUrl: string; scopes: string[]; redirectUri: string; state: string };
     },
@@ -590,6 +636,20 @@ export function IntegrationsDashboard() {
   // Save Slack integration (channel settings only - token saved via OAuth)
   const saveSlackIntegration = useMutation({
     mutationFn: async (data: { channelId: string; enable: boolean }) => {
+      // Validate organizationId before making API call
+      if (!organizationId) {
+        console.error('❌ saveSlackIntegration: organizationId is undefined!');
+        throw new Error('Organization context is missing. Please refresh the page and try again.');
+      }
+      
+      // Check for the specific wrong ID
+      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682') {
+        console.error('❌ saveSlackIntegration: Using non-existent organizationId!');
+        queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
+        throw new Error('Invalid organization ID detected. Please refresh the page.');
+      }
+      
+      console.log(`🔧 saveSlackIntegration: Using organizationId: ${organizationId}`);
       const response = await apiRequest("PUT", `/api/organizations/${organizationId}/integrations/slack`, data);
       return await response.json();
     },
@@ -655,6 +715,20 @@ export function IntegrationsDashboard() {
   // Save Microsoft integration (settings only - tokens saved via OAuth)
   const saveMicrosoftIntegration = useMutation({
     mutationFn: async (data: { enableAuth: boolean; enableTeams: boolean }) => {
+      // Validate organizationId before making API call
+      if (!organizationId) {
+        console.error('❌ saveMicrosoftIntegration: organizationId is undefined!');
+        throw new Error('Organization context is missing. Please refresh the page and try again.');
+      }
+      
+      // Check for the specific wrong ID
+      if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682') {
+        console.error('❌ saveMicrosoftIntegration: Using non-existent organizationId!');
+        queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
+        throw new Error('Invalid organization ID detected. Please refresh the page.');
+      }
+      
+      console.log(`🔧 saveMicrosoftIntegration: Using organizationId: ${organizationId}`);
       const response = await apiRequest("PUT", `/api/organizations/${organizationId}/integrations/microsoft`, data);
       return await response.json();
     },
@@ -754,6 +828,74 @@ export function IntegrationsDashboard() {
             <p className="text-xs text-muted-foreground">Debug Info:</p>
             <p className="text-xs font-mono">User ID: {userData?.id}</p>
             <p className="text-xs font-mono">Organization ID: {organizationId || 'undefined'}</p>
+          </div>
+          <div className="mt-4">
+            <Button 
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
+                window.location.reload();
+              }}
+              variant="default"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Refresh Page
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+  
+  // Critical: Check for the specific invalid organizationId we've been seeing
+  if (organizationId === 'c7008be0-1307-48c9-825c-a01ef11cc682') {
+    console.error('❌❌❌ BLOCKED: Attempting to render with non-existent organizationId!');
+    
+    // Force immediate refresh of user data
+    queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
+    
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 text-red-500" />
+            Invalid Organization Detected
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              An invalid organization ID was detected. This organization does not exist in the database.
+              We are refreshing your session data. Please wait...
+            </AlertDescription>
+          </Alert>
+          <div className="mt-4 p-3 bg-muted rounded-md">
+            <p className="text-xs text-muted-foreground">Debug Info:</p>
+            <p className="text-xs font-mono">Invalid Org ID Detected: c7008be0-1307-48c9-825c-a01ef11cc682</p>
+            <p className="text-xs font-mono">This ID does not exist in the database!</p>
+            <p className="text-xs font-mono">User ID: {userData?.id}</p>
+          </div>
+          <div className="mt-4 flex gap-2">
+            <Button 
+              onClick={() => {
+                // Clear all caches and force reload
+                queryClient.clear();
+                window.location.reload();
+              }}
+              variant="default"
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Force Refresh
+            </Button>
+            <Button 
+              onClick={() => {
+                // Logout to clear session
+                window.location.href = '/login';
+              }}
+              variant="outline"
+            >
+              Re-login
+            </Button>
           </div>
         </CardContent>
       </Card>
