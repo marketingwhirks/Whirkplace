@@ -436,6 +436,8 @@ export function authenticateUser() {
         if (user && user.isActive) {
           console.log(`✅ Session auth successful for: ${user.name} (role: ${user.role}, superAdmin: ${user.isSuperAdmin})`);
           req.currentUser = sanitizeUser(user);
+          // CRITICAL FIX: Add organizationId to currentUser (consistent with demo auth)
+          req.currentUser.organizationId = sessionData.organizationId;
           req.orgId = sessionData.organizationId; // Use session's org ID
           return next();
         } else {
