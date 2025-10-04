@@ -9944,26 +9944,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`🔧 Slack configure endpoint - Session orgId: ${req.orgId}`);
       console.log(`🔧 Slack configure endpoint - CurrentUser orgId: ${req.currentUser?.organizationId}`);
       
-      // CRITICAL FIX: Use organizationId from currentUser if req.orgId is not set
-      const effectiveOrgId = req.orgId || req.currentUser?.organizationId;
+      // Use the organization ID from the URL parameter
+      const targetOrgId = req.params.id;
       
-      if (!effectiveOrgId) {
-        console.error(`❌ No organization ID available - Session orgId: ${req.orgId}, User orgId: ${req.currentUser?.organizationId}`);
-        return res.status(400).json({ 
-          message: "Organization context not found. Please log in again.",
-          debug: {
-            hasSession: !!req.session,
-            hasCurrentUser: !!req.currentUser,
-            sessionOrgId: req.orgId,
-            userOrgId: req.currentUser?.organizationId
+      // Get the user's actual organization ID (from session or currentUser)
+      const userOrgId = req.orgId || req.currentUser?.organizationId;
+      
+      // For super admins, allow updating any organization
+      const canUpdateAnyOrg = req.currentUser?.isSuperAdmin === true;
+      
+      // Verify the user has permission to update this organization
+      if (!canUpdateAnyOrg) {
+        // If no user organization ID is available, try to verify through currentUser
+        if (!userOrgId) {
+          console.log(`⚠️ No session organizationId, checking if user belongs to org ${targetOrgId}`);
+          
+          // Verify the user belongs to the target organization
+          if (req.currentUser?.organizationId !== targetOrgId) {
+            console.error(`❌ User does not belong to organization ${targetOrgId}`);
+            return res.status(403).json({ 
+              message: "You can only update your own organization",
+              debug: {
+                targetOrgId,
+                userOrgId: req.currentUser?.organizationId,
+                sessionOrgId: req.orgId
+              }
+            });
           }
-        });
-      }
-      
-      // Verify the organization ID matches the authenticated user's organization
-      if (req.params.id !== effectiveOrgId) {
-        console.error(`❌ Organization ID mismatch - URL: ${req.params.id}, Effective: ${effectiveOrgId}`);
-        return res.status(403).json({ message: "You can only update your own organization" });
+        } else if (targetOrgId !== userOrgId) {
+          console.error(`❌ Organization ID mismatch - URL: ${targetOrgId}, User: ${userOrgId}`);
+          return res.status(403).json({ 
+            message: "You can only update your own organization",
+            debug: {
+              targetOrgId,
+              userOrgId,
+              sessionOrgId: req.orgId
+            }
+          });
+        }
       }
       
       const slackBotConfigSchema = z.object({
@@ -9981,13 +9999,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         slackConnectionStatus: 'connected' // Mark as connected since we have the bot token
       };
       
-      console.log(`🔧 Attempting to update organization: ${effectiveOrgId} with Slack config`);
-      const updatedOrganization = await storage.updateOrganization(effectiveOrgId, updateData);
+      console.log(`🔧 Attempting to update organization: ${targetOrgId} with Slack config`);
+      const updatedOrganization = await storage.updateOrganization(targetOrgId, updateData);
       if (!updatedOrganization) {
-        console.error(`❌ Organization not found with ID: ${effectiveOrgId}`);
-        return res.status(404).json({ message: "Organization not found" });
+        console.error(`❌ Organization not found with ID: ${targetOrgId}`);
+        return res.status(404).json({ 
+          message: "Organization not found",
+          debug: {
+            targetOrgId,
+            userOrgId: userOrgId || req.currentUser?.organizationId,
+            sessionOrgId: req.orgId
+          }
+        });
       }
       
+      console.log(`✅ Slack configuration updated successfully for organization: ${targetOrgId}`);
       res.json({ 
         message: "Slack bot configured successfully",
         status: "connected"
@@ -10004,9 +10030,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Configure Slack OAuth integration
   app.put("/api/organizations/:id/integrations/slack", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
-      // Verify the organization ID matches the authenticated user's organization
-      if (req.params.id !== req.orgId) {
-        return res.status(403).json({ message: "You can only update your own organization" });
+      // Debug logging for organization IDs
+      console.log(`🔧 Slack OAuth endpoint - URL param id: ${req.params.id}`);
+      console.log(`🔧 Slack OAuth endpoint - Session orgId: ${req.orgId}`);
+      console.log(`🔧 Slack OAuth endpoint - CurrentUser orgId: ${req.currentUser?.organizationId}`);
+      
+      // Use the organization ID from the URL parameter
+      const targetOrgId = req.params.id;
+      
+      // Get the user's actual organization ID (from session or currentUser)
+      const userOrgId = req.orgId || req.currentUser?.organizationId;
+      
+      // For super admins, allow updating any organization
+      const canUpdateAnyOrg = req.currentUser?.isSuperAdmin === true;
+      
+      // Verify the user has permission to update this organization
+      if (!canUpdateAnyOrg) {
+        // If no user organization ID is available, try to verify through currentUser
+        if (!userOrgId) {
+          console.log(`⚠️ No session organizationId, checking if user belongs to org ${targetOrgId}`);
+          
+          // Verify the user belongs to the target organization
+          if (req.currentUser?.organizationId !== targetOrgId) {
+            console.error(`❌ User does not belong to organization ${targetOrgId}`);
+            return res.status(403).json({ 
+              message: "You can only update your own organization",
+              debug: {
+                targetOrgId,
+                userOrgId: req.currentUser?.organizationId,
+                sessionOrgId: req.orgId
+              }
+            });
+          }
+        } else if (targetOrgId !== userOrgId) {
+          console.error(`❌ Organization ID mismatch - URL: ${targetOrgId}, User: ${userOrgId}`);
+          return res.status(403).json({ 
+            message: "You can only update your own organization",
+            debug: {
+              targetOrgId,
+              userOrgId,
+              sessionOrgId: req.orgId
+            }
+          });
+        }
       }
       
       const slackConfigSchema = z.object({
@@ -10029,11 +10095,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         slackConnectionStatus: 'configured' // Will be updated to 'connected' after successful OAuth
       };
       
-      const updatedOrganization = await storage.updateOrganization(req.params.id, updateData);
+      console.log(`🔧 Attempting to update organization: ${targetOrgId} with Slack OAuth config`);
+      const updatedOrganization = await storage.updateOrganization(targetOrgId, updateData);
       if (!updatedOrganization) {
-        return res.status(404).json({ message: "Organization not found" });
+        console.error(`❌ Organization not found with ID: ${targetOrgId}`);
+        return res.status(404).json({ 
+          message: "Organization not found",
+          debug: {
+            targetOrgId,
+            userOrgId: userOrgId || req.currentUser?.organizationId,
+            sessionOrgId: req.orgId
+          }
+        });
       }
       
+      console.log(`✅ Slack OAuth configuration updated successfully for organization: ${targetOrgId}`);
       res.json({ 
         message: "Slack integration configured successfully",
         status: "configured",
@@ -10051,9 +10127,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Configure Microsoft OAuth integration
   app.put("/api/organizations/:id/integrations/microsoft", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
-      // Verify the organization ID matches the authenticated user's organization
-      if (req.params.id !== req.orgId) {
-        return res.status(403).json({ message: "You can only update your own organization" });
+      // Debug logging for organization IDs
+      console.log(`🔧 Microsoft OAuth endpoint - URL param id: ${req.params.id}`);
+      console.log(`🔧 Microsoft OAuth endpoint - Session orgId: ${req.orgId}`);
+      console.log(`🔧 Microsoft OAuth endpoint - CurrentUser orgId: ${req.currentUser?.organizationId}`);
+      
+      // Use the organization ID from the URL parameter
+      const targetOrgId = req.params.id;
+      
+      // Get the user's actual organization ID (from session or currentUser)
+      const userOrgId = req.orgId || req.currentUser?.organizationId;
+      
+      // For super admins, allow updating any organization
+      const canUpdateAnyOrg = req.currentUser?.isSuperAdmin === true;
+      
+      // Verify the user has permission to update this organization
+      if (!canUpdateAnyOrg) {
+        // If no user organization ID is available, try to verify through currentUser
+        if (!userOrgId) {
+          console.log(`⚠️ No session organizationId, checking if user belongs to org ${targetOrgId}`);
+          
+          // Verify the user belongs to the target organization
+          if (req.currentUser?.organizationId !== targetOrgId) {
+            console.error(`❌ User does not belong to organization ${targetOrgId}`);
+            return res.status(403).json({ 
+              message: "You can only update your own organization",
+              debug: {
+                targetOrgId,
+                userOrgId: req.currentUser?.organizationId,
+                sessionOrgId: req.orgId
+              }
+            });
+          }
+        } else if (targetOrgId !== userOrgId) {
+          console.error(`❌ Organization ID mismatch - URL: ${targetOrgId}, User: ${userOrgId}`);
+          return res.status(403).json({ 
+            message: "You can only update your own organization",
+            debug: {
+              targetOrgId,
+              userOrgId,
+              sessionOrgId: req.orgId
+            }
+          });
+        }
       }
       
       const microsoftConfigSchema = z.object({
@@ -10078,11 +10194,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
         microsoftConnectionStatus: 'configured' // Will be updated to 'connected' after successful OAuth
       };
       
-      const updatedOrganization = await storage.updateOrganization(req.params.id, updateData);
+      console.log(`🔧 Attempting to update organization: ${targetOrgId} with Microsoft OAuth config`);
+      const updatedOrganization = await storage.updateOrganization(targetOrgId, updateData);
       if (!updatedOrganization) {
-        return res.status(404).json({ message: "Organization not found" });
+        console.error(`❌ Organization not found with ID: ${targetOrgId}`);
+        return res.status(404).json({ 
+          message: "Organization not found",
+          debug: {
+            targetOrgId,
+            userOrgId: userOrgId || req.currentUser?.organizationId,
+            sessionOrgId: req.orgId
+          }
+        });
       }
       
+      console.log(`✅ Microsoft OAuth configuration updated successfully for organization: ${targetOrgId}`);
       res.json({ 
         message: "Microsoft integration configured successfully",
         status: "configured",
