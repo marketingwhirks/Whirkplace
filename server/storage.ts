@@ -689,10 +689,8 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      console.log(`📋 getUserOrganizations for ${email}: Found ${results.length} organizations`);
       return results;
     } catch (error) {
-      console.error("Failed to fetch user organizations:", error);
       return [];
     }
   }

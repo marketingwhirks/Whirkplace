@@ -79,7 +79,6 @@ export function authenticateUser() {
         message: "Authentication required. Please sign in." 
       });
     } catch (error) {
-      console.error("Authentication error:", error);
       res.status(401).json({ message: "Authentication failed" });
     }
   };
@@ -253,7 +252,6 @@ export function requireTeamLead() {
         message: "Access denied. Team leadership role required." 
       });
     } catch (error) {
-      console.error("Team leadership check error:", error);
       return res.status(500).json({ message: "Authorization check failed" });
     }
   };

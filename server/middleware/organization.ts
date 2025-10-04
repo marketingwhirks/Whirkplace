@@ -1,98 +1,116 @@
 import type { Request, Response, NextFunction } from "express";
-import { AuthService } from "../services/authService";
 import { storage } from "../storage";
+import { setSessionUser } from "./session";
 
-// Extend Express Request to include orgId
+// Extend Express Request to include orgId and organization
 declare global {
   namespace Express {
     interface Request {
       orgId: string;
+      organization?: any;
     }
   }
 }
 
-// Instantiate the auth service
-const authService = new AuthService();
-
 /**
  * Organization Resolution Middleware
  * 
- * Resolves organization from authenticated user's session.
- * Falls back to default organization for public routes.
+ * Validates and sets the organization context for authenticated users.
+ * Always validates that users belong to the organization they're accessing.
  */
 export function resolveOrganization() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // First priority: Get organization from authenticated user
-      if (req.session?.userId && req.session?.organizationId) {
-        // Validate that the user still belongs to this organization
-        const user = await authService.getCurrentUser(req);
-        if (user && user.organizationId === req.session.organizationId) {
-          const organization = await storage.getOrganization(req.session.organizationId);
-          if (organization && organization.isActive) {
-            req.orgId = organization.id;
-            (req as any).organization = organization;
+      // For authenticated users, validate organization membership
+      if (req.currentUser) {
+        const userId = req.currentUser.id;
+        const userEmail = req.currentUser.email;
+        
+        // If session has an organizationId, validate user belongs to it
+        if (req.session?.organizationId) {
+          const sessionOrgId = req.session.organizationId;
+          
+          // Get all organizations the user belongs to
+          const userOrganizations = await storage.getUserOrganizations(userEmail);
+          const validOrg = userOrganizations.find(
+            ({ organization }) => organization.id === sessionOrgId && organization.isActive
+          );
+          
+          if (validOrg) {
+            // User belongs to the organization in session
+            req.orgId = validOrg.organization.id;
+            req.organization = validOrg.organization;
+            req.currentUser.organizationId = validOrg.organization.id;
+            return next();
+          }
+          
+          // User doesn't belong to the organization in session - clear it
+          delete req.session.organizationId;
+          delete req.session.organizationSlug;
+          await new Promise<void>((resolve) => {
+            req.session!.save(() => resolve());
+          });
+        }
+        
+        // No valid organization in session - use user's default organization
+        const userOrganizations = await storage.getUserOrganizations(userEmail);
+        
+        if (userOrganizations.length > 0) {
+          // Use the first active organization
+          const defaultOrg = userOrganizations.find(
+            ({ organization }) => organization.isActive
+          );
+          
+          if (defaultOrg) {
+            // Set the organization in session for future requests
+            await setSessionUser(
+              req,
+              defaultOrg.user.id,
+              defaultOrg.organization.id,
+              defaultOrg.organization.slug
+            );
+            
+            req.orgId = defaultOrg.organization.id;
+            req.organization = defaultOrg.organization;
+            req.currentUser.organizationId = defaultOrg.organization.id;
             return next();
           }
         }
         
-        // If validation failed, clear invalid session data
-        delete req.session.organizationId;
-        delete req.session.organizationSlug;
-      }
-      
-      // Second priority: Domain-based resolution for subdomain routing
-      const host = req.get('Host') || '';
-      if (host) {
-        const hostWithoutPort = host.split(':')[0];
-        const hostParts = hostWithoutPort.split('.');
-        
-        // Check for subdomain (not www, not localhost)
-        if (hostParts.length >= 2 && hostParts[0] !== 'www' && hostParts[0] !== 'localhost') {
-          let subdomain: string | null = null;
-          
-          // Handle whirkplace.com domains
-          if (host.includes('whirkplace.com') && hostParts.length > 2) {
-            subdomain = hostParts[0]; // e.g., "company" from "company.whirkplace.com"
-          }
-          
-          if (subdomain) {
-            const organization = await storage.getOrganizationBySlug(subdomain);
-            if (organization && organization.isActive) {
-              req.orgId = organization.id;
-              (req as any).organization = organization;
-              return next();
-            }
-          }
-        }
-      }
-      
-      // Third priority: Default to enterprise organization for public/root access
-      let defaultOrg = await storage.getOrganizationBySlug('whirkplace');
-      if (!defaultOrg) {
-        // Create default organization if it doesn't exist
-        defaultOrg = await storage.createOrganization({
-          id: "enterprise-whirkplace",
-          name: "Whirkplace Enterprise",
-          slug: "whirkplace",
-          plan: "enterprise",
-          customValues: ["Own It", "Challenge It", "Team First", "Empathy for Others", "Passion for Our Purpose"],
-          enableSlackIntegration: true,
-          enableMicrosoftAuth: true,
+        // User has no active organizations
+        return res.status(403).json({ 
+          message: "You don't belong to any active organizations" 
         });
       }
       
-      if (defaultOrg) {
+      // For unauthenticated requests (public routes), use default organization
+      const defaultOrg = await storage.getOrganizationBySlug('whirkplace');
+      
+      if (defaultOrg && defaultOrg.isActive) {
         req.orgId = defaultOrg.id;
-        (req as any).organization = defaultOrg;
+        req.organization = defaultOrg;
         return next();
       }
       
-      // No organization could be resolved
-      return res.status(404).json({ message: "Organization not found" });
+      // No default organization exists - create it
+      const newDefaultOrg = await storage.createOrganization({
+        id: "enterprise-whirkplace",
+        name: "Whirkplace Enterprise",
+        slug: "whirkplace",
+        plan: "enterprise",
+        customValues: ["Own It", "Challenge It", "Team First", "Empathy for Others", "Passion for Our Purpose"],
+        enableSlackIntegration: true,
+        enableMicrosoftAuth: true,
+      });
+      
+      req.orgId = newDefaultOrg.id;
+      req.organization = newDefaultOrg;
+      next();
+      
     } catch (error) {
-      console.error("Error resolving organization:", error);
-      res.status(500).json({ message: "Failed to resolve organization context" });
+      return res.status(500).json({ 
+        message: "Failed to resolve organization context" 
+      });
     }
   };
 }

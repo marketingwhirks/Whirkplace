@@ -41,11 +41,8 @@ export class AuthService {
     try {
       // Validate input
       if (!email || !password) {
-        console.log('❌ AuthService: Missing email or password');
         return null;
       }
-
-      console.log(`🔐 AuthService: Authentication attempt for ${email}`);
 
       // Search for user across all organizations
       let user: User | null = null;
@@ -58,40 +55,33 @@ export class AuthService {
         if (foundUser) {
           user = foundUser as User;
           organization = org;
-          console.log(`✅ AuthService: User found in organization: ${org.name} (${org.id})`);
           break;
         }
       }
 
       // User not found
       if (!user || !organization) {
-        console.log(`❌ AuthService: User not found: ${email}`);
         return null;
       }
 
       // Check if user has a password (local auth enabled)
       if (!user.password) {
-        console.log(`❌ AuthService: Local authentication not enabled for ${email}`);
         return null;
       }
 
       // Verify password
       const isValidPassword = await bcrypt.compare(password, user.password);
       if (!isValidPassword) {
-        console.log(`❌ AuthService: Invalid password for ${email}`);
         return null;
       }
 
       // Check if user is active
       if (!user.isActive) {
-        console.log(`❌ AuthService: User account is disabled: ${email}`);
         return null;
       }
 
-      console.log(`✅ AuthService: Authentication successful for ${email}`);
       return { user, organization };
     } catch (error) {
-      console.error('❌ AuthService: Authentication error:', error);
       return null;
     }
   }
@@ -114,8 +104,6 @@ export class AuthService {
           throw new Error(`Organization not found: ${user.organizationId}`);
         }
       }
-
-      console.log(`📝 AuthService: Creating session for user ${user.email} in org ${org.name}`);
 
       // Set session data using the session helper
       await setSessionUser(
@@ -149,10 +137,8 @@ export class AuthService {
         role: user.role
       };
 
-      console.log(`✅ AuthService: Session created successfully for ${user.email}`);
       return sessionData;
     } catch (error) {
-      console.error('❌ AuthService: Failed to create session:', error);
       throw new Error('Failed to create session');
     }
   }
@@ -164,11 +150,8 @@ export class AuthService {
    */
   async destroySession(req: Request): Promise<void> {
     try {
-      console.log('🗑️ AuthService: Destroying session');
       await clearSessionUser(req);
-      console.log('✅ AuthService: Session destroyed successfully');
     } catch (error) {
-      console.error('❌ AuthService: Failed to destroy session:', error);
       throw new Error('Failed to destroy session');
     }
   }
@@ -184,22 +167,17 @@ export class AuthService {
       const sessionUser = getSessionUser(req);
       
       if (!sessionUser?.userId || !sessionUser?.organizationId) {
-        console.log('🔍 AuthService: No user in session');
         return null;
       }
-
-      console.log(`🔍 AuthService: Getting user ${sessionUser.userId} from org ${sessionUser.organizationId}`);
       
       const user = await storage.getUser(sessionUser.organizationId, sessionUser.userId);
       
       if (!user) {
-        console.log(`❌ AuthService: User ${sessionUser.userId} not found in database`);
         return null;
       }
 
       return user as User;
     } catch (error) {
-      console.error('❌ AuthService: Failed to get current user:', error);
       return null;
     }
   }
@@ -213,12 +191,9 @@ export class AuthService {
    */
   async resolveUserOrganization(user: User): Promise<Organization | null> {
     try {
-      console.log(`🔍 AuthService: Resolving organization for user ${user.email}`);
-
       // First, try to get the user's current organization
       const currentOrg = await storage.getOrganization(user.organizationId);
       if (currentOrg && currentOrg.isActive) {
-        console.log(`✅ AuthService: Using current organization ${currentOrg.name}`);
         return currentOrg;
       }
 
@@ -227,15 +202,12 @@ export class AuthService {
       
       for (const { organization } of userOrganizations) {
         if (organization.isActive) {
-          console.log(`✅ AuthService: Found active organization ${organization.name}`);
           return organization;
         }
       }
 
-      console.log(`❌ AuthService: No active organization found for user ${user.email}`);
       return null;
     } catch (error) {
-      console.error('❌ AuthService: Failed to resolve user organization:', error);
       return null;
     }
   }
@@ -250,12 +222,9 @@ export class AuthService {
    */
   async switchOrganization(req: Request, userId: string, targetOrgId: string): Promise<SessionData | null> {
     try {
-      console.log(`🔄 AuthService: Switching user ${userId} to organization ${targetOrgId}`);
-
       // Get the current user to find their email
       const currentUser = await storage.getUserGlobal(userId);
       if (!currentUser) {
-        console.log(`❌ AuthService: User ${userId} not found`);
         return null;
       }
 
@@ -266,17 +235,13 @@ export class AuthService {
       );
 
       if (!targetOrgAccess) {
-        console.log(`❌ AuthService: User ${currentUser.email} does not have access to organization ${targetOrgId}`);
         return null;
       }
 
       const { user: targetUser, organization: targetOrg } = targetOrgAccess;
 
-      console.log(`✅ AuthService: User has valid access to ${targetOrg.name}`);
-
       // Clear any existing organization overrides
       if (req.session && (req.session as any).organizationOverride) {
-        console.log(`🧹 AuthService: Clearing organization override`);
         delete (req.session as any).organizationOverride;
       }
 
@@ -310,10 +275,8 @@ export class AuthService {
         role: targetUser.role
       };
 
-      console.log(`✅ AuthService: Successfully switched to organization ${targetOrg.name}`);
       return sessionData;
     } catch (error) {
-      console.error('❌ AuthService: Failed to switch organization:', error);
       return null;
     }
   }
@@ -358,7 +321,6 @@ export class AuthService {
 
       return true;
     } catch (error) {
-      console.error('❌ AuthService: Error validating session:', error);
       return false;
     }
   }
@@ -375,23 +337,18 @@ export class AuthService {
       const currentUser = await this.getCurrentUser(req);
       
       if (!currentUser) {
-        console.log('❌ AuthService: Cannot refresh - no user in session');
         return null;
       }
 
       const organization = await storage.getOrganization(currentUser.organizationId);
       
       if (!organization) {
-        console.log('❌ AuthService: Cannot refresh - organization not found');
         return null;
       }
-
-      console.log(`🔄 AuthService: Refreshing session for ${currentUser.email}`);
       
       // Re-create the session with updated data
       return await this.createSession(req, currentUser, organization);
     } catch (error) {
-      console.error('❌ AuthService: Failed to refresh session:', error);
       return null;
     }
   }
