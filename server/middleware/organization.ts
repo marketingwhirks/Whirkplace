@@ -1,4 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
+import { AuthService } from "../services/authService";
+import { storage } from "../storage";
 
 // Extend Express Request to include orgId
 declare global {
@@ -9,159 +11,85 @@ declare global {
   }
 }
 
+// Instantiate the auth service
+const authService = new AuthService();
+
 /**
  * Organization Resolution Middleware
  * 
- * This middleware derives the organizationId from a trusted source and attaches it to req.orgId.
- * Currently uses a hardcoded "default-org" until subdomain routing is implemented.
- * 
- * Security Note: The organizationId must NEVER come from client input (headers, body, params).
- * It should be derived from:
- * - Subdomain routing (future: company.whirkplace.com)
- * - JWT token claims (future: when auth is implemented)
- * - Session data (future: when session-based auth is implemented)
+ * Resolves organization from authenticated user's session.
+ * Falls back to default organization for public routes.
  */
 export function resolveOrganization() {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { storage } = await import('../storage');
-      let organization = null;
+      // First priority: Get organization from authenticated user
+      if (req.session?.userId && req.session?.organizationId) {
+        // Validate that the user still belongs to this organization
+        const user = await authService.getCurrentUser(req);
+        if (user && user.organizationId === req.session.organizationId) {
+          const organization = await storage.getOrganization(req.session.organizationId);
+          if (organization && organization.isActive) {
+            req.orgId = organization.id;
+            (req as any).organization = organization;
+            return next();
+          }
+        }
+        
+        // If validation failed, clear invalid session data
+        delete req.session.organizationId;
+        delete req.session.organizationSlug;
+      }
       
-      // Get host for domain-based organization resolution
+      // Second priority: Domain-based resolution for subdomain routing
       const host = req.get('Host') || '';
-      const urlParam = req.query.org as string;
-      
-      console.log(`🌐 [ORG RESOLUTION] Starting organization resolution for ${req.method} ${req.path}`);
-      console.log(`🌐 [ORG RESOLUTION] Host: ${host}, org param: ${urlParam}`);
-      
-      // CRITICAL FIX: Only trust session organizationId if we have an authenticated user
-      // This prevents stale organization data from being used before authentication
-      const userId = (req.session as any)?.userId;
-      const sessionOrgId = (req.session as any)?.organizationId;
-      
-      if (userId && sessionOrgId) {
-        console.log(`🔐 [ORG RESOLUTION] Authenticated user ${userId} has session organization: ${sessionOrgId}`);
-        
-        // Verify the user actually belongs to this organization
-        const user = await storage.getUser(sessionOrgId, userId);
-        if (user) {
-          organization = await storage.getOrganization(sessionOrgId);
-          if (organization) {
-            console.log(`✅ [ORG RESOLUTION] Using verified session organization: ${organization.name} (${organization.slug})`);
-          } else {
-            console.log(`⚠️ [ORG RESOLUTION] Session organization ${sessionOrgId} not found, will resolve fresh`);
-            // Clear invalid organization from session
-            delete (req.session as any).organizationId;
-            delete (req.session as any).organizationSlug;
-          }
-        } else {
-          console.log(`⚠️ [ORG RESOLUTION] User ${userId} not found in organization ${sessionOrgId}, will resolve fresh`);
-          // Clear invalid organization from session
-          delete (req.session as any).organizationId;
-          delete (req.session as any).organizationSlug;
-        }
-      } else if (!userId) {
-        console.log(`🔓 [ORG RESOLUTION] No authenticated user, skipping session organization check`);
-      }
-      
-      // Method 2: Use org query parameter (ONLY in development for testing)
-      // SECURITY: Disable query parameter in production to prevent org injection
-      if (!organization && urlParam && process.env.NODE_ENV !== 'production') {
-        if (urlParam === 'default') {
-          organization = await storage.getOrganizationBySlug('whirkplace');
-        } else {
-          organization = await storage.getOrganizationBySlug(urlParam);
-        }
-        console.log(`🔍 [DEV ONLY] Org param lookup (${urlParam}):`, organization ? 'found' : 'not found');
-      }
-      
-      // Method 3: Domain-based organization resolution
-      if (!organization && host) {
-        // Extract subdomain from the host
-        const hostParts = host.split('.');
+      if (host) {
         const hostWithoutPort = host.split(':')[0];
-        const hostPartsNoPort = hostWithoutPort.split('.');
+        const hostParts = hostWithoutPort.split('.');
         
-        // Check if this is a subdomain (not www and has at least 2 parts)
-        let subdomain = null;
-        
-        // For production: organization.whirkplace.com
-        if (hostPartsNoPort.length >= 2 && hostPartsNoPort[0] !== 'www') {
-          // For whirkplace.com domains
-          if (host.includes('whirkplace.com')) {
-            if (hostPartsNoPort.length > 2) {
-              subdomain = hostPartsNoPort[0]; // e.g., "patrickaccounting" from "patrickaccounting.whirkplace.com"
-            }
-          }
-          // For development: In Replit, we can simulate with org query param or use subdomain if configured
-          else if (host.includes('.replit.') || host.includes('.repl.co')) {
-            // In Replit dev environment, extract first part of domain if it's not a system subdomain
-            const firstPart = hostPartsNoPort[0];
-            // Only treat as subdomain if it's not a Replit system identifier (UUIDs, etc)
-            if (firstPart && !firstPart.match(/^[a-f0-9]{8}-/) && firstPart !== 'www') {
-              subdomain = firstPart;
-            }
-          }
-          // For localhost development with port: subdomain.localhost:5000
-          else if (hostWithoutPort === 'localhost' || hostWithoutPort.startsWith('subdomain.')) {
-            if (hostPartsNoPort.length > 1 && hostPartsNoPort[0] !== 'localhost') {
-              subdomain = hostPartsNoPort[0]; // e.g., "patrickaccounting" from "patrickaccounting.localhost"
-            }
-          }
-        }
-        
-        // Try to find organization by subdomain
-        if (subdomain) {
-          organization = await storage.getOrganizationBySlug(subdomain);
-          console.log(`🏢 Subdomain lookup (${subdomain}):`, organization ? 'found' : 'not found');
-        }
-        
-        // If no subdomain or organization not found, check if this is the root domain
-        if (!organization) {
-          const isRootDomain = host === 'whirkplace.com' || 
-                               host === 'www.whirkplace.com' ||
-                               host.startsWith('localhost') ||
-                               (host.includes('.replit.') && !subdomain) ||
-                               (host.includes('.repl.co') && !subdomain);
+        // Check for subdomain (not www, not localhost)
+        if (hostParts.length >= 2 && hostParts[0] !== 'www' && hostParts[0] !== 'localhost') {
+          let subdomain: string | null = null;
           
-          if (isRootDomain) {
-            // Use the enterprise organization for main domain
-            organization = await storage.getOrganizationBySlug('whirkplace');
-            console.log(`🏠 Root domain (${host}) - using default org:`, organization ? 'found' : 'not found');
+          // Handle whirkplace.com domains
+          if (host.includes('whirkplace.com') && hostParts.length > 2) {
+            subdomain = hostParts[0]; // e.g., "company" from "company.whirkplace.com"
+          }
+          
+          if (subdomain) {
+            const organization = await storage.getOrganizationBySlug(subdomain);
+            if (organization && organization.isActive) {
+              req.orgId = organization.id;
+              (req as any).organization = organization;
+              return next();
+            }
           }
         }
       }
       
-      // Method 3: Fallback to enterprise organization if none found
-      if (!organization) {
-        console.log('🔄 No organization found, trying enterprise fallback...');
-        organization = await storage.getOrganizationBySlug('whirkplace');
-        if (!organization) {
-          // Create enterprise organization if it doesn't exist
-          console.log('🆕 Creating enterprise organization...');
-          organization = await storage.createOrganization({
-            id: "enterprise-whirkplace",
-            name: "Whirkplace Enterprise",
-            slug: "whirkplace",
-            plan: "enterprise",
-            customValues: ["Own It", "Challenge It", "Team First", "Empathy for Others", "Passion for Our Purpose"],
-            enableSlackIntegration: true,
-            enableMicrosoftAuth: true,
-          });
-          console.log('✅ Enterprise organization created:', organization.name);
-        }
+      // Third priority: Default to enterprise organization for public/root access
+      let defaultOrg = await storage.getOrganizationBySlug('whirkplace');
+      if (!defaultOrg) {
+        // Create default organization if it doesn't exist
+        defaultOrg = await storage.createOrganization({
+          id: "enterprise-whirkplace",
+          name: "Whirkplace Enterprise",
+          slug: "whirkplace",
+          plan: "enterprise",
+          customValues: ["Own It", "Challenge It", "Team First", "Empathy for Others", "Passion for Our Purpose"],
+          enableSlackIntegration: true,
+          enableMicrosoftAuth: true,
+        });
       }
       
-      if (!organization) {
-        console.error('❌ Failed to resolve organization');
-        return res.status(404).json({ message: "Organization not found" });
+      if (defaultOrg) {
+        req.orgId = defaultOrg.id;
+        (req as any).organization = defaultOrg;
+        return next();
       }
       
-      req.orgId = organization.id;
-      (req as any).organization = organization;
-      
-      console.log(`✅ Organization resolved: ${organization.name} (${organization.slug})`);
-      next();
+      // No organization could be resolved
+      return res.status(404).json({ message: "Organization not found" });
     } catch (error) {
       console.error("Error resolving organization:", error);
       res.status(500).json({ message: "Failed to resolve organization context" });
@@ -171,7 +99,6 @@ export function resolveOrganization() {
 
 /**
  * Middleware to validate that an organizationId is present
- * This should be used on all API routes that require organization context
  */
 export function requireOrganization() {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -186,7 +113,6 @@ export function requireOrganization() {
 
 /**
  * Utility function to ensure organizationId is never taken from user input
- * This function should be used whenever setting organizationId on create/update operations
  */
 export function sanitizeForOrganization<T extends Record<string, any>>(
   data: T, 

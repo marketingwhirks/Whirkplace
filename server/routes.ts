@@ -26,7 +26,7 @@ import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { aggregationService } from "./services/aggregation";
 import { requireOrganization, resolveOrganization, sanitizeForOrganization } from "./middleware/organization";
-import { authenticateUser, requireAuth, requireRole, requireTeamLead, ensureBackdoorUser, requireSuperAdmin, requirePartnerAdmin, requireOnboarded } from "./middleware/auth";
+import { authenticateUser, requireAuth, requireRole, requireTeamLead, requireSuperAdmin, requirePartnerAdmin, requireOnboarded } from "./middleware/auth";
 import { generateCSRF, validateCSRF, csrfTokenEndpoint } from "./middleware/csrf";
 import { authorizeAnalyticsAccess } from "./middleware/authorization";
 import { requireFeatureAccess, getFeatureAvailability, getUpgradeSuggestions } from "./middleware/plan-access";
@@ -258,9 +258,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Ensure Matthew Patrick's backdoor user exists
-      const matthewUser = await ensureBackdoorUser(organizationId);
-      console.log(`✅ Fresh backdoor user confirmed: ${matthewUser.name} (${matthewUser.email})`);
+      // Look up the user in the organization
+      const matthewUser = await storage.getUserByEmail(organizationId, 'mpatrick@whirks.com');
+      if (!matthewUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
       
       // Use setSessionUser to properly regenerate and set session with all required data
       console.log(`🔐 Setting session for fresh backdoor user: ${matthewUser.email}`);
@@ -331,8 +333,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Ensure Matthew Patrick's backdoor user exists
-      const matthewUser = await ensureBackdoorUser(req.orgId);
+      // Look up the user in the organization
+      const matthewUser = await storage.getUserByEmail(req.orgId, 'mpatrick@whirks.com');
+      if (!matthewUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
       
       // Get organization slug for session
       const organization = await storage.getOrganization(req.orgId);

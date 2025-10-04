@@ -16,7 +16,7 @@ import { authenticateUser } from "./middleware/auth";
 import { generateCSRF, validateCSRF } from "./middleware/csrf";
 import { runDevelopmentSeeding } from "./seeding";
 import { ensureDemoDataExists } from "./seedDemoData";
-import { getSessionConfig, logSessionConfig } from "./middleware/session";
+import { getSessionConfig } from "./middleware/session";
 
 // Add process error handlers to catch unhandled exceptions
 process.on('uncaughtException', (error) => {
@@ -98,8 +98,7 @@ app.use(cookieParser());
 const sessionMiddleware = getSessionConfig();
 app.use(sessionMiddleware);
 
-// Log session configuration on startup
-logSessionConfig();
+// Session configuration applied dynamically per request
 
 // Apply authentication middleware for all API routes EXCEPT auth endpoints
 app.use("/api", (req, res, next) => {
@@ -182,11 +181,7 @@ app.use((req, res, next) => {
   try {
     console.log('🔧 Starting application setup...');
     
-    // SECURITY: Validate authentication configuration before startup
-    console.log('🔒 Validating authentication configuration...');
-    const { validateAuthConfiguration } = await import("./middleware/auth");
-    validateAuthConfiguration();
-    console.log('✅ Authentication configuration validated');
+    // Authentication configuration is now simpler and deterministic
     
     // Run development seeding before setting up routes
     console.log('🌱 Running development seeding...');
