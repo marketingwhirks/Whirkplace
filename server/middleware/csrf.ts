@@ -114,6 +114,7 @@ export function validateCSRF() {
     const isOAuthCallback = (req.path.includes('/auth/') || req.originalUrl.includes('/auth/')) && 
                            (req.path.includes('/callback') || req.originalUrl.includes('/callback'));
     const isBackdoorAuth = /\/auth\/backdoor$/.test(req.originalUrl) || req.path === '/auth/backdoor';
+    const isLogin = /\/auth\/login$/.test(req.originalUrl) || req.path === '/auth/login';
     const isLogout = /\/auth\/logout$/.test(req.originalUrl) || req.path === '/auth/logout';
     const isLocalStorageAuth = !!req.headers['x-auth-user-id']; // Development localStorage auth
     const isBusinessSignup = req.path.includes('/business/signup') || 
@@ -124,7 +125,7 @@ export function validateCSRF() {
     const isAdminSync = req.path.includes('/admin/sync-users') || req.path.includes('/slack/sync-users') ||
                         req.originalUrl.includes('/admin/sync-users') || req.originalUrl.includes('/slack/sync-users');
     
-    if (!isStateChanging || isOAuthCallback || isBackdoorAuth || isLogout || 
+    if (!isStateChanging || isOAuthCallback || isBackdoorAuth || isLogin || isLogout || 
         isLocalStorageAuth || isBusinessSignup || isDemoLogin || isStripeCallback || isSuperAdminDelete || isAdminSync) {
       return next();
     }
@@ -166,8 +167,10 @@ export function validateCSRF() {
       });
     }
     
-    // Regenerate token after successful validation for added security
-    req.session.csrfSecret = generateCSRFSecret();
+    // REMOVED: Do NOT regenerate the CSRF secret after every successful validation
+    // This was causing the client's cached tokens to become invalid immediately
+    // The secret will be regenerated on session creation and periodically, not on every request
+    // req.session.csrfSecret = generateCSRFSecret();
     
     next();
   };

@@ -11408,81 +11408,8 @@ Return the response as a JSON object with this structure:
   // CRITICAL SESSION & SLACK ENDPOINTS
   // ===================================
   
-  // GET /api/users/current - Test session persistence (critical for debugging session issues)
-  app.get("/api/users/current", async (req, res) => {
-    console.log("🔍 GET /api/users/current - Checking session persistence");
-    console.log("📋 Session ID:", req.sessionID);
-    console.log("📦 Full session data:", JSON.stringify(req.session, null, 2));
-    
-    // Check if session exists
-    if (!req.session) {
-      console.log("❌ No session object exists");
-      return res.status(401).json({ 
-        error: "No session exists",
-        sessionId: null,
-        userId: null,
-        organizationId: null,
-        organizationSlug: null
-      });
-    }
-    
-    // Get session data
-    const sessionData = req.session as any;
-    const userId = sessionData.userId;
-    const organizationId = sessionData.organizationId;
-    const organizationSlug = sessionData.organizationSlug;
-    
-    console.log("🔑 Session userId:", userId || "UNDEFINED");
-    console.log("🏢 Session organizationId:", organizationId || "UNDEFINED");
-    console.log("🏷️ Session organizationSlug:", organizationSlug || "UNDEFINED");
-    
-    // Check if user is authenticated
-    if (!userId || !organizationId) {
-      console.log("⚠️ Session exists but userId or organizationId is UNDEFINED");
-      return res.status(401).json({ 
-        error: "Session exists but user data is missing",
-        sessionId: req.sessionID,
-        userId: userId || null,
-        organizationId: organizationId || null,
-        organizationSlug: organizationSlug || null
-      });
-    }
-    
-    // Try to fetch the user from storage
-    try {
-      const user = await storage.getUser(organizationId, userId);
-      
-      if (!user) {
-        console.log("❌ User not found in database");
-        return res.status(404).json({ 
-          error: "User not found",
-          sessionId: req.sessionID,
-          userId,
-          organizationId,
-          organizationSlug
-        });
-      }
-      
-      console.log("✅ Session valid, user found:", user.email);
-      
-      res.json({
-        authenticated: true,
-        sessionId: req.sessionID,
-        user: sanitizeUser(user),
-        organizationId,
-        organizationSlug
-      });
-    } catch (error) {
-      console.error("❌ Error fetching user:", error);
-      res.status(500).json({ 
-        error: "Failed to fetch user",
-        sessionId: req.sessionID,
-        userId,
-        organizationId,
-        organizationSlug
-      });
-    }
-  });
+  // NOTE: Removed duplicate /api/users/current endpoint that was overriding the authenticated version
+  // The authenticated version with requireAuth() at line 3977 should be used instead
   
   // These duplicate endpoints have been removed to avoid conflicts
   // The proper sync-users endpoints are defined earlier in the file around line 6250
