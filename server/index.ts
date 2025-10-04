@@ -117,6 +117,7 @@ app.use("/api", (req, res, next) => {
   }
   
   // Apply authentication for all other routes
+  console.log(`🔐 [MIDDLEWARE ORDER] Applying authentication for: ${req.method} ${req.path}`);
   return authenticateUser()(req, res, next);
 });
 
@@ -126,8 +127,26 @@ app.use("/api", generateCSRF());
 // Apply CSRF validation middleware for state-changing requests
 app.use("/api", validateCSRF());
 
-// Organization resolution middleware - after auth but before routes
-app.use(resolveOrganization());
+// CRITICAL FIX: Organization resolution MUST happen AFTER authentication
+// This ensures we have fresh user data before determining organization context
+// Only apply to API routes that need organization context
+app.use("/api", (req, res, next) => {
+  // Skip organization resolution for auth endpoints (they set the organization)
+  if (req.path.startsWith("/auth/")) {
+    console.log('🔓 Auth endpoint - skipping organization resolution:', req.path);
+    return next();
+  }
+  
+  // Skip for endpoints that don't need organization context
+  if (req.path === "/csrf-token") {
+    console.log('🔓 CSRF endpoint - skipping organization resolution:', req.path);
+    return next();
+  }
+  
+  // Apply organization resolution AFTER authentication has loaded fresh user data
+  console.log(`🏢 [MIDDLEWARE ORDER] Applying organization resolution for: ${req.method} ${req.path}`);
+  return resolveOrganization()(req, res, next);
+});
 
 app.use((req, res, next) => {
   const start = Date.now();

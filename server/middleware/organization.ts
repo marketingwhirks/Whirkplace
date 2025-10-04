@@ -31,16 +31,37 @@ export function resolveOrganization() {
       const host = req.get('Host') || '';
       const urlParam = req.query.org as string;
       
-      console.log(`🌐 Resolving organization for host: ${host}, org param: ${urlParam}`);
+      console.log(`🌐 [ORG RESOLUTION] Starting organization resolution for ${req.method} ${req.path}`);
+      console.log(`🌐 [ORG RESOLUTION] Host: ${host}, org param: ${urlParam}`);
       
-      // Method 1: Check session organizationId FIRST (for demo users and logged-in users)
-      if ((req.session as any)?.organizationId) {
-        const sessionOrgId = (req.session as any).organizationId;
-        console.log(`🔐 Found organization in session: ${sessionOrgId}`);
-        organization = await storage.getOrganization(sessionOrgId);
-        if (organization) {
-          console.log(`✅ Using session organization: ${organization.name} (${organization.slug})`);
+      // CRITICAL FIX: Only trust session organizationId if we have an authenticated user
+      // This prevents stale organization data from being used before authentication
+      const userId = (req.session as any)?.userId;
+      const sessionOrgId = (req.session as any)?.organizationId;
+      
+      if (userId && sessionOrgId) {
+        console.log(`🔐 [ORG RESOLUTION] Authenticated user ${userId} has session organization: ${sessionOrgId}`);
+        
+        // Verify the user actually belongs to this organization
+        const user = await storage.getUserById(sessionOrgId, userId);
+        if (user) {
+          organization = await storage.getOrganization(sessionOrgId);
+          if (organization) {
+            console.log(`✅ [ORG RESOLUTION] Using verified session organization: ${organization.name} (${organization.slug})`);
+          } else {
+            console.log(`⚠️ [ORG RESOLUTION] Session organization ${sessionOrgId} not found, will resolve fresh`);
+            // Clear invalid organization from session
+            delete (req.session as any).organizationId;
+            delete (req.session as any).organizationSlug;
+          }
+        } else {
+          console.log(`⚠️ [ORG RESOLUTION] User ${userId} not found in organization ${sessionOrgId}, will resolve fresh`);
+          // Clear invalid organization from session
+          delete (req.session as any).organizationId;
+          delete (req.session as any).organizationSlug;
         }
+      } else if (!userId) {
+        console.log(`🔓 [ORG RESOLUTION] No authenticated user, skipping session organization check`);
       }
       
       // Method 2: Use org query parameter (ONLY in development for testing)

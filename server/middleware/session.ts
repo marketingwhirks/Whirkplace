@@ -304,9 +304,27 @@ export async function setSessionUser(
           return;
         }
         console.log('🆕 Session regenerated, new ID:', req.sessionID);
+        // CRITICAL: Clear any stale organization data after regeneration
+        console.log('🧹 [SESSION REGENERATION] Clearing any stale organization data from previous session');
+        const hadOverride = (req.session as any).organizationOverride;
+        if (hadOverride) {
+          console.log(`🗑️ [ORG OVERRIDE] Cleared organization override that was set to: ${hadOverride}`);
+        }
+        delete (req.session as any).organizationOverride;
         saveSession();
       });
     } else {
+      // CRITICAL: Even without regeneration, clear stale organization override on login
+      // This prevents organization override from persisting across different user logins
+      if (!req.session.userId || req.session.userId !== userId) {
+        console.log('🧹 [NEW LOGIN] Different user logging in, clearing organization override');
+        const hadOverride = (req.session as any).organizationOverride;
+        if (hadOverride) {
+          console.log(`🗑️ [ORG OVERRIDE] Cleared organization override that was set to: ${hadOverride}`);
+        }
+        delete (req.session as any).organizationOverride;
+      }
+      
       console.log('📝 Saving session without regeneration (existing user or development mode)');
       // In development or when updating existing session, just save without regenerating
       saveSession();
