@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { Building2, ChevronDown, Check } from "lucide-react";
+import { Building2, ChevronDown, Check, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Organization {
@@ -19,6 +19,7 @@ interface Organization {
   slug: string;
   plan: string;
   customValues?: string[];
+  isActive?: boolean;
 }
 
 interface UserOrganization {
@@ -30,6 +31,23 @@ interface UserOrganization {
     role: string;
   };
   isCurrent: boolean;
+}
+
+interface SwitchOrganizationResponse {
+  message: string;
+  organization: Organization;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+  };
+  session: {
+    organizationId: string;
+    organizationSlug: string;
+    userId: string;
+    role: string;
+  };
 }
 
 export default function OrganizationSwitcher() {
@@ -45,8 +63,8 @@ export default function OrganizationSwitcher() {
     retry: 1,
   });
 
-  // Switch organization mutation
-  const switchOrgMutation = useMutation({
+  // Switch organization mutation with proper typing and error handling
+  const switchOrgMutation = useMutation<SwitchOrganizationResponse, Error, string>({
     mutationFn: async (organizationId: string) => {
       return apiRequest('/api/auth/switch-organization', {
         method: 'POST',
@@ -54,29 +72,54 @@ export default function OrganizationSwitcher() {
       });
     },
     onSuccess: (data) => {
-      toast({
-        title: "Organization Switched",
-        description: `Successfully switched to ${data.organization.name}`,
-      });
+      // Verify session was properly updated
+      if (data.session && data.organization) {
+        toast({
+          title: "Organization Switched",
+          description: `Successfully switched to ${data.organization.name} as ${data.session.role}`,
+        });
 
-      // Invalidate all queries to refresh data
-      queryClient.invalidateQueries();
-
-      // Reload the page to ensure full context refresh
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+        // Invalidate all queries to refresh data with new organization context
+        queryClient.invalidateQueries({ queryKey: ['/api'] });
+        queryClient.invalidateQueries({ queryKey: ['/users'] });
+        
+        // Small delay to allow toast to show before reload
+        setTimeout(() => {
+          window.location.reload();
+        }, 300);
+      } else {
+        // Unexpected response format
+        toast({
+          title: "Switch Incomplete",
+          description: "Organization switch may not have completed properly. Please try again.",
+          variant: "destructive",
+        });
+      }
     },
     onError: (error: any) => {
+      // Provide more detailed error messages
+      let errorMessage = "Failed to switch organization";
+      
+      if (error.response?.status === 403) {
+        errorMessage = "You don't have access to this organization";
+      } else if (error.response?.status === 500) {
+        errorMessage = "Internal server error. Please try again later";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Switch Failed",
-        description: error.message || "Failed to switch organization",
+        description: errorMessage,
         variant: "destructive",
       });
+      
+      // Re-open the dropdown so user can try again
+      setIsOpen(true);
     },
   });
 
-  const handleSwitchOrganization = (organizationId: string) => {
+  const handleSwitchOrganization = async (organizationId: string) => {
     // Don't switch if already in that organization
     const currentOrg = organizationsData?.organizations.find(o => o.isCurrent);
     if (currentOrg?.organization.id === organizationId) {
@@ -88,9 +131,16 @@ export default function OrganizationSwitcher() {
       return;
     }
 
-    // Perform the switch
-    switchOrgMutation.mutate(organizationId);
+    // Close dropdown immediately to show loading state on button
     setIsOpen(false);
+    
+    // Perform the switch with proper error handling
+    try {
+      await switchOrgMutation.mutateAsync(organizationId);
+    } catch (error) {
+      // Error is already handled in onError callback
+      console.error("Failed to switch organization:", error);
+    }
   };
 
   // Don't show switcher if user only has one organization
@@ -113,12 +163,22 @@ export default function OrganizationSwitcher() {
           size="sm"
           className="flex items-center gap-2"
           data-testid="button-organization-switcher"
+          disabled={switchOrgMutation.isPending}
         >
-          <Building2 className="h-4 w-4" />
-          <span className="max-w-[150px] truncate">
-            {currentOrg?.organization.name || "Select Org"}
-          </span>
-          <ChevronDown className="h-3 w-3 opacity-50" />
+          {switchOrgMutation.isPending ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="max-w-[150px] truncate">Switching...</span>
+            </>
+          ) : (
+            <>
+              <Building2 className="h-4 w-4" />
+              <span className="max-w-[150px] truncate">
+                {currentOrg?.organization.name || "Select Org"}
+              </span>
+              <ChevronDown className="h-3 w-3 opacity-50" />
+            </>
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[250px]">

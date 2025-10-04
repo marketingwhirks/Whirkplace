@@ -214,60 +214,55 @@ export class AuthService {
 
   /**
    * Switches user to a different organization
+   * Uses atomic operations to ensure session consistency
    * 
    * @param req - Express request object
    * @param userId - Current user's ID
    * @param targetOrgId - Target organization ID to switch to
-   * @returns Updated session data or null if switch fails
+   * @returns Complete user context after switching, or null if switch fails
    */
-  async switchOrganization(req: Request, userId: string, targetOrgId: string): Promise<SessionData | null> {
+  async switchOrganization(req: Request, userId: string, targetOrgId: string): Promise<{ sessionData: SessionData; user: User; organization: Organization } | null> {
     try {
-      // Get the current user to find their email
+      // Step 1: Validate current user exists
       const currentUser = await storage.getUserGlobal(userId);
       if (!currentUser) {
+        console.error(`[AuthService.switchOrganization] User not found: ${userId}`);
         return null;
       }
 
-      // Verify the user has access to the target organization
+      // Step 2: Validate target organization exists and is active
+      const targetOrg = await storage.getOrganization(targetOrgId);
+      if (!targetOrg) {
+        console.error(`[AuthService.switchOrganization] Target organization not found: ${targetOrgId}`);
+        return null;
+      }
+      
+      if (!targetOrg.isActive) {
+        console.error(`[AuthService.switchOrganization] Target organization is not active: ${targetOrgId}`);
+        return null;
+      }
+
+      // Step 3: Verify the user has membership in the target organization
       const userOrganizations = await storage.getUserOrganizations(currentUser.email);
       const targetOrgAccess = userOrganizations.find(
         ({ organization }) => organization.id === targetOrgId
       );
 
       if (!targetOrgAccess) {
+        console.error(`[AuthService.switchOrganization] User ${currentUser.email} does not have access to organization ${targetOrgId}`);
         return null;
       }
 
-      const { user: targetUser, organization: targetOrg } = targetOrgAccess;
+      const { user: targetUser } = targetOrgAccess;
 
-      // Clear any existing organization overrides
-      if (req.session && (req.session as any).organizationOverride) {
-        delete (req.session as any).organizationOverride;
+      // Step 4: Verify target user account is active
+      if (!targetUser.isActive) {
+        console.error(`[AuthService.switchOrganization] User account is not active in target organization`);
+        return null;
       }
 
-      // Update the session with new organization context
-      await setSessionUser(
-        req,
-        targetUser.id, // Use the user ID from the target organization
-        targetOrg.id,
-        targetOrg.slug
-      );
-
-      // Store additional user info
-      if (req.session) {
-        (req.session as any).userEmail = targetUser.email;
-        (req.session as any).userRole = targetUser.role;
-        (req.session as any).userName = targetUser.name;
-        
-        await new Promise<void>((resolve, reject) => {
-          req.session!.save((err) => {
-            if (err) reject(err);
-            else resolve();
-          });
-        });
-      }
-
-      const sessionData: SessionData = {
+      // Step 5: Prepare complete session data before any modifications
+      const newSessionData: SessionData = {
         userId: targetUser.id,
         organizationId: targetOrg.id,
         organizationSlug: targetOrg.slug,
@@ -275,8 +270,74 @@ export class AuthService {
         role: targetUser.role
       };
 
-      return sessionData;
+      // Step 6: Atomic session update - all changes in one operation
+      if (!req.session) {
+        console.error(`[AuthService.switchOrganization] No session available`);
+        return null;
+      }
+
+      // Store current session state for rollback if needed
+      const previousSession = {
+        userId: (req.session as any).userId,
+        organizationId: (req.session as any).organizationId,
+        organizationSlug: (req.session as any).organizationSlug,
+        userEmail: (req.session as any).userEmail,
+        userRole: (req.session as any).userRole,
+        userName: (req.session as any).userName,
+        organizationOverride: (req.session as any).organizationOverride
+      };
+
+      try {
+        // Clear any organization overrides and set new session data atomically
+        delete (req.session as any).organizationOverride;
+        
+        // Update all session fields at once
+        (req.session as any).userId = targetUser.id;
+        (req.session as any).organizationId = targetOrg.id;
+        (req.session as any).organizationSlug = targetOrg.slug;
+        (req.session as any).userEmail = targetUser.email;
+        (req.session as any).userRole = targetUser.role;
+        (req.session as any).userName = targetUser.name;
+
+        // Save the session atomically
+        await new Promise<void>((resolve, reject) => {
+          req.session!.save((err) => {
+            if (err) {
+              console.error(`[AuthService.switchOrganization] Failed to save session:`, err);
+              reject(err);
+            } else {
+              resolve();
+            }
+          });
+        });
+
+        // Step 7: Return complete user context
+        return {
+          sessionData: newSessionData,
+          user: targetUser,
+          organization: targetOrg
+        };
+
+      } catch (sessionError) {
+        // Rollback session changes if save failed
+        console.error(`[AuthService.switchOrganization] Session update failed, rolling back:`, sessionError);
+        
+        try {
+          // Restore previous session state
+          Object.assign(req.session, previousSession);
+          
+          await new Promise<void>((resolve) => {
+            req.session!.save(() => resolve());
+          });
+        } catch (rollbackError) {
+          console.error(`[AuthService.switchOrganization] Failed to rollback session:`, rollbackError);
+        }
+        
+        return null;
+      }
+
     } catch (error) {
+      console.error(`[AuthService.switchOrganization] Unexpected error:`, error);
       return null;
     }
   }

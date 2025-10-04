@@ -82,28 +82,27 @@ export function registerAuthRoutes(app: Express) {
         });
       }
 
-      // Use the centralized AuthService to switch organization
-      const sessionData = await authService.switchOrganization(req, sessionUser.userId, organizationId);
+      // Use the centralized AuthService to switch organization atomically
+      const switchResult = await authService.switchOrganization(req, sessionUser.userId, organizationId);
       
-      if (!sessionData) {
+      if (!switchResult) {
         return res.status(403).json({ 
-          message: "You do not have access to this organization" 
+          message: "Unable to switch organization. Access denied or organization unavailable." 
         });
       }
 
-      // Get the organization details for the response
-      const organization = await storage.getOrganization(organizationId);
-      if (!organization) {
-        return res.status(500).json({ message: "Failed to get organization details" });
+      const { sessionData, user, organization } = switchResult;
+
+      // Verify the switch was successful
+      const currentSessionUser = getSessionUser(req);
+      if (currentSessionUser?.organizationId !== organizationId) {
+        console.error(`[switch-organization] Session switch verification failed`);
+        return res.status(500).json({ 
+          message: "Organization switch failed - session not updated properly" 
+        });
       }
 
-      // Get the user in the new organization context
-      const user = await storage.getUser(organizationId, sessionData.userId);
-      if (!user) {
-        return res.status(500).json({ message: "Failed to get user details" });
-      }
-
-      // Return success with the new organization details
+      // Return complete user context after successful switch
       res.json({
         message: "Successfully switched organization",
         organization: {
@@ -112,8 +111,15 @@ export function registerAuthRoutes(app: Express) {
           slug: organization.slug,
           plan: organization.plan,
           customValues: organization.customValues,
+          isActive: organization.isActive,
         },
         user: authService.getSanitizedUser(user),
+        session: {
+          organizationId: sessionData.organizationId,
+          organizationSlug: sessionData.organizationSlug,
+          userId: sessionData.userId,
+          role: sessionData.role,
+        }
       });
       
     } catch (error) {
