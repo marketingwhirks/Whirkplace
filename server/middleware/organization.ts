@@ -43,7 +43,7 @@ export function resolveOrganization() {
         console.log(`🔐 [ORG RESOLUTION] Authenticated user ${userId} has session organization: ${sessionOrgId}`);
         
         // Verify the user actually belongs to this organization
-        const user = await storage.getUserById(sessionOrgId, userId);
+        const user = await storage.getUser(sessionOrgId, userId);
         if (user) {
           organization = await storage.getOrganization(sessionOrgId);
           if (organization) {

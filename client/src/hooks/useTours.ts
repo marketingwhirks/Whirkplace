@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import type { UserTour } from '@shared/schema';
 import type { TourId } from '@/lib/tours/tour-configs';
+import { useMemo } from 'react';
 
 // Hook to fetch all tour statuses for current user
 export function useTours() {
@@ -168,22 +169,24 @@ export function useTourManager(tourId: TourId) {
 export function useAllToursStatus() {
   const { data: tours = [], isLoading } = useTours();
 
-  const tourStatuses = tours.reduce((acc, tour) => {
-    acc[tour.tourId as TourId] = {
-      status: tour.status,
-      currentStep: tour.currentStep ?? 0,
-      completedAt: tour.completedAt,
-      skippedAt: tour.skippedAt,
-      lastShownAt: tour.lastShownAt,
-    };
-    return acc;
-  }, {} as Record<TourId, {
-    status: string;
-    currentStep: number;
-    completedAt?: Date | null;
-    skippedAt?: Date | null;
-    lastShownAt?: Date | null;
-  }>);
+  const tourStatuses = useMemo(() => {
+    return tours.reduce((acc, tour) => {
+      acc[tour.tourId as TourId] = {
+        status: tour.status,
+        currentStep: tour.currentStep ?? 0,
+        completedAt: tour.completedAt,
+        skippedAt: tour.skippedAt,
+        lastShownAt: tour.lastShownAt,
+      };
+      return acc;
+    }, {} as Record<TourId, {
+      status: string;
+      currentStep: number;
+      completedAt?: Date | null;
+      skippedAt?: Date | null;
+      lastShownAt?: Date | null;
+    }>);
+  }, [tours]);
 
   return {
     tourStatuses,
