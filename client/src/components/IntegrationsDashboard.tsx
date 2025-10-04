@@ -727,74 +727,8 @@ export function IntegrationsDashboard() {
     );
   }
 
-  // Temporary fix function for organization ID mismatch
-  const fixOrganizationSession = async () => {
-    try {
-      console.log('🔧 Attempting to fix organization session...');
-      console.log('Current organizationId:', organizationId);
-      
-      const response = await fetch('/api/auth/fix-session-org', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Session fixed:', data);
-        toast({
-          title: "Session Fixed",
-          description: `Organization ID corrected to: ${data.correctOrganizationId}. Please refresh the page.`,
-        });
-        
-        // Refresh the current user query after fixing
-        setTimeout(() => {
-          queryClient.invalidateQueries({ queryKey: ["/api/users/current"] });
-          window.location.reload();
-        }, 1500);
-      } else {
-        const error = await response.json();
-        console.error('❌ Failed to fix session:', error);
-        toast({
-          title: "Fix Failed",
-          description: error.message || "Could not fix organization session",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      console.error('❌ Error fixing session:', error);
-      toast({
-        title: "Error",
-        description: "Failed to fix organization session",
-        variant: "destructive",
-      });
-    }
-  };
-
   return (
     <div className="space-y-6" data-testid="integrations-dashboard">
-      {/* Temporary Fix Button for Organization ID Issue */}
-      {organizationId && organizationId.endsWith('682') && (
-        <Alert className="border-yellow-500">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="space-y-2">
-            <p className="font-medium">Organization ID Mismatch Detected</p>
-            <p className="text-sm">Your session has an incorrect organization ID ending in '682'. The correct ID should end in '602'.</p>
-            <Button 
-              variant="default" 
-              size="sm" 
-              onClick={fixOrganizationSession}
-              className="mt-2"
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Fix Organization Session
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
-      
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
