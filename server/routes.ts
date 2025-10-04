@@ -389,7 +389,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Local authentication login for super admin
+  // Local authentication login using centralized AuthService
   app.post("/auth/local/login", requireOrganization(), async (req, res) => {
     try {
       const { email, password } = req.body;
@@ -399,6 +399,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: "Email and password are required" 
         });
       }
+      
+      // Import the centralized AuthService
+      const { authService } = await import('./services/authService');
       
       // Special handling for demo users - works in all environments
       const { getDemoUser, generateDemoToken } = await import('./demo-auth');
@@ -428,105 +431,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Get user by email - always search across all organizations
-      console.log(`🔐 Local login attempt for ${email}`);
-      let user = null;
-      let actualOrgId = req.orgId;
+      // Use the centralized AuthService to authenticate user
+      console.log(`🔐 Local login attempt for ${email} using AuthService`);
+      const authResult = await authService.authenticateUser(email, password);
       
-      // First try the current organization context (from subdomain or default)
-      user = await storage.getUserByEmail(req.orgId, email);
-      if (user) {
-        console.log(`✅ Found user in current organization: ${req.orgId}`);
-        actualOrgId = req.orgId;
-      }
-      
-      // If not found, search all organizations
-      if (!user) {
-        console.log(`🔍 User not found in ${req.orgId}, searching all organizations...`);
-        const allOrgs = await storage.getOrganizations();
-        for (const org of allOrgs) {
-          if (org.id === req.orgId) continue; // Skip the one we already checked
-          const foundUser = await storage.getUserByEmail(org.id, email);
-          if (foundUser) {
-            user = foundUser;
-            actualOrgId = org.id;
-            console.log(`✅ Found user in organization: ${org.name} (${org.id})`);
-            break;
-          }
-        }
-      }
-      
-      if (!user) {
-        console.log(`❌ User not found: ${email} in any organization`);
-        return res.status(401).json({ 
-          message: "Invalid email or password" 
-        });
-      }
-      console.log(`✅ User found: ${user.email}, has password: ${!!user.password}`);
-      
-      // Check if user has a password (local auth enabled)
-      if (!user.password) {
-        return res.status(401).json({ 
-          message: "Local authentication not enabled for this account" 
-        });
-      }
-      
-      // Verify password
-      const isValidPassword = await bcrypt.compare(password, user.password);
-      
-      if (!isValidPassword) {
+      if (!authResult) {
+        console.log(`❌ Authentication failed for ${email}`);
         return res.status(401).json({ 
           message: "Invalid email or password" 
         });
       }
       
-      // Check if user is active
-      if (!user.isActive) {
-        return res.status(401).json({ 
-          message: "Account is disabled" 
-        });
-      }
+      const { user, organization } = authResult;
       
-      // CRITICAL FIX: Get organization slug before setting session
-      const orgData = await storage.getOrganization(actualOrgId);
-      const orgSlug = orgData?.slug || undefined;
-      
-      if (!orgData) {
-        console.log(`⚠️ Could not find organization data for org ID: ${actualOrgId}`);
-      }
-      
-      // CRITICAL FIX: Use setSessionUser to properly handle session creation
-      console.log(`🔐 Setting session for user: ${user.email}`);
-      console.log(`📝 Organization: ID=${actualOrgId}, Slug=${orgSlug}`);
+      // Create session using the centralized AuthService
+      console.log(`🔐 Creating session for user: ${user.email}`);
       
       try {
-        await setSessionUser(req, user.id, actualOrgId, orgSlug);
-        console.log(`✅ setSessionUser() completed successfully`);
-        console.log(`📋 Session ID after setSessionUser: ${req.sessionID}`);
-        
-        // Verify session data was actually saved
-        console.log(`🔍 Verifying session data after save:`, {
-          sessionId: req.sessionID,
-          userId: req.session?.userId,
-          organizationId: (req.session as any)?.organizationId,
-          organizationSlug: (req.session as any)?.organizationSlug
-        });
+        const sessionData = await authService.createSession(req, user, organization);
+        console.log(`✅ Session created successfully`);
+        console.log(`📋 Session data:`, sessionData);
         
         console.log(`✅ Local login successful for ${user.name} (${user.email})`);
         
+        // Return sanitized user data
         res.json({ 
           message: "Login successful", 
-          user: { 
-            id: user.id, 
-            name: user.name, 
-            email: user.email, 
-            role: user.role,
-            isSuperAdmin: user.isSuperAdmin || false
-          } 
+          user: authService.getSanitizedUser(user)
         });
       } catch (sessionError) {
-        console.error('❌ Failed to save session:', sessionError);
-        return res.status(500).json({ message: 'Failed to save session' });
+        console.error('❌ Failed to create session:', sessionError);
+        return res.status(500).json({ message: 'Failed to create session' });
       }
     } catch (error) {
       console.error("Local login error:", error);

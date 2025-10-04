@@ -64,7 +64,7 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  // Switch to a different organization
+  // Switch to a different organization using centralized AuthService
   app.post("/api/auth/switch-organization", requireAuth, async (req, res) => {
     try {
       const sessionUser = getSessionUser(req);
@@ -72,6 +72,9 @@ export function registerAuthRoutes(app: Express) {
         console.log("❌ No authenticated user in session for switch-organization");
         return res.status(401).json({ message: "Not authenticated" });
       }
+
+      // Import the centralized AuthService
+      const { authService } = await import('../services/authService');
 
       // Validate request body
       const validationResult = switchOrganizationSchema.safeParse(req.body);
@@ -97,87 +100,52 @@ export function registerAuthRoutes(app: Express) {
         });
       }
 
-      // Get the current user to find their email
-      const currentUser = await storage.getUserGlobal(sessionUser.userId);
-      if (!currentUser) {
-        console.log(`❌ User ${sessionUser.userId} not found in database`);
-        return res.status(404).json({ message: "User not found" });
-      }
-
-      // Verify the user has access to the target organization
-      const userOrganizations = await storage.getUserOrganizations(currentUser.email);
-      const targetOrgAccess = userOrganizations.find(({ organization }) => organization.id === organizationId);
-
-      if (!targetOrgAccess) {
-        console.log(`❌ User ${currentUser.email} does not have access to organization ${organizationId}`);
-        console.log(`   Available organizations: ${userOrganizations.map(o => o.organization.id).join(", ")}`);
+      // Use the centralized AuthService to switch organization
+      const sessionData = await authService.switchOrganization(req, sessionUser.userId, organizationId);
+      
+      if (!sessionData) {
+        console.log(`❌ Failed to switch organization`);
         return res.status(403).json({ 
           message: "You do not have access to this organization" 
         });
       }
 
-      console.log(`✅ User ${currentUser.email} has valid access to organization ${targetOrgAccess.organization.name}`);
-      console.log(`👤 User record in target org: ${targetOrgAccess.user.id} (${targetOrgAccess.user.role})`);
-
-      // Clear any organization override that may exist
-      if ((req.session as any).organizationOverride) {
-        console.log(`🧹 Clearing existing organizationOverride: ${(req.session as any).organizationOverride}`);
-        delete (req.session as any).organizationOverride;
+      // Get the organization details for the response
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(500).json({ message: "Failed to get organization details" });
       }
 
-      // Update the session with the new organization context
-      // We need to use the user ID from the target organization
-      console.log(`🔐 Updating session to organization ${organizationId}`);
-      console.log(`   New user ID: ${targetOrgAccess.user.id}`);
-      console.log(`   New org ID: ${targetOrgAccess.organization.id}`);
-      console.log(`   New org slug: ${targetOrgAccess.organization.slug}`);
-
-      try {
-        await setSessionUser(
-          req, 
-          targetOrgAccess.user.id, // Use the user ID from the target organization
-          targetOrgAccess.organization.id,
-          targetOrgAccess.organization.slug
-        );
-
-        console.log(`✅ Session updated successfully`);
-        console.log(`📋 New session state:`, {
-          userId: req.session.userId,
-          organizationId: req.session.organizationId,
-          organizationSlug: req.session.organizationSlug,
-        });
-
-        // Return success with the new organization details
-        res.json({
-          message: "Successfully switched organization",
-          organization: {
-            id: targetOrgAccess.organization.id,
-            name: targetOrgAccess.organization.name,
-            slug: targetOrgAccess.organization.slug,
-            plan: targetOrgAccess.organization.plan,
-            customValues: targetOrgAccess.organization.customValues,
-          },
-          user: sanitizeUser(targetOrgAccess.user),
-        });
-
-        console.log(`🎉 Organization switch completed: ${currentUser.email} switched from ${sessionUser.organizationId} to ${organizationId}`);
-        
-        // Log for audit purposes
-        console.log(`[AUDIT] Organization switch:`, {
-          timestamp: new Date().toISOString(),
-          userEmail: currentUser.email,
-          fromOrganizationId: sessionUser.organizationId,
-          toOrganizationId: organizationId,
-          toOrganizationName: targetOrgAccess.organization.name,
-          userIdInNewOrg: targetOrgAccess.user.id,
-        });
-
-      } catch (sessionError) {
-        console.error("❌ Failed to update session:", sessionError);
-        return res.status(500).json({ 
-          message: "Failed to update session" 
-        });
+      // Get the user in the new organization context
+      const user = await storage.getUser(organizationId, sessionData.userId);
+      if (!user) {
+        return res.status(500).json({ message: "Failed to get user details" });
       }
+
+      // Return success with the new organization details
+      res.json({
+        message: "Successfully switched organization",
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+          plan: organization.plan,
+          customValues: organization.customValues,
+        },
+        user: authService.getSanitizedUser(user),
+      });
+
+      console.log(`🎉 Organization switch completed: ${sessionData.email} switched to ${organization.name}`);
+      
+      // Log for audit purposes
+      console.log(`[AUDIT] Organization switch:`, {
+        timestamp: new Date().toISOString(),
+        userEmail: sessionData.email,
+        fromOrganizationId: sessionUser.organizationId,
+        toOrganizationId: organizationId,
+        toOrganizationName: organization.name,
+        userIdInNewOrg: sessionData.userId,
+      });
       
     } catch (error) {
       console.error("Error switching organization:", error);
