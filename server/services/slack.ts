@@ -1771,6 +1771,7 @@ export async function getChannelMembers(botToken?: string, channelName: string =
     let channelId: string | undefined;
     let cursor: string | undefined;
     let totalChannelsChecked = 0;
+    const allChannelNames: string[] = [];
     
     do {
       try {
@@ -1790,6 +1791,15 @@ export async function getChannelMembers(botToken?: string, channelName: string =
         totalChannelsChecked += channelCount;
         console.log(`📋 Checked ${channelCount} channels (${totalChannelsChecked} total so far)`);
         
+        // Log all channel names for debugging
+        if (result.channels) {
+          result.channels.forEach(c => {
+            if (c.name) {
+              allChannelNames.push(c.name);
+            }
+          });
+        }
+        
         // Search for channel by name (case-insensitive)
         const channel = result.channels?.find(c => 
           c.name?.toLowerCase() === channelName.toLowerCase()
@@ -1797,6 +1807,8 @@ export async function getChannelMembers(botToken?: string, channelName: string =
         
         if (channel?.id) {
           console.log(`✅ Found channel "${channelName}" with ID: ${channel.id}`);
+          console.log(`   Channel is_member: ${channel.is_member}`);
+          console.log(`   Channel is_private: ${channel.is_private}`);
           channelId = channel.id;
           break;
         }
@@ -1814,6 +1826,11 @@ export async function getChannelMembers(botToken?: string, channelName: string =
     if (!channelId) {
       console.warn(`⚠️ Channel "${channelName}" not found. Cannot sync users.`);
       console.warn(`💡 Make sure the channel exists and the bot has access to it.`);
+      console.log(`📝 Available channels found: ${allChannelNames.slice(0, 10).join(', ')}${allChannelNames.length > 10 ? `... and ${allChannelNames.length - 10} more` : ''}`);
+      console.log(`💡 Tips:`);
+      console.log(`   1. Check if the channel name is spelled correctly (case-insensitive)`);
+      console.log(`   2. Make sure the bot has been invited to the channel`);
+      console.log(`   3. If it's a private channel, the bot needs to be a member`);
       return [];
     }
 
