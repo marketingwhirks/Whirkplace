@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Heart, Users, MessageSquare, BarChart3, CheckCircle, Star, ArrowRight, Building, Zap, Shield, Play } from "lucide-react";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useLocation } from "wouter";
+import { useEffect } from "react";
 
 
 export default function LandingPage() {
@@ -117,15 +118,19 @@ export default function LandingPage() {
     );
   }
 
-  // If user is authenticated, redirect to dashboard
+  // Automatically redirect authenticated users to dashboard
+  useEffect(() => {
+    if (isAuthenticated && !isLoading) {
+      redirectToDashboard();
+    }
+  }, [isAuthenticated, isLoading]);
+
+  // Show loading screen while redirecting authenticated users
   if (isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
         <div className="text-center" data-testid="authenticated-redirect">
-          <h2 className="text-2xl font-bold mb-4">Welcome back!</h2>
-          <Button onClick={redirectToDashboard} data-testid="button-dashboard">
-            Go to Dashboard <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+          <h2 className="text-2xl font-bold mb-4">Redirecting to dashboard...</h2>
         </div>
       </div>
     );
