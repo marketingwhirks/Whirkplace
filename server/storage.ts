@@ -485,6 +485,13 @@ export class DatabaseStorage implements IStorage {
     if (organizationUpdate.timezone !== undefined) updateData.timezone = organizationUpdate.timezone;
     if (organizationUpdate.weeklyCheckInSchedule !== undefined) updateData.weeklyCheckInSchedule = organizationUpdate.weeklyCheckInSchedule;
     if (organizationUpdate.checkInReminderTime !== undefined) updateData.checkInReminderTime = organizationUpdate.checkInReminderTime;
+    
+    // Slack integration fields
+    if (organizationUpdate.slackBotToken !== undefined) updateData.slackBotToken = organizationUpdate.slackBotToken;
+    if (organizationUpdate.slackChannelId !== undefined) updateData.slackChannelId = organizationUpdate.slackChannelId;
+    if (organizationUpdate.enableSlackIntegration !== undefined) updateData.enableSlackIntegration = organizationUpdate.enableSlackIntegration;
+    if (organizationUpdate.slackConnectionStatus !== undefined) updateData.slackConnectionStatus = organizationUpdate.slackConnectionStatus;
+    if (organizationUpdate.slackLastConnected !== undefined) updateData.slackLastConnected = organizationUpdate.slackLastConnected;
 
     try {
       const [updatedOrganization] = await db
