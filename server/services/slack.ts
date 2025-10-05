@@ -1816,8 +1816,16 @@ export async function getChannelMembers(botToken?: string, channelName: string =
         cursor = result.response_metadata?.next_cursor;
       } catch (error: any) {
         console.error(`❌ Error searching for channel "${channelName}":`, error);
+        console.error(`   Error code: ${error?.data?.error}`);
+        console.error(`   Error message: ${error?.message}`);
+        console.error(`   Full error data:`, error?.data);
+        
         if (error?.data?.error === 'invalid_auth') {
           console.error("🔐 Invalid authentication token. The Slack token may be expired or invalid.");
+        } else if (error?.data?.error === 'missing_scope') {
+          console.error("🔐 Missing required OAuth scope. Check your bot token scopes.");
+          console.error(`   Needed: ${error?.data?.needed}`);
+          console.error(`   Provided: ${error?.data?.provided}`);
         }
         throw error;
       }
