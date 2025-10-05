@@ -8618,7 +8618,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Slack OAuth v2 scopes for bot functionality including DM capabilities
       const scopes = [
-        'channels:read',
+        'channels:read',         // Read public channels
+        'groups:read',           // Read private channels (REQUIRED for private channels!)
         'chat:write',
         'im:write',              // Send direct messages to users
         'im:read',               // Read direct message conversations

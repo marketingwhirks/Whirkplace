@@ -1834,9 +1834,25 @@ export async function getChannelMembers(botToken?: string, channelName: string =
     if (!channelId) {
       console.warn(`⚠️ Channel "${channelName}" not found. Cannot sync users.`);
       console.warn(`💡 Make sure the channel exists and the bot has access to it.`);
-      console.log(`📝 Available channels found: ${allChannelNames.slice(0, 10).join(', ')}${allChannelNames.length > 10 ? `... and ${allChannelNames.length - 10} more` : ''}`);
+      console.log(`📝 Total channels the bot can see: ${allChannelNames.length}`);
+      if (allChannelNames.length > 0) {
+        console.log(`📝 Available channels: ${allChannelNames.slice(0, 20).join(', ')}${allChannelNames.length > 20 ? `... and ${allChannelNames.length - 20} more` : ''}`);
+        
+        // Check if channel exists with different spelling
+        const similarChannels = allChannelNames.filter(name => 
+          name.includes('whirk') || name.includes('pulse') || name.includes('general')
+        );
+        if (similarChannels.length > 0) {
+          console.log(`💡 Similar channel names found: ${similarChannels.join(', ')}`);
+        }
+      } else {
+        console.log(`❌ Bot cannot see ANY channels! This usually means:`);
+        console.log(`   1. The bot hasn't been invited to any channels`);
+        console.log(`   2. The bot token doesn't have proper permissions`);
+        console.log(`   3. The workspace ID might be incorrect`);
+      }
       console.log(`💡 Tips:`);
-      console.log(`   1. Check if the channel name is spelled correctly (case-insensitive)`);
+      console.log(`   1. Check if the channel name is spelled correctly (looking for: "${channelName}")`);
       console.log(`   2. Make sure the bot has been invited to the channel`);
       console.log(`   3. If it's a private channel, the bot needs to be a member`);
       return [];
