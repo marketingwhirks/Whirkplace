@@ -2561,8 +2561,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Apply organization middleware to all API routes AFTER onboarding and business routes
   // This ensures public endpoints remain accessible during initial setup
-  app.use("/api", resolveOrganization());
-  app.use("/api", requireOrganization());
+  app.use("/api", (req, res, next) => {
+    // Exempt business signup routes from organization middleware
+    if (req.path.startsWith("/business/signup") || 
+        req.path.startsWith("/business/plans") ||
+        req.path.startsWith("/business/select-plan") ||
+        req.path.startsWith("/partners/applications")) {
+      return next();
+    }
+    // Apply organization middleware to all other routes
+    resolveOrganization()(req, res, next);
+  });
+  
+  app.use("/api", (req, res, next) => {
+    // Exempt business signup routes from requireOrganization middleware
+    if (req.path.startsWith("/business/signup") || 
+        req.path.startsWith("/business/plans") ||
+        req.path.startsWith("/business/select-plan") ||
+        req.path.startsWith("/partners/applications")) {
+      return next();
+    }
+    // Require organization for all other routes
+    requireOrganization()(req, res, next);
+  });
 
   // ========== PARTNER MANAGEMENT ROUTES ==========
   // These routes handle partner firm management and require authentication
