@@ -102,7 +102,11 @@ app.use("/api", (req, res, next) => {
   }
   
   // Also skip for specific public endpoints
-  if (req.path === "/csrf-token" || req.path.startsWith("/partners/applications")) {
+  if (req.path === "/csrf-token" || 
+      req.path.startsWith("/partners/applications") ||
+      req.path.startsWith("/business/signup") || 
+      req.path.startsWith("/business/plans") ||
+      req.path.startsWith("/business/select-plan")) {
     return next();
   }
   
@@ -126,7 +130,11 @@ app.use("/api", (req, res, next) => {
   }
   
   // Skip for endpoints that don't need organization context
-  if (req.path === "/csrf-token") {
+  if (req.path === "/csrf-token" ||
+      req.path.startsWith("/business/signup") || 
+      req.path.startsWith("/business/plans") ||
+      req.path.startsWith("/business/select-plan") ||
+      req.path.startsWith("/partners/applications")) {
     return next();
   }
   
