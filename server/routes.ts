@@ -2013,16 +2013,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: "Perfect for small teams getting started",
           monthlyPrice: 500,  // $5/month per user
           annualPrice: 4800,  // $48/year per user ($4/month, 20% off)
-          maxUsers: 10,
+          maxUsers: -1,  // Unlimited users
           features: [
             "Weekly Check-ins",
             "Win Recognition",
             "Team Management",
             "Basic Analytics",
-            "Slack Integration"
+            "Slack Integration",
+            "Microsoft Teams Integration"
           ],
           hasSlackIntegration: true,
-          hasMicrosoftIntegration: false,
+          hasMicrosoftIntegration: true,
           hasAdvancedAnalytics: false,
           hasApiAccess: false,
         },
@@ -2033,7 +2034,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           description: "Advanced features for growing teams",
           monthlyPrice: 800,  // $8/month per user
           annualPrice: 7200,  // $72/year per user ($6/month, 25% off)
-          maxUsers: 100,
+          maxUsers: -1,  // Unlimited users
           features: [
             "Everything in Standard",
             "KRA Management (Key Result Areas)",
