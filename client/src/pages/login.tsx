@@ -223,8 +223,14 @@ export default function LoginPage() {
             refetchType: 'all' 
           });
           
-          // Wait a moment for the authentication to fully propagate
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // Wait for the query to actually refetch before redirecting
+          await queryClient.refetchQueries({ 
+            queryKey: ["/api/users/current"],
+            type: 'active'
+          });
+          
+          // Add a small delay to ensure state propagation
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
         
         // Redirect to dashboard - authentication state is now properly set
