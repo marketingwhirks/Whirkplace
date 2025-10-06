@@ -4318,6 +4318,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sanitizedData = sanitizeForOrganization(checkinData, req.orgId);
       const checkin = await storage.createCheckin(req.orgId, sanitizedData);
       
+      // Auto-increment team goals for check-ins completed metric
+      if (checkin.isComplete && req.currentUser?.teamId) {
+        await storage.incrementGoalsByMetric(req.orgId, "check-ins completed", req.currentUser.teamId);
+      }
+      
       // Send notification if check-in is submitted for review
       if (checkin.isComplete && checkin.submittedAt) {
         try {
@@ -5185,6 +5190,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const recipient = await storage.getUser(req.orgId, win.userId);
       const sender = win.nominatedBy ? await storage.getUser(req.orgId, win.nominatedBy) : null;
       
+      // Auto-increment team goals for wins metric
+      if (recipient?.teamId) {
+        await storage.incrementGoalsByMetric(req.orgId, "wins", recipient.teamId);
+      }
+      
       if (recipient) {
         // Handle Slack notifications based on visibility
         if (win.isPublic) {
@@ -5512,6 +5522,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const shoutout = await storage.createShoutout(req.orgId, sanitizedData);
         createdShoutouts.push(shoutout);
         
+        // Auto-increment team goals for kudos given metric (team shoutout)
+        if (shoutoutData.toTeamId) {
+          await storage.incrementGoalsByMetric(req.orgId, "kudos given", shoutoutData.toTeamId);
+        }
+        
         // Send Slack notification if public
         if (shoutout.isPublic) {
           const fromUser = await storage.getUser(req.orgId, shoutout.fromUserId);
@@ -5570,6 +5585,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }, req.orgId);
           const shoutout = await storage.createShoutout(req.orgId, sanitizedData);
           createdShoutouts.push(shoutout);
+          
+          // Auto-increment team goals for kudos given metric (individual shoutout)
+          // Use sender's team ID for goal tracking
+          if (req.currentUser?.teamId) {
+            await storage.incrementGoalsByMetric(req.orgId, "kudos given", req.currentUser.teamId);
+          }
           
           // Send Slack notification if public
           if (shoutout.isPublic) {
@@ -9020,6 +9041,176 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("GET /api/features - Error:", error);
       res.status(500).json({ message: "Failed to fetch feature availability" });
+    }
+  });
+
+  // Team Goals endpoints
+  app.get("/api/team-goals", requireAuth(), async (req, res) => {
+    try {
+      const activeOnly = req.query.activeOnly === 'true';
+      const goals = await storage.getAllTeamGoals(req.orgId, activeOnly);
+      res.json(goals);
+    } catch (error) {
+      console.error("GET /api/team-goals - Error:", error);
+      res.status(500).json({ message: "Failed to fetch team goals" });
+    }
+  });
+
+  app.get("/api/team-goals/dashboard", requireAuth(), async (req, res) => {
+    try {
+      const goals = await storage.getDashboardGoals(req.orgId);
+      res.json(goals);
+    } catch (error) {
+      console.error("GET /api/team-goals/dashboard - Error:", error);
+      res.status(500).json({ message: "Failed to fetch dashboard goals" });
+    }
+  });
+
+  app.get("/api/team-goals/:id", requireAuth(), async (req, res) => {
+    try {
+      const goal = await storage.getTeamGoal(req.orgId, req.params.id);
+      if (!goal) {
+        return res.status(404).json({ message: "Team goal not found" });
+      }
+      res.json(goal);
+    } catch (error) {
+      console.error("GET /api/team-goals/:id - Error:", error);
+      res.status(500).json({ message: "Failed to fetch team goal" });
+    }
+  });
+
+  app.post("/api/team-goals", requireAuth(), requireTeamLead(), async (req, res) => {
+    try {
+      const validationSchema = insertTeamGoalSchema.extend({
+        createdBy: z.string().uuid().optional()
+      });
+      
+      const goalData = validationSchema.parse(req.body);
+      
+      // Calculate date ranges based on goal type
+      const now = new Date();
+      let startDate = goalData.startDate || now;
+      let endDate = goalData.endDate;
+      
+      if (!endDate) {
+        switch (goalData.goalType) {
+          case 'weekly':
+            endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 7);
+            break;
+          case 'monthly':
+            endDate = new Date(startDate);
+            endDate.setMonth(endDate.getMonth() + 1);
+            break;
+          case 'quarterly':
+            endDate = new Date(startDate);
+            endDate.setMonth(endDate.getMonth() + 3);
+            break;
+        }
+      }
+      
+      const goal = await storage.createTeamGoal(req.orgId, {
+        ...goalData,
+        createdBy: req.userId!,
+        startDate,
+        endDate
+      });
+      
+      res.status(201).json(goal);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid goal data", errors: error.errors });
+      }
+      console.error("POST /api/team-goals - Error:", error);
+      res.status(500).json({ message: "Failed to create team goal" });
+    }
+  });
+
+  app.patch("/api/team-goals/:id", requireAuth(), async (req, res) => {
+    try {
+      // Get existing goal to check permissions
+      const existingGoal = await storage.getTeamGoal(req.orgId, req.params.id);
+      if (!existingGoal) {
+        return res.status(404).json({ message: "Team goal not found" });
+      }
+      
+      // Check if user can update this goal
+      const currentUser = await storage.getUser(req.orgId, req.userId!);
+      if (!currentUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      const canUpdate = existingGoal.createdBy === req.userId || currentUser.role === 'admin';
+      if (!canUpdate) {
+        return res.status(403).json({ message: "You can only update goals you created or if you're an admin" });
+      }
+      
+      const updateSchema = insertTeamGoalSchema.partial();
+      const updateData = updateSchema.parse(req.body);
+      
+      const updatedGoal = await storage.updateTeamGoal(req.orgId, req.params.id, updateData);
+      if (!updatedGoal) {
+        return res.status(404).json({ message: "Team goal not found" });
+      }
+      
+      res.json(updatedGoal);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid goal data", errors: error.errors });
+      }
+      console.error("PATCH /api/team-goals/:id - Error:", error);
+      res.status(500).json({ message: "Failed to update team goal" });
+    }
+  });
+
+  app.delete("/api/team-goals/:id", requireAuth(), async (req, res) => {
+    try {
+      // Get existing goal to check permissions
+      const existingGoal = await storage.getTeamGoal(req.orgId, req.params.id);
+      if (!existingGoal) {
+        return res.status(404).json({ message: "Team goal not found" });
+      }
+      
+      // Check if user can delete this goal
+      const currentUser = await storage.getUser(req.orgId, req.userId!);
+      if (!currentUser) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      const canDelete = existingGoal.createdBy === req.userId || currentUser.role === 'admin';
+      if (!canDelete) {
+        return res.status(403).json({ message: "You can only delete goals you created or if you're an admin" });
+      }
+      
+      const deleted = await storage.deleteTeamGoal(req.orgId, req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Team goal not found" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("DELETE /api/team-goals/:id - Error:", error);
+      res.status(500).json({ message: "Failed to delete team goal" });
+    }
+  });
+
+  app.post("/api/team-goals/:id/progress", requireAuth(), async (req, res) => {
+    try {
+      const { increment } = req.body;
+      
+      if (typeof increment !== 'number' || increment < 0) {
+        return res.status(400).json({ message: "Invalid increment value" });
+      }
+      
+      const updatedGoal = await storage.updateTeamGoalProgress(req.orgId, req.params.id, increment);
+      if (!updatedGoal) {
+        return res.status(404).json({ message: "Team goal not found" });
+      }
+      
+      res.json(updatedGoal);
+    } catch (error) {
+      console.error("POST /api/team-goals/:id/progress - Error:", error);
+      res.status(500).json({ message: "Failed to update goal progress" });
     }
   });
 

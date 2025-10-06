@@ -20,6 +20,7 @@ import {
   type KraHistory, type InsertKraHistory,
   type BugReport, type InsertBugReport,
   type PartnerApplication, type InsertPartnerApplication,
+  type TeamGoal, type InsertTeamGoal,
   type ReviewCheckin, type ReviewStatusType,
   type PulseMetricsOptions, type PulseMetricsResult,
   type ShoutoutMetricsOptions, type ShoutoutMetricsResult,
@@ -36,7 +37,7 @@ import {
   type UserIdentity, type InsertUserIdentity,
   type UserTour, type InsertUserTour,
   users, teams, checkins, questions, questionCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
-  organizationAuthProviders, userIdentities, userTours,
+  organizationAuthProviders, userIdentities, userTours, teamGoals,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
@@ -257,6 +258,19 @@ export interface IStorage {
   markTourCompleted(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
   markTourSkipped(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
   resetUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
+
+  // Team Goals
+  getTeamGoal(organizationId: string, id: string): Promise<TeamGoal | undefined>;
+  getAllTeamGoals(organizationId: string, activeOnly?: boolean): Promise<TeamGoal[]>;
+  getTeamGoalsByTeam(organizationId: string, teamId: string, activeOnly?: boolean): Promise<TeamGoal[]>;
+  createTeamGoal(organizationId: string, goal: InsertTeamGoal): Promise<TeamGoal>;
+  updateTeamGoal(organizationId: string, id: string, goal: Partial<InsertTeamGoal>): Promise<TeamGoal | undefined>;
+  deleteTeamGoal(organizationId: string, id: string): Promise<boolean>;
+  updateTeamGoalProgress(organizationId: string, id: string, incrementValue: number): Promise<TeamGoal | undefined>;
+  checkAndCompleteGoal(organizationId: string, id: string): Promise<TeamGoal | undefined>;
+  expireOutdatedGoals(organizationId: string): Promise<number>;
+  getActiveGoalsByMetric(organizationId: string, metric: string): Promise<TeamGoal[]>;
+  getDashboardGoals(organizationId: string): Promise<TeamGoal[]>;
 
   // Check-in Review Methods
   getPendingCheckins(organizationId: string, managerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]>;
@@ -7696,6 +7710,251 @@ export class MemStorage implements IStorage {
     
     toDelete.forEach(key => this.userTours.delete(key));
     return toDelete.length > 0;
+  }
+
+  // Team Goals Methods
+  async getTeamGoal(organizationId: string, id: string): Promise<TeamGoal | undefined> {
+    try {
+      const [goal] = await db
+        .select()
+        .from(teamGoals)
+        .where(and(eq(teamGoals.organizationId, organizationId), eq(teamGoals.id, id)));
+      return goal || undefined;
+    } catch (error) {
+      console.error("Failed to fetch team goal:", error);
+      throw error;
+    }
+  }
+
+  async getAllTeamGoals(organizationId: string, activeOnly: boolean = false): Promise<TeamGoal[]> {
+    try {
+      const conditions = [eq(teamGoals.organizationId, organizationId)];
+      if (activeOnly) {
+        conditions.push(eq(teamGoals.status, "active"));
+      }
+      return await db
+        .select()
+        .from(teamGoals)
+        .where(and(...conditions))
+        .orderBy(desc(teamGoals.createdAt));
+    } catch (error) {
+      console.error("Failed to fetch team goals:", error);
+      throw error;
+    }
+  }
+
+  async getTeamGoalsByTeam(organizationId: string, teamId: string, activeOnly: boolean = false): Promise<TeamGoal[]> {
+    try {
+      const conditions = [
+        eq(teamGoals.organizationId, organizationId),
+        or(eq(teamGoals.teamId, teamId), sql`${teamGoals.teamId} IS NULL`) // Include org-wide goals
+      ];
+      if (activeOnly) {
+        conditions.push(eq(teamGoals.status, "active"));
+      }
+      return await db
+        .select()
+        .from(teamGoals)
+        .where(and(...conditions))
+        .orderBy(desc(teamGoals.createdAt));
+    } catch (error) {
+      console.error("Failed to fetch team goals by team:", error);
+      throw error;
+    }
+  }
+
+  async createTeamGoal(organizationId: string, goal: InsertTeamGoal): Promise<TeamGoal> {
+    try {
+      const [newGoal] = await db
+        .insert(teamGoals)
+        .values({ 
+          ...goal, 
+          organizationId,
+          status: "active",
+          currentValue: 0
+        })
+        .returning();
+      return newGoal;
+    } catch (error) {
+      console.error("Failed to create team goal:", error);
+      throw error;
+    }
+  }
+
+  async updateTeamGoal(organizationId: string, id: string, goal: Partial<InsertTeamGoal>): Promise<TeamGoal | undefined> {
+    try {
+      const [updatedGoal] = await db
+        .update(teamGoals)
+        .set({ ...goal, updatedAt: new Date() })
+        .where(and(eq(teamGoals.organizationId, organizationId), eq(teamGoals.id, id)))
+        .returning();
+      return updatedGoal || undefined;
+    } catch (error) {
+      console.error("Failed to update team goal:", error);
+      throw error;
+    }
+  }
+
+  async deleteTeamGoal(organizationId: string, id: string): Promise<boolean> {
+    try {
+      const result = await db
+        .delete(teamGoals)
+        .where(and(eq(teamGoals.organizationId, organizationId), eq(teamGoals.id, id)));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error("Failed to delete team goal:", error);
+      throw error;
+    }
+  }
+
+  async updateTeamGoalProgress(organizationId: string, id: string, incrementValue: number): Promise<TeamGoal | undefined> {
+    try {
+      const [goal] = await db
+        .select()
+        .from(teamGoals)
+        .where(and(eq(teamGoals.organizationId, organizationId), eq(teamGoals.id, id)));
+
+      if (!goal) return undefined;
+
+      const newValue = goal.currentValue + incrementValue;
+      const isCompleted = newValue >= goal.targetValue && goal.status === "active";
+
+      const [updatedGoal] = await db
+        .update(teamGoals)
+        .set({
+          currentValue: newValue,
+          status: isCompleted ? "completed" : goal.status,
+          completedAt: isCompleted ? new Date() : goal.completedAt,
+          updatedAt: new Date()
+        })
+        .where(and(eq(teamGoals.organizationId, organizationId), eq(teamGoals.id, id)))
+        .returning();
+
+      return updatedGoal || undefined;
+    } catch (error) {
+      console.error("Failed to update team goal progress:", error);
+      throw error;
+    }
+  }
+
+  async checkAndCompleteGoal(organizationId: string, id: string): Promise<TeamGoal | undefined> {
+    try {
+      const [goal] = await db
+        .select()
+        .from(teamGoals)
+        .where(and(eq(teamGoals.organizationId, organizationId), eq(teamGoals.id, id)));
+
+      if (!goal || goal.status !== "active") return goal;
+
+      const shouldComplete = goal.currentValue >= goal.targetValue;
+
+      if (shouldComplete) {
+        const [updatedGoal] = await db
+          .update(teamGoals)
+          .set({
+            status: "completed",
+            completedAt: new Date(),
+            updatedAt: new Date()
+          })
+          .where(and(eq(teamGoals.organizationId, organizationId), eq(teamGoals.id, id)))
+          .returning();
+        return updatedGoal || undefined;
+      }
+
+      return goal;
+    } catch (error) {
+      console.error("Failed to check and complete goal:", error);
+      throw error;
+    }
+  }
+
+  async expireOutdatedGoals(organizationId: string): Promise<number> {
+    try {
+      const now = new Date();
+      const result = await db
+        .update(teamGoals)
+        .set({
+          status: "expired",
+          updatedAt: now
+        })
+        .where(and(
+          eq(teamGoals.organizationId, organizationId),
+          eq(teamGoals.status, "active"),
+          lt(teamGoals.endDate, now)
+        ));
+      return result.rowCount || 0;
+    } catch (error) {
+      console.error("Failed to expire outdated goals:", error);
+      throw error;
+    }
+  }
+
+  async getActiveGoalsByMetric(organizationId: string, metric: string): Promise<TeamGoal[]> {
+    try {
+      return await db
+        .select()
+        .from(teamGoals)
+        .where(and(
+          eq(teamGoals.organizationId, organizationId),
+          eq(teamGoals.status, "active"),
+          eq(teamGoals.metric, metric)
+        ))
+        .orderBy(desc(teamGoals.createdAt));
+    } catch (error) {
+      console.error("Failed to fetch active goals by metric:", error);
+      throw error;
+    }
+  }
+
+  async getDashboardGoals(organizationId: string): Promise<TeamGoal[]> {
+    try {
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+      return await db
+        .select()
+        .from(teamGoals)
+        .where(and(
+          eq(teamGoals.organizationId, organizationId),
+          or(
+            eq(teamGoals.status, "active"),
+            and(
+              eq(teamGoals.status, "completed"),
+              gte(teamGoals.completedAt, thirtyDaysAgo)
+            )
+          )
+        ))
+        .orderBy(desc(teamGoals.createdAt))
+        .limit(5);
+    } catch (error) {
+      console.error("Failed to fetch dashboard goals:", error);
+      throw error;
+    }
+  }
+
+  // Helper method to auto-increment team goals based on metric type
+  async incrementGoalsByMetric(organizationId: string, metric: string, teamId?: string, increment: number = 1): Promise<void> {
+    try {
+      // Get all active goals for this metric
+      const activeGoals = await this.getActiveGoalsByMetric(organizationId, metric);
+      
+      // Filter goals based on team if provided
+      const relevantGoals = activeGoals.filter(goal => {
+        // If goal is org-wide (teamId is null), it applies to everyone
+        if (goal.teamId === null) return true;
+        // If goal is team-specific, only apply if it matches the team
+        if (teamId && goal.teamId === teamId) return true;
+        return false;
+      });
+
+      // Update progress for each relevant goal
+      for (const goal of relevantGoals) {
+        await this.updateTeamGoalProgress(organizationId, goal.id, increment);
+      }
+    } catch (error) {
+      console.error(`Failed to increment goals for metric ${metric}:`, error);
+      // Don't throw error to prevent disrupting the main operation
+    }
   }
 }
 

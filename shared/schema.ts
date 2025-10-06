@@ -84,6 +84,54 @@ export const PlanFeatures = {
   },
 } as const;
 
+// Goal Type Constants
+export const GoalType = {
+  WEEKLY: "weekly",
+  MONTHLY: "monthly",
+  QUARTERLY: "quarterly",
+} as const;
+
+export type GoalTypeValue = typeof GoalType[keyof typeof GoalType];
+
+// Goal Status Constants
+export const GoalStatus = {
+  ACTIVE: "active",
+  COMPLETED: "completed",
+  EXPIRED: "expired",
+} as const;
+
+export type GoalStatusValue = typeof GoalStatus[keyof typeof GoalStatus];
+
+// Team Goals table for tracking team objectives and prizes
+export const teamGoals = pgTable("team_goals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  teamId: varchar("team_id"), // null means org-wide goal
+  title: text("title").notNull(),
+  description: text("description"),
+  targetValue: integer("target_value").notNull(),
+  currentValue: integer("current_value").notNull().default(0),
+  goalType: text("goal_type").notNull(), // weekly, monthly, quarterly
+  metric: text("metric").notNull(), // wins, check-ins, kudos
+  prize: text("prize"), // optional prize description
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  status: text("status").notNull().default("active"), // active, completed, expired
+  completedAt: timestamp("completed_at"),
+  createdBy: varchar("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for organization lookups
+  organizationIdx: index("team_goals_organization_idx").on(table.organizationId),
+  // Index for team lookups
+  teamIdx: index("team_goals_team_idx").on(table.teamId),
+  // Index for status filtering
+  statusIdx: index("team_goals_status_idx").on(table.status),
+  // Index for date range queries
+  dateRangeIdx: index("team_goals_date_range_idx").on(table.startDate, table.endDate),
+}));
+
 // Partner Firms table for reseller partners
 export const partnerFirms = pgTable("partner_firms", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1554,6 +1602,27 @@ export const insertDashboardWidgetTemplateSchema = createInsertSchema(dashboardW
 });
 export type InsertDashboardWidgetTemplate = z.infer<typeof insertDashboardWidgetTemplateSchema>;
 export type DashboardWidgetTemplate = typeof dashboardWidgetTemplates.$inferSelect;
+
+// Team Goals Zod schemas
+export const insertTeamGoalSchema = createInsertSchema(teamGoals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  currentValue: true,
+  status: true,
+  completedAt: true,
+}).extend({
+  title: z.string().min(1, "Title is required").max(200, "Title too long"),
+  description: z.string().max(1000, "Description too long").optional(),
+  targetValue: z.number().int().min(1, "Target value must be at least 1"),
+  goalType: z.enum(["weekly", "monthly", "quarterly"]),
+  metric: z.string().min(1, "Metric is required").max(100, "Metric too long"),
+  prize: z.string().max(500, "Prize description too long").optional(),
+  startDate: z.date(),
+  endDate: z.date(),
+});
+export type InsertTeamGoal = z.infer<typeof insertTeamGoalSchema>;
+export type TeamGoal = typeof teamGoals.$inferSelect;
 
 // User Tours Zod schemas
 export const insertUserTourSchema = createInsertSchema(userTours).omit({

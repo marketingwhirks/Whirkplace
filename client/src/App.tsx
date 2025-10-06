@@ -16,6 +16,7 @@ import KraManagementPage from "@/pages/kra-management";
 import Team from "@/pages/team";
 import Wins from "@/pages/wins";
 import ShoutoutsPage from "@/pages/shoutouts";
+import TeamGoals from "@/pages/team-goals";
 import Questions from "@/pages/questions";
 import Reviews from "@/pages/reviews";
 import LeadershipDashboard from "@/pages/leadership-dashboard";
@@ -57,6 +58,7 @@ function Router() {
             <Route path="/team" component={Team} />
             <Route path="/wins" component={Wins} />
             <Route path="/shoutouts" component={ShoutoutsPage} />
+            <Route path="/team-goals" component={TeamGoals} />
             <Route path="/questions" component={Questions} />
             <Route path="/reviews" component={Reviews} />
             <Route path="/leadership-dashboard" component={LeadershipDashboard} />

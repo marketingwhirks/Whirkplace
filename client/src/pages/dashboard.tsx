@@ -10,13 +10,13 @@ import RatingStars from "@/components/checkin/rating-stars";
 import WinCard from "@/components/wins/win-card";
 import TeamMemberCard from "@/components/team/team-member-card";
 import CheckinDetail from "@/components/checkin/checkin-detail";
-import { Heart, Sparkles, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer } from "lucide-react";
+import { Heart, Sparkles, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer, TrendingUp } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Progress } from "@/components/ui/progress";
-import type { Checkin, Win, User, Question, ComplianceMetricsResult, Shoutout } from "@shared/schema";
+import type { Checkin, Win, User, Question, ComplianceMetricsResult, Shoutout, TeamGoal } from "@shared/schema";
 import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
@@ -199,6 +199,11 @@ export default function Dashboard() {
   // Get current week check-in
   const { data: currentCheckin } = useQuery<Checkin | null>({
     queryKey: ["/api/users", currentUser.id, "current-checkin"],
+  });
+
+  // Fetch team goals for dashboard
+  const { data: teamGoals = [], isLoading: goalsLoading } = useQuery<TeamGoal[]>({
+    queryKey: ["/api/team-goals/dashboard"]
   });
 
   // Get current user's team info for compliance data (if manager)
@@ -838,6 +843,80 @@ export default function Dashboard() {
             </Card>
           </div>
         </div>
+
+        {/* Team Goals Widget */}
+        {teamGoals.length > 0 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <Target className="w-5 h-5" />
+                  Active Team Goals
+                </CardTitle>
+                <Button 
+                  variant="link" 
+                  data-testid="button-view-all-goals"
+                  onClick={() => window.location.href = "/team-goals"}
+                >
+                  View All
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {goalsLoading ? (
+                <div className="space-y-3">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="space-y-2">
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-2 w-full" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                teamGoals.map((goal) => {
+                  const progressPercent = goal.targetValue > 0 
+                    ? Math.min((goal.currentValue / goal.targetValue) * 100, 100)
+                    : 0;
+                  const daysLeft = goal.endDate 
+                    ? Math.ceil((new Date(goal.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                    : 0;
+
+                  return (
+                    <div key={goal.id} className="space-y-2 p-4 bg-muted rounded-lg">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="font-medium text-sm">{goal.title}</h4>
+                          <p className="text-xs text-muted-foreground">
+                            {goal.metric} · {goal.currentValue}/{goal.targetValue}
+                          </p>
+                        </div>
+                        {goal.status === "completed" ? (
+                          <Badge className="bg-green-100 text-green-800">
+                            <Trophy className="w-3 h-3 mr-1" />
+                            Achieved!
+                          </Badge>
+                        ) : daysLeft > 0 ? (
+                          <Badge variant="secondary">
+                            {daysLeft} days left
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive">Expired</Badge>
+                        )}
+                      </div>
+                      <Progress value={progressPercent} className="h-2" />
+                      {goal.prize && (
+                        <p className="text-xs text-muted-foreground flex items-center gap-1">
+                          <TrendingUp className="w-3 h-3" />
+                          Prize: {goal.prize}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Team Structure & Check-in Interface */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
