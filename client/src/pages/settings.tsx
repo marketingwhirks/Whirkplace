@@ -1771,14 +1771,14 @@ export default function Settings() {
                         <div className="flex items-center space-x-3">
                           <Slack className="w-5 h-5" />
                           <div>
-                            <p className="font-medium">Slack Workspace</p>
+                            <p className="font-medium">Slack Account</p>
                             <p className="text-sm text-muted-foreground">
-                              {currentUser?.slackWorkspaceId ? 'Connected' : 'Not connected'}
+                              {currentUser?.slackUserId ? 'Your account is connected to Slack' : 'Your account is not connected to Slack'}
                             </p>
                           </div>
                         </div>
-                        <Badge variant={currentUser?.slackWorkspaceId ? "default" : "secondary"}>
-                          {currentUser?.slackWorkspaceId ? 'Connected' : 'Not Connected'}
+                        <Badge variant={currentUser?.slackUserId ? "default" : "secondary"}>
+                          {currentUser?.slackUserId ? 'Connected' : 'Not Connected'}
                         </Badge>
                       </div>
                     </div>

@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Badge } from "@/components/ui/badge";
 import TeamMemberCard from "@/components/team/team-member-card";
-import { Plus, Users, UserCog, Building, AlertCircle, ChevronRight, ChevronDown, Network, Briefcase, Target, Move } from "lucide-react";
+import { Plus, Users, UserCog, Building, AlertCircle, ChevronRight, ChevronDown, Network, Briefcase, Target, Move, Slack, KeyRound, Send } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -49,6 +50,8 @@ export default function Team() {
   const [showCreateTeam, setShowCreateTeam] = useState(false);
   const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [selectedUserForPassword, setSelectedUserForPassword] = useState<User | null>(null);
   
   // Tour management
   const tourManager = useManagedTour(TOUR_IDS.TEAM_MANAGEMENT);
@@ -268,6 +271,33 @@ export default function Team() {
         variant: "destructive",
         title: "Failed to create team",
         description: "There was an error creating the team.",
+      });
+    }
+  };
+
+  const handleSendPasswordViaSlack = async (user: User) => {
+    try {
+      const response = await apiRequest("POST", `/api/users/${user.id}/send-password`, {});
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to send password");
+      }
+      
+      const result = await response.json();
+      
+      toast({
+        title: "Password sent successfully",
+        description: `New password has been sent to ${user.name} via Slack DM.`,
+      });
+      
+      setShowPasswordDialog(false);
+      setSelectedUserForPassword(null);
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed to send password",
+        description: error instanceof Error ? error.message : "There was an error sending the password via Slack.",
       });
     }
   };
@@ -769,13 +799,75 @@ export default function Team() {
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <CardContent className="space-y-3">
               {unassignedUsers.map(user => (
-                <TeamMemberCard key={user.id} user={user} />
+                <div key={user.id} className="flex items-center justify-between p-3 rounded-lg border">
+                  <TeamMemberCard user={user} />
+                  <div className="flex items-center gap-2">
+                    {user.slackUserId ? (
+                      <Badge variant="outline" className="text-green-600">
+                        <Slack className="w-3 h-3 mr-1" />
+                        Connected
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="text-gray-500">
+                        <Slack className="w-3 h-3 mr-1" />
+                        Not Connected
+                      </Badge>
+                    )}
+                    {currentUser?.role === "admin" && user.slackUserId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedUserForPassword(user);
+                          setShowPasswordDialog(true);
+                        }}
+                        data-testid={`button-send-password-${user.id}`}
+                      >
+                        <KeyRound className="w-3 h-3 mr-1" />
+                        Send Password
+                      </Button>
+                    )}
+                  </div>
+                </div>
               ))}
             </CardContent>
           </Card>
         )}
+        
+        {/* Send Password Confirmation Dialog */}
+        <AlertDialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Send Password via Slack?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will generate a new password for {selectedUserForPassword?.name} and send it to them via Slack DM.
+                <br /><br />
+                <strong>⚠️ Warning:</strong> This will reset their existing password. They will need to use the new password to login.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => {
+                setShowPasswordDialog(false);
+                setSelectedUserForPassword(null);
+              }}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (selectedUserForPassword) {
+                    handleSendPasswordViaSlack(selectedUserForPassword);
+                  }
+                }}
+                className="bg-primary hover:bg-primary/90"
+              >
+                <Send className="w-4 h-4 mr-2" />
+                Send Password
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </main>
   );
 }

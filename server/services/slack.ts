@@ -42,7 +42,7 @@ if (!process.env.SLACK_REDIRECT_URI) {
  * Generate a secure temporary password
  * Returns a 10 character password with letters, numbers, and symbols
  */
-function generateTemporaryPassword(): string {
+export function generateTemporaryPassword(): string {
   const lowercase = 'abcdefghijklmnopqrstuvwxyz';
   const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const numbers = '0123456789';

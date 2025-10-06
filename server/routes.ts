@@ -3610,6 +3610,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Send password to user via Slack (Admin only)
+  app.post("/api/users/:userId/send-password", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const userId = req.params.userId;
+      
+      // Get the user
+      const user = await storage.getUser(req.orgId, userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Check if user has a Slack ID
+      if (!user.slackUserId) {
+        return res.status(400).json({ 
+          message: "User does not have a Slack account connected. They need to be synced from Slack first." 
+        });
+      }
+      
+      // Get organization for the name
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Generate a new temporary password
+      const { generateTemporaryPassword, sendOnboardingDM } = await import("./services/slack");
+      const tempPassword = generateTemporaryPassword();
+      
+      // Hash the password before storing
+      const hashedPassword = await bcrypt.hash(tempPassword, 10);
+      
+      // Update the user's password in the database
+      await storage.updateUser(req.orgId, userId, { password: hashedPassword });
+      
+      // Send the password via Slack DM
+      const result = await sendOnboardingDM(
+        user.slackUserId,
+        user.email,
+        tempPassword,
+        organization.name,
+        user.name || user.username,
+        organization.slackBotToken
+      );
+      
+      if (!result.success) {
+        // Even if Slack sending fails, the password was already updated
+        return res.status(500).json({ 
+          message: `Password was reset but failed to send via Slack: ${result.error}`,
+          passwordUpdated: true,
+          slackSent: false
+        });
+      }
+      
+      res.json({ 
+        message: "Password successfully sent to user via Slack",
+        passwordUpdated: true,
+        slackSent: true,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          slackUserId: user.slackUserId
+        }
+      });
+    } catch (error) {
+      console.error("Error sending password via Slack:", error);
+      res.status(500).json({ 
+        message: "Failed to send password",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Teams
   app.get("/api/teams", requireAuth(), async (req, res) => {
     try {
