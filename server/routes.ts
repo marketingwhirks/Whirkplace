@@ -8216,7 +8216,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         meeting
       );
       
-      const canUpdate = existingActionItem.assignedTo === req.userId || hasMeetingAccess;
+      const canUpdate = existingActionItem.assignedTo === req.currentUser!.id || hasMeetingAccess;
       
       if (!canUpdate) {
         return res.status(403).json({ message: "Access denied" });
@@ -8254,7 +8254,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if user has access to this meeting
       const hasAccess = await canAccessOneOnOne(
         req.orgId,
-        req.userId!,
+        req.currentUser!.id,
         req.currentUser!.role,
         req.currentUser!.teamId,
         meeting
@@ -8265,8 +8265,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Determine which user's KRAs to fetch
-      const targetUserId = req.userId === meeting.participantOneId ? meeting.participantTwoId : meeting.participantOneId;
-      const isSupervisor = req.userId === meeting.participantOneId;
+      const targetUserId = req.currentUser!.id === meeting.participantOneId ? meeting.participantTwoId : meeting.participantOneId;
+      const isSupervisor = req.currentUser!.id === meeting.participantOneId;
       
       // Get user's active KRAs
       const kras = await storage.getUserKrasByUser(req.orgId, targetUserId, "active");

@@ -642,8 +642,7 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
       };
 
       // Create the one-on-one meeting first
-      const meetingResponse = await apiRequest("POST", "/api/one-on-ones", meetingData);
-      const createdMeeting = await meetingResponse.json();
+      const createdMeeting = await apiRequest("POST", "/api/one-on-ones", meetingData);
 
       // If Outlook sync is enabled and calendar is connected, create calendar event
       if (data.syncWithOutlook && calendarStatus?.connected && participant) {
@@ -668,8 +667,7 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
           };
 
           // Create calendar event
-          const calendarEventResponse = await apiRequest("POST", "/api/calendar/events", calendarEventData);
-          const calendarEvent = await calendarEventResponse.json();
+          const calendarEvent = await apiRequest("POST", "/api/calendar/events", calendarEventData);
           
           // Update meeting with calendar event details
           if (calendarEvent?.id) {
