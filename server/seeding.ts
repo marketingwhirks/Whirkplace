@@ -90,6 +90,9 @@ export async function ensurePatrickAccountingOrganization(): Promise<Organizatio
       console.log("Patrick Accounting admin user already exists");
     }
 
+    // Create default question for Patrick Accounting
+    await ensureDefaultQuestionForPatrickAccounting(patrickAccountingId);
+    
     return patrickAccountingOrg;
   } catch (error) {
     // If error is due to duplicate key, try to get the existing organization
@@ -100,6 +103,8 @@ export async function ensurePatrickAccountingOrganization(): Promise<Organizatio
                            await storage.getOrganizationBySlug("patrick-accounting");
         if (existingOrg) {
           console.log("Successfully retrieved existing Patrick Accounting organization:", existingOrg.id);
+          // Ensure default question exists even for existing org
+          await ensureDefaultQuestionForPatrickAccounting(existingOrg.id);
           return existingOrg;
         }
       } catch (retrieveError) {
@@ -109,6 +114,53 @@ export async function ensurePatrickAccountingOrganization(): Promise<Organizatio
     
     console.error("Failed to ensure Patrick Accounting organization:", error);
     throw error;
+  }
+}
+
+/**
+ * Ensure the default question exists for Patrick Accounting
+ * This question should always be available as a fallback
+ */
+export async function ensureDefaultQuestionForPatrickAccounting(organizationId: string): Promise<void> {
+  try {
+    // Get all active questions for Patrick Accounting
+    const activeQuestions = await storage.getActiveQuestions(organizationId);
+    
+    // Check if the default question already exists
+    const defaultQuestionText = "What would winning look like for you next week?";
+    const existingDefaultQuestion = activeQuestions.find(q => 
+      q.text.toLowerCase().includes("winning") && 
+      q.text.toLowerCase().includes("next week")
+    );
+    
+    if (!existingDefaultQuestion) {
+      console.log("Creating default question for Patrick Accounting...");
+      
+      // Create the default question with low order to ensure it's always shown
+      await storage.createQuestion(organizationId, {
+        text: defaultQuestionText,
+        organizationId: organizationId,
+        isActive: true,
+        order: -1000, // Very low order to ensure it's always first/default
+        createdBy: "system", // System-created question
+        addToBank: false, // This is an org-specific question
+      });
+      
+      console.log("✅ Created default question: 'What would winning look like for you next week?'");
+    } else {
+      console.log("Default question already exists for Patrick Accounting");
+      
+      // Ensure it has correct order
+      if (existingDefaultQuestion.order > -1000) {
+        await storage.updateQuestion(organizationId, existingDefaultQuestion.id, {
+          order: -1000
+        });
+        console.log("✅ Updated default question to ensure it's properly marked");
+      }
+    }
+  } catch (error) {
+    console.error("Failed to ensure default question for Patrick Accounting:", error);
+    // Don't throw - we want the server to continue even if this fails
   }
 }
 

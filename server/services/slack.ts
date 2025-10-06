@@ -652,7 +652,7 @@ export async function sendPersonalizedCheckinReminder(
     }
   }
 
-  // Add call-to-action buttons
+  // Add call-to-action buttons - removed quick check-in option
   reminderBlocks.push({
     type: 'actions' as const,
     elements: [
@@ -660,19 +660,10 @@ export async function sendPersonalizedCheckinReminder(
         type: 'button' as const,
         text: {
           type: 'plain_text' as const,
-          text: '🚀 Quick Check-in'
+          text: '📊 Complete Check-in'
         },
-        action_id: 'open_checkin_modal',
-        value: 'quick_checkin',
+        url: checkinUrl,
         style: 'primary' as const
-      },
-      {
-        type: 'button' as const,
-        text: {
-          type: 'plain_text' as const,
-          text: '📊 Full Check-in'
-        },
-        url: checkinUrl
       },
       {
         type: 'button' as const,

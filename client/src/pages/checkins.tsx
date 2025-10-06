@@ -32,31 +32,38 @@ const COMMON_EMOJIS = ["😊", "😟", "🎯", "💪", "🤔", "😌", "😤", "
 
 // Client-side form schema for check-in submission
 // Only includes fields the user should provide - server computes the rest
-// Dynamic schema that requires responses when questions exist
+// Always requires at least one question response
 const createCheckinFormSchema = (questions: Question[]) => {
-  const hasQuestions = questions.length > 0;
+  // Always require responses - there should always be at least one question
   
   return z.object({
     overallMood: z.number().min(1, "Please provide a mood rating").max(5, "Rating must be between 1 and 5"),
-    responses: hasQuestions 
-      ? z.record(z.string().min(1, "Please provide a response"))
-          .refine(
-            (responses) => {
-              // Check that all active questions have responses
-              const missingResponses = questions.filter(q => !responses[q.id] || responses[q.id].trim() === '');
-              return missingResponses.length === 0;
-            },
-            {
-              message: "Please answer all questions before submitting"
-            }
-          )
-      : z.record(z.string()).optional().default({}),
+    responses: z.record(z.string().min(1, "Please provide a response"))
+      .refine(
+        (responses) => {
+          // Must have at least one response
+          const responseCount = Object.keys(responses).filter(key => responses[key] && responses[key].trim() !== '').length;
+          return responseCount > 0;
+        },
+        {
+          message: "Please answer at least one question before submitting"
+        }
+      )
+      .refine(
+        (responses) => {
+          // Check that all visible questions have responses
+          const missingResponses = questions.filter(q => !responses[q.id] || responses[q.id].trim() === '');
+          return missingResponses.length === 0;
+        },
+        {
+          message: "Please answer all questions before submitting"
+        }
+      ),
     responseEmojis: z.record(z.string()).optional().default({}), // question_id -> emoji
     responseFlags: z.record(z.object({
       addToOneOnOne: z.boolean().default(false),
       flagForFollowUp: z.boolean().default(false),
     })).optional().default({}), // question_id -> flags
-    winningNextWeek: z.string().min(1, "Please describe what winning looks like for next week"),
   });
 };
 
@@ -65,7 +72,6 @@ type CheckinForm = {
   responses: Record<string, string>;
   responseEmojis?: Record<string, string>;
   responseFlags?: Record<string, { addToOneOnOne: boolean; flagForFollowUp: boolean }>;
-  winningNextWeek: string;
 };
 
 export default function Checkins() {
@@ -114,7 +120,6 @@ export default function Checkins() {
       responses: {},
       responseEmojis: {},
       responseFlags: {},
-      winningNextWeek: "",
     },
   });
 
@@ -149,7 +154,6 @@ export default function Checkins() {
         weekOf: currentWeekStart.toISOString(), // Convert to ISO string for server
         overallMood: data.overallMood,
         responses: data.responses,
-        winningNextWeek: data.winningNextWeek,
         isComplete: true,
       };
 
@@ -189,7 +193,6 @@ export default function Checkins() {
       form.reset({
         overallMood: currentWeekCheckin.overallMood,
         responses: currentWeekCheckin.responses as Record<string, string>,
-        winningNextWeek: currentWeekCheckin.winningNextWeek || "",
       });
       setShowCreateDialog(true);
     }
@@ -521,26 +524,6 @@ export default function Checkins() {
                           </div>
                         )}
 
-                        {/* Winning Next Week */}
-                        <FormField
-                          control={form.control}
-                          name="winningNextWeek"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>What would winning look like for you next week?</FormLabel>
-                              <FormControl>
-                                <Textarea
-                                  placeholder="Describe what success looks like for you next week..."
-                                  rows={3}
-                                  data-testid="textarea-winning-next-week"
-                                  {...field}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
                         <div className="flex justify-end space-x-3">
                           <Button
                             type="submit"
@@ -715,42 +698,22 @@ export default function Checkins() {
                               <FormMessage />
                             </FormItem>
                           )}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                      <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
-                      <p className="text-sm text-red-600 dark:text-red-400 font-medium">
-                        Check-ins cannot be submitted without questions.
-                      </p>
-                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                        Please contact your administrator to set up check-in questions.
-                      </p>
-                    </div>
-                  )}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
+                    <p className="text-sm text-red-600 dark:text-red-400 font-medium">
+                      Check-ins cannot be submitted without questions.
+                    </p>
+                    <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                      Please contact your administrator to set up check-in questions.
+                    </p>
+                  </div>
+                )}
 
-                  {/* Winning Next Week */}
-                  <FormField
-                    control={form.control}
-                    name="winningNextWeek"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>What would winning look like for you next week?</FormLabel>
-                        <FormControl>
-                          <Textarea
-                            placeholder="Describe what success looks like for you next week..."
-                            rows={3}
-                            data-testid="dialog-textarea-winning-next-week"
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <DialogFooter>
+                <DialogFooter>
                     <Button
                       type="button"
                       variant="outline"
