@@ -5,6 +5,7 @@ import * as cron from "node-cron";
 import type { Request } from 'express';
 import { resolveRedirectUri } from '../utils/redirect-uri';
 import bcrypt from "bcryptjs";
+import { billingService } from './billing';
 
 if (!process.env.SLACK_BOT_TOKEN) {
   console.warn("SLACK_BOT_TOKEN environment variable not set. Slack integration will be disabled.");
@@ -2645,6 +2646,26 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
       await storage.updateUser(organizationId, user.id, { isActive: false });
       stats.deactivated++;
       console.log(`Deactivated user: ${user.name} (${user.slackUserId})`);
+    }
+  }
+
+  // Handle billing for user changes
+  if ((stats.created > 0 || stats.activated > 0 || stats.deactivated > 0) && organization) {
+    try {
+      // Handle new users and reactivations - charge pro-rata
+      if (stats.created > 0 || stats.activated > 0) {
+        await billingService.handleUserAddition(organization);
+        console.log(`📊 Billing: Handled addition of ${stats.created + stats.activated} user(s)`);
+      }
+      
+      // Handle deactivations - track for next billing cycle
+      if (stats.deactivated > 0) {
+        await billingService.handleUserRemoval(organization);
+        console.log(`📊 Billing: Handled removal of ${stats.deactivated} user(s)`);
+      }
+    } catch (billingError) {
+      console.error('Failed to update billing:', billingError);
+      // Don't fail the sync if billing update fails
     }
   }
 

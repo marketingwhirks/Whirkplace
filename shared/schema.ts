@@ -161,6 +161,12 @@ export const organizations = pgTable("organizations", {
   stripeSubscriptionStatus: text("stripe_subscription_status"), // active, trialing, canceled, past_due, etc.
   stripePriceId: text("stripe_price_id"), // Which price they're subscribed to
   trialEndsAt: timestamp("trial_ends_at"),
+  // User-Based Billing Information
+  billingUserCount: integer("billing_user_count").notNull().default(0), // Number of billable users (for tracking subscription quantity)
+  billingPricePerUser: integer("billing_price_per_user").notNull().default(0), // Price per user/seat (in cents)
+  billingPeriodStart: timestamp("billing_period_start"), // Current billing period start date
+  billingPeriodEnd: timestamp("billing_period_end"), // Current billing period end date
+  pendingBillingChanges: jsonb("pending_billing_changes"), // JSON field to track pending user changes
   // Organization Settings
   timezone: text("timezone").notNull().default("America/Chicago"),
   weeklyCheckInSchedule: text("weekly_check_in_schedule").notNull().default("friday"), // monday, tuesday, etc.
@@ -394,6 +400,28 @@ export const vacations = pgTable("vacations", {
   orgUserWeekOfIdx: index("vacations_org_user_week_of_idx").on(table.organizationId, table.userId, table.weekOf),
   // Unique constraint to prevent duplicate vacation entries for the same user and week
   orgUserWeekOfUnique: unique("vacations_org_user_week_of_unique").on(table.organizationId, table.userId, table.weekOf),
+}));
+
+// Billing Events table for tracking all billing-related changes
+export const billingEvents = pgTable("billing_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  eventType: text("event_type").notNull(), // user_added, user_removed, subscription_updated, pro_rata_charge, etc.
+  userId: varchar("user_id"), // User that triggered the event (if applicable)
+  userCount: integer("user_count").notNull(), // User count at time of event
+  previousUserCount: integer("previous_user_count"), // Previous user count
+  amount: integer("amount"), // Amount in cents (for charges/refunds)
+  currency: text("currency").notNull().default("usd"),
+  stripeInvoiceItemId: text("stripe_invoice_item_id"), // Stripe invoice item ID if charge was created
+  stripeSubscriptionId: text("stripe_subscription_id"), // Related subscription ID
+  description: text("description"), // Human-readable description
+  metadata: jsonb("metadata"), // Additional event data
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgIdx: index("billing_events_org_idx").on(table.organizationId),
+  orgCreatedAtIdx: index("billing_events_org_created_at_idx").on(table.organizationId, table.createdAt),
+  eventTypeIdx: index("billing_events_event_type_idx").on(table.eventType),
+  userIdx: index("billing_events_user_idx").on(table.userId),
 }));
 
 // Analytics Tables for Daily Aggregates
@@ -745,6 +773,21 @@ export const insertVacationSchema = createInsertSchema(vacations).omit({
   note: z.string().max(500, "Vacation note too long").optional(),
 });
 
+export const insertBillingEventSchema = createInsertSchema(billingEvents).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  eventType: z.string().min(1, "Event type is required"),
+  userCount: z.number().int().min(0, "User count must be non-negative"),
+  previousUserCount: z.number().int().min(0).optional(),
+  amount: z.number().int().optional(),
+  currency: z.string().default("usd"),
+  stripeInvoiceItemId: z.string().optional(),
+  stripeSubscriptionId: z.string().optional(),
+  description: z.string().optional(),
+  metadata: z.any().optional(),
+});
+
 export const insertPulseMetricsDailySchema = createInsertSchema(pulseMetricsDaily).omit({
   id: true,
   createdAt: true,
@@ -915,6 +958,9 @@ export type Shoutout = typeof shoutouts.$inferSelect;
 
 export type InsertVacation = z.infer<typeof insertVacationSchema>;
 export type Vacation = typeof vacations.$inferSelect;
+
+export type InsertBillingEvent = z.infer<typeof insertBillingEventSchema>;
+export type BillingEvent = typeof billingEvents.$inferSelect;
 
 export type InsertPulseMetricsDaily = z.infer<typeof insertPulseMetricsDailySchema>;
 export type PulseMetricsDaily = typeof pulseMetricsDaily.$inferSelect;

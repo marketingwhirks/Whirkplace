@@ -16,15 +16,16 @@ import {
   insertPartnerApplicationSchema, insertPartnerFirmSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType, type Checkin,
-  organizations
+  organizations, billingEvents
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, desc } from "drizzle-orm";
 import Stripe from "stripe";
 import { WebClient } from "@slack/web-api";
 import { sendCheckinReminder, announceWin, sendPrivateWinNotification, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo } from "./services/slack";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { aggregationService } from "./services/aggregation";
+import { billingService } from "./services/billing";
 import { requireOrganization, resolveOrganization, sanitizeForOrganization } from "./middleware/organization";
 import { authenticateUser, requireAuth, requireRole, requireTeamLead, requireSuperAdmin, requirePartnerAdmin, requireOnboarded } from "./middleware/auth";
 import { generateCSRF, validateCSRF, csrfTokenEndpoint } from "./middleware/csrf";
@@ -11093,6 +11094,206 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Stripe Webhook Handler for billing events
+  app.post("/api/stripe/webhook", async (req, res) => {
+    if (!stripe) {
+      return res.status(503).json({ message: "Payment processing not available" });
+    }
+
+    const sig = req.headers['stripe-signature'] as string;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    if (!webhookSecret) {
+      console.error("STRIPE_WEBHOOK_SECRET not configured");
+      return res.status(500).json({ message: "Webhook not configured" });
+    }
+
+    let event: any;
+
+    try {
+      // Verify webhook signature
+      event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err: any) {
+      console.error("Webhook signature verification failed:", err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // Handle the event
+    try {
+      switch (event.type) {
+        case 'customer.subscription.updated':
+        case 'customer.subscription.deleted':
+          const subscription = event.data.object;
+          
+          // Find organization by Stripe subscription ID
+          const orgs = await storage.getAllOrganizations();
+          const org = orgs.find(o => o.stripeSubscriptionId === subscription.id);
+          
+          if (org) {
+            // Update subscription status and billing period
+            await storage.updateOrganization(org.id, {
+              stripeSubscriptionStatus: subscription.status,
+              billingPeriodStart: new Date(subscription.current_period_start * 1000),
+              billingPeriodEnd: new Date(subscription.current_period_end * 1000),
+            });
+
+            // If subscription renewed, apply pending billing changes
+            if (event.type === 'customer.subscription.updated' && 
+                subscription.status === 'active' && 
+                org.pendingBillingChanges) {
+              await billingService.processBillingPeriodEnd(org);
+            }
+            
+            console.log(`Updated subscription for org ${org.id}: ${subscription.status}`);
+          }
+          break;
+
+        case 'invoice.payment_succeeded':
+          const invoice = event.data.object;
+          
+          // Find organization by Stripe customer ID
+          const organizations = await storage.getAllOrganizations();
+          const organization = organizations.find(o => o.stripeCustomerId === invoice.customer);
+          
+          if (organization && invoice.subscription) {
+            // Sync billing period from subscription
+            await billingService.syncBillingPeriod(organization);
+            
+            // Track billing event
+            await billingService.trackBillingChange({
+              organizationId: organization.id,
+              eventType: 'invoice_payment_succeeded',
+              userCount: organization.billingUserCount || 0,
+              amount: invoice.amount_paid,
+              description: `Invoice ${invoice.number} paid`,
+              stripeSubscriptionId: invoice.subscription as string,
+              metadata: {
+                invoiceId: invoice.id,
+                invoiceNumber: invoice.number,
+              },
+            });
+            
+            console.log(`Invoice payment succeeded for org ${organization.id}`);
+          }
+          break;
+
+        case 'checkout.session.completed':
+          const session = event.data.object;
+          
+          if (session.mode === 'subscription' && session.subscription && session.client_reference_id) {
+            // Update organization with subscription details
+            const orgId = session.client_reference_id;
+            const subscriptionId = session.subscription as string;
+            
+            // Retrieve subscription details
+            const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+            
+            await storage.updateOrganization(orgId, {
+              stripeCustomerId: session.customer as string,
+              stripeSubscriptionId: subscriptionId,
+              stripeSubscriptionStatus: subscription.status,
+              billingPeriodStart: new Date(subscription.current_period_start * 1000),
+              billingPeriodEnd: new Date(subscription.current_period_end * 1000),
+            });
+            
+            console.log(`Checkout completed for org ${orgId}`);
+          }
+          break;
+
+        default:
+          console.log(`Unhandled webhook event type: ${event.type}`);
+      }
+      
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Error processing webhook:", error);
+      res.status(500).json({ message: "Webhook processing failed" });
+    }
+  });
+
+  // Billing Management Endpoints
+  app.get("/api/billing/usage", requireAuth(), async (req, res) => {
+    try {
+      const usage = await billingService.getCurrentBillingUsage(req.orgId);
+      
+      res.json({
+        currentUserCount: usage.currentUserCount,
+        billedUserCount: usage.billedUserCount,
+        pendingChanges: usage.pendingChanges,
+        currentPeriodStart: usage.currentPeriodStart,
+        currentPeriodEnd: usage.currentPeriodEnd,
+        pricePerUser: usage.pricePerUser,
+        estimatedMonthlyCharge: usage.billedUserCount * usage.pricePerUser,
+      });
+    } catch (error) {
+      console.error("Error fetching billing usage:", error);
+      res.status(500).json({ message: "Failed to fetch billing usage" });
+    }
+  });
+
+  app.post("/api/billing/preview-changes", requireAuth(), async (req, res) => {
+    try {
+      const previewSchema = z.object({
+        addUsers: z.number().int().min(0).default(0),
+        removeUsers: z.number().int().min(0).default(0),
+      });
+
+      const { addUsers, removeUsers } = previewSchema.parse(req.body);
+      
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      const usage = await billingService.getCurrentBillingUsage(req.orgId);
+      const newUserCount = Math.max(0, usage.currentUserCount + addUsers - removeUsers);
+      
+      // Calculate pro-rata charge for adding users
+      let proRataCharge = 0;
+      if (addUsers > 0) {
+        proRataCharge = await billingService.calculateProRataCharge(organization, usage.currentUserCount + addUsers);
+      }
+
+      res.json({
+        currentUserCount: usage.currentUserCount,
+        newUserCount: newUserCount,
+        usersAdded: addUsers,
+        usersRemoved: removeUsers,
+        proRataCharge: proRataCharge,
+        pricePerUser: usage.pricePerUser,
+        currentMonthlyCharge: usage.currentUserCount * usage.pricePerUser,
+        newMonthlyCharge: newUserCount * usage.pricePerUser,
+        chargeToday: proRataCharge,
+        nextBillingPeriodChange: removeUsers > 0 ? `Seats will be reduced by ${removeUsers} on next billing cycle` : null,
+      });
+    } catch (error: any) {
+      console.error("Error previewing billing changes:", error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Validation error", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Failed to preview billing changes" });
+    }
+  });
+
+  app.get("/api/billing/history", requireAuth(), requireRole(["admin"]), async (req, res) => {
+    try {
+      // Get billing events for the organization
+      const events = await db
+        .select()
+        .from(billingEvents)
+        .where(eq(billingEvents.organizationId, req.orgId))
+        .orderBy(desc(billingEvents.createdAt))
+        .limit(100);
+      
+      res.json(events);
+    } catch (error) {
+      console.error("Error fetching billing history:", error);
+      res.status(500).json({ message: "Failed to fetch billing history" });
+    }
+  });
 
   // Support & Bug Reporting System
   app.post("/api/support/reports", requireAuth(), async (req, res) => {
