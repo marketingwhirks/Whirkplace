@@ -63,7 +63,7 @@ interface PreviewChanges {
 
 export default function BillingPage() {
   const { toast } = useToast();
-  const { data: currentUser } = useCurrentUser();
+  const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const [previewUsers, setPreviewUsers] = useState({ add: 0, remove: 0 });
   const [showPreview, setShowPreview] = useState(false);
 
@@ -128,7 +128,10 @@ export default function BillingPage() {
       });
       return;
     }
-    previewChangesMutation.mutate(previewUsers);
+    previewChangesMutation.mutate({ 
+      addUsers: previewUsers.add, 
+      removeUsers: previewUsers.remove 
+    });
   };
 
   const formatCurrency = (cents: number) => {
@@ -137,6 +140,15 @@ export default function BillingPage() {
       currency: 'USD',
     }).format(cents / 100);
   };
+
+  if (userLoading) {
+    return (
+      <div className="container mx-auto py-6">
+        <Skeleton className="h-8 w-48 mb-4" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
 
   if (currentUser?.role !== 'admin') {
     return (
