@@ -9534,7 +9534,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Configure Slack OAuth integration
+  // Update Slack channel settings only
+  app.patch("/api/organizations/:id/integrations/slack/channel", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const targetOrgId = req.params.id;
+      const userOrgId = req.orgId || req.currentUser?.organizationId;
+      const canUpdateAnyOrg = req.currentUser?.isSuperAdmin === true;
+      
+      // Verify permissions
+      if (!canUpdateAnyOrg && targetOrgId !== userOrgId) {
+        return res.status(403).json({ 
+          message: "You can only update your own organization"
+        });
+      }
+      
+      const channelUpdateSchema = z.object({
+        channelId: z.string(),
+        enable: z.boolean().optional()
+      });
+      
+      const { channelId, enable } = channelUpdateSchema.parse(req.body);
+      
+      // Update only the channel-related fields
+      const updateData: any = {
+        slackChannelId: channelId
+      };
+      
+      if (enable !== undefined) {
+        updateData.enableSlackIntegration = enable;
+      }
+      
+      const updatedOrganization = await storage.updateOrganization(targetOrgId, updateData);
+      if (!updatedOrganization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({ 
+        message: "Slack channel settings updated successfully",
+        channelId: updatedOrganization.slackChannelId
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid channel settings", errors: error.errors });
+      }
+      console.error("PATCH /api/organizations/:id/integrations/slack/channel - Error:", error);
+      res.status(500).json({ message: "Failed to update Slack channel settings" });
+    }
+  });
+
+  // Configure Slack OAuth integration (full configuration)
   app.put("/api/organizations/:id/integrations/slack", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
       // Debug logging for organization IDs

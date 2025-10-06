@@ -582,7 +582,7 @@ export function IntegrationsDashboard() {
         throw new Error('Organization context is missing. Please refresh the page and try again.');
       }
       
-      const response = await apiRequest("PUT", `/api/organizations/${organizationId}/integrations/slack`, data);
+      const response = await apiRequest("PATCH", `/api/organizations/${organizationId}/integrations/slack/channel`, data);
       return await response.json();
     },
     onSuccess: () => {
