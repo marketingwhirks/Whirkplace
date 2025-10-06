@@ -3,8 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { formatDistanceToNow } from "date-fns";
-import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle, Check, InfoIcon } from "lucide-react";
+import { formatDistanceToNow, format } from "date-fns";
+import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle, Check, InfoIcon, Flame, Medal, TrendingUp, Award } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,6 +63,43 @@ export default function Wins() {
 
   // Fetch current user for defaults
   const { data: currentUser } = useCurrentUser();
+  
+  // Fetch team leaderboard
+  const [leaderboardPeriod, setLeaderboardPeriod] = useState<"all" | "week" | "month">("all");
+  const { data: leaderboard = [] } = useQuery<Array<{
+    teamId: string;
+    teamName: string;
+    totalWins: number;
+    points: number;
+    currentStreak: number;
+    longestStreak: number;
+    rank: number;
+  }>>({
+    queryKey: [`/api/wins/leaderboard?period=${leaderboardPeriod}`],
+  });
+
+  // Fetch current user's team stats
+  const { data: teamStats } = useQuery<{
+    totalWins: number;
+    points: number;
+    currentStreak: number;
+    longestStreak: number;
+    badges: Array<{
+      id: string;
+      name: string;
+      description: string;
+      earnedDate: Date;
+      icon: string;
+    }>;
+    weeklyWins: Array<{
+      week: Date;
+      count: number;
+    }>;
+    recentWins: Win[];
+  }>({
+    queryKey: [`/api/wins/team-stats/${currentUser?.teamId}`],
+    enabled: !!currentUser?.teamId,
+  });
 
   // Create win form
   const createForm = useForm<WinForm>({
@@ -260,6 +297,153 @@ export default function Wins() {
               Wins are personal or professional achievements worth celebrating. Share your successes, milestones, and accomplishments with your team to foster a culture of recognition and positivity.
             </AlertDescription>
           </Alert>
+
+          {/* Team Leaderboard Section */}
+          <Card className="border-primary/20">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Trophy className="h-5 w-5 text-yellow-500" />
+                  <CardTitle>Team Leaderboard</CardTitle>
+                </div>
+                <Tabs value={leaderboardPeriod} onValueChange={(value) => setLeaderboardPeriod(value as any)} className="w-auto">
+                  <TabsList className="grid grid-cols-3">
+                    <TabsTrigger value="all" data-testid="leaderboard-filter-all">All Time</TabsTrigger>
+                    <TabsTrigger value="month" data-testid="leaderboard-filter-month">This Month</TabsTrigger>
+                    <TabsTrigger value="week" data-testid="leaderboard-filter-week">This Week</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {leaderboard.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  No team wins recorded yet
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {leaderboard.slice(0, 5).map((team) => (
+                    <div
+                      key={team.teamId}
+                      className={`flex items-center justify-between p-3 rounded-lg transition-colors ${
+                        currentUser?.teamId === team.teamId ? 'bg-primary/10 border border-primary/20' : 'bg-muted/50'
+                      }`}
+                      data-testid={`leaderboard-team-${team.teamId}`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="flex items-center justify-center w-8 h-8">
+                          {team.rank === 1 && <span className="text-2xl">🥇</span>}
+                          {team.rank === 2 && <span className="text-2xl">🥈</span>}
+                          {team.rank === 3 && <span className="text-2xl">🥉</span>}
+                          {team.rank > 3 && (
+                            <span className="text-lg font-semibold text-muted-foreground">#{team.rank}</span>
+                          )}
+                        </div>
+                        <div>
+                          <div className="font-semibold flex items-center space-x-2">
+                            <span>{team.teamName}</span>
+                            {team.currentStreak > 3 && (
+                              <div className="flex items-center space-x-1" title={`${team.currentStreak} week streak!`}>
+                                <Flame className="h-4 w-4 text-orange-500" />
+                                <span className="text-xs text-orange-500 font-bold">{team.currentStreak}</span>
+                              </div>
+                            )}
+                            {currentUser?.teamId === team.teamId && (
+                              <Badge variant="secondary" className="text-xs">Your Team</Badge>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {team.totalWins} wins · {team.points} points
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {team.currentStreak > 0 && team.currentStreak <= 3 && (
+                          <div className="text-sm text-muted-foreground">
+                            {team.currentStreak} week streak
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Team Stats Card for Current User's Team */}
+          {teamStats && currentUser?.teamId && (
+            <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+              <CardHeader>
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                  <CardTitle>Your Team Stats</CardTitle>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Stats Overview */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="text-center p-3 bg-background rounded-lg">
+                    <div className="text-2xl font-bold text-primary">{teamStats.totalWins}</div>
+                    <div className="text-xs text-muted-foreground">Total Wins</div>
+                  </div>
+                  <div className="text-center p-3 bg-background rounded-lg">
+                    <div className="text-2xl font-bold text-primary">{teamStats.points}</div>
+                    <div className="text-xs text-muted-foreground">Points</div>
+                  </div>
+                  <div className="text-center p-3 bg-background rounded-lg">
+                    <div className="text-2xl font-bold text-primary flex items-center justify-center">
+                      {teamStats.currentStreak}
+                      {teamStats.currentStreak > 3 && <Flame className="h-5 w-5 ml-1 text-orange-500" />}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Current Streak</div>
+                  </div>
+                  <div className="text-center p-3 bg-background rounded-lg">
+                    <div className="text-2xl font-bold text-primary">{teamStats.longestStreak}</div>
+                    <div className="text-xs text-muted-foreground">Best Streak</div>
+                  </div>
+                </div>
+
+                {/* Badges Section */}
+                {teamStats.badges.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-semibold mb-2 flex items-center">
+                      <Award className="h-4 w-4 mr-1" />
+                      Achievements Earned
+                    </h4>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                      {teamStats.badges.map((badge) => (
+                        <div
+                          key={badge.id}
+                          className="flex items-center space-x-2 p-2 bg-background rounded-lg"
+                          title={badge.description}
+                          data-testid={`badge-${badge.id}`}
+                        >
+                          <span className="text-xl">{badge.icon}</span>
+                          <div className="flex-1">
+                            <div className="text-sm font-medium">{badge.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {badge.earnedDate && format(new Date(badge.earnedDate), 'MMM d')}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Streak Message */}
+                {teamStats.currentStreak > 3 && (
+                  <Alert className="border-orange-200 bg-orange-50 dark:bg-orange-950/20">
+                    <Flame className="h-4 w-4 text-orange-500" />
+                    <AlertDescription className="text-orange-700 dark:text-orange-400">
+                      Your team is on a {teamStats.currentStreak}-week win streak! Keep the momentum going! 🔥
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Actions Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

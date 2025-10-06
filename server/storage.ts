@@ -194,6 +194,35 @@ export interface IStorage {
   deleteWin(organizationId: string, id: string): Promise<boolean>;
   getRecentWins(organizationId: string, limit?: number): Promise<Win[]>;
   getPublicWins(organizationId: string, limit?: number): Promise<Win[]>;
+  
+  // Team Win Gamification
+  getTeamWinLeaderboard(organizationId: string, period?: 'all' | 'week' | 'month'): Promise<Array<{
+    teamId: string;
+    teamName: string;
+    totalWins: number;
+    points: number;
+    currentStreak: number;
+    longestStreak: number;
+    rank: number;
+  }>>;
+  getTeamWinStats(organizationId: string, teamId: string): Promise<{
+    totalWins: number;
+    points: number;
+    currentStreak: number;
+    longestStreak: number;
+    badges: Array<{
+      id: string;
+      name: string;
+      description: string;
+      earnedDate: Date;
+      icon: string;
+    }>;
+    weeklyWins: Array<{
+      week: Date;
+      count: number;
+    }>;
+    recentWins: Win[];
+  } | undefined>;
 
   // Comments
   getComment(organizationId: string, id: string): Promise<Comment | undefined>;
@@ -1773,6 +1802,378 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(wins.createdAt))
       .limit(limit);
+  }
+
+  // Team Win Gamification Methods
+  async getTeamWinLeaderboard(organizationId: string, period: 'all' | 'week' | 'month' = 'all'): Promise<Array<{
+    teamId: string;
+    teamName: string;
+    totalWins: number;
+    points: number;
+    currentStreak: number;
+    longestStreak: number;
+    rank: number;
+  }>> {
+    try {
+      // Get all teams in the organization
+      const allTeams = await db
+        .select()
+        .from(teams)
+        .where(eq(teams.organizationId, organizationId));
+
+      // Get all wins with user team information
+      const winsWithTeams = await db
+        .select({
+          win: wins,
+          user: users,
+          team: teams,
+        })
+        .from(wins)
+        .leftJoin(users, eq(wins.userId, users.id))
+        .leftJoin(teams, eq(users.teamId, teams.id))
+        .where(eq(wins.organizationId, organizationId))
+        .orderBy(wins.createdAt);
+
+      // Calculate date filter based on period
+      const now = new Date();
+      let dateFilter: Date | undefined;
+      
+      if (period === 'week') {
+        dateFilter = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      } else if (period === 'month') {
+        dateFilter = new Date(now.getFullYear(), now.getMonth(), 1);
+      }
+
+      // Process wins by team
+      const teamStats = new Map<string, {
+        teamId: string;
+        teamName: string;
+        wins: Array<{ date: Date }>;
+        totalWins: number;
+        points: number;
+      }>();
+
+      // Initialize all teams with 0 wins
+      for (const team of allTeams) {
+        teamStats.set(team.id, {
+          teamId: team.id,
+          teamName: team.name,
+          wins: [],
+          totalWins: 0,
+          points: 0,
+        });
+      }
+
+      // Count wins per team
+      for (const row of winsWithTeams) {
+        if (row.team && row.win) {
+          const winDate = new Date(row.win.createdAt);
+          
+          // Apply date filter if specified
+          if (!dateFilter || winDate >= dateFilter) {
+            const stat = teamStats.get(row.team.id);
+            if (stat) {
+              stat.wins.push({ date: winDate });
+              stat.totalWins++;
+              stat.points = stat.totalWins * 10; // 10 points per win
+            }
+          }
+        }
+      }
+
+      // Calculate streaks for each team
+      const leaderboard = Array.from(teamStats.values()).map(stat => {
+        const { currentStreak, longestStreak } = this.calculateWinStreaks(stat.wins);
+        
+        return {
+          teamId: stat.teamId,
+          teamName: stat.teamName,
+          totalWins: stat.totalWins,
+          points: stat.points,
+          currentStreak,
+          longestStreak,
+          rank: 0, // Will be set after sorting
+        };
+      });
+
+      // Sort by points (descending) and assign ranks
+      leaderboard.sort((a, b) => b.points - a.points);
+      leaderboard.forEach((team, index) => {
+        team.rank = index + 1;
+      });
+
+      return leaderboard;
+    } catch (error) {
+      console.error("Failed to get team win leaderboard:", error);
+      return [];
+    }
+  }
+
+  async getTeamWinStats(organizationId: string, teamId: string): Promise<{
+    totalWins: number;
+    points: number;
+    currentStreak: number;
+    longestStreak: number;
+    badges: Array<{
+      id: string;
+      name: string;
+      description: string;
+      earnedDate: Date;
+      icon: string;
+    }>;
+    weeklyWins: Array<{
+      week: Date;
+      count: number;
+    }>;
+    recentWins: Win[];
+  } | undefined> {
+    try {
+      // Check if team exists
+      const [team] = await db
+        .select()
+        .from(teams)
+        .where(and(
+          eq(teams.id, teamId),
+          eq(teams.organizationId, organizationId)
+        ));
+
+      if (!team) {
+        return undefined;
+      }
+
+      // Get all wins for users in this team
+      const teamWins = await db
+        .select({
+          win: wins,
+        })
+        .from(wins)
+        .leftJoin(users, eq(wins.userId, users.id))
+        .where(and(
+          eq(wins.organizationId, organizationId),
+          eq(users.teamId, teamId)
+        ))
+        .orderBy(desc(wins.createdAt));
+
+      const allWins = teamWins.map(row => row.win).filter(Boolean) as Win[];
+      const totalWins = allWins.length;
+      const points = totalWins * 10;
+
+      // Calculate streaks
+      const winDates = allWins.map(w => ({ date: new Date(w.createdAt) }));
+      const { currentStreak, longestStreak } = this.calculateWinStreaks(winDates);
+
+      // Calculate weekly wins for the last 12 weeks
+      const weeklyWins = this.calculateWeeklyWins(allWins);
+
+      // Calculate badges
+      const badges = await this.calculateTeamBadges(organizationId, teamId, allWins, currentStreak, longestStreak);
+
+      // Get recent wins (last 5)
+      const recentWins = allWins.slice(0, 5);
+
+      return {
+        totalWins,
+        points,
+        currentStreak,
+        longestStreak,
+        badges,
+        weeklyWins,
+        recentWins,
+      };
+    } catch (error) {
+      console.error("Failed to get team win stats:", error);
+      return undefined;
+    }
+  }
+
+  // Helper method to calculate win streaks
+  private calculateWinStreaks(wins: Array<{ date: Date }>): { currentStreak: number; longestStreak: number } {
+    if (wins.length === 0) {
+      return { currentStreak: 0, longestStreak: 0 };
+    }
+
+    // Group wins by week
+    const weekMap = new Map<string, boolean>();
+    
+    for (const win of wins) {
+      const weekKey = this.getWeekKey(win.date);
+      weekMap.set(weekKey, true);
+    }
+
+    // Get sorted weeks
+    const weeks = Array.from(weekMap.keys()).sort();
+    
+    if (weeks.length === 0) {
+      return { currentStreak: 0, longestStreak: 0 };
+    }
+
+    // Calculate streaks
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let tempStreak = 1;
+
+    // Check if the last week has wins (for current streak)
+    const currentWeekKey = this.getWeekKey(new Date());
+    const lastWeekKey = this.getWeekKey(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+    
+    if (weeks[weeks.length - 1] === currentWeekKey || weeks[weeks.length - 1] === lastWeekKey) {
+      currentStreak = 1;
+      
+      // Count backwards for current streak
+      for (let i = weeks.length - 2; i >= 0; i--) {
+        const weekDate1 = this.parseWeekKey(weeks[i]);
+        const weekDate2 = this.parseWeekKey(weeks[i + 1]);
+        const weekDiff = Math.abs(weekDate2.getTime() - weekDate1.getTime()) / (7 * 24 * 60 * 60 * 1000);
+        
+        if (weekDiff <= 1.5) { // Allow for slight date calculation differences
+          currentStreak++;
+        } else {
+          break;
+        }
+      }
+    }
+
+    // Calculate longest streak
+    tempStreak = 1;
+    for (let i = 1; i < weeks.length; i++) {
+      const weekDate1 = this.parseWeekKey(weeks[i - 1]);
+      const weekDate2 = this.parseWeekKey(weeks[i]);
+      const weekDiff = Math.abs(weekDate2.getTime() - weekDate1.getTime()) / (7 * 24 * 60 * 60 * 1000);
+      
+      if (weekDiff <= 1.5) {
+        tempStreak++;
+      } else {
+        longestStreak = Math.max(longestStreak, tempStreak);
+        tempStreak = 1;
+      }
+    }
+    longestStreak = Math.max(longestStreak, tempStreak);
+
+    return { currentStreak, longestStreak };
+  }
+
+  // Helper method to get week key for grouping
+  private getWeekKey(date: Date): string {
+    const startOfWeek = new Date(date);
+    const day = startOfWeek.getDay();
+    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
+    startOfWeek.setDate(diff);
+    startOfWeek.setHours(0, 0, 0, 0);
+    return startOfWeek.toISOString().split('T')[0];
+  }
+
+  // Helper method to parse week key back to date
+  private parseWeekKey(weekKey: string): Date {
+    return new Date(weekKey);
+  }
+
+  // Helper method to calculate weekly wins
+  private calculateWeeklyWins(wins: Win[]): Array<{ week: Date; count: number }> {
+    const weeklyMap = new Map<string, number>();
+    
+    // Count wins per week
+    for (const win of wins) {
+      const weekKey = this.getWeekKey(new Date(win.createdAt));
+      weeklyMap.set(weekKey, (weeklyMap.get(weekKey) || 0) + 1);
+    }
+
+    // Get last 12 weeks
+    const result: Array<{ week: Date; count: number }> = [];
+    const currentDate = new Date();
+    
+    for (let i = 0; i < 12; i++) {
+      const weekDate = new Date(currentDate.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+      const weekKey = this.getWeekKey(weekDate);
+      
+      result.unshift({
+        week: this.parseWeekKey(weekKey),
+        count: weeklyMap.get(weekKey) || 0,
+      });
+    }
+
+    return result;
+  }
+
+  // Helper method to calculate team badges
+  private async calculateTeamBadges(
+    organizationId: string,
+    teamId: string,
+    wins: Win[],
+    currentStreak: number,
+    longestStreak: number
+  ): Promise<Array<{
+    id: string;
+    name: string;
+    description: string;
+    earnedDate: Date;
+    icon: string;
+  }>> {
+    const badges: Array<{
+      id: string;
+      name: string;
+      description: string;
+      earnedDate: Date;
+      icon: string;
+    }> = [];
+
+    // First Win badge
+    if (wins.length > 0) {
+      const firstWin = wins[wins.length - 1]; // Sorted desc, so last is first
+      badges.push({
+        id: 'first-win',
+        name: 'First Win',
+        description: "Team's first win celebration",
+        earnedDate: new Date(firstWin.createdAt),
+        icon: '🎉',
+      });
+    }
+
+    // Win Streak badge (3+ consecutive weeks)
+    if (longestStreak >= 3) {
+      badges.push({
+        id: 'win-streak',
+        name: 'Win Streak',
+        description: `Achieved a ${longestStreak}-week win streak`,
+        earnedDate: new Date(), // Would need to track when this was first achieved
+        icon: '🔥',
+      });
+    }
+
+    // Win Champion badge (most wins in current month)
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const monthlyWins = wins.filter(w => {
+      const winDate = new Date(w.createdAt);
+      return winDate.getMonth() === currentMonth && winDate.getFullYear() === currentYear;
+    });
+
+    if (monthlyWins.length > 0) {
+      // Check if this team has the most wins this month
+      const leaderboard = await this.getTeamWinLeaderboard(organizationId, 'month');
+      if (leaderboard[0]?.teamId === teamId) {
+        badges.push({
+          id: 'win-champion',
+          name: 'Win Champion',
+          description: 'Most wins this month',
+          earnedDate: new Date(),
+          icon: '🏆',
+        });
+      }
+    }
+
+    // Team Player badge (team with most collaborative wins - wins nominated by others)
+    const collaborativeWins = wins.filter(w => w.nominatedBy && w.nominatedBy !== w.userId);
+    if (collaborativeWins.length >= 5) {
+      badges.push({
+        id: 'team-player',
+        name: 'Team Player',
+        description: `${collaborativeWins.length} collaborative wins`,
+        earnedDate: new Date(),
+        icon: '🤝',
+      });
+    }
+
+    return badges;
   }
 
   // Comments

@@ -5083,6 +5083,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Team Win Gamification Endpoints
+  app.get("/api/wins/leaderboard", requireAuth(), async (req, res) => {
+    try {
+      const { period } = req.query;
+      const validPeriods = ['all', 'week', 'month'];
+      const selectedPeriod = validPeriods.includes(period as string) ? period as 'all' | 'week' | 'month' : 'all';
+      
+      const leaderboard = await storage.getTeamWinLeaderboard(req.orgId, selectedPeriod);
+      res.json(leaderboard);
+    } catch (error) {
+      console.error("Failed to fetch team win leaderboard:", error);
+      res.status(500).json({ message: "Failed to fetch team leaderboard" });
+    }
+  });
+
+  app.get("/api/wins/team-stats/:teamId", requireAuth(), async (req, res) => {
+    try {
+      const { teamId } = req.params;
+      
+      // Verify the team belongs to the organization
+      const team = await storage.getTeam(req.orgId, teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      // Check if user has access to view this team's stats
+      const currentUser = await storage.getUser(req.orgId, req.currentUser!.id);
+      if (!currentUser && !req.currentUser?.isSuperAdmin) {
+        return res.status(401).json({ message: "User not found" });
+      }
+      
+      // Users can view their own team stats, managers can view their teams, admins can view all
+      if (currentUser && currentUser.role !== 'admin' && currentUser.teamId !== teamId) {
+        if (currentUser.role !== 'manager' || team.leaderId !== currentUser.id) {
+          return res.status(403).json({ message: "Not authorized to view this team's stats" });
+        }
+      }
+      
+      const stats = await storage.getTeamWinStats(req.orgId, teamId);
+      if (!stats) {
+        return res.status(404).json({ message: "Team stats not found" });
+      }
+      
+      res.json(stats);
+    } catch (error) {
+      console.error("Failed to fetch team win stats:", error);
+      res.status(500).json({ message: "Failed to fetch team stats" });
+    }
+  });
+
   // Helper function to get direct reports and team members as a Set for efficient lookup
   const getDirectReportsSet = async (orgId: string, managerId: string): Promise<Set<string>> => {
     const directReports = await storage.getUsersByManager(orgId, managerId);
