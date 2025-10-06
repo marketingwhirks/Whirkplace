@@ -788,49 +788,139 @@ export async function sendCheckinReminder(userNames: string[], questions: Array<
 }
 
 /**
- * Announce a win to Slack
+ * Announce a public win to the organization's configured Slack channel
  */
-export async function announceWin(winTitle: string, winDescription: string, userName: string, nominatedBy?: string) {
-  if (!slack) return;
+export async function announceWin(
+  winTitle: string, 
+  winDescription: string, 
+  userName: string, 
+  nominatedBy?: string,
+  channelId?: string
+) {
+  if (!slack) {
+    console.log("Slack client not configured, skipping win announcement");
+    return;
+  }
 
-  const channel = process.env.SLACK_CHANNEL_ID;
+  // Use provided channel ID or fall back to environment variable
+  const channel = channelId || process.env.SLACK_CHANNEL_ID;
   if (!channel) {
-    console.warn("SLACK_CHANNEL_ID not configured. Win announcement not sent for security.");
+    console.warn("No Slack channel configured for win announcements");
     return;
   }
   
   const announcement = nominatedBy 
-    ? `🎉 ${nominatedBy} wants to celebrate ${userName}!` 
-    : `🎉 Let's celebrate ${userName}!`;
+    ? `🏆 ${nominatedBy} recognized ${userName}` 
+    : `🏆 Let's celebrate ${userName}!`;
 
-  const messageId = await sendSlackMessage({
-    channel,
-    blocks: [
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*${announcement}*`
+  try {
+    const messageId = await sendSlackMessage({
+      channel,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*${announcement}*`
+          }
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*${winTitle}*\n${winDescription}`
+          }
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: 'Great work! 🚀✨'
+          }
         }
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: `*${winTitle}*\n${winDescription}`
-        }
-      },
-      {
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: 'Great work! 🚀✨'
-        }
-      }
-    ]
-  });
+      ],
+      text: `${announcement}: ${winTitle}`
+    });
 
-  return messageId;
+    console.log(`✅ Public win announced to channel ${channel}`);
+    return messageId;
+  } catch (error) {
+    console.error('Error announcing win to Slack channel:', error);
+    // Don't throw - win creation should succeed even if Slack fails
+    return undefined;
+  }
+}
+
+/**
+ * Send a private win notification as a DM to the recipient
+ */
+export async function sendPrivateWinNotification(
+  winTitle: string,
+  winDescription: string,
+  recipientSlackId: string,
+  recipientName: string,
+  senderName: string,
+  nominatedBy?: string
+) {
+  if (!slack) {
+    console.log("Slack client not configured, skipping private win notification");
+    return;
+  }
+
+  if (!recipientSlackId) {
+    console.log(`No Slack ID for recipient ${recipientName}, skipping DM`);
+    return;
+  }
+
+  const sender = nominatedBy || senderName;
+  
+  try {
+    // Open a DM channel with the recipient
+    const dmResult = await slack.conversations.open({
+      users: recipientSlackId
+    });
+
+    if (!dmResult.ok || !dmResult.channel?.id) {
+      console.error(`Failed to open DM channel with ${recipientName}:`, dmResult.error);
+      return;
+    }
+
+    // Send the private win notification
+    const messageId = await sendSlackMessage({
+      channel: dmResult.channel.id,
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `🎉 *You've been recognized by ${sender}!*`
+          }
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `*${winTitle}*\n${winDescription}`
+          }
+        },
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: 'Keep up the amazing work! 🌟'
+          }
+        }
+      ],
+      text: `You've been recognized by ${sender}: ${winTitle}`
+    });
+
+    console.log(`✅ Private win notification sent to ${recipientName} (${recipientSlackId})`);
+    return messageId;
+  } catch (error) {
+    console.error(`Error sending private win DM to ${recipientName}:`, error);
+    // Don't throw - win creation should succeed even if Slack fails
+    return undefined;
+  }
 }
 
 /**

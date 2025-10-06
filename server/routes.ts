@@ -21,7 +21,7 @@ import {
 import { eq } from "drizzle-orm";
 import Stripe from "stripe";
 import { WebClient } from "@slack/web-api";
-import { sendCheckinReminder, announceWin, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo } from "./services/slack";
+import { sendCheckinReminder, announceWin, sendPrivateWinNotification, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo } from "./services/slack";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { aggregationService } from "./services/aggregation";
@@ -4830,27 +4830,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sanitizedData = sanitizeForOrganization(winData, req.orgId);
       const win = await storage.createWin(req.orgId, sanitizedData);
       
-      // Announce to Slack if public
-      if (win.isPublic) {
-        const user = await storage.getUser(req.orgId, win.userId);
-        const nominator = win.nominatedBy ? await storage.getUser(req.orgId, win.nominatedBy) : null;
-        
-        if (user) {
+      // Get the organization for Slack channel configuration
+      const organization = await storage.getOrganization(req.orgId);
+      
+      // Get users involved
+      const recipient = await storage.getUser(req.orgId, win.userId);
+      const sender = win.nominatedBy ? await storage.getUser(req.orgId, win.nominatedBy) : null;
+      
+      if (recipient) {
+        // Handle Slack notifications based on visibility
+        if (win.isPublic) {
+          // Public win: post to organization's configured Slack channel
+          const channelId = organization?.slackChannelId || 'C09JR9655B7'; // Default to #whirkplace-pulse
+          
+          console.log(`📢 Announcing public win to channel ${channelId}`);
           const slackMessageId = await announceWin(
             win.title, 
             win.description, 
-            user.name, 
-            nominator?.name
+            recipient.name, 
+            sender?.name,
+            channelId
           );
           
           if (slackMessageId) {
             await storage.updateWin(req.orgId, win.id, { slackMessageId });
           }
+        } else {
+          // Private win: send DM to recipient if they have a Slack ID
+          if (recipient.slackUserId) {
+            console.log(`💌 Sending private win DM to ${recipient.name} (${recipient.slackUserId})`);
+            const { sendPrivateWinNotification } = await import('./services/slack');
+            
+            const slackMessageId = await sendPrivateWinNotification(
+              win.title,
+              win.description,
+              recipient.slackUserId,
+              recipient.name,
+              sender?.name || req.currentUser!.name,
+              sender?.name
+            );
+            
+            if (slackMessageId) {
+              await storage.updateWin(req.orgId, win.id, { slackMessageId });
+            }
+          } else {
+            console.log(`⚠️ Cannot send private win DM to ${recipient.name}: No Slack user ID`);
+          }
         }
+      } else {
+        console.warn(`⚠️ Could not find recipient user for win ${win.id}`);
       }
       
       res.status(201).json(win);
     } catch (error) {
+      console.error("Error creating win:", error);
       res.status(400).json({ message: "Invalid win data" });
     }
   });
