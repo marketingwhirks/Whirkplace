@@ -16,7 +16,21 @@ export { syncUsersFromSlack, getChannelMembers, handleChannelMembershipEvent };
 export async function performPeriodicUserSync(organizationId: string, storage: any): Promise<void> {
   try {
     console.log(`Starting periodic user sync for organization: ${organizationId}`);
-    const result = await syncUsersFromSlack(organizationId, storage);
+    
+    // Fetch organization to get its channel ID and bot token
+    const organization = await storage.getOrganization(organizationId);
+    if (!organization) {
+      console.error(`Organization not found: ${organizationId}`);
+      return;
+    }
+    
+    // Use organization's bot token and channel ID if available
+    const botToken = organization.slackBotToken || undefined;
+    const channelIdentifier = organization.slackChannelId || undefined;
+    
+    console.log(`Using ${channelIdentifier ? 'channel ID: ' + channelIdentifier : 'default channel'} for periodic sync`);
+    
+    const result = await syncUsersFromSlack(organizationId, storage, botToken, channelIdentifier);
     console.log('Periodic user sync completed:', result);
   } catch (error) {
     console.error('Periodic user sync failed:', error);

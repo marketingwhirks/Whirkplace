@@ -6320,10 +6320,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { syncUsersFromSlack } = await import("./services/slack");
-      const channelName = req.body?.channelName || 'whirkplace-pulse';
+      // Use the organization's stored channel ID if available, otherwise fall back to request body or default
+      const channelIdentifier = organization.slackChannelId || req.body?.channelName || 'whirkplace-pulse';
       
-      console.log(`🚀 Starting user sync from channel: #${channelName} for organization: ${organization.name} (${targetOrgId})`);
-      const result = await syncUsersFromSlack(targetOrgId, storage, botToken, channelName);
+      console.log(`🚀 Starting user sync from channel: ${channelIdentifier} for organization: ${organization.name} (${targetOrgId})`);
+      console.log(`   Using ${organization.slackChannelId ? 'stored channel ID' : req.body?.channelName ? 'requested channel name' : 'default channel name'}`);
+      const result = await syncUsersFromSlack(targetOrgId, storage, botToken, channelIdentifier);
       
       if (result.error) {
         console.error(`⚠️ Sync completed with error: ${result.error}`);
@@ -6345,14 +6347,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         } else if (result.error.includes('channel_not_found')) {
           return res.status(404).json({
-            message: `Slack channel "${channelName}" not found. Please ensure the channel exists and the bot has been added to it.`,
+            message: `Slack channel "${channelIdentifier}" not found. Please ensure the channel exists and the bot has been added to it.`,
             error: "channel_not_found",
-            details: `Invite your bot to the channel using: /invite @your-bot-name in #${channelName}`,
+            details: `Invite your bot to the channel${channelIdentifier.startsWith('C') ? '' : ' using: /invite @your-bot-name in #' + channelIdentifier}`,
             ...result
           });
         } else if (result.error.includes('No members found')) {
           return res.status(404).json({
-            message: `No members found in channel "${channelName}". Please ensure the channel has members and the bot can see them.`,
+            message: `No members found in channel "${channelIdentifier}". Please ensure the channel has members and the bot can see them.`,
             error: "no_members",
             details: "The bot may need to be invited to the channel or the channel might be private.",
             ...result
@@ -6369,7 +6371,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`✅ Sync completed: Created ${result.created}, Activated ${result.activated}, Deactivated ${result.deactivated}`);
       res.json({
-        message: `Successfully synced users from #${channelName}`,
+        message: `Successfully synced users from ${channelIdentifier.startsWith('C') ? 'channel ID ' + channelIdentifier : '#' + channelIdentifier}`,
         details: `Created ${result.created} new users, reactivated ${result.activated} users, deactivated ${result.deactivated} users`,
         ...result
       });
@@ -6476,10 +6478,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { syncUsersFromSlack } = await import("./services/slack");
-      const channelName = req.body?.channelName || 'whirkplace-pulse';
+      // Use the organization's stored channel ID if available, otherwise fall back to request body or default
+      const channelIdentifier = organization.slackChannelId || req.body?.channelName || 'whirkplace-pulse';
       
-      console.log(`🚀 Starting user sync from channel: #${channelName} for organization: ${organization.name} (${targetOrgId})`);
-      const result = await syncUsersFromSlack(targetOrgId, storage, botToken, channelName);
+      console.log(`🚀 Starting user sync from channel: ${channelIdentifier} for organization: ${organization.name} (${targetOrgId})`);
+      console.log(`   Using ${organization.slackChannelId ? 'stored channel ID' : req.body?.channelName ? 'requested channel name' : 'default channel name'}`);
+      const result = await syncUsersFromSlack(targetOrgId, storage, botToken, channelIdentifier);
       
       if (result.error) {
         console.error(`⚠️ Sync completed with error: ${result.error}`);
@@ -6501,14 +6505,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         } else if (result.error.includes('channel_not_found')) {
           return res.status(404).json({
-            message: `Slack channel "${channelName}" not found. Please ensure the channel exists and the bot has been added to it.`,
+            message: `Slack channel "${channelIdentifier}" not found. Please ensure the channel exists and the bot has been added to it.`,
             error: "channel_not_found",
-            details: `Invite your bot to the channel using: /invite @your-bot-name in #${channelName}`,
+            details: `Invite your bot to the channel${channelIdentifier.startsWith('C') ? '' : ' using: /invite @your-bot-name in #' + channelIdentifier}`,
             ...result
           });
         } else if (result.error.includes('No members found')) {
           return res.status(404).json({
-            message: `No members found in channel "${channelName}". Please ensure the channel has members and the bot can see them.`,
+            message: `No members found in channel "${channelIdentifier}". Please ensure the channel has members and the bot can see them.`,
             error: "no_members",
             details: "The bot may need to be invited to the channel or the channel might be private.",
             ...result
@@ -6525,7 +6529,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`✅ Sync completed: Created ${result.created}, Activated ${result.activated}, Deactivated ${result.deactivated}`);
       res.json({
-        message: `Successfully synced users from #${channelName}`,
+        message: `Successfully synced users from ${channelIdentifier.startsWith('C') ? 'channel ID ' + channelIdentifier : '#' + channelIdentifier}`,
         details: `Created ${result.created} new users, reactivated ${result.activated} users, deactivated ${result.deactivated} users`,
         ...result
       });
@@ -6568,26 +6572,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Use organization's bot token or fall back to environment variable
       const botToken = organization.slackBotToken || process.env.SLACK_BOT_TOKEN;
-      const channelName = req.query.channel || 'whirkplace-pulse';
+      // Use the organization's stored channel ID if available, otherwise fall back to query param or default
+      const channelIdentifier = organization.slackChannelId || req.query.channel || 'whirkplace-pulse';
       
       console.log(`🔑 Using ${organization.slackBotToken ? 'organization-specific' : 'environment'} Slack token`);
+      console.log(`📺 Using ${organization.slackChannelId ? 'stored channel ID' : req.query.channel ? 'requested channel name' : 'default channel name'}: ${channelIdentifier}`);
       
       if (!botToken) {
         return res.status(400).json({ 
           message: "Slack integration not configured",
           members: [],
           count: 0,
-          channelName: channelName as string
+          channelName: channelIdentifier as string
         });
       }
 
       const { getChannelMembers } = await import("./services/slack");
-      const members = await getChannelMembers(botToken, channelName as string);
+      const members = await getChannelMembers(botToken, channelIdentifier as string);
       
       res.json({
         members,
         count: members.length,
-        channelName: channelName as string
+        channelName: channelIdentifier as string
       });
     } catch (error: any) {
       console.error("Failed to fetch channel members:", error);

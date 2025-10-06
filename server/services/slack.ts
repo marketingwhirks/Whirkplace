@@ -1751,8 +1751,8 @@ async function findChannelIdByName(channelName: string): Promise<string | null> 
   return null;
 }
 
-export async function getChannelMembers(botToken?: string, channelName: string = WHIRKPLACE_CHANNEL): Promise<{ id: string; name: string; email?: string; active: boolean }[]> {
-  console.log(`🔍 getChannelMembers called for channel: "${channelName}"`);
+export async function getChannelMembers(botToken?: string, channelNameOrId: string = WHIRKPLACE_CHANNEL): Promise<{ id: string; name: string; email?: string; active: boolean }[]> {
+  console.log(`🔍 getChannelMembers called for channel: "${channelNameOrId}"`);
   console.log(`🔑 Using ${botToken ? 'organization-specific token' : 'environment token'}`);
   
   // Use provided token or fall back to environment variable
@@ -1766,96 +1766,122 @@ export async function getChannelMembers(botToken?: string, channelName: string =
   const slackClient = new WebClient(token);
 
   try {
-    // First, find the channel ID by name
-    console.log(`🔎 Searching for channel: "${channelName}"...`);
     let channelId: string | undefined;
-    let cursor: string | undefined;
-    let totalChannelsChecked = 0;
-    const allChannelNames: string[] = [];
     
-    do {
+    // Check if we already have a channel ID (starts with C, D, or G for Slack channels/DMs/groups)
+    if (/^[CDG][A-Z0-9]{8,}$/i.test(channelNameOrId)) {
+      // This looks like a channel ID, use it directly
+      console.log(`✅ Using provided channel ID directly: ${channelNameOrId}`);
+      channelId = channelNameOrId;
+      
+      // Verify the channel exists and bot has access
       try {
-        const result = await slackClient.conversations.list({
-          types: 'public_channel,private_channel',
-          exclude_archived: true,
-          limit: 1000,
-          cursor
-        });
-        
-        if (!result.ok) {
-          console.error(`❌ Slack API error: ${result.error}`);
+        const channelInfo = await slackClient.conversations.info({ channel: channelId });
+        if (channelInfo.channel) {
+          console.log(`✅ Verified channel ID ${channelId} exists`);
+          console.log(`   Channel name: ${(channelInfo.channel as any).name}`);
+          console.log(`   Channel is_member: ${(channelInfo.channel as any).is_member}`);
+          console.log(`   Channel is_private: ${(channelInfo.channel as any).is_private}`);
+        }
+      } catch (error: any) {
+        console.error(`❌ Failed to verify channel ID ${channelId}:`, error?.data?.error);
+        if (error?.data?.error === 'channel_not_found') {
+          console.error(`❌ Channel ID ${channelId} not found or bot doesn't have access`);
           return [];
         }
-        
-        const channelCount = result.channels?.length || 0;
-        totalChannelsChecked += channelCount;
-        console.log(`📋 Checked ${channelCount} channels (${totalChannelsChecked} total so far)`);
-        
-        // Log all channel names for debugging
-        if (result.channels) {
-          result.channels.forEach(c => {
-            if (c.name) {
-              allChannelNames.push(c.name);
-            }
+        // Continue anyway - the channel might exist but info is restricted
+      }
+    } else {
+      // This is a channel name, search for it
+      console.log(`🔎 Searching for channel by name: "${channelNameOrId}"...`);
+      let cursor: string | undefined;
+      let totalChannelsChecked = 0;
+      const allChannelNames: string[] = [];
+      
+      do {
+        try {
+          const result = await slackClient.conversations.list({
+            types: 'public_channel,private_channel',
+            exclude_archived: true,
+            limit: 1000,
+            cursor
           });
+          
+          if (!result.ok) {
+            console.error(`❌ Slack API error: ${result.error}`);
+            return [];
+          }
+          
+          const channelCount = result.channels?.length || 0;
+          totalChannelsChecked += channelCount;
+          console.log(`📋 Checked ${channelCount} channels (${totalChannelsChecked} total so far)`);
+          
+          // Log all channel names for debugging
+          if (result.channels) {
+            result.channels.forEach(c => {
+              if (c.name) {
+                allChannelNames.push(c.name);
+              }
+            });
+          }
+          
+          // Search for channel by name (case-insensitive)
+          const channel = result.channels?.find(c => 
+            c.name?.toLowerCase() === channelNameOrId.toLowerCase()
+          );
+          
+          if (channel?.id) {
+            console.log(`✅ Found channel "${channelNameOrId}" with ID: ${channel.id}`);
+            console.log(`   Channel is_member: ${channel.is_member}`);
+            console.log(`   Channel is_private: ${channel.is_private}`);
+            channelId = channel.id;
+            break;
+          }
+          
+          cursor = result.response_metadata?.next_cursor;
+        } catch (error: any) {
+          console.error(`❌ Error searching for channel "${channelNameOrId}":`, error);
+          console.error(`   Error code: ${error?.data?.error}`);
+          console.error(`   Error message: ${error?.message}`);
+          console.error(`   Full error data:`, error?.data);
+          
+          if (error?.data?.error === 'invalid_auth') {
+            console.error("🔐 Invalid authentication token. The Slack token may be expired or invalid.");
+          } else if (error?.data?.error === 'missing_scope') {
+            console.error("🔐 Missing required OAuth scope. Check your bot token scopes.");
+            console.error(`   Needed: ${error?.data?.needed}`);
+            console.error(`   Provided: ${error?.data?.provided}`);
+          }
+          throw error;
         }
-        
-        // Search for channel by name (case-insensitive)
-        const channel = result.channels?.find(c => 
-          c.name?.toLowerCase() === channelName.toLowerCase()
-        );
-        
-        if (channel?.id) {
-          console.log(`✅ Found channel "${channelName}" with ID: ${channel.id}`);
-          console.log(`   Channel is_member: ${channel.is_member}`);
-          console.log(`   Channel is_private: ${channel.is_private}`);
-          channelId = channel.id;
-          break;
+      } while (cursor);
+      
+      if (!channelId) {
+        console.warn(`⚠️ Channel "${channelNameOrId}" not found. Cannot sync users.`);
+        console.warn(`💡 Make sure the channel exists and the bot has access to it.`);
+        console.log(`📝 Total channels the bot can see: ${allChannelNames.length}`);
+        if (allChannelNames.length > 0) {
+          console.log(`📝 Available channels: ${allChannelNames.slice(0, 20).join(', ')}${allChannelNames.length > 20 ? `... and ${allChannelNames.length - 20} more` : ''}`);
+          
+          // Check if channel exists with different spelling
+          const similarChannels = allChannelNames.filter(name => 
+            name.includes('whirk') || name.includes('pulse') || name.includes('general')
+          );
+          if (similarChannels.length > 0) {
+            console.log(`💡 Similar channel names found: ${similarChannels.join(', ')}`);
+          }
+        } else {
+          console.log(`❌ Bot cannot see ANY channels! This usually means:`);
+          console.log(`   1. The bot hasn't been invited to any channels`);
+          console.log(`   2. The bot token doesn't have proper permissions`);
+          console.log(`   3. The workspace ID might be incorrect`);
         }
-        
-        cursor = result.response_metadata?.next_cursor;
-      } catch (error: any) {
-        console.error(`❌ Error searching for channel "${channelName}":`, error);
-        console.error(`   Error code: ${error?.data?.error}`);
-        console.error(`   Error message: ${error?.message}`);
-        console.error(`   Full error data:`, error?.data);
-        
-        if (error?.data?.error === 'invalid_auth') {
-          console.error("🔐 Invalid authentication token. The Slack token may be expired or invalid.");
-        } else if (error?.data?.error === 'missing_scope') {
-          console.error("🔐 Missing required OAuth scope. Check your bot token scopes.");
-          console.error(`   Needed: ${error?.data?.needed}`);
-          console.error(`   Provided: ${error?.data?.provided}`);
-        }
-        throw error;
+        console.log(`💡 Tips:`);
+        console.log(`   1. Check if the channel name is spelled correctly (looking for: "${channelNameOrId}")`);
+        console.log(`   2. Make sure the bot has been invited to the channel`);
+        console.log(`   3. If it's a private channel, the bot needs to be a member`);
+        return [];
       }
-    } while (cursor);
-    
-    if (!channelId) {
-      console.warn(`⚠️ Channel "${channelName}" not found. Cannot sync users.`);
-      console.warn(`💡 Make sure the channel exists and the bot has access to it.`);
-      console.log(`📝 Total channels the bot can see: ${allChannelNames.length}`);
-      if (allChannelNames.length > 0) {
-        console.log(`📝 Available channels: ${allChannelNames.slice(0, 20).join(', ')}${allChannelNames.length > 20 ? `... and ${allChannelNames.length - 20} more` : ''}`);
-        
-        // Check if channel exists with different spelling
-        const similarChannels = allChannelNames.filter(name => 
-          name.includes('whirk') || name.includes('pulse') || name.includes('general')
-        );
-        if (similarChannels.length > 0) {
-          console.log(`💡 Similar channel names found: ${similarChannels.join(', ')}`);
-        }
-      } else {
-        console.log(`❌ Bot cannot see ANY channels! This usually means:`);
-        console.log(`   1. The bot hasn't been invited to any channels`);
-        console.log(`   2. The bot token doesn't have proper permissions`);
-        console.log(`   3. The workspace ID might be incorrect`);
-      }
-      console.log(`💡 Tips:`);
-      console.log(`   1. Check if the channel name is spelled correctly (looking for: "${channelName}")`);
-      console.log(`   2. Make sure the bot has been invited to the channel`);
-      console.log(`   3. If it's a private channel, the bot needs to be a member`);
-      return [];
     }
 
     // Fetch channel members
@@ -1934,21 +1960,21 @@ export async function getChannelMembers(botToken?: string, channelName: string =
  * Sync users based on Slack channel membership
  * This function should be called periodically or on channel events
  */
-export async function syncUsersFromSlack(organizationId: string, storage: any, botToken?: string, channelName: string = WHIRKPLACE_CHANNEL): Promise<{
+export async function syncUsersFromSlack(organizationId: string, storage: any, botToken?: string, channelNameOrId: string = WHIRKPLACE_CHANNEL): Promise<{
   created: number;
   activated: number;
   deactivated: number;
   error?: string;
 }> {
   console.log(`🚀 Starting user sync for organization ${organizationId}...`);
-  console.log(`📺 Channel name: "${channelName}"`);
+  console.log(`📺 Channel name/ID: "${channelNameOrId}"`);
   console.log(`🔑 Using ${botToken ? 'organization-specific token' : 'environment token'}`);
   
   try {
-    const channelMembers = await getChannelMembers(botToken, channelName);
+    const channelMembers = await getChannelMembers(botToken, channelNameOrId);
     if (channelMembers.length === 0) {
       console.warn("⚠️ No channel members found. Skipping user sync.");
-      return { created: 0, activated: 0, deactivated: 0, error: `No members found in channel "${channelName}". Please ensure the channel exists and the bot has access to it.` };
+      return { created: 0, activated: 0, deactivated: 0, error: `No members found in channel "${channelNameOrId}". Please ensure the channel exists and the bot has access to it.` };
     }
 
     console.log(`✅ Found ${channelMembers.length} channel members to process`);
