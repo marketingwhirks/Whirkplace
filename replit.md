@@ -6,6 +6,28 @@ Whirkplace is a comprehensive team management and wellness application designed 
 
 ## Recent Changes
 
+### Check-in Self-Review & Slack Enhancements (October 6, 2025)
+- **Self-Review Capability**: Users without managers can now self-review their check-ins
+  - Automatic detection when user has no manager assigned (managerId is null)
+  - Self-Review button appears on pending check-ins for eligible users
+  - Informative alert explains the self-review requirement
+  - Full review workflow with comments and approval/rejection options
+  - Proper audit trail maintained with reviewedBy field
+- **Slack Onboarding DMs**: New users synced from Slack automatically receive welcome messages
+  - Secure 10-character temporary passwords generated
+  - Professional welcome message with login credentials
+  - Instructions for getting started and setting preferences
+  - Links to profile settings and notification configuration
+  - Rate limiting protection for Slack API
+- **Question Bank Seeding**: Production question bank population via super admin panel
+  - 6 categories with 24 pre-defined questions
+  - Super admin-only seeding capability
+  - Safe to run multiple times (no duplicates)
+- **Wins Channel Configuration**: Customizable Slack channel for wins/shoutouts
+  - Configure wins to post to custom channels (e.g., #shout-outs)
+  - Settings available in Slack integration panel
+  - Public wins post to configured channel, private wins send DMs
+
 ### Authentication & Signup Improvements (September 27, 2025)
 - **Industry Field**: Added industry selection to business signup flow on page 1 alongside organization name
 - **Duplicate Endpoint Fix**: Removed duplicate business signup endpoint that was causing conflicts
