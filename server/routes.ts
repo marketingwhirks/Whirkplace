@@ -6251,19 +6251,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`📋 Admin sync-users endpoint called`);
-      console.log(`   Organization ID: ${req.orgId}`);
+      console.log(`   Organization ID from session: ${req.orgId}`);
       console.log(`   User: ${req.currentUser.name} (${req.currentUser.email})`);
       console.log(`   User role: ${req.currentUser.role}`);
+      console.log(`   User is super admin: ${req.currentUser.isSuperAdmin}`);
       console.log(`   Session ID: ${req.sessionID}`);
       
+      // CRITICAL FIX: For super admins with multiple organizations, ensure we use the correct org ID
+      // The orgId from req.orgId might not match the organization they're trying to sync
+      let targetOrgId = req.orgId;
+      
+      // Check if there's an explicit organization ID in the request body
+      if (req.body?.organizationId && req.currentUser.isSuperAdmin) {
+        console.log(`🔄 Super admin override: Using explicit organizationId from request: ${req.body.organizationId}`);
+        targetOrgId = req.body.organizationId;
+      }
+      
+      console.log(`🎯 Final target organization ID for sync: ${targetOrgId}`);
+      
       // Get organization to fetch Slack token
-      const organization = await storage.getOrganization(req.orgId);
+      const organization = await storage.getOrganization(targetOrgId);
       if (!organization) {
-        console.error("❌ Organization not found for ID:", req.orgId);
+        console.error("❌ Organization not found for ID:", targetOrgId);
         return res.status(404).json({ 
           message: "Organization not found",
           error: "organization_not_found",
-          organizationId: req.orgId
+          organizationId: targetOrgId,
+          debug: {
+            requestOrgId: targetOrgId,
+            sessionOrgId: req.orgId
+          }
         });
       }
       
@@ -6305,8 +6322,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { syncUsersFromSlack } = await import("./services/slack");
       const channelName = req.body?.channelName || 'whirkplace-pulse';
       
-      console.log(`🚀 Starting user sync from channel: #${channelName}`);
-      const result = await syncUsersFromSlack(req.orgId, storage, botToken, channelName);
+      console.log(`🚀 Starting user sync from channel: #${channelName} for organization: ${organization.name} (${targetOrgId})`);
+      const result = await syncUsersFromSlack(targetOrgId, storage, botToken, channelName);
       
       if (result.error) {
         console.error(`⚠️ Sync completed with error: ${result.error}`);
@@ -6382,24 +6399,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/slack/sync-users", requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
       console.log(`📋 Slack sync-users endpoint called`);
-      console.log(`   Organization ID: ${req.orgId}`);
+      console.log(`   Organization ID from session: ${req.orgId}`);
       console.log(`   User: ${req.currentUser?.name} (${req.currentUser?.email})`);
       console.log(`   User role: ${req.currentUser?.role}`);
+      console.log(`   User is super admin: ${req.currentUser?.isSuperAdmin}`);
       console.log(`   Session ID: ${req.sessionID}`);
       console.log(`   Session has userId: ${!!req.session?.userId}`);
       console.log(`   Session has organizationId: ${!!(req.session as any)?.organizationId}`);
       
+      // CRITICAL FIX: For super admins with multiple organizations, ensure we use the correct org ID
+      // The orgId from req.orgId might not match the organization they're trying to sync
+      let targetOrgId = req.orgId;
+      
+      // Check if there's an explicit organization ID in the request body
+      if (req.body?.organizationId && req.currentUser?.isSuperAdmin) {
+        console.log(`🔄 Super admin override: Using explicit organizationId from request: ${req.body.organizationId}`);
+        targetOrgId = req.body.organizationId;
+      }
+      
+      console.log(`🎯 Final target organization ID for sync: ${targetOrgId}`);
+      
       // Get organization to fetch Slack token
-      const organization = await storage.getOrganization(req.orgId);
+      const organization = await storage.getOrganization(targetOrgId);
       if (!organization) {
-        console.error("❌ Organization not found for ID:", req.orgId);
+        console.error("❌ Organization not found for ID:", targetOrgId);
         return res.status(404).json({ 
           message: "Organization not found",
           error: "organization_not_found",
-          organizationId: req.orgId,
+          organizationId: targetOrgId,
           debug: {
-            requestOrgId: req.orgId,
-            sessionOrgId: (req.session as any)?.organizationId
+            requestOrgId: targetOrgId,
+            sessionOrgId: req.orgId,
+            actualSessionOrgId: (req.session as any)?.organizationId
           }
         });
       }
@@ -6447,8 +6478,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { syncUsersFromSlack } = await import("./services/slack");
       const channelName = req.body?.channelName || 'whirkplace-pulse';
       
-      console.log(`🚀 Starting user sync from channel: #${channelName}`);
-      const result = await syncUsersFromSlack(req.orgId, storage, botToken, channelName);
+      console.log(`🚀 Starting user sync from channel: #${channelName} for organization: ${organization.name} (${targetOrgId})`);
+      const result = await syncUsersFromSlack(targetOrgId, storage, botToken, channelName);
       
       if (result.error) {
         console.error(`⚠️ Sync completed with error: ${result.error}`);

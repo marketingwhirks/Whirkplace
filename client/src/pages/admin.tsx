@@ -131,7 +131,12 @@ export default function Admin() {
   // Sync users mutation
   const syncUsersMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/admin/sync-users");
+      // For super admins, include the organization ID in the request
+      const requestBody = actualUser?.isSuperAdmin 
+        ? { organizationId: actualUser?.organizationId }
+        : {};
+      
+      const response = await apiRequest("POST", "/api/admin/sync-users", requestBody);
       return await response.json() as SyncResult;
     },
     onSuccess: (data) => {
