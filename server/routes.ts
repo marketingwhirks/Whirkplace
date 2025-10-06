@@ -3866,30 +3866,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Check-in Review Endpoints - these must come before the generic :id route
-  app.get("/api/checkins/pending", requireAuth(), requireTeamLead(), async (req, res) => {
+  app.get("/api/checkins/pending", requireAuth(), async (req, res) => {
     try {
       const user = req.currentUser!;
       let checkins;
       
+      // Check if user has no manager (needs self-review capability)
+      const userWithManager = await storage.getUser(req.orgId, user.id);
+      const needsSelfReview = userWithManager && !userWithManager.managerId;
+      
       if (user.role === "admin") {
         // Admins can see all pending check-ins
         checkins = await storage.getPendingCheckins(req.orgId);
+      } else if (user.role === "manager" || user.role === "team_lead") {
+        // Managers can review their reports' check-ins
+        // Pass includeOwnIfNoManager=true to include their own if they have no manager
+        checkins = await storage.getPendingCheckins(req.orgId, user.id, true);
+      } else if (needsSelfReview) {
+        // Regular users with no manager can see their own pending check-ins for self-review
+        const allCheckins = await storage.getPendingCheckins(req.orgId);
+        checkins = allCheckins.filter(checkin => checkin.userId === user.id);
       } else {
-        // Get all pending check-ins for filtering
-        checkins = await storage.getPendingCheckins(req.orgId);
-        
-        // Get users under this person's authority (direct reports + team members, include inactive for historical data)
-        const directReports = await storage.getUsersByManager(req.orgId, user.id, true);
-        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, user.id, true);
-        
-        // Combine and deduplicate user IDs
-        const authorizedUserIds = new Set([
-          ...directReports.map(u => u.id),
-          ...teamMembers.map(u => u.id)
-        ]);
-        
-        // Filter check-ins to only include those from authorized users
-        checkins = checkins.filter(checkin => authorizedUserIds.has(checkin.userId));
+        // Regular users with a manager cannot access this endpoint
+        checkins = [];
       }
       
       // Enhance with user information
@@ -3906,7 +3905,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
               email: checkinUser.email,
               teamId: checkinUser.teamId,
               teamName: team?.name || null
-            } : null
+            } : null,
+            // Mark if this is a self-review scenario
+            isSelfReview: needsSelfReview && checkin.userId === user.id
           };
         })
       );
@@ -4334,7 +4335,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
-  app.patch("/api/checkins/:id/review", requireAuth(), requireTeamLead(), async (req, res) => {
+  app.patch("/api/checkins/:id/review", requireAuth(), async (req, res) => {
     try {
       const reviewData = reviewCheckinSchema.parse(req.body);
       const user = req.currentUser!;
@@ -4353,20 +4354,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ message: "User not found" });
         }
 
-        // Check if user is the direct manager
-        const isDirectManager = checkinUser.managerId === user.id;
+        // Check if this is a self-review scenario
+        const isSelfReview = existingCheckin.userId === user.id;
+        const userHasNoManager = !checkinUser.managerId;
         
-        // Check if user is a team leader of the check-in user's team
-        let isTeamLeader = false;
-        if (checkinUser.teamId) {
-          const team = await storage.getTeam(req.orgId, checkinUser.teamId);
-          isTeamLeader = team?.leaderId === user.id;
-        }
+        if (isSelfReview) {
+          // Allow self-review only if the user has no manager
+          if (!userHasNoManager) {
+            return res.status(403).json({ 
+              message: "Self-review is not allowed. Your check-in should be reviewed by your manager." 
+            });
+          }
+          // Self-review is allowed for users without managers
+        } else {
+          // Check if user is the direct manager
+          const isDirectManager = checkinUser.managerId === user.id;
+          
+          // Check if user is a team leader of the check-in user's team
+          let isTeamLeader = false;
+          if (checkinUser.teamId) {
+            const team = await storage.getTeam(req.orgId, checkinUser.teamId);
+            isTeamLeader = team?.leaderId === user.id;
+          }
 
-        if (!isDirectManager && !isTeamLeader) {
-          return res.status(403).json({ 
-            message: "You can only review check-ins from your direct reports or team members" 
-          });
+          if (!isDirectManager && !isTeamLeader) {
+            return res.status(403).json({ 
+              message: "You can only review check-ins from your direct reports or team members" 
+            });
+          }
         }
       }
       

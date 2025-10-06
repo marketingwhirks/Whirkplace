@@ -230,7 +230,7 @@ export interface IStorage {
   resetUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
 
   // Check-in Review Methods
-  getPendingCheckins(organizationId: string, managerId?: string): Promise<Checkin[]>;
+  getPendingCheckins(organizationId: string, managerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]>;
   reviewCheckin(organizationId: string, checkinId: string, reviewedBy: string, reviewData: ReviewCheckin): Promise<Checkin | undefined>;
   getCheckinsByReviewStatus(organizationId: string, status: ReviewStatusType): Promise<Checkin[]>;
   getCheckinsByTeamLeader(organizationId: string, leaderId: string): Promise<Checkin[]>;
@@ -1397,7 +1397,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Check-in Review Methods
-  async getPendingCheckins(organizationId: string, managerId?: string): Promise<Checkin[]> {
+  async getPendingCheckins(organizationId: string, managerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]> {
     let whereConditions = [
       eq(checkins.organizationId, organizationId),
       eq(checkins.reviewStatus, ReviewStatus.PENDING),
@@ -1408,6 +1408,15 @@ export class DatabaseStorage implements IStorage {
       // Get pending check-ins for manager's team members (include inactive for historical data)
       const reports = await this.getUsersByManager(organizationId, managerId, true);
       const reportIds = reports.map(user => user.id);
+      
+      // If includeOwnIfNoManager is true, check if the manager has no manager themselves
+      if (includeOwnIfNoManager) {
+        const managerUser = await this.getUser(organizationId, managerId);
+        if (managerUser && !managerUser.managerId) {
+          // User has no manager, include their own pending check-ins for self-review
+          reportIds.push(managerId);
+        }
+      }
       
       if (reportIds.length === 0) return [];
       

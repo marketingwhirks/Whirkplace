@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow, startOfWeek, addWeeks, isSameWeek } from "date-fns";
-import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle, Smile, Flag, UserPlus } from "lucide-react";
+import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle, Smile, Flag, UserPlus, CheckCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -19,11 +19,13 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import RatingStars from "@/components/checkin/rating-stars";
 import CheckinDetail from "@/components/checkin/checkin-detail";
+import ReviewModal from "@/components/checkin/review-modal";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import type { Checkin, Question, User, InsertCheckin } from "@shared/schema";
 
@@ -80,9 +82,14 @@ export default function Checkins() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedCheckin, setSelectedCheckin] = useState<(Checkin & { user?: User }) | null>(null);
   const [activeTab, setActiveTab] = useState<"current" | "history">("current");
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [checkinToReview, setCheckinToReview] = useState<Checkin | null>(null);
   
   // Tour management
   const tourManager = useManagedTour(TOUR_IDS.CHECKINS_GUIDE);
+  
+  // Check if user needs self-review capability (no manager)
+  const needsSelfReview = currentUser && !currentUser.managerId;
 
   // Get current week start (Monday)
   const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -259,6 +266,20 @@ export default function Checkins() {
       )}
 
       <main className="flex-1 overflow-auto p-6 space-y-6">
+        {/* Self-Review Alert for Users Without Managers */}
+        {needsSelfReview && currentWeekCheckin && currentWeekCheckin.reviewStatus === 'pending' && (
+          <Alert className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+            <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription>
+              <span className="font-medium text-blue-900 dark:text-blue-300">Self-Review Required:</span>
+              <span className="text-blue-800 dark:text-blue-400 ml-2">
+                Since you don't have an assigned manager, you need to self-review your check-ins. 
+                Click the "Self-Review" button below to approve your weekly check-in.
+              </span>
+            </AlertDescription>
+          </Alert>
+        )}
+        
         {/* Current Week Status */}
         <Card>
           <CardHeader>
@@ -309,21 +330,38 @@ export default function Checkins() {
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      onClick={() => setSelectedCheckin({ ...currentWeekCheckin, user: currentUser })} 
+                      onClick={() => setSelectedCheckin({ ...currentWeekCheckin, user: currentUser || undefined })} 
                       data-testid="button-view-current"
                     >
                       <MessageCircle className="w-4 h-4 mr-2" />
                       View Details
                     </Button>
                     {currentWeekCheckin.reviewStatus === 'pending' && (
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={handleEditCurrentCheckin}
-                        data-testid="button-edit-current"
-                      >
-                        Edit
-                      </Button>
+                      <>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={handleEditCurrentCheckin}
+                          data-testid="button-edit-current"
+                        >
+                          Edit
+                        </Button>
+                        {needsSelfReview && (
+                          <Button 
+                            variant="default" 
+                            size="sm" 
+                            onClick={() => {
+                              setCheckinToReview(currentWeekCheckin);
+                              setShowReviewModal(true);
+                            }}
+                            data-testid="button-self-review"
+                            className="bg-blue-600 hover:bg-blue-700"
+                          >
+                            <CheckCheck className="w-4 h-4 mr-2" />
+                            Self-Review
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -582,7 +620,7 @@ export default function Checkins() {
             ) : (
               <div className="space-y-4">
                 {historicalCheckins.map((checkin) => (
-                  <Card key={checkin.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setSelectedCheckin(checkin)}>
+                  <Card key={checkin.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setSelectedCheckin({ ...checkin, user: currentUser || undefined })}>
                     <CardContent className="p-6">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center space-x-4">
@@ -745,6 +783,40 @@ export default function Checkins() {
             onOpenChange={(open) => !open && setSelectedCheckin(null)}
           />
         )}
+        
+        {/* Self-Review Modal */}
+        <ReviewModal
+          isOpen={showReviewModal}
+          onClose={() => {
+            setShowReviewModal(false);
+            setCheckinToReview(null);
+          }}
+          checkin={checkinToReview && currentUser ? {
+            ...checkinToReview,
+            user: {
+              id: currentUser.id,
+              name: currentUser.name,
+              email: currentUser.email,
+              teamId: currentUser.teamId,
+              teamName: null
+            }
+          } : null}
+          questions={questions}
+          onReviewComplete={async () => {
+            // Invalidate queries to refresh the data
+            queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser?.id, "current-checkin"] });
+            
+            setShowReviewModal(false);
+            setCheckinToReview(null);
+            
+            toast({
+              title: "Self-review completed",
+              description: "Your check-in has been successfully self-reviewed.",
+            });
+          }}
+          disabled={false}
+        />
       </main>
     </>
   );
