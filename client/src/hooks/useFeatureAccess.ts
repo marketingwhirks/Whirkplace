@@ -62,12 +62,13 @@ export function useFeatureAccess() {
    * Get required plan for a specific feature
    */
   const getRequiredPlan = (feature: keyof FeatureAvailability): PlanType => {
-    if (feature === "advanced_analytics" || feature === "slack_integration" || feature === "teams_integration") {
+    if (feature === "advanced_analytics" || feature === "teams_integration") {
       return "enterprise";
     }
     if (feature === "one_on_ones" || feature === "kra_management" || feature === "teams" || feature === "reviews" || feature === "analytics") {
       return "professional";
     }
+    // slack_integration is available for all plans (standard and above)
     return "standard";
   };
 

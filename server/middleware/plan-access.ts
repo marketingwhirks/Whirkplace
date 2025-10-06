@@ -6,7 +6,7 @@ const FEATURE_PLAN_REQUIREMENTS = {
   one_on_ones: Plan.PROFESSIONAL,  // Changed from ENTERPRISE to PROFESSIONAL
   kra_management: Plan.PROFESSIONAL,  // Changed from ENTERPRISE to PROFESSIONAL
   advanced_analytics: Plan.ENTERPRISE,
-  slack_integration: Plan.ENTERPRISE,
+  slack_integration: Plan.STANDARD,  // Available for ALL plans (standard, professional, enterprise)
   teams_integration: Plan.ENTERPRISE,
   teams: Plan.PROFESSIONAL,
   reviews: Plan.PROFESSIONAL,
