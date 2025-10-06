@@ -42,8 +42,8 @@ export async function ensurePatrickAccountingOrganization(): Promise<Organizatio
     // Create Patrick Accounting organization with Slack configuration
     console.log("Creating Patrick Accounting test organization...");
     
-    // Get Slack bot token from environment (set a test token for dev if not available)
-    const slackBotToken = process.env.SLACK_BOT_TOKEN || "xoxb-test-token-for-development";
+    // Don't set a bot token - force reconnection in dev for proper authentication
+    // The bot token must be specific to Patrick Accounting's workspace
     
     patrickAccountingOrg = await storage.createOrganization({
       id: patrickAccountingId,
@@ -51,12 +51,12 @@ export async function ensurePatrickAccountingOrganization(): Promise<Organizatio
       slug: patrickAccountingSlug,
       plan: "enterprise",
       isActive: true,
-      // Slack Integration Configuration
+      // Slack Integration Configuration - partially configured
       slackWorkspaceId: "T3SEH2T9C",
       slackChannelId: "C09JR9655B7",
-      slackBotToken: slackBotToken,
-      enableSlackIntegration: true,
-      slackConnectionStatus: "connected",
+      slackBotToken: null, // Will be set when user reconnects Slack
+      enableSlackIntegration: false, // User needs to connect first
+      slackConnectionStatus: "not_connected",
       slackLastConnected: new Date()
     });
 
