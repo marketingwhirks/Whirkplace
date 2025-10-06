@@ -6329,44 +6329,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (result.error) {
         console.error(`⚠️ Sync completed with error: ${result.error}`);
+        console.error(`   Error code: ${result.errorCode}`);
+        console.error(`   Error details:`, result.errorDetails);
         
-        // Provide more helpful error messages based on common issues
-        if (result.error.includes('missing_scope')) {
-          return res.status(403).json({
-            message: "Missing Slack permissions. Your Slack app needs the following scopes: channels:read, groups:read, users:read, users:read.email",
-            error: "missing_scope",
-            details: "Please update your Slack app permissions at https://api.slack.com/apps",
-            ...result
-          });
-        } else if (result.error.includes('invalid_auth')) {
-          return res.status(401).json({
-            message: "Invalid Slack authentication. Your bot token may be expired or incorrect.",
-            error: "invalid_auth",
-            details: "Please check your Slack bot token in Settings → Integrations → Slack",
-            ...result
-          });
-        } else if (result.error.includes('channel_not_found')) {
-          return res.status(404).json({
-            message: `Slack channel "${channelIdentifier}" not found. Please ensure the channel exists and the bot has been added to it.`,
-            error: "channel_not_found",
-            details: `Invite your bot to the channel${channelIdentifier.startsWith('C') ? '' : ' using: /invite @your-bot-name in #' + channelIdentifier}`,
-            ...result
-          });
-        } else if (result.error.includes('No members found')) {
-          return res.status(404).json({
-            message: `No members found in channel "${channelIdentifier}". Please ensure the channel has members and the bot can see them.`,
-            error: "no_members",
-            details: "The bot may need to be invited to the channel or the channel might be private.",
-            ...result
-          });
+        // Map error codes to appropriate HTTP status codes and messages
+        const errorResponses: Record<string, { status: number; message: string }> = {
+          'missing_token': {
+            status: 400,
+            message: "Slack bot token not configured. Please add your Slack Bot Token in Settings → Integrations → Slack."
+          },
+          'missing_scope': {
+            status: 403,
+            message: "Missing Slack permissions. Your Slack app needs the following scopes: channels:read, groups:read, users:read, users:read.email"
+          },
+          'invalid_auth': {
+            status: 401,
+            message: "Invalid Slack authentication. Your bot token may be expired or incorrect."
+          },
+          'channel_not_found': {
+            status: 404,
+            message: `Slack channel "${channelIdentifier}" not found. Please ensure the channel exists and the bot has been added to it.`
+          },
+          'no_members': {
+            status: 404,
+            message: `No members found in channel "${channelIdentifier}". Please ensure the channel has members and the bot can see them.`
+          },
+          'members_fetch_error': {
+            status: 500,
+            message: "Failed to fetch channel members from Slack API."
+          },
+          'channel_search_error': {
+            status: 500,
+            message: "Failed to search for the channel in Slack."
+          }
+        };
+        
+        const errorResponse = errorResponses[result.errorCode || ''] || {
+          status: 400,
+          message: result.error || "Failed to sync users from Slack channel"
+        };
+        
+        // Build detailed error response
+        const responseBody = {
+          message: errorResponse.message,
+          error: result.errorCode || "sync_failed",
+          rawError: result.error,
+          errorDetails: result.errorDetails,
+          syncStats: {
+            created: result.created,
+            activated: result.activated,
+            deactivated: result.deactivated
+          }
+        };
+        
+        // Add helpful suggestions based on error type
+        if (result.errorCode === 'channel_not_found' && result.errorDetails?.suggestions) {
+          responseBody.errorDetails.suggestions = result.errorDetails.suggestions;
+        } else if (result.errorCode === 'missing_token') {
+          responseBody.errorDetails = {
+            ...result.errorDetails,
+            helpUrl: "/integrations",
+            actionRequired: "Configure Slack bot token"
+          };
+        } else if (result.errorCode === 'missing_scope') {
+          responseBody.errorDetails = {
+            ...result.errorDetails,
+            helpUrl: "https://api.slack.com/apps",
+            actionRequired: "Update OAuth scopes in your Slack app"
+          };
+        } else if (result.errorCode === 'invalid_auth') {
+          responseBody.errorDetails = {
+            ...result.errorDetails,
+            helpUrl: "/integrations",
+            actionRequired: "Reconnect your Slack integration"
+          };
         }
         
-        // Generic error response
-        return res.status(400).json({
-          message: result.error,
-          error: "sync_failed",
-          ...result
-        });
+        console.error(`❌ Returning error response with status ${errorResponse.status}:`, responseBody);
+        return res.status(errorResponse.status).json(responseBody);
       }
       
       console.log(`✅ Sync completed: Created ${result.created}, Activated ${result.activated}, Deactivated ${result.deactivated}`);
@@ -6487,44 +6527,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (result.error) {
         console.error(`⚠️ Sync completed with error: ${result.error}`);
+        console.error(`   Error code: ${result.errorCode}`);
+        console.error(`   Error details:`, result.errorDetails);
         
-        // Provide more helpful error messages based on common issues
-        if (result.error.includes('missing_scope')) {
-          return res.status(403).json({
-            message: "Missing Slack permissions. Your Slack app needs the following scopes: channels:read, groups:read, users:read, users:read.email",
-            error: "missing_scope",
-            details: "Please update your Slack app permissions at https://api.slack.com/apps",
-            ...result
-          });
-        } else if (result.error.includes('invalid_auth')) {
-          return res.status(401).json({
-            message: "Invalid Slack authentication. Your bot token may be expired or incorrect.",
-            error: "invalid_auth",
-            details: "Please check your Slack bot token in Settings → Integrations → Slack",
-            ...result
-          });
-        } else if (result.error.includes('channel_not_found')) {
-          return res.status(404).json({
-            message: `Slack channel "${channelIdentifier}" not found. Please ensure the channel exists and the bot has been added to it.`,
-            error: "channel_not_found",
-            details: `Invite your bot to the channel${channelIdentifier.startsWith('C') ? '' : ' using: /invite @your-bot-name in #' + channelIdentifier}`,
-            ...result
-          });
-        } else if (result.error.includes('No members found')) {
-          return res.status(404).json({
-            message: `No members found in channel "${channelIdentifier}". Please ensure the channel has members and the bot can see them.`,
-            error: "no_members",
-            details: "The bot may need to be invited to the channel or the channel might be private.",
-            ...result
-          });
+        // Map error codes to appropriate HTTP status codes and messages
+        const errorResponses: Record<string, { status: number; message: string }> = {
+          'missing_token': {
+            status: 400,
+            message: "Slack bot token not configured. Please add your Slack Bot Token in Settings → Integrations → Slack."
+          },
+          'missing_scope': {
+            status: 403,
+            message: "Missing Slack permissions. Your Slack app needs the following scopes: channels:read, groups:read, users:read, users:read.email"
+          },
+          'invalid_auth': {
+            status: 401,
+            message: "Invalid Slack authentication. Your bot token may be expired or incorrect."
+          },
+          'channel_not_found': {
+            status: 404,
+            message: `Slack channel "${channelIdentifier}" not found. Please ensure the channel exists and the bot has been added to it.`
+          },
+          'no_members': {
+            status: 404,
+            message: `No members found in channel "${channelIdentifier}". Please ensure the channel has members and the bot can see them.`
+          },
+          'members_fetch_error': {
+            status: 500,
+            message: "Failed to fetch channel members from Slack API."
+          },
+          'channel_search_error': {
+            status: 500,
+            message: "Failed to search for the channel in Slack."
+          }
+        };
+        
+        const errorResponse = errorResponses[result.errorCode || ''] || {
+          status: 400,
+          message: result.error || "Failed to sync users from Slack channel"
+        };
+        
+        // Build detailed error response
+        const responseBody = {
+          message: errorResponse.message,
+          error: result.errorCode || "sync_failed",
+          rawError: result.error,
+          errorDetails: result.errorDetails,
+          syncStats: {
+            created: result.created,
+            activated: result.activated,
+            deactivated: result.deactivated
+          }
+        };
+        
+        // Add helpful suggestions based on error type
+        if (result.errorCode === 'channel_not_found' && result.errorDetails?.suggestions) {
+          responseBody.errorDetails.suggestions = result.errorDetails.suggestions;
+        } else if (result.errorCode === 'missing_token') {
+          responseBody.errorDetails = {
+            ...result.errorDetails,
+            helpUrl: "/integrations",
+            actionRequired: "Configure Slack bot token"
+          };
+        } else if (result.errorCode === 'missing_scope') {
+          responseBody.errorDetails = {
+            ...result.errorDetails,
+            helpUrl: "https://api.slack.com/apps",
+            actionRequired: "Update OAuth scopes in your Slack app"
+          };
+        } else if (result.errorCode === 'invalid_auth') {
+          responseBody.errorDetails = {
+            ...result.errorDetails,
+            helpUrl: "/integrations",
+            actionRequired: "Reconnect your Slack integration"
+          };
         }
         
-        // Generic error response
-        return res.status(400).json({
-          message: result.error,
-          error: "sync_failed",
-          ...result
-        });
+        console.error(`❌ Returning error response with status ${errorResponse.status}:`, responseBody);
+        return res.status(errorResponse.status).json(responseBody);
       }
       
       console.log(`✅ Sync completed: Created ${result.created}, Activated ${result.activated}, Deactivated ${result.deactivated}`);
@@ -6588,8 +6668,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { getChannelMembers } = await import("./services/slack");
-      const members = await getChannelMembers(botToken, channelIdentifier as string);
+      const result = await getChannelMembers(botToken, channelIdentifier as string);
       
+      // Check if there was an error fetching channel members
+      if (result.error) {
+        console.error(`❌ Error fetching channel members: ${result.error}`);
+        console.error(`   Error code: ${result.errorCode}`);
+        console.error(`   Error details:`, result.errorDetails);
+        
+        // Return error details while maintaining the expected response structure
+        return res.status(400).json({
+          message: result.error,
+          error: result.errorCode,
+          errorDetails: result.errorDetails,
+          members: [],
+          count: 0,
+          channelName: channelIdentifier as string
+        });
+      }
+      
+      const members = result.members || [];
       res.json({
         members,
         count: members.length,

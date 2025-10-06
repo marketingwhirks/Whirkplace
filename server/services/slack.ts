@@ -1751,15 +1751,31 @@ async function findChannelIdByName(channelName: string): Promise<string | null> 
   return null;
 }
 
-export async function getChannelMembers(botToken?: string, channelNameOrId: string = WHIRKPLACE_CHANNEL): Promise<{ id: string; name: string; email?: string; active: boolean }[]> {
+export async function getChannelMembers(botToken?: string, channelNameOrId: string = WHIRKPLACE_CHANNEL): Promise<{ 
+  members?: { id: string; name: string; email?: string; active: boolean }[];
+  error?: string;
+  errorCode?: string;
+  errorDetails?: any;
+}> {
   console.log(`🔍 getChannelMembers called for channel: "${channelNameOrId}"`);
   console.log(`🔑 Using ${botToken ? 'organization-specific token' : 'environment token'}`);
   
   // Use provided token or fall back to environment variable
   const token = botToken || process.env.SLACK_BOT_TOKEN;
   if (!token) {
-    console.error("❌ No Slack bot token available. Cannot fetch channel members.");
-    return [];
+    const errorMsg = "No Slack bot token available. Cannot fetch channel members.";
+    console.error("❌ " + errorMsg);
+    return { 
+      members: [],
+      error: errorMsg,
+      errorCode: 'missing_token',
+      errorDetails: {
+        hasOrgToken: false,
+        hasEnvToken: false,
+        channelRequested: channelNameOrId,
+        message: "Please add your Slack Bot Token in Settings → Integrations → Slack"
+      }
+    };
   }
 
   // Create a client with the appropriate token
@@ -1786,8 +1802,18 @@ export async function getChannelMembers(botToken?: string, channelNameOrId: stri
       } catch (error: any) {
         console.error(`❌ Failed to verify channel ID ${channelId}:`, error?.data?.error);
         if (error?.data?.error === 'channel_not_found') {
-          console.error(`❌ Channel ID ${channelId} not found or bot doesn't have access`);
-          return [];
+          const errorMsg = `Channel ID ${channelId} not found or bot doesn't have access`;
+          console.error(`❌ ${errorMsg}`);
+          return {
+            members: [],
+            error: errorMsg,
+            errorCode: 'channel_not_found',
+            errorDetails: {
+              channelId: channelId,
+              message: "The channel doesn't exist or the bot hasn't been invited to it. Please invite the bot to the channel first.",
+              slackError: error?.data?.error
+            }
+          };
         }
         // Continue anyway - the channel might exist but info is restricted
       }
@@ -1808,8 +1834,17 @@ export async function getChannelMembers(botToken?: string, channelNameOrId: stri
           });
           
           if (!result.ok) {
-            console.error(`❌ Slack API error: ${result.error}`);
-            return [];
+            const errorMsg = `Slack API error: ${result.error}`;
+            console.error(`❌ ${errorMsg}`);
+            return {
+              members: [],
+              error: errorMsg,
+              errorCode: 'slack_api_error',
+              errorDetails: {
+                slackError: result.error,
+                channelRequested: channelNameOrId
+              }
+            };
           }
           
           const channelCount = result.channels?.length || 0;
@@ -1852,7 +1887,24 @@ export async function getChannelMembers(botToken?: string, channelNameOrId: stri
             console.error(`   Needed: ${error?.data?.needed}`);
             console.error(`   Provided: ${error?.data?.provided}`);
           }
-          throw error;
+          
+          // Return structured error instead of throwing
+          return {
+            members: [],
+            error: error?.data?.error === 'invalid_auth' 
+              ? "Invalid Slack authentication. The bot token may be expired or incorrect." 
+              : error?.data?.error === 'missing_scope'
+              ? `Missing required Slack permissions: ${error?.data?.needed || 'channels:read, groups:read, users:read, users:read.email'}`
+              : `Error searching for channel: ${error?.message || error?.data?.error || 'Unknown error'}`,
+            errorCode: error?.data?.error || 'channel_search_error',
+            errorDetails: {
+              slackError: error?.data?.error,
+              message: error?.message,
+              needed: error?.data?.needed,
+              provided: error?.data?.provided,
+              channelRequested: channelNameOrId
+            }
+          };
         }
       } while (cursor);
       
@@ -1880,7 +1932,33 @@ export async function getChannelMembers(botToken?: string, channelNameOrId: stri
         console.log(`   1. Check if the channel name is spelled correctly (looking for: "${channelNameOrId}")`);
         console.log(`   2. Make sure the bot has been invited to the channel`);
         console.log(`   3. If it's a private channel, the bot needs to be a member`);
-        return [];
+        
+        // Check if channel exists with different spelling
+        const similarChannels = allChannelNames.filter(name => 
+          name.includes('whirk') || name.includes('pulse') || name.includes('general')
+        );
+        
+        // Return structured error with helpful suggestions
+        const availableChannelsMsg = allChannelNames.length > 0 
+          ? `Bot can see ${allChannelNames.length} channels. Similar channels: ${similarChannels.join(', ') || 'none found'}` 
+          : "Bot cannot see ANY channels - bot needs to be invited to channels first";
+        
+        return {
+          members: [],
+          error: `Channel "${channelNameOrId}" not found.`,
+          errorCode: 'channel_not_found',
+          errorDetails: {
+            channelRequested: channelNameOrId,
+            totalChannelsVisible: allChannelNames.length,
+            availableChannels: availableChannelsMsg,
+            suggestions: [
+              `Ensure the channel name is spelled correctly (requested: "${channelNameOrId}")`,
+              "Make sure the bot has been invited to the channel",
+              "For private channels, the bot must be a member",
+              "Check if you're using the correct workspace"
+            ]
+          }
+        };
       }
     }
 
@@ -1894,22 +1972,62 @@ export async function getChannelMembers(botToken?: string, channelNameOrId: stri
     } catch (error: any) {
       // Handle missing scope error gracefully
       if (error?.data?.error === 'missing_scope') {
-        console.error(`❌ Missing Slack scope for channel "${channelName}".`);
+        const errorMsg = `Missing Slack scope for channel "${channelNameOrId}".`;
+        console.error(`❌ ${errorMsg}`);
         console.error(`📝 Required scopes: groups:read, channels:read`);
         console.error(`🔗 Visit your Slack app settings to update OAuth scopes.`);
-        return [];
+        return {
+          members: [],
+          error: errorMsg,
+          errorCode: 'missing_scope',
+          errorDetails: {
+            needed: error?.data?.needed || 'groups:read, channels:read',
+            provided: error?.data?.provided,
+            channelId: channelId,
+            message: "Your Slack app needs the 'groups:read' and 'channels:read' scopes. Visit https://api.slack.com/apps to update permissions."
+          }
+        };
       }
       if (error?.data?.error === 'invalid_auth') {
-        console.error("❌ Invalid authentication token. The Slack token may be expired or invalid.");
-        throw new Error("Slack authentication failed. Please reconnect your Slack integration.");
+        const errorMsg = "Invalid authentication token. The Slack token may be expired or invalid.";
+        console.error("❌ " + errorMsg);
+        return {
+          members: [],
+          error: errorMsg,
+          errorCode: 'invalid_auth',
+          errorDetails: {
+            channelId: channelId,
+            message: "Slack authentication failed. Please reconnect your Slack integration in Settings → Integrations → Slack.",
+            slackError: error?.data?.error
+          }
+        };
       }
-      console.error(`❌ Error fetching channel members:`, error);
-      throw error;
+      const errorMsg = `Error fetching channel members: ${error?.message || error?.data?.error || 'Unknown error'}`;
+      console.error(`❌ ${errorMsg}`);
+      return {
+        members: [],
+        error: errorMsg,
+        errorCode: error?.data?.error || 'members_fetch_error',
+        errorDetails: {
+          channelId: channelId,
+          slackError: error?.data?.error,
+          message: error?.message
+        }
+      };
     }
 
     if (!membersResult.members || membersResult.members.length === 0) {
-      console.warn(`⚠️ No members found in channel "${channelName}"`);
-      return [];
+      const warnMsg = `No members found in channel "${channelNameOrId}"`;
+      console.warn(`⚠️ ${warnMsg}`);
+      return {
+        members: [],
+        error: warnMsg,
+        errorCode: 'no_members',
+        errorDetails: {
+          channelId: channelId,
+          message: "The channel exists but has no members. Please ensure team members have joined the channel."
+        }
+      };
     }
 
     console.log(`📊 Found ${membersResult.members.length} members in channel`);
@@ -1936,23 +2054,50 @@ export async function getChannelMembers(botToken?: string, channelNameOrId: stri
     const users = await Promise.all(userPromises);
     const validUsers = users.filter((user): user is NonNullable<typeof user> => user !== null);
     
-    console.log(`✅ Successfully fetched ${validUsers.length} valid users from channel "${channelName}"`);
-    return validUsers;
+    console.log(`✅ Successfully fetched ${validUsers.length} valid users from channel "${channelNameOrId}"`);
+    return {
+      members: validUsers,
+      error: undefined,
+      errorCode: undefined,
+      errorDetails: undefined
+    };
   } catch (error: any) {
     // Provide helpful error messages for common issues
+    const errorCode = error?.data?.error || 'unknown_error';
+    let errorMsg = '';
+    let errorDetails: any = {
+      slackError: error?.data?.error,
+      message: error?.message,
+      channelRequested: channelNameOrId
+    };
+    
     if (error?.data?.error === 'missing_scope') {
-      console.error("❌ Slack API missing_scope error. Please ensure your Slack app has the following scopes:");
+      errorMsg = "Missing required Slack permissions to fetch channel members.";
+      console.error(`❌ ${errorMsg} Please ensure your Slack app has the following scopes:`);
       console.error("📝 Bot Token Scopes:");
       console.error("  - channels:read (for accessing public channels)");
       console.error("  - groups:read (for accessing private channels)");  
       console.error("  - users:read (for fetching user information)");
       console.error("🔗 Visit https://api.slack.com/apps to update scopes.");
+      errorDetails.needed = error?.data?.needed;
+      errorDetails.provided = error?.data?.provided;
+      errorDetails.helpMessage = "Update your Slack app permissions at https://api.slack.com/apps";
     } else if (error?.data?.error === 'invalid_auth') {
-      console.error("❌ Slack authentication failed. The token may be expired or invalid.");
+      errorMsg = "Slack authentication failed. The token may be expired or invalid.";
+      console.error(`❌ ${errorMsg}`);
+      errorDetails.helpMessage = "Please reconnect your Slack integration in Settings → Integrations → Slack.";
     } else {
-      console.error("❌ Failed to fetch channel members:", error);
+      errorMsg = `Failed to fetch channel members: ${error?.message || error?.data?.error || 'Unknown error'}`;
+      console.error(`❌ ${errorMsg}`);
+      errorDetails.fullError = error;
     }
-    throw error;
+    
+    return {
+      members: [],
+      error: errorMsg,
+      errorCode: errorCode,
+      errorDetails: errorDetails
+    };
   }
 }
 
@@ -1965,16 +2110,43 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
   activated: number;
   deactivated: number;
   error?: string;
+  errorCode?: string;
+  errorDetails?: any;
 }> {
   console.log(`🚀 Starting user sync for organization ${organizationId}...`);
   console.log(`📺 Channel name/ID: "${channelNameOrId}"`);
   console.log(`🔑 Using ${botToken ? 'organization-specific token' : 'environment token'}`);
   
   try {
-    const channelMembers = await getChannelMembers(botToken, channelNameOrId);
+    const channelResult = await getChannelMembers(botToken, channelNameOrId);
+    
+    // Check if there was an error fetching channel members
+    if (channelResult.error) {
+      console.warn(`⚠️ Error fetching channel members: ${channelResult.error}`);
+      return { 
+        created: 0, 
+        activated: 0, 
+        deactivated: 0, 
+        error: channelResult.error,
+        errorCode: channelResult.errorCode,
+        errorDetails: channelResult.errorDetails
+      };
+    }
+    
+    const channelMembers = channelResult.members || [];
     if (channelMembers.length === 0) {
       console.warn("⚠️ No channel members found. Skipping user sync.");
-      return { created: 0, activated: 0, deactivated: 0, error: `No members found in channel "${channelNameOrId}". Please ensure the channel exists and the bot has access to it.` };
+      return { 
+        created: 0, 
+        activated: 0, 
+        deactivated: 0, 
+        error: `No members found in channel "${channelNameOrId}". Please ensure the channel exists and the bot has access to it.`,
+        errorCode: 'no_members',
+        errorDetails: {
+          channelRequested: channelNameOrId,
+          message: "The channel exists but has no members, or the bot cannot access member information."
+        }
+      };
     }
 
     console.log(`✅ Found ${channelMembers.length} channel members to process`);
@@ -2064,7 +2236,7 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
   }
 
     console.log(`✅ User sync completed for organization ${organizationId}:`, stats);
-    return stats;
+    return { ...stats, error: undefined, errorCode: undefined, errorDetails: undefined };
   } catch (error: any) {
     console.error(`❌ Error during user sync for organization ${organizationId}:`, error);
     const errorMessage = error?.message || 'Unknown error during sync';
@@ -2072,7 +2244,14 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
       created: 0,
       activated: 0,
       deactivated: 0,
-      error: errorMessage
+      error: errorMessage,
+      errorCode: 'sync_error',
+      errorDetails: {
+        organizationId: organizationId,
+        channelRequested: channelNameOrId,
+        fullError: error,
+        message: errorMessage
+      }
     };
   }
 }
