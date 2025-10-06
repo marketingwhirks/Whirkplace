@@ -4,10 +4,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle, Check } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle, Check, InfoIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -252,6 +253,14 @@ export default function Wins() {
       )}
       
       <div className="space-y-6" data-testid="wins-container">
+          {/* Explanatory Text */}
+          <Alert>
+            <InfoIcon className="h-4 w-4" />
+            <AlertDescription>
+              Celebrate your achievements and milestones! Wins are personal accomplishments you want to share with your team.
+            </AlertDescription>
+          </Alert>
+
           {/* Actions Header */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <Tabs value={filter} onValueChange={(value) => setFilter(value as any)} className="w-full sm:w-auto">

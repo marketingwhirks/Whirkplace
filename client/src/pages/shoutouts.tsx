@@ -4,10 +4,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Edit, Trash2, Users, Lock, Unlock, Sparkles, Star, MessageCircle, Send, Gift, Check, ChevronsUpDown, X } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Lock, Unlock, Sparkles, Star, MessageCircle, Send, Gift, Check, ChevronsUpDown, X, InfoIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -477,6 +478,14 @@ export default function ShoutoutsPage() {
               </DialogContent>
             </Dialog>
           </div>
+
+          {/* Explanatory Text */}
+          <Alert>
+            <InfoIcon className="h-4 w-4" />
+            <AlertDescription>
+              Give recognition to teammates and teams! Shoutouts are public acknowledgments of great work, collaboration, and support.
+            </AlertDescription>
+          </Alert>
 
           {/* Tabs for filtering */}
           <Tabs value={filter} onValueChange={(value) => setFilter(value as any)}>

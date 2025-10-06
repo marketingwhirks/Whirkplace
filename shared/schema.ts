@@ -347,7 +347,8 @@ export const comments = pgTable("comments", {
 export const shoutouts = pgTable("shoutouts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   fromUserId: varchar("from_user_id").notNull(), // who gave the shoutout
-  toUserId: varchar("to_user_id").notNull(), // who received the shoutout
+  toUserId: varchar("to_user_id"), // who received the shoutout (nullable for team shoutouts)
+  toTeamId: varchar("to_team_id"), // team that received the shoutout (nullable for individual shoutouts)
   message: text("message").notNull(),
   organizationId: varchar("organization_id").notNull(),
   values: text("values").array().notNull().default([]), // company values associated
@@ -357,6 +358,7 @@ export const shoutouts = pgTable("shoutouts", {
 }, (table) => ({
   orgUserCreatedAtIdx: index("shoutouts_org_user_created_at_idx").on(table.organizationId, table.fromUserId, table.createdAt),
   orgToUserCreatedAtIdx: index("shoutouts_org_to_user_created_at_idx").on(table.organizationId, table.toUserId, table.createdAt),
+  orgToTeamCreatedAtIdx: index("shoutouts_org_to_team_created_at_idx").on(table.organizationId, table.toTeamId, table.createdAt),
 }));
 
 // Notifications table for user notifications
