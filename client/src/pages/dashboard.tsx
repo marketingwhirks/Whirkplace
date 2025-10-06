@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Progress } from "@/components/ui/progress";
-import type { Checkin, Win, User, Question, ComplianceMetricsResult, Shoutout, TeamGoal } from "@shared/schema";
+import type { Checkin, Win, User, Question, ComplianceMetricsResult, Shoutout, TeamGoal, Team } from "@shared/schema";
 import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
@@ -131,6 +131,10 @@ export default function Dashboard() {
     queryKey: ["/api/users"],
   });
 
+  const { data: teams = [], isLoading: teamsLoading } = useQuery<Team[]>({
+    queryKey: ["/api/teams"],
+  });
+
   const { data: questions = [], isLoading: questionsLoading } = useQuery<Question[]>({
     queryKey: ["/api/questions"],
   });
@@ -157,9 +161,9 @@ export default function Dashboard() {
         } else if (recipient.teamId) {
           const teamId = recipient.teamId;
           if (!teamShoutouts.has(teamId)) {
-            // Try to find a team name from other users or use generic label
-            const teamUser = users.find(u => u.teamId === teamId && u.team);
-            const teamName = teamUser?.team?.name || `Team ${teamId.slice(0, 8)}`;
+            // Try to find the team name from the teams array
+            const team = teams.find(t => t.id === teamId);
+            const teamName = team?.name || `Team ${teamId.slice(0, 8)}`;
             teamShoutouts.set(teamId, { teamName, count: 0 });
           }
           teamShoutouts.get(teamId)!.count++;
@@ -194,7 +198,7 @@ export default function Dashboard() {
         totalCount: shoutoutsReceived.length
       };
     }
-  }, [shoutoutsReceived, users, currentUser]);
+  }, [shoutoutsReceived, users, teams, currentUser]);
 
   // Get current week check-in
   const { data: currentCheckin } = useQuery<Checkin | null>({
@@ -589,7 +593,7 @@ export default function Dashboard() {
                       ? `Top: ${shoutoutMetrics.topTeam.teamName} (${shoutoutMetrics.topTeam.count})`
                       : currentUser.role === "manager" && shoutoutMetrics.personalCount !== undefined
                         ? `${shoutoutMetrics.personalCount} personal, ${shoutoutMetrics.teamCount} team`
-                        : currentUser.role === "member" && shoutoutMetrics.personalCount > 0
+                        : currentUser.role === "member" && shoutoutMetrics.personalCount && shoutoutMetrics.personalCount > 0
                           ? "Recognition received"
                           : "No shoutouts yet"}
                   </p>
