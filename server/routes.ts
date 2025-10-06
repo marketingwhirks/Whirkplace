@@ -4713,11 +4713,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/questions/:id", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {
-      // Allow updating text, order, and isActive - protect organizationId and createdBy
+      // Allow updating text, order, isActive, categoryId, and assignedToUserId - protect organizationId and createdBy
       const updatesSchema = z.object({
         text: z.string().min(5, "Question must be at least 5 characters").optional(),
         order: z.number().min(0, "Order must be 0 or greater").optional(),
-        isActive: z.boolean().optional()
+        isActive: z.boolean().optional(),
+        categoryId: z.string().optional().nullable(),
+        assignedToUserId: z.string().optional().nullable()
       });
       const updates = updatesSchema.parse(req.body);
       

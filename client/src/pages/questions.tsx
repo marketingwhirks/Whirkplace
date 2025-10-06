@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { z } from "zod";
-import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff, Send, XCircle, Search, BookOpen, Users, Heart, Briefcase, TrendingUp, MessageCircle, Target, Sparkles, Wand2, Lightbulb, Library, Upload, CheckCircle, User, UserCheck } from "lucide-react";
+import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff, Send, XCircle, Search, BookOpen, Users, Heart, Briefcase, TrendingUp, MessageCircle, Target, Sparkles, Wand2, Lightbulb, Library, Upload, CheckCircle, User, UserCheck, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Question, QuestionCategory, QuestionBank, User as UserType } from "@shared/schema";
@@ -37,22 +38,24 @@ const categoryIcons: { [key: string]: any } = {
   "innovation": Lightbulb,
 };
 
-// Schema for creating questions with assignment
-const createQuestionSchema = z.object({
+// Schema for creating/editing questions with assignment
+const questionSchema = z.object({
   text: z.string().min(5, "Question must be at least 5 characters"),
   order: z.number().min(0, "Order must be 0 or greater").default(0),
-  categoryId: z.string().optional(),
+  categoryId: z.string().optional().nullable(),
   assignedToUserId: z.string().optional().nullable(),
   addToBank: z.boolean().default(false),
+  isActive: z.boolean().default(true),
 });
 
-type CreateQuestionForm = z.infer<typeof createQuestionSchema>;
+type QuestionForm = z.infer<typeof questionSchema>;
 
 export default function QuestionsEnhanced() {
   const { toast } = useToast();
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showBankDialog, setShowBankDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [creationMode, setCreationMode] = useState<"custom" | "bank">("bank");
   const [selectedBankQuestion, setSelectedBankQuestion] = useState<QuestionBank | null>(null);
@@ -107,26 +110,36 @@ export default function QuestionsEnhanced() {
     (q.description && q.description.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  // Form for creating/editing questions
-  const form = useForm<CreateQuestionForm>({
-    resolver: zodResolver(createQuestionSchema),
+  // Form for creating questions
+  const createForm = useForm<QuestionForm>({
+    resolver: zodResolver(questionSchema),
     defaultValues: {
       text: "",
       order: questions.length,
-      categoryId: undefined,
+      categoryId: null,
       assignedToUserId: null,
       addToBank: false,
+      isActive: true,
     },
+  });
+
+  // Form for editing questions
+  const editForm = useForm<QuestionForm>({
+    resolver: zodResolver(questionSchema),
   });
 
   // Create question mutation
   const createQuestionMutation = useMutation({
-    mutationFn: async (data: CreateQuestionForm) => {
-      return apiRequest("POST", "/api/questions", data);
+    mutationFn: async (data: QuestionForm) => {
+      const submitData = {
+        ...data,
+        assignedToUserId: assignmentType === "specific" ? selectedUserId : null,
+      };
+      return apiRequest("POST", "/api/questions", submitData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
-      handleDialogClose();
+      handleCreateDialogClose();
       toast({
         title: "Success",
         description: "Question created successfully",
@@ -136,6 +149,48 @@ export default function QuestionsEnhanced() {
       toast({
         title: "Error",
         description: "Failed to create question",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update question mutation
+  const updateQuestionMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<QuestionForm> }) => {
+      return apiRequest("PATCH", `/api/questions/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
+      toast({
+        title: "Success",
+        description: "Question updated successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update question",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Toggle active status mutation  
+  const toggleActiveMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      return apiRequest("PATCH", `/api/questions/${id}`, { isActive });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
+      toast({
+        title: "Success",
+        description: "Question status updated",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update question status",
         variant: "destructive",
       });
     },
@@ -188,13 +243,32 @@ export default function QuestionsEnhanced() {
     },
   });
 
-  // Handle dialog close
-  const handleDialogClose = () => {
+  // Handle create dialog close
+  const handleCreateDialogClose = () => {
     setShowCreateDialog(false);
-    setEditingQuestion(null);
-    form.reset();
+    createForm.reset();
     setAssignmentType("all");
     setSelectedUserId("");
+  };
+
+  // Handle edit dialog open
+  const handleEditQuestion = (question: Question) => {
+    setEditingQuestion(question);
+    editForm.reset({
+      text: question.text,
+      order: question.order || 0,
+      categoryId: question.categoryId || null,
+      assignedToUserId: question.assignedToUserId || null,
+      isActive: question.isActive !== undefined ? question.isActive : true,
+    });
+    setShowEditDialog(true);
+  };
+
+  // Handle edit dialog close
+  const handleEditDialogClose = () => {
+    setShowEditDialog(false);
+    setEditingQuestion(null);
+    editForm.reset();
   };
 
   // Handle bank dialog close
@@ -216,13 +290,27 @@ export default function QuestionsEnhanced() {
     });
   };
 
-  // Submit form
-  const onSubmit = (data: CreateQuestionForm) => {
-    const submitData = {
-      ...data,
-      assignedToUserId: assignmentType === "specific" ? selectedUserId : null,
-    };
-    createQuestionMutation.mutate(submitData);
+  // Submit create form
+  const onCreateSubmit = (data: QuestionForm) => {
+    createQuestionMutation.mutate(data);
+  };
+
+  // Submit edit form
+  const onEditSubmit = (data: QuestionForm) => {
+    if (!editingQuestion) return;
+    updateQuestionMutation.mutate({
+      id: editingQuestion.id,
+      data,
+    });
+    handleEditDialogClose();
+  };
+
+  // Handle toggle active
+  const handleToggleActive = (questionId: string, currentStatus: boolean) => {
+    toggleActiveMutation.mutate({
+      id: questionId,
+      isActive: !currentStatus,
+    });
   };
 
   // Get category name
@@ -235,7 +323,7 @@ export default function QuestionsEnhanced() {
   const getUserName = (userId: string | null) => {
     if (!userId) return "All Team";
     const user = users.find(u => u.id === userId);
-    return user?.name || "Unknown User";
+    return user ? `${user.name}` : "Unknown User";
   };
 
   if (userLoading || !currentUser) {
@@ -341,49 +429,82 @@ export default function QuestionsEnhanced() {
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-3">
-                    {categoryQuestions.map((question) => (
+                    {categoryQuestions
+                      .sort((a, b) => (a.order || 0) - (b.order || 0))
+                      .map((question) => (
                       <div
                         key={question.id}
-                        className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                        className={cn(
+                          "flex items-start gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors",
+                          question.isActive === false && "opacity-60"
+                        )}
+                        data-testid={`question-item-${question.id}`}
                       >
-                        <div className="flex-1 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{question.text}</p>
+                        <div className="flex items-center gap-2">
+                          <GripVertical className="h-5 w-5 text-muted-foreground" />
+                          <Switch
+                            checked={question.isActive !== false}
+                            onCheckedChange={() => handleToggleActive(question.id, question.isActive !== false)}
+                            aria-label="Toggle question active status"
+                            data-testid={`toggle-active-${question.id}`}
+                          />
+                        </div>
+                        
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className={cn(
+                              "font-medium",
+                              question.isActive === false && "line-through"
+                            )}>
+                              {question.text}
+                            </p>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleEditQuestion(question)}
+                                data-testid={`edit-question-${question.id}`}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => deleteQuestionMutation.mutate(question.id)}
+                                data-testid={`button-delete-${question.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {question.isActive === false && (
+                              <Badge variant="secondary" className="text-xs">
+                                <EyeOff className="w-3 h-3 mr-1" />
+                                Inactive
+                              </Badge>
+                            )}
                             {question.isFromBank && (
                               <Badge variant="outline" className="text-xs">
                                 <Library className="w-3 h-3 mr-1" />
                                 From Bank
                               </Badge>
                             )}
-                          </div>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <div className="flex items-center gap-1">
+                            <Badge variant="outline" className="text-xs">
                               {question.assignedToUserId ? (
                                 <>
-                                  <User className="w-3 h-3" />
-                                  <span>Assigned to: {getUserName(question.assignedToUserId)}</span>
+                                  <User className="w-3 h-3 mr-1" />
+                                  {getUserName(question.assignedToUserId)}
                                 </>
                               ) : (
                                 <>
-                                  <Users className="w-3 h-3" />
-                                  <span>All Team Members</span>
+                                  <Users className="w-3 h-3 mr-1" />
+                                  All Team Members
                                 </>
                               )}
-                            </div>
-                            {!question.isActive && (
-                              <Badge variant="secondary">Hidden</Badge>
-                            )}
+                            </Badge>
                           </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteQuestionMutation.mutate(question.id)}
-                            data-testid={`button-delete-${question.id}`}
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
                         </div>
                       </div>
                     ))}
@@ -521,7 +642,7 @@ export default function QuestionsEnhanced() {
                     <SelectContent>
                       {users.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
-                          {user.name || user.email}
+                          {user.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -556,10 +677,10 @@ export default function QuestionsEnhanced() {
             </DialogDescription>
           </DialogHeader>
           
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <Form {...createForm}>
+            <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
               <FormField
-                control={form.control}
+                control={createForm.control}
                 name="text"
                 render={({ field }) => (
                   <FormItem>
@@ -577,12 +698,12 @@ export default function QuestionsEnhanced() {
               />
               
               <FormField
-                control={form.control}
+                control={createForm.control}
                 name="categoryId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Category</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} defaultValue={field.value ?? undefined}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select a category" />
@@ -628,7 +749,7 @@ export default function QuestionsEnhanced() {
                     <SelectContent>
                       {users.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
-                          {user.name || user.email}
+                          {user.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -637,7 +758,7 @@ export default function QuestionsEnhanced() {
               </div>
 
               <FormField
-                control={form.control}
+                control={createForm.control}
                 name="addToBank"
                 render={({ field }) => (
                   <FormItem className="flex items-center justify-between rounded-lg border p-3 space-y-0">
@@ -658,11 +779,134 @@ export default function QuestionsEnhanced() {
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={handleDialogClose}>
+                <Button type="button" variant="outline" onClick={handleCreateDialogClose}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={createQuestionMutation.isPending}>
                   {createQuestionMutation.isPending ? "Creating..." : "Create Question"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Question Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Question</DialogTitle>
+            <DialogDescription>
+              Update the question details
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
+              <FormField
+                control={editForm.control}
+                name="text"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Question Text</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        placeholder="What would you like to ask your team?" 
+                        className="min-h-[100px]" 
+                        {...field}
+                        data-testid="edit-question-text"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="categoryId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Category</FormLabel>
+                    <Select 
+                      onValueChange={(value) => field.onChange(value === "none" ? null : value)} 
+                      value={field.value || "none"}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="edit-question-category">
+                          <SelectValue placeholder="Select a category" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="none">No Category</SelectItem>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.icon} {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="assignedToUserId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Assigned To</FormLabel>
+                    <Select 
+                      onValueChange={(value) => field.onChange(value === "all" ? null : value)} 
+                      value={field.value || "all"}
+                    >
+                      <FormControl>
+                        <SelectTrigger data-testid="edit-question-user">
+                          <SelectValue placeholder="Select assignment" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="all">All Team Members</SelectItem>
+                        {users.map((user) => (
+                          <SelectItem key={user.id} value={user.id}>
+                            {user.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={editForm.control}
+                name="isActive"
+                render={({ field }) => (
+                  <FormItem className="flex items-center justify-between rounded-lg border p-3 space-y-0">
+                    <div className="space-y-0.5">
+                      <FormLabel>Active</FormLabel>
+                      <FormDescription>
+                        Active questions are used in check-ins
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        data-testid="edit-question-active"
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={handleEditDialogClose}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={updateQuestionMutation.isPending}>
+                  {updateQuestionMutation.isPending ? "Updating..." : "Update Question"}
                 </Button>
               </DialogFooter>
             </form>
