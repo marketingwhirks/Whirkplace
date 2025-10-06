@@ -33,9 +33,7 @@ import {
   Calendar,
   CalendarOff,
   BookOpen,
-  Database,
-  DollarSign,
-  Receipt
+  Database
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -82,29 +80,6 @@ interface TeamDeleteResult {
   message: string;
 }
 
-// Billing Events interface
-interface BillingEvent {
-  id: string;
-  eventType: string;
-  description: string;
-  amount: number; // In cents
-  currency: string;
-  createdAt: string;
-  metadata?: any;
-}
-
-interface UserBillingEventsResponse {
-  user: {
-    id: string;
-    name: string;
-    email: string;
-  };
-  totalCharges: number; // In cents
-  totalCredits: number; // In cents
-  netAmount: number; // In cents
-  events: BillingEvent[];
-}
-
 // Form validation schema for team editing
 const editTeamSchema = z.object({
   name: z.string().min(1, "Team name is required").max(100, "Team name must be less than 100 characters"),
@@ -142,10 +117,6 @@ export default function Admin() {
   const [vacationDatePopoverOpen, setVacationDatePopoverOpen] = useState(false);
   const [selectedVacationDate, setSelectedVacationDate] = useState<Date | undefined>();
   const [vacationNote, setVacationNote] = useState("");
-
-  // Billing events state
-  const [selectedUserForBilling, setSelectedUserForBilling] = useState<UserType | null>(null);
-  const [showBillingEventsDialog, setShowBillingEventsDialog] = useState(false);
 
   const { data: currentUser, actualUser, canSwitchRoles } = useViewAsRole();
 
@@ -277,12 +248,6 @@ export default function Admin() {
   const { data: teams = [], isLoading: teamsLoading } = useQuery<TeamType[]>({
     queryKey: ["/api/teams"],
     enabled: (actualUser?.role === "admin") || canSwitchRoles,
-  });
-  
-  // Fetch billing events for selected user
-  const { data: billingEventsData, isLoading: billingEventsLoading } = useQuery<UserBillingEventsResponse>({
-    queryKey: [`/api/admin/users/${selectedUserForBilling?.id}/billing-events`],
-    enabled: !!selectedUserForBilling && showBillingEventsDialog,
   });
 
   // Fetch vacations for selected user
@@ -776,18 +741,6 @@ export default function Admin() {
                         data-testid={`button-assign-team-${user.id}`}
                       >
                         Assign Team
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedUserForBilling(user);
-                          setShowBillingEventsDialog(true);
-                        }}
-                        data-testid={`button-view-charges-${user.id}`}
-                      >
-                        <Receipt className="w-4 h-4 mr-1" />
-                        View Charges
                       </Button>
                     </div>
                   </div>
@@ -1557,144 +1510,6 @@ export default function Admin() {
               <Button 
                 onClick={() => setSelectedUserForVacation(null)}
                 data-testid="button-close-vacation-dialog"
-              >
-                Close
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Billing Events Dialog */}
-        <Dialog open={showBillingEventsDialog} onOpenChange={setShowBillingEventsDialog}>
-          <DialogContent data-testid="dialog-billing-events" className="max-w-4xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5" />
-                Billing Events - {selectedUserForBilling?.name}
-              </DialogTitle>
-              <DialogDescription>
-                View all charges and credits for {selectedUserForBilling?.name} ({selectedUserForBilling?.email})
-              </DialogDescription>
-            </DialogHeader>
-            
-            {billingEventsLoading ? (
-              <div className="space-y-4">
-                <div className="flex items-center justify-center py-8">
-                  <RefreshCw className="w-8 h-8 animate-spin text-muted-foreground" />
-                </div>
-              </div>
-            ) : billingEventsData ? (
-              <div className="space-y-6">
-                {/* Summary Section */}
-                <div className="grid grid-cols-3 gap-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Total Charges</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-2xl font-bold text-green-600">
-                        ${(billingEventsData.totalCharges / 100).toFixed(2)}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Total Credits</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-2xl font-bold text-red-600">
-                        ${(billingEventsData.totalCredits / 100).toFixed(2)}
-                      </p>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium">Net Amount</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className={`text-2xl font-bold ${billingEventsData.netAmount >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ${(billingEventsData.netAmount / 100).toFixed(2)}
-                      </p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Events Table */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm font-medium">Billing History</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {billingEventsData.events.length > 0 ? (
-                      <div className="rounded-md border">
-                        <table className="w-full">
-                          <thead className="border-b bg-muted/50">
-                            <tr>
-                              <th className="text-left p-3 text-sm font-medium">Date</th>
-                              <th className="text-left p-3 text-sm font-medium">Event Type</th>
-                              <th className="text-left p-3 text-sm font-medium">Description</th>
-                              <th className="text-right p-3 text-sm font-medium">Amount</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {billingEventsData.events.map((event) => {
-                              const isCredit = event.amount < 0;
-                              const formattedAmount = Math.abs(event.amount) / 100;
-                              
-                              return (
-                                <tr key={event.id} className="border-b last:border-b-0">
-                                  <td className="p-3 text-sm">
-                                    {new Date(event.createdAt).toLocaleDateString('en-US', {
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric',
-                                      hour: '2-digit',
-                                      minute: '2-digit'
-                                    })}
-                                  </td>
-                                  <td className="p-3 text-sm">
-                                    <Badge variant="outline" className="capitalize">
-                                      {event.eventType.replace(/_/g, ' ')}
-                                    </Badge>
-                                  </td>
-                                  <td className="p-3 text-sm text-muted-foreground">
-                                    {event.description}
-                                  </td>
-                                  <td className={`p-3 text-sm font-medium text-right ${isCredit ? 'text-red-600' : 'text-green-600'}`}>
-                                    {isCredit ? '-' : '+'}${formattedAmount.toFixed(2)}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div className="text-center py-12 border rounded-lg bg-muted/30">
-                        <Receipt className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-                        <p className="text-muted-foreground font-medium">No billing events found</p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          This user has no charges or credits recorded
-                        </p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-            ) : (
-              <div className="text-center py-8">
-                <AlertCircle className="w-12 h-12 mx-auto mb-3 text-muted-foreground" />
-                <p className="text-muted-foreground">Failed to load billing events</p>
-              </div>
-            )}
-            
-            <div className="flex justify-end mt-4">
-              <Button 
-                onClick={() => {
-                  setSelectedUserForBilling(null);
-                  setShowBillingEventsDialog(false);
-                }}
-                data-testid="button-close-billing-dialog"
               >
                 Close
               </Button>

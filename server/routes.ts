@@ -3683,64 +3683,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get billing events for a specific user (Admin only)
-  app.get("/api/admin/users/:userId/billing-events", requireAuth(), requireRole(['admin']), async (req, res) => {
-    try {
-      const { userId } = req.params;
-      
-      // Verify the user exists in the organization
-      const user = await storage.getUser(req.orgId, userId);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      
-      // Fetch billing events for this user from the database
-      const events = await db.select()
-        .from(billingEvents)
-        .where(and(
-          eq(billingEvents.organizationId, req.orgId),
-          eq(billingEvents.userId, userId)
-        ))
-        .orderBy(desc(billingEvents.createdAt));
-      
-      // Calculate total charges (sum of all amounts)
-      const totalCharges = events.reduce((sum, event) => {
-        // Only add positive amounts (charges), not credits
-        return sum + (event.amount > 0 ? event.amount : 0);
-      }, 0);
-      
-      // Calculate total credits (sum of negative amounts)
-      const totalCredits = events.reduce((sum, event) => {
-        // Only add negative amounts (credits)
-        return sum + (event.amount < 0 ? Math.abs(event.amount) : 0);
-      }, 0);
-      
-      // Format the response with user info and billing events
-      res.json({
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-        },
-        totalCharges, // In cents
-        totalCredits, // In cents
-        netAmount: totalCharges - totalCredits, // In cents
-        events: events.map(event => ({
-          id: event.id,
-          eventType: event.eventType,
-          description: event.description || `${event.eventType} event`,
-          amount: event.amount, // In cents
-          currency: event.currency,
-          createdAt: event.createdAt,
-          metadata: event.metadata,
-        })),
-      });
-    } catch (error) {
-      console.error("Error fetching user billing events:", error);
-      res.status(500).json({ message: "Failed to fetch billing events" });
-    }
-  });
-
   // Teams
   app.get("/api/teams", requireAuth(), async (req, res) => {
     try {
