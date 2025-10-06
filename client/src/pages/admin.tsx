@@ -137,6 +137,20 @@ export default function Admin() {
         : {};
       
       const response = await apiRequest("POST", "/api/admin/sync-users", requestBody);
+      
+      // Check if the response is not ok before trying to parse JSON
+      if (!response.ok) {
+        // Try to get error details from response
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          // If JSON parsing fails, use a generic error
+          errorData = { message: "Failed to sync users from Slack channel" };
+        }
+        throw errorData;
+      }
+      
       return await response.json() as SyncResult;
     },
     onSuccess: (data) => {
@@ -148,11 +162,57 @@ export default function Admin() {
       });
       setShowSyncDialog(false);
     },
-    onError: () => {
+    onError: (error: any) => {
+      // Extract detailed error information from the backend
+      let errorTitle = "Sync failed";
+      let errorDescription = "Failed to sync users from Slack channel.";
+      let errorDetails = "";
+      
+      // Check for specific error codes and provide detailed messages
+      if (error?.error) {
+        errorDescription = error.message || error.error;
+        
+        // Add specific error code information if available
+        if (error.errorCode) {
+          errorTitle = `Sync failed: ${error.errorCode}`;
+        }
+        
+        // Add detailed error information if available
+        if (error.errorDetails) {
+          if (typeof error.errorDetails === 'object') {
+            errorDetails = Object.entries(error.errorDetails)
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(', ');
+          } else {
+            errorDetails = String(error.errorDetails);
+          }
+        }
+        
+        // Add debug information if available
+        if (error.debug) {
+          const debugInfo = typeof error.debug === 'object' 
+            ? JSON.stringify(error.debug, null, 2)
+            : String(error.debug);
+          errorDetails = errorDetails ? `${errorDetails}\n\nDebug: ${debugInfo}` : `Debug: ${debugInfo}`;
+        }
+      } else if (error?.message) {
+        errorDescription = error.message;
+      }
+      
+      // Show comprehensive error toast with all available information
       toast({
         variant: "destructive",
-        title: "Sync failed",
-        description: "Failed to sync users from Slack channel.",
+        title: errorTitle,
+        description: (
+          <div className="space-y-2">
+            <p className="font-medium">{errorDescription}</p>
+            {errorDetails && (
+              <pre className="text-xs bg-black/10 dark:bg-white/10 p-2 rounded overflow-x-auto whitespace-pre-wrap">
+                {errorDetails}
+              </pre>
+            )}
+          </div>
+        ) as any,
       });
     },
   });

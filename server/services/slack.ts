@@ -1765,15 +1765,29 @@ export async function getChannelMembers(botToken?: string, channelNameOrId: stri
   if (!token) {
     const errorMsg = "No Slack bot token available. Cannot fetch channel members.";
     console.error("❌ " + errorMsg);
+    console.error("   📋 Diagnostic Information:");
+    console.error("   - Organization token provided: " + (botToken ? "YES (but empty/invalid)" : "NO"));
+    console.error("   - Environment token exists: " + (process.env.SLACK_BOT_TOKEN ? "YES (but empty/invalid)" : "NO"));
+    console.error("   - Channel requested: " + channelNameOrId);
+    console.error("   - Timestamp: " + new Date().toISOString());
     return { 
       members: [],
       error: errorMsg,
       errorCode: 'missing_token',
       errorDetails: {
-        hasOrgToken: false,
-        hasEnvToken: false,
+        hasOrgToken: !!botToken,
+        orgTokenEmpty: botToken === "",
+        hasEnvToken: !!process.env.SLACK_BOT_TOKEN,
+        envTokenEmpty: process.env.SLACK_BOT_TOKEN === "",
         channelRequested: channelNameOrId,
-        message: "Please add your Slack Bot Token in Settings → Integrations → Slack"
+        timestamp: new Date().toISOString(),
+        message: "CRITICAL: Slack bot token is missing or empty. Please add your Slack Bot Token in Settings → Integrations → Slack. The bot token should start with 'xoxb-' and be obtained from your Slack app settings at https://api.slack.com/apps",
+        solution: [
+          "1. Go to Settings → Integrations → Slack",
+          "2. Click 'Connect Slack' or 'Update Settings'",
+          "3. Paste your bot token (starts with xoxb-)",
+          "4. Save the settings and try syncing again"
+        ]
       }
     };
   }
@@ -1804,14 +1818,36 @@ export async function getChannelMembers(botToken?: string, channelNameOrId: stri
         if (error?.data?.error === 'channel_not_found') {
           const errorMsg = `Channel ID ${channelId} not found or bot doesn't have access`;
           console.error(`❌ ${errorMsg}`);
+          console.error(`   📋 Diagnostic Information:`);
+          console.error(`   - Channel ID requested: ${channelId}`);
+          console.error(`   - Bot token used: ${token.substring(0, 10)}...`);
+          console.error(`   - Slack API error: ${error?.data?.error}`);
+          console.error(`   - Timestamp: ${new Date().toISOString()}`);
           return {
             members: [],
             error: errorMsg,
             errorCode: 'channel_not_found',
             errorDetails: {
               channelId: channelId,
-              message: "The channel doesn't exist or the bot hasn't been invited to it. Please invite the bot to the channel first.",
-              slackError: error?.data?.error
+              tokenPrefix: token.substring(0, 10),
+              slackApiError: error?.data?.error,
+              timestamp: new Date().toISOString(),
+              message: "CRITICAL: The channel doesn't exist or the bot hasn't been invited to it.",
+              diagnostics: {
+                possibleCauses: [
+                  "1. The channel ID is incorrect or outdated",
+                  "2. The channel was deleted or archived",
+                  "3. The bot hasn't been invited to this private channel",
+                  "4. The bot was removed from the channel",
+                  "5. The workspace ID has changed"
+                ],
+                immediateActions: [
+                  "1. Verify the channel still exists in Slack",
+                  "2. Invite the bot to the channel: /invite @YourBotName",
+                  "3. Check if this is a private channel that requires invitation",
+                  "4. Try using the channel name instead of ID"
+                ]
+              }
             }
           };
         }
@@ -1881,30 +1917,98 @@ export async function getChannelMembers(botToken?: string, channelNameOrId: stri
           console.error(`   Full error data:`, error?.data);
           
           if (error?.data?.error === 'invalid_auth') {
-            console.error("🔐 Invalid authentication token. The Slack token may be expired or invalid.");
+            console.error("🔐 CRITICAL: Invalid authentication token. The Slack token may be expired or invalid.");
+            console.error(`   📋 Diagnostic Information:`);
+            console.error(`   - Token prefix: ${token.substring(0, 10)}...`);
+            console.error(`   - Token length: ${token.length} characters`);
+            console.error(`   - Token starts with 'xoxb-': ${token.startsWith('xoxb-') ? 'YES' : 'NO'}`);
+            console.error(`   - Channel requested: ${channelNameOrId}`);
+            console.error(`   - Timestamp: ${new Date().toISOString()}`);
           } else if (error?.data?.error === 'missing_scope') {
-            console.error("🔐 Missing required OAuth scope. Check your bot token scopes.");
-            console.error(`   Needed: ${error?.data?.needed}`);
-            console.error(`   Provided: ${error?.data?.provided}`);
+            console.error("🔐 CRITICAL: Missing required OAuth scope. Check your bot token scopes.");
+            console.error(`   📋 Diagnostic Information:`);
+            console.error(`   - Scopes needed: ${error?.data?.needed || 'channels:read, groups:read, users:read, users:read.email'}`);
+            console.error(`   - Scopes provided: ${error?.data?.provided || 'unknown'}`);
+            console.error(`   - Channel requested: ${channelNameOrId}`);
+            console.error(`   - Token prefix: ${token.substring(0, 10)}...`);
+            console.error(`   - Timestamp: ${new Date().toISOString()}`);
           }
           
           // Return structured error instead of throwing
-          return {
-            members: [],
-            error: error?.data?.error === 'invalid_auth' 
-              ? "Invalid Slack authentication. The bot token may be expired or incorrect." 
-              : error?.data?.error === 'missing_scope'
-              ? `Missing required Slack permissions: ${error?.data?.needed || 'channels:read, groups:read, users:read, users:read.email'}`
-              : `Error searching for channel: ${error?.message || error?.data?.error || 'Unknown error'}`,
-            errorCode: error?.data?.error || 'channel_search_error',
-            errorDetails: {
-              slackError: error?.data?.error,
-              message: error?.message,
-              needed: error?.data?.needed,
-              provided: error?.data?.provided,
-              channelRequested: channelNameOrId
-            }
+          const diagnosticInfo: any = {
+            slackError: error?.data?.error,
+            message: error?.message,
+            channelRequested: channelNameOrId,
+            tokenPrefix: token.substring(0, 10),
+            tokenLength: token.length,
+            tokenFormat: token.startsWith('xoxb-') ? 'valid_format' : 'invalid_format',
+            timestamp: new Date().toISOString()
           };
+
+          if (error?.data?.error === 'invalid_auth') {
+            return {
+              members: [],
+              error: "CRITICAL: Invalid Slack authentication. The bot token is invalid, expired, or from wrong workspace.",
+              errorCode: 'invalid_auth',
+              errorDetails: {
+                ...diagnosticInfo,
+                message: "Authentication failed. This usually means the bot token is incorrect or expired.",
+                solution: [
+                  "1. Go to https://api.slack.com/apps and select your app",
+                  "2. Navigate to 'OAuth & Permissions'",
+                  "3. Copy the 'Bot User OAuth Token' (starts with xoxb-)",
+                  "4. Update it in Settings → Integrations → Slack",
+                  "5. Make sure you're using the token from the correct workspace"
+                ],
+                diagnostics: {
+                  tokenValidation: {
+                    hasCorrectPrefix: token.startsWith('xoxb-'),
+                    lengthCheck: token.length > 50 ? 'normal' : 'too_short',
+                    containsSpaces: token.includes(' ') ? 'yes_invalid' : 'no_valid'
+                  }
+                }
+              }
+            };
+          } else if (error?.data?.error === 'missing_scope') {
+            return {
+              members: [],
+              error: `CRITICAL: Missing required Slack permissions. Your app needs additional OAuth scopes.`,
+              errorCode: 'missing_scope',
+              errorDetails: {
+                ...diagnosticInfo,
+                needed: error?.data?.needed || 'channels:read, groups:read, users:read, users:read.email',
+                provided: error?.data?.provided || 'unknown',
+                message: "Your Slack app doesn't have the necessary permissions to list channels.",
+                solution: [
+                  "1. Go to https://api.slack.com/apps and select your app",
+                  "2. Navigate to 'OAuth & Permissions'",
+                  "3. Under 'Scopes', add these Bot Token Scopes:",
+                  "   - channels:read (for public channels)",
+                  "   - groups:read (for private channels)",
+                  "   - users:read (for user information)",
+                  "   - users:read.email (for user emails)",
+                  "4. Click 'reinstall your app' to apply new permissions",
+                  "5. Copy the new bot token and update it in Settings"
+                ]
+              }
+            };
+          } else {
+            return {
+              members: [],
+              error: `Error searching for channel: ${error?.message || error?.data?.error || 'Unknown error'}`,
+              errorCode: error?.data?.error || 'channel_search_error',
+              errorDetails: {
+                ...diagnosticInfo,
+                message: "Failed to search for the channel in your Slack workspace.",
+                solution: [
+                  "1. Verify your bot token is correct",
+                  "2. Check if the channel name is spelled correctly",
+                  "3. Ensure the bot has been added to your workspace",
+                  "4. Try reconnecting your Slack integration"
+                ]
+              }
+            };
+          }
         }
       } while (cursor);
       
