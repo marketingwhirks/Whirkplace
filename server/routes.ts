@@ -2114,6 +2114,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log("Creating organization with slug:", orgSlug);
+      
+      // Set default billing price based on plan (can be changed to professional later)
+      const billingPricePerUser = 2000; // $20/user/month in cents (standard plan default)
+      
       const organization = await storage.createOrganization({
         name: data.organizationName,
         slug: orgSlug,
@@ -2122,6 +2126,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         customValues: ["Innovation", "Teamwork", "Excellence"], // Default company values
         enableSlackIntegration: false,
         enableMicrosoftAuth: false,
+        billingPricePerUser: billingPricePerUser,
+        billingUserCount: 1, // Start with 1 user (the admin being created)
+        billingPeriodStart: new Date(),
+        billingPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now for trial/standard
       });
       console.log("Organization created:", organization.id);
 
@@ -2236,6 +2244,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = planSchema.parse(req.body);
 
+      // Set billing price per user based on selected plan
+      let billingPricePerUser = 0; // Standard plan is free
+      if (data.planId === "professional") {
+        billingPricePerUser = data.billingCycle === "monthly" ? 2000 : 1667; // $20/month or $200/year ($16.67/month)
+      } else if (data.planId === "enterprise") {
+        billingPricePerUser = data.billingCycle === "monthly" ? 5000 : 4167; // $50/month or $500/year ($41.67/month)
+      }
+      
+      // Update organization with billing price
+      await storage.updateOrganization(data.organizationId, {
+        billingPricePerUser: billingPricePerUser,
+      });
+      
       // If not standard plan, handle payment processing
       if (data.planId !== "standard" && stripe) {
         // Create Stripe customer and setup subscription
@@ -3506,6 +3527,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userData = insertUserSchema.parse(req.body);
       const sanitizedData = sanitizeForOrganization(userData, req.orgId);
       const user = await storage.createUser(req.orgId, sanitizedData);
+      
+      // Handle billing for manually created user
+      const organization = await storage.getOrganization(req.orgId);
+      if (organization && user.isActive) {
+        await billingService.handleUserAddition(organization, user.id);
+        console.log(`Billing: Handled manual user creation for ${user.name}`);
+      }
+      
       res.status(201).json(user);
     } catch (error) {
       res.status(400).json({ message: "Invalid user data" });
@@ -3527,10 +3556,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updates = insertUserSchema.partial().parse(req.body);
       const sanitizedUpdates = sanitizeForOrganization(updates, req.orgId);
       
+      // Get the existing user to compare states for billing
+      const existingUser = await storage.getUser(req.orgId, targetUserId);
+      if (!existingUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
       // Additional security: Non-admins cannot change role, organizationId, or other sensitive fields
       if (currentUser.role !== "admin") {
         // Remove sensitive fields that only admins should be able to modify
-        const { role, organizationId, teamId, managerId, ...allowedUpdates } = sanitizedUpdates;
+        const { role, organizationId, teamId, managerId, isActive, ...allowedUpdates } = sanitizedUpdates;
         // Replace sanitizedUpdates with only the allowed fields
         Object.keys(sanitizedUpdates).forEach(key => delete (sanitizedUpdates as any)[key]);
         Object.assign(sanitizedUpdates, allowedUpdates);
@@ -3540,6 +3575,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
+      
+      // Handle billing for user activation/deactivation changes
+      if (currentUser.role === "admin" && sanitizedUpdates.isActive !== undefined) {
+        const organization = await storage.getOrganization(req.orgId);
+        if (organization) {
+          if (sanitizedUpdates.isActive && !existingUser.isActive) {
+            // User is being activated
+            await billingService.handleUserAddition(organization, user.id);
+            console.log(`Billing: Handled user activation for ${user.name}`);
+          } else if (!sanitizedUpdates.isActive && existingUser.isActive) {
+            // User is being deactivated
+            await billingService.handleUserRemoval(organization, user.id);
+            console.log(`Billing: Handled user deactivation for ${user.name}`);
+          }
+        }
+      }
+      
       res.json(sanitizeUser(user));
     } catch (error) {
       res.status(400).json({ message: "Invalid user data" });
@@ -10728,6 +10780,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const data = planSchema.parse(req.body);
 
+      // Set billing price per user based on selected plan
+      let billingPricePerUser = 0; // Standard plan is free
+      if (data.planId === "professional") {
+        billingPricePerUser = data.billingCycle === "monthly" ? 2000 : 1667; // $20/month or $200/year ($16.67/month)
+      } else if (data.planId === "enterprise") {
+        billingPricePerUser = data.billingCycle === "monthly" ? 5000 : 4167; // $50/month or $500/year ($41.67/month)
+      }
+      
+      // Update organization with billing price
+      await storage.updateOrganization(data.organizationId, {
+        billingPricePerUser: billingPricePerUser,
+      });
+      
       // If not standard plan, handle payment processing
       if (data.planId !== "standard" && stripe) {
         // Create Stripe customer and setup subscription
@@ -11208,6 +11273,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error processing webhook:", error);
       res.status(500).json({ message: "Webhook processing failed" });
+    }
+  });
+
+  // Initialize billing for existing organizations - Super Admin only
+  app.post("/api/billing/initialize", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const organizations = await storage.getAllOrganizations();
+      let initialized = 0;
+      let skipped = 0;
+      
+      for (const org of organizations) {
+        // Skip if already has billing configured
+        if (org.billingPricePerUser !== null && org.billingPricePerUser !== undefined) {
+          skipped++;
+          continue;
+        }
+        
+        // Set default billing price based on plan
+        let billingPricePerUser = 0;
+        if (org.plan === 'professional') {
+          billingPricePerUser = 2000; // $20/user/month in cents
+        } else if (org.plan === 'enterprise') {
+          billingPricePerUser = 5000; // $50/user/month in cents
+        }
+        
+        // Count active users in the organization
+        const activeUsers = await storage.getAllUsers(org.id);
+        const activeUserCount = activeUsers.filter(u => u.isActive).length;
+        
+        // Update organization with billing defaults
+        await storage.updateOrganization(org.id, {
+          billingPricePerUser: billingPricePerUser,
+          billingUserCount: activeUserCount,
+          billingPeriodStart: new Date(),
+          billingPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+        });
+        
+        initialized++;
+        console.log(`Initialized billing for ${org.name}: ${activeUserCount} users at $${billingPricePerUser / 100}/user/month`);
+      }
+      
+      res.json({
+        message: `Billing initialization complete`,
+        initialized: initialized,
+        skipped: skipped,
+        total: organizations.length,
+      });
+    } catch (error) {
+      console.error("Error initializing billing:", error);
+      res.status(500).json({ message: "Failed to initialize billing for organizations" });
     }
   });
 

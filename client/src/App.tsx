@@ -23,6 +23,7 @@ import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import Admin from "@/pages/admin";
 import SuperAdmin from "@/pages/super-admin";
+import BillingPage from "@/pages/billing";
 import IntegrationTest from "@/pages/IntegrationTest";
 import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
@@ -62,6 +63,7 @@ function Router() {
             <Route path="/analytics" component={Analytics} />
             <Route path="/settings" component={Settings} />
             <Route path="/admin" component={Admin} />
+            <Route path="/billing" component={BillingPage} />
             <Route path="/roadmap" component={RoadmapPage} />
             <Route path="/super-admin" component={SuperAdmin} />
             <Route path="/integration-test" component={IntegrationTest} />

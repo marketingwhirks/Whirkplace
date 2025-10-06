@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { 
   Heart, ClipboardList, Users, Trophy, HelpCircle, BarChart3, Settings, Menu, Sparkles, 
-  ClipboardCheck, Shield, Crown, Calendar, Target, Lock, Rocket
+  ClipboardCheck, Shield, Crown, Calendar, Target, Lock, Rocket, CreditCard
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -43,6 +43,7 @@ const baseNavigation = [
   { name: "Team", href: "/team", icon: Users, roles: ["member", "manager", "admin"] },
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },
+  { name: "Billing", href: "/billing", icon: CreditCard, roles: ["admin"] },
   { name: "Admin Panel", href: "/admin", icon: Shield, roles: ["admin"] },
   { name: "Super Admin", href: "/super-admin", icon: Lock, roles: [] as ("member" | "manager" | "admin")[], isSuperAdminOnly: true },
   { name: "Settings", href: "/settings", icon: Settings, roles: ["member", "manager", "admin"] },

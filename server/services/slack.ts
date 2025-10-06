@@ -2600,6 +2600,15 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
       // Apply updates if any
       if (Object.keys(updates).length > 0) {
         await storage.updateUser(organizationId, existingUser.id, updates);
+        
+        // Handle billing for user reactivation
+        if (updates.isActive === true) {
+          const organization = await storage.getOrganization(organizationId);
+          if (organization) {
+            await billingService.handleUserAddition(organization, existingUser.id);
+            console.log(`Billing: Handled user reactivation for ${existingUser.name}`);
+          }
+        }
       }
     } else {
       // New user - create them with a temporary password
@@ -2625,6 +2634,13 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
         stats.created++;
         console.log(`Created new user: ${member.name} (${member.id})`);
         
+        // Handle billing for new user addition
+        const organization = await storage.getOrganization(organizationId);
+        if (organization) {
+          await billingService.handleUserAddition(organization, newUser.id);
+          console.log(`Billing: Handled new user creation for ${member.name}`);
+        }
+        
         // Track for onboarding
         newlyCreatedUsers.push({
           slackUserId: member.id,
@@ -2646,6 +2662,13 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
       await storage.updateUser(organizationId, user.id, { isActive: false });
       stats.deactivated++;
       console.log(`Deactivated user: ${user.name} (${user.slackUserId})`);
+      
+      // Handle billing for user deactivation
+      const organization = await storage.getOrganization(organizationId);
+      if (organization) {
+        await billingService.handleUserRemoval(organization, user.id);
+        console.log(`Billing: Handled user deactivation for ${user.name}`);
+      }
     }
   }
 
