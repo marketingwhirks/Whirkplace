@@ -6447,9 +6447,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       console.log(`✅ Sync completed: Created ${result.created}, Activated ${result.activated}, Deactivated ${result.deactivated}`);
+      if (result.newUsersOnboarded !== undefined && result.newUsersOnboarded > 0) {
+        console.log(`📨 Onboarding: ${result.newUsersOnboarded} DMs sent, ${result.onboardingErrors || 0} errors`);
+      }
+      
+      // Build detailed message including onboarding stats
+      let detailsMessage = `Created ${result.created} new users, reactivated ${result.activated} users, deactivated ${result.deactivated} users`;
+      if (result.newUsersOnboarded !== undefined && result.created > 0) {
+        detailsMessage += `. Sent onboarding messages to ${result.newUsersOnboarded} new users`;
+        if (result.onboardingErrors && result.onboardingErrors > 0) {
+          detailsMessage += ` (${result.onboardingErrors} failed to send)`;
+        }
+      }
+      
       res.json({
         message: `Successfully synced users from ${channelIdentifier.startsWith('C') ? 'channel ID ' + channelIdentifier : '#' + channelIdentifier}`,
-        details: `Created ${result.created} new users, reactivated ${result.activated} users, deactivated ${result.deactivated} users`,
+        details: detailsMessage,
         ...result
       });
     } catch (error: any) {
@@ -6645,9 +6658,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       console.log(`✅ Sync completed: Created ${result.created}, Activated ${result.activated}, Deactivated ${result.deactivated}`);
+      if (result.newUsersOnboarded !== undefined && result.newUsersOnboarded > 0) {
+        console.log(`📨 Onboarding: ${result.newUsersOnboarded} DMs sent, ${result.onboardingErrors || 0} errors`);
+      }
+      
+      // Build detailed message including onboarding stats
+      let detailsMessage = `Created ${result.created} new users, reactivated ${result.activated} users, deactivated ${result.deactivated} users`;
+      if (result.newUsersOnboarded !== undefined && result.created > 0) {
+        detailsMessage += `. Sent onboarding messages to ${result.newUsersOnboarded} new users`;
+        if (result.onboardingErrors && result.onboardingErrors > 0) {
+          detailsMessage += ` (${result.onboardingErrors} failed to send)`;
+        }
+      }
+      
       res.json({
         message: `Successfully synced users from ${channelIdentifier.startsWith('C') ? 'channel ID ' + channelIdentifier : '#' + channelIdentifier}`,
-        details: `Created ${result.created} new users, reactivated ${result.activated} users, deactivated ${result.deactivated} users`,
+        details: detailsMessage,
         ...result
       });
     } catch (error: any) {

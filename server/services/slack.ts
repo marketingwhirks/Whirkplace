@@ -4,6 +4,7 @@ import { jwtVerify, createRemoteJWKSet } from 'jose';
 import * as cron from "node-cron";
 import type { Request } from 'express';
 import { resolveRedirectUri } from '../utils/redirect-uri';
+import bcrypt from "bcryptjs";
 
 if (!process.env.SLACK_BOT_TOKEN) {
   console.warn("SLACK_BOT_TOKEN environment variable not set. Slack integration will be disabled.");
@@ -35,6 +36,34 @@ if (!process.env.SLACK_REDIRECT_URI) {
 
 // OAuth state is now stored in user sessions for better reliability
 // No need for in-memory storage or cleanup intervals
+
+/**
+ * Generate a secure temporary password
+ * Returns a 10 character password with letters, numbers, and symbols
+ */
+function generateTemporaryPassword(): string {
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const numbers = '0123456789';
+  const symbols = '!@#$%^&*';
+  const allChars = lowercase + uppercase + numbers + symbols;
+  
+  let password = '';
+  
+  // Ensure at least one character from each set
+  password += lowercase[Math.floor(Math.random() * lowercase.length)];
+  password += uppercase[Math.floor(Math.random() * uppercase.length)];
+  password += numbers[Math.floor(Math.random() * numbers.length)];
+  password += symbols[Math.floor(Math.random() * symbols.length)];
+  
+  // Fill the rest randomly from all characters
+  for (let i = 4; i < 10; i++) {
+    password += allChars[Math.floor(Math.random() * allChars.length)];
+  }
+  
+  // Shuffle the password to randomize character positions
+  return password.split('').sort(() => Math.random() - 0.5).join('');
+}
 
 // Slack OpenID Connect Types
 interface SlackOIDCTokenResponse {
@@ -1481,6 +1510,175 @@ export async function sendWelcomeMessage(userId: string, userName: string, chann
 }
 
 /**
+ * Send onboarding DM with login credentials to newly synced users
+ */
+export async function sendOnboardingDM(
+  slackUserId: string, 
+  email: string, 
+  tempPassword: string, 
+  organizationName: string,
+  userName?: string,
+  botToken?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const slackClient = botToken ? new WebClient(botToken) : slack;
+    
+    if (!slackClient) {
+      console.error('No Slack client available for sending onboarding DM');
+      return { success: false, error: 'Slack not configured' };
+    }
+
+    // Open a DM channel with the user
+    const dmResult = await slackClient.conversations.open({
+      users: slackUserId
+    });
+
+    if (!dmResult.ok || !dmResult.channel?.id) {
+      console.error(`Failed to open DM with user ${slackUserId}: ${dmResult.error}`);
+      return { success: false, error: `Failed to open DM: ${dmResult.error}` };
+    }
+
+    const loginUrl = 'https://whirkplace.com/login';
+    const settingsUrl = 'https://whirkplace.com/settings';
+    const checkinUrl = 'https://whirkplace.com/checkins';
+    const dashboardUrl = 'https://whirkplace.com/dashboard';
+
+    // Create professional and welcoming message blocks
+    const onboardingBlocks = [
+      {
+        type: 'header' as const,
+        text: {
+          type: 'plain_text' as const,
+          text: '🎉 Welcome to WhirkPlace!',
+          emoji: true
+        }
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `Hello ${userName || 'there'}! Your WhirkPlace account has been created for *${organizationName}*.`
+        }
+      },
+      {
+        type: 'divider' as const
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*🔐 Your Login Credentials:*\n\n*Email:* \`${email}\`\n*Temporary Password:* \`${tempPassword}\`\n\n_⚠️ Please change your password after your first login for security._`
+        }
+      },
+      {
+        type: 'actions' as const,
+        elements: [
+          {
+            type: 'button' as const,
+            text: {
+              type: 'plain_text' as const,
+              text: '🚀 Login Now',
+              emoji: true
+            },
+            url: loginUrl,
+            style: 'primary' as const
+          }
+        ]
+      },
+      {
+        type: 'divider' as const
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*📋 About WhirkPlace:*\n\nWhirkPlace is your team wellness and recognition platform that helps teams stay connected, engaged, and productive.\n\n*Key Features:*\n• 💭 *Check-ins*: Share your weekly progress and wellbeing\n• 🏆 *Wins & Recognition*: Celebrate achievements and recognize teammates\n• 📊 *Team Analytics*: Track team health and engagement trends\n• 👏 *Shoutouts*: Give public kudos to your colleagues`
+        }
+      },
+      {
+        type: 'divider' as const
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*✅ Next Steps:*\n\n1. *Login and change your password* - Use the button above to access WhirkPlace\n2. *Complete your profile* - Add your details and preferences\n3. *Set notification preferences* - Choose how often you want reminders\n4. *Submit your first check-in* - Share how you're doing this week`
+        }
+      },
+      {
+        type: 'actions' as const,
+        elements: [
+          {
+            type: 'button' as const,
+            text: {
+              type: 'plain_text' as const,
+              text: '⚙️ Settings',
+              emoji: true
+            },
+            url: settingsUrl
+          },
+          {
+            type: 'button' as const,
+            text: {
+              type: 'plain_text' as const,
+              text: '📝 Check-ins',
+              emoji: true
+            },
+            url: checkinUrl
+          },
+          {
+            type: 'button' as const,
+            text: {
+              type: 'plain_text' as const,
+              text: '📊 Dashboard',
+              emoji: true
+            },
+            url: dashboardUrl
+          }
+        ]
+      },
+      {
+        type: 'divider' as const
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*🔔 Notification Preferences:*\n\nYou'll receive check-in reminders weekly by default. You can adjust this in your settings to:\n• Weekly (recommended)\n• Bi-weekly\n• Monthly\n• Custom schedule\n\nYou can also set preferences for review reminders and team updates.`
+        }
+      },
+      {
+        type: 'context' as const,
+        elements: [
+          {
+            type: 'mrkdwn' as const,
+            text: `❓ *Questions?* Reply to this message or visit our help center. We're here to help!`
+          }
+        ]
+      }
+    ];
+
+    // Send the onboarding message
+    const messageResult = await slackClient.chat.postMessage({
+      channel: dmResult.channel.id,
+      blocks: onboardingBlocks,
+      text: `Welcome to WhirkPlace! Your login credentials: Email: ${email}, Temporary Password: ${tempPassword}. Please login at ${loginUrl} and change your password.`
+    });
+
+    if (messageResult.ok) {
+      console.log(`✅ Onboarding DM sent successfully to ${userName || slackUserId} (${email})`);
+      return { success: true };
+    } else {
+      console.error(`Failed to send onboarding DM: ${messageResult.error}`);
+      return { success: false, error: messageResult.error };
+    }
+  } catch (error: any) {
+    console.error(`Error sending onboarding DM to ${slackUserId}:`, error);
+    return { success: false, error: error?.message || 'Failed to send onboarding message' };
+  }
+}
+
+/**
  * Send a quick start guide with interactive buttons for check-ins
  */
 export async function sendQuickStartGuide(userId: string, userName: string) {
@@ -2297,6 +2495,8 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
   error?: string;
   errorCode?: string;
   errorDetails?: any;
+  newUsersOnboarded?: number;
+  onboardingErrors?: number;
 }> {
   console.log(`🚀 Starting user sync for organization ${organizationId}...`);
   console.log(`📺 Channel name/ID: "${channelNameOrId}"`);
@@ -2336,8 +2536,12 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
 
     console.log(`✅ Found ${channelMembers.length} channel members to process`);
 
+    // Get organization details for the organization name
+    const organization = await storage.getOrganization(organizationId);
+    const organizationName = organization?.name || 'Your Organization';
+
     const existingUsers = await storage.getAllUsers(organizationId, true); // Include inactive users for sync comparison
-    const stats = { created: 0, activated: 0, deactivated: 0 };
+    const stats = { created: 0, activated: 0, deactivated: 0, newUsersOnboarded: 0, onboardingErrors: 0 };
 
   // Create map of existing users by Slack ID and email
   const existingUsersBySlackId = new Map();
@@ -2351,6 +2555,14 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
       existingUsersByEmail.set(user.email, user);
     }
   });
+
+  // Track newly created users for onboarding
+  const newlyCreatedUsers: Array<{
+    slackUserId: string;
+    email: string;
+    tempPassword: string;
+    name: string;
+  }> = [];
 
   // Process channel members
   for (const member of channelMembers) {
@@ -2389,13 +2601,21 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
         await storage.updateUser(organizationId, existingUser.id, updates);
       }
     } else {
-      // New user - create them
+      // New user - create them with a temporary password
       try {
+        // Generate temporary password for the new user
+        const tempPassword = generateTemporaryPassword();
+        
+        // Hash the password before storing
+        const hashedPassword = await bcrypt.hash(tempPassword, 10);
+        
+        const userEmail = member.email || `${member.id}@slack.local`;
+        
         const newUser = await storage.createUser(organizationId, {
           username: member.email?.split('@')[0] || member.name?.toLowerCase().replace(/\s+/g, '.') || member.id,
-          password: randomBytes(32).toString('hex'), // Generate secure random password for Slack users
+          password: hashedPassword,
           name: member.name,
-          email: member.email || `${member.id}@slack.local`, // Fallback email
+          email: userEmail,
           role: 'member',
           isActive: true,
           slackUserId: member.id
@@ -2403,6 +2623,14 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
         
         stats.created++;
         console.log(`Created new user: ${member.name} (${member.id})`);
+        
+        // Track for onboarding
+        newlyCreatedUsers.push({
+          slackUserId: member.id,
+          email: userEmail,
+          tempPassword: tempPassword,
+          name: member.name
+        });
       } catch (error) {
         console.error(`Failed to create user ${member.name}:`, error);
       }
@@ -2418,6 +2646,40 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
       stats.deactivated++;
       console.log(`Deactivated user: ${user.name} (${user.slackUserId})`);
     }
+  }
+
+  // Send onboarding DMs to newly created users
+  if (newlyCreatedUsers.length > 0) {
+    console.log(`📨 Sending onboarding DMs to ${newlyCreatedUsers.length} newly created users...`);
+    
+    for (const newUser of newlyCreatedUsers) {
+      try {
+        // Add a small delay to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        const result = await sendOnboardingDM(
+          newUser.slackUserId,
+          newUser.email,
+          newUser.tempPassword,
+          organizationName,
+          newUser.name,
+          botToken
+        );
+        
+        if (result.success) {
+          stats.newUsersOnboarded++;
+          console.log(`✅ Onboarding DM sent to ${newUser.name} (${newUser.email})`);
+        } else {
+          stats.onboardingErrors++;
+          console.error(`❌ Failed to send onboarding DM to ${newUser.name}: ${result.error}`);
+        }
+      } catch (error: any) {
+        stats.onboardingErrors++;
+        console.error(`❌ Error sending onboarding DM to ${newUser.name}:`, error?.message || error);
+      }
+    }
+    
+    console.log(`📨 Onboarding complete: ${stats.newUsersOnboarded} sent, ${stats.onboardingErrors} errors`);
   }
 
     console.log(`✅ User sync completed for organization ${organizationId}:`, stats);
