@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { z } from "zod";
-import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff, Send, XCircle, Search, BookOpen, Users, Heart, Briefcase, TrendingUp, MessageCircle, Target, Sparkles, Wand2, Lightbulb, Library, Upload, CheckCircle, User, UserCheck, Pencil } from "lucide-react";
+import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff, Send, XCircle, Search, BookOpen, Users, Heart, Briefcase, TrendingUp, MessageCircle, Target, Sparkles, Wand2, Lightbulb, Library, Upload, CheckCircle, User, UserCheck, Pencil, Settings2, FolderPlus, ArrowUpDown, Smile } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -36,6 +36,17 @@ const categoryIcons: { [key: string]: any } = {
   "wellbeing": Heart,
   "feedback": MessageCircle,
   "innovation": Lightbulb,
+  "Team Health": Heart,
+  "Personal Growth": TrendingUp,
+  "Work Progress": Briefcase,
+  "Wellbeing": Heart,
+  "Productivity": Target,
+  "Goals & Objectives": Target,
+  "Challenges": XCircle,
+  "Learning & Growth": TrendingUp,
+  "Collaboration": Users,
+  "Feedback & Recognition": MessageCircle,
+  "Innovation & Ideas": Lightbulb,
 };
 
 // Schema for creating/editing questions with assignment
@@ -48,7 +59,35 @@ const questionSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+// Schema for creating/editing categories
+const categorySchema = z.object({
+  name: z.string().min(1, "Category name is required"),
+  description: z.string().optional().nullable(),
+  icon: z.string().optional().nullable(),
+  order: z.number().min(0).default(0),
+});
+
 type QuestionForm = z.infer<typeof questionSchema>;
+type CategoryForm = z.infer<typeof categorySchema>;
+
+// Available icons for categories
+const availableIcons = [
+  { value: "❤️", label: "Heart" },
+  { value: "📈", label: "Growth" },
+  { value: "💼", label: "Work" },
+  { value: "🎯", label: "Target" },
+  { value: "💡", label: "Ideas" },
+  { value: "👥", label: "Team" },
+  { value: "💬", label: "Chat" },
+  { value: "🌟", label: "Star" },
+  { value: "🚀", label: "Rocket" },
+  { value: "🏆", label: "Trophy" },
+  { value: "🎨", label: "Creative" },
+  { value: "📚", label: "Learning" },
+  { value: "🔥", label: "Fire" },
+  { value: "✨", label: "Sparkle" },
+  { value: "🌈", label: "Rainbow" },
+];
 
 export default function QuestionsEnhanced() {
   const { toast } = useToast();
@@ -56,7 +95,10 @@ export default function QuestionsEnhanced() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showBankDialog, setShowBankDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+  const [showManageCategoriesDialog, setShowManageCategoriesDialog] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
+  const [editingCategory, setEditingCategory] = useState<QuestionCategory | null>(null);
   const [creationMode, setCreationMode] = useState<"custom" | "bank">("bank");
   const [selectedBankQuestion, setSelectedBankQuestion] = useState<QuestionBank | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -65,7 +107,7 @@ export default function QuestionsEnhanced() {
   const [selectedUserId, setSelectedUserId] = useState<string>("");
 
   // Fetch questions
-  const { data: questions = [], isLoading } = useQuery<Question[]>({
+  const { data: questions = [], isLoading, refetch: refetchQuestions } = useQuery<Question[]>({
     queryKey: ["/api/questions"],
     enabled: !userLoading && !!currentUser && ((currentUser as any).role === "manager" || (currentUser as any).role === "admin"),
   });
@@ -77,20 +119,23 @@ export default function QuestionsEnhanced() {
   });
 
   // Fetch question categories
-  const { data: categories = [], isLoading: categoriesLoading } = useQuery<QuestionCategory[]>({
+  const { data: categories = [], isLoading: categoriesLoading, refetch: refetchCategories } = useQuery<QuestionCategory[]>({
     queryKey: ["/api/question-categories"],
     enabled: !userLoading && !!currentUser && ((currentUser as any).role === "manager" || (currentUser as any).role === "admin"),
   });
 
   // Fetch question bank
-  const { data: questionBank = [], isLoading: bankLoading } = useQuery<QuestionBank[]>({
+  const { data: questionBank = [], isLoading: bankLoading, refetch: refetchQuestionBank } = useQuery<QuestionBank[]>({
     queryKey: ["/api/question-bank", selectedCategory],
     queryFn: async () => {
       const params = selectedCategory && selectedCategory !== "all" ? `?categoryId=${selectedCategory}` : "";
       const response = await fetch(`/api/question-bank${params}`, {
         credentials: "include",
       });
-      if (!response.ok) throw new Error("Failed to fetch question bank");
+      if (!response.ok) {
+        console.error("Failed to fetch question bank:", response.status, response.statusText);
+        return [];
+      }
       return response.json();
     },
     enabled: !userLoading && !!currentUser && ((currentUser as any).role === "manager" || (currentUser as any).role === "admin"),
@@ -128,6 +173,88 @@ export default function QuestionsEnhanced() {
     resolver: zodResolver(questionSchema),
   });
 
+  // Form for creating/editing categories
+  const categoryForm = useForm<CategoryForm>({
+    resolver: zodResolver(categorySchema),
+    defaultValues: {
+      name: "",
+      description: "",
+      icon: "❤️",
+      order: 0,
+    },
+  });
+
+  // Create category mutation
+  const createCategoryMutation = useMutation({
+    mutationFn: async (data: CategoryForm) => {
+      return apiRequest("POST", "/api/question-categories", data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/question-categories"] });
+      refetchCategories();
+      categoryForm.reset();
+      setShowCategoryDialog(false);
+      toast({
+        title: "Success",
+        description: "Category created successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create category",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Update category mutation
+  const updateCategoryMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<CategoryForm> }) => {
+      return apiRequest("PATCH", `/api/question-categories/${id}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/question-categories"] });
+      refetchCategories();
+      categoryForm.reset();
+      setEditingCategory(null);
+      setShowCategoryDialog(false);
+      toast({
+        title: "Success",
+        description: "Category updated successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update category",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Delete category mutation
+  const deleteCategoryMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("DELETE", `/api/question-categories/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/question-categories"] });
+      refetchCategories();
+      toast({
+        title: "Success",
+        description: "Category deleted successfully",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete category",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Create question mutation
   const createQuestionMutation = useMutation({
     mutationFn: async (data: QuestionForm) => {
@@ -139,6 +266,7 @@ export default function QuestionsEnhanced() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
+      refetchQuestions();
       handleCreateDialogClose();
       toast({
         title: "Success",
@@ -161,6 +289,7 @@ export default function QuestionsEnhanced() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
+      refetchQuestions();
       toast({
         title: "Success",
         description: "Question updated successfully",
@@ -182,6 +311,7 @@ export default function QuestionsEnhanced() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
+      refetchQuestions();
       toast({
         title: "Success",
         description: "Question status updated",
@@ -207,6 +337,8 @@ export default function QuestionsEnhanced() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/question-bank"] });
+      refetchQuestions();
+      refetchQuestionBank();
       handleBankDialogClose();
       toast({
         title: "Success",
@@ -229,6 +361,7 @@ export default function QuestionsEnhanced() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
+      refetchQuestions();
       toast({
         title: "Success",
         description: "Question deleted successfully",
@@ -279,6 +412,25 @@ export default function QuestionsEnhanced() {
     setSelectedUserId("");
   };
 
+  // Handle category dialog open for edit
+  const handleEditCategory = (category: QuestionCategory) => {
+    setEditingCategory(category);
+    categoryForm.reset({
+      name: category.name,
+      description: category.description || "",
+      icon: category.icon || "❤️",
+      order: (category as any).order || 0,
+    });
+    setShowCategoryDialog(true);
+  };
+
+  // Handle category dialog close
+  const handleCategoryDialogClose = () => {
+    setShowCategoryDialog(false);
+    setEditingCategory(null);
+    categoryForm.reset();
+  };
+
   // Handle adding question from bank
   const handleAddFromBank = () => {
     if (!selectedBankQuestion) return;
@@ -305,6 +457,18 @@ export default function QuestionsEnhanced() {
     handleEditDialogClose();
   };
 
+  // Submit category form
+  const onCategorySubmit = (data: CategoryForm) => {
+    if (editingCategory) {
+      updateCategoryMutation.mutate({
+        id: editingCategory.id,
+        data,
+      });
+    } else {
+      createCategoryMutation.mutate(data);
+    }
+  };
+
   // Handle toggle active
   const handleToggleActive = (questionId: string, currentStatus: boolean) => {
     toggleActiveMutation.mutate({
@@ -319,6 +483,14 @@ export default function QuestionsEnhanced() {
     return category?.name || "Uncategorized";
   };
 
+  // Get category icon
+  const getCategoryIcon = (categoryId: string) => {
+    const category = categories.find(c => c.id === categoryId);
+    if (category?.icon) return category.icon;
+    const Icon = categoryIcons[getCategoryName(categoryId)] || categoryIcons[categoryId] || BookOpen;
+    return typeof Icon === "string" ? Icon : null;
+  };
+
   // Get user name
   const getUserName = (userId: string | null) => {
     if (!userId) return "All Team";
@@ -331,6 +503,7 @@ export default function QuestionsEnhanced() {
   }
 
   const isManager = (currentUser as any).role === "manager" || (currentUser as any).role === "admin";
+  const isAdmin = (currentUser as any).role === "admin";
 
   if (!isManager) {
     return (
@@ -356,6 +529,16 @@ export default function QuestionsEnhanced() {
           </p>
         </div>
         <div className="flex gap-2">
+          {isAdmin && (
+            <Button
+              onClick={() => setShowManageCategoriesDialog(true)}
+              variant="outline"
+              data-testid="button-manage-categories"
+            >
+              <Settings2 className="w-4 h-4 mr-2" />
+              Manage Categories
+            </Button>
+          )}
           <Button
             onClick={() => setShowBankDialog(true)}
             variant="outline"
@@ -375,6 +558,44 @@ export default function QuestionsEnhanced() {
             Add Custom Question
           </Button>
         </div>
+      </div>
+
+      {/* Display loading categories message if needed */}
+      {categoriesLoading && (
+        <Alert className="mb-4">
+          <AlertDescription>Loading categories...</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Display stats */}
+      <div className="grid gap-4 md:grid-cols-3 mb-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Questions</CardTitle>
+            <BookOpen className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{questions.length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Categories</CardTitle>
+            <FolderPlus className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{categories.length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Question Bank</CardTitle>
+            <Library className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{questionBank.length}</div>
+          </CardContent>
+        </Card>
       </div>
 
       {isLoading ? (
@@ -411,13 +632,14 @@ export default function QuestionsEnhanced() {
           {/* Questions grouped by category */}
           {Object.entries(questionsByCategory).map(([categoryId, categoryQuestions]) => {
             const category = categories.find(c => c.id === categoryId);
-            const Icon = categoryIcons[categoryId] || BookOpen;
+            const icon = getCategoryIcon(categoryId);
+            const Icon = categoryIcons[getCategoryName(categoryId)] || categoryIcons[categoryId] || BookOpen;
             
             return (
               <Card key={categoryId}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    {category?.icon && <span className="text-2xl">{category.icon}</span>}
+                    {icon ? <span className="text-2xl">{icon}</span> : (typeof Icon === 'function' ? <Icon className="w-5 h-5" /> : null)}
                     {getCategoryName(categoryId)}
                     <Badge variant="secondary" className="ml-2">
                       {categoryQuestions.length} {categoryQuestions.length === 1 ? "question" : "questions"}
@@ -544,11 +766,15 @@ export default function QuestionsEnhanced() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>
-                      {category.icon} {category.name}
-                    </SelectItem>
-                  ))}
+                  {categories.length > 0 ? (
+                    categories.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        {category.icon} {category.name}
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="no-categories" disabled>No categories available</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -563,7 +789,11 @@ export default function QuestionsEnhanced() {
                 </div>
               ) : filteredQuestionBank.length === 0 ? (
                 <div className="text-center py-8">
-                  <p className="text-muted-foreground">No questions found</p>
+                  <Library className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">No questions found in the bank</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    {searchTerm ? "Try adjusting your search" : "Questions will appear here as they are added"}
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -588,17 +818,15 @@ export default function QuestionsEnhanced() {
                               </p>
                             )}
                             <div className="flex items-center gap-2">
-                              <Badge variant="secondary" className="text-xs">
-                                {category?.icon} {category?.name}
-                              </Badge>
-                              {bankQuestion.tags && bankQuestion.tags.length > 0 && (
-                                <>
-                                  {bankQuestion.tags.map((tag) => (
-                                    <Badge key={tag} variant="outline" className="text-xs">
-                                      {tag}
-                                    </Badge>
-                                  ))}
-                                </>
+                              {category && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {category.icon} {category.name}
+                                </Badge>
+                              )}
+                              {bankQuestion.usageCount && bankQuestion.usageCount > 0 && (
+                                <Badge variant="outline" className="text-xs">
+                                  Used {bankQuestion.usageCount} times
+                                </Badge>
                               )}
                             </div>
                           </div>
@@ -615,25 +843,21 @@ export default function QuestionsEnhanced() {
 
             {/* Assignment Options */}
             {selectedBankQuestion && (
-              <div className="space-y-3 pt-4 border-t">
-                <Label>Assign Question To:</Label>
-                <RadioGroup value={assignmentType} onValueChange={(value: "all" | "specific") => setAssignmentType(value)}>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="all" id="all" />
-                    <Label htmlFor="all" className="flex items-center gap-2 cursor-pointer">
-                      <Users className="w-4 h-4" />
-                      All Team Members
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="specific" id="specific" />
-                    <Label htmlFor="specific" className="flex items-center gap-2 cursor-pointer">
-                      <UserCheck className="w-4 h-4" />
-                      Specific Team Member
-                    </Label>
-                  </div>
-                </RadioGroup>
-                
+              <div className="space-y-4 border-t pt-4">
+                <div className="space-y-2">
+                  <Label>Assign to</Label>
+                  <RadioGroup value={assignmentType} onValueChange={(value: any) => setAssignmentType(value)}>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="all" id="all-team" />
+                      <Label htmlFor="all-team">All team members</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="specific" id="specific-user" />
+                      <Label htmlFor="specific-user">Specific team member</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+
                 {assignmentType === "specific" && (
                   <Select value={selectedUserId} onValueChange={setSelectedUserId}>
                     <SelectTrigger>
@@ -642,7 +866,10 @@ export default function QuestionsEnhanced() {
                     <SelectContent>
                       {users.map((user) => (
                         <SelectItem key={user.id} value={user.id}>
-                          {user.name}
+                          <div className="flex items-center gap-2">
+                            <User className="w-3 h-3" />
+                            {user.name}
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -667,16 +894,231 @@ export default function QuestionsEnhanced() {
         </DialogContent>
       </Dialog>
 
-      {/* Custom Question Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      {/* Manage Categories Dialog */}
+      <Dialog open={showManageCategoriesDialog} onOpenChange={setShowManageCategoriesDialog}>
+        <DialogContent className="max-w-2xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Manage Categories</DialogTitle>
+            <DialogDescription>
+              Create, edit, and organize question categories
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="flex justify-end">
+              <Button
+                onClick={() => {
+                  setEditingCategory(null);
+                  categoryForm.reset();
+                  setShowCategoryDialog(true);
+                }}
+                data-testid="button-add-category"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Add Category
+              </Button>
+            </div>
+
+            <ScrollArea className="h-[400px] pr-4">
+              {categoriesLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-16 w-full" />
+                  ))}
+                </div>
+              ) : categories.length === 0 ? (
+                <div className="text-center py-8">
+                  <FolderPlus className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                  <p className="text-muted-foreground">No categories yet</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Create your first category to organize questions
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {categories
+                    .sort((a, b) => ((a as any).order || 0) - ((b as any).order || 0))
+                    .map((category) => {
+                      const questionCount = questions.filter(q => q.categoryId === category.id).length;
+                      return (
+                        <div
+                          key={category.id}
+                          className="p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                          data-testid={`category-item-${category.id}`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 space-y-1">
+                              <div className="flex items-center gap-2">
+                                {category.icon && <span className="text-xl">{category.icon}</span>}
+                                <span className="font-medium">{category.name}</span>
+                                <Badge variant="secondary" className="text-xs ml-2">
+                                  {questionCount} {questionCount === 1 ? "question" : "questions"}
+                                </Badge>
+                              </div>
+                              {category.description && (
+                                <p className="text-sm text-muted-foreground">
+                                  {category.description}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleEditCategory(category)}
+                                data-testid={`edit-category-${category.id}`}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => {
+                                  if (confirm(`Are you sure you want to delete "${category.name}"? This will not delete questions in this category.`)) {
+                                    deleteCategoryMutation.mutate(category.id);
+                                  }
+                                }}
+                                disabled={questionCount > 0}
+                                data-testid={`delete-category-${category.id}`}
+                              >
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </ScrollArea>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowManageCategoriesDialog(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create/Edit Category Dialog */}
+      <Dialog open={showCategoryDialog} onOpenChange={handleCategoryDialogClose}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingCategory ? "Edit Category" : "Create Category"}</DialogTitle>
+            <DialogDescription>
+              {editingCategory ? "Update the category details" : "Add a new category for questions"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <Form {...categoryForm}>
+            <form onSubmit={categoryForm.handleSubmit(onCategorySubmit)} className="space-y-4">
+              <FormField
+                control={categoryForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Name</FormLabel>
+                    <FormControl>
+                      <Input {...field} placeholder="e.g., Team Health" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={categoryForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Description</FormLabel>
+                    <FormControl>
+                      <Textarea 
+                        {...field} 
+                        value={field.value || ""}
+                        placeholder="Brief description of this category" 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={categoryForm.control}
+                name="icon"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Icon</FormLabel>
+                    <Select value={field.value || "❤️"} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableIcons.map((icon) => (
+                          <SelectItem key={icon.value} value={icon.value}>
+                            <span className="flex items-center gap-2">
+                              <span className="text-xl">{icon.value}</span>
+                              <span>{icon.label}</span>
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={categoryForm.control}
+                name="order"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Sort Order</FormLabel>
+                    <FormControl>
+                      <Input 
+                        {...field} 
+                        type="number" 
+                        min="0"
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                        placeholder="0"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Lower numbers appear first
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <DialogFooter>
+                <Button variant="outline" type="button" onClick={handleCategoryDialogClose}>
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  {editingCategory ? "Update" : "Create"} Category
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Question Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={handleCreateDialogClose}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create Custom Question</DialogTitle>
             <DialogDescription>
-              Create a custom check-in question for your team
+              Add a new custom question for your team's check-ins
             </DialogDescription>
           </DialogHeader>
-          
+
           <Form {...createForm}>
             <form onSubmit={createForm.handleSubmit(onCreateSubmit)} className="space-y-4">
               <FormField
@@ -684,32 +1126,32 @@ export default function QuestionsEnhanced() {
                 name="text"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Question Text</FormLabel>
+                    <FormLabel>Question</FormLabel>
                     <FormControl>
-                      <Textarea
-                        {...field}
-                        placeholder="What would you like to ask your team?"
-                        className="min-h-[100px]"
-                      />
+                      <Textarea {...field} placeholder="Enter your question..." />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-              
+
               <FormField
                 control={createForm.control}
                 name="categoryId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Category</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value ?? undefined}>
+                    <Select 
+                      value={field.value || ""} 
+                      onValueChange={(value) => field.onChange(value || null)}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select a category" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        <SelectItem value="">No Category</SelectItem>
                         {categories.map((category) => (
                           <SelectItem key={category.id} value={category.id}>
                             {category.icon} {category.name}
@@ -721,41 +1163,6 @@ export default function QuestionsEnhanced() {
                   </FormItem>
                 )}
               />
-
-              <div className="space-y-3">
-                <Label>Assign To:</Label>
-                <RadioGroup value={assignmentType} onValueChange={(value: "all" | "specific") => setAssignmentType(value)}>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="all" id="custom-all" />
-                    <Label htmlFor="custom-all" className="flex items-center gap-2 cursor-pointer">
-                      <Users className="w-4 h-4" />
-                      All Team Members
-                    </Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="specific" id="custom-specific" />
-                    <Label htmlFor="custom-specific" className="flex items-center gap-2 cursor-pointer">
-                      <UserCheck className="w-4 h-4" />
-                      Specific Team Member
-                    </Label>
-                  </div>
-                </RadioGroup>
-                
-                {assignmentType === "specific" && (
-                  <Select value={selectedUserId} onValueChange={setSelectedUserId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a team member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {users.map((user) => (
-                        <SelectItem key={user.id} value={user.id}>
-                          {user.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
 
               <FormField
                 control={createForm.control}
@@ -779,12 +1186,10 @@ export default function QuestionsEnhanced() {
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={handleCreateDialogClose}>
+                <Button variant="outline" type="button" onClick={handleCreateDialogClose}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={createQuestionMutation.isPending}>
-                  {createQuestionMutation.isPending ? "Creating..." : "Create Question"}
-                </Button>
+                <Button type="submit">Create Question</Button>
               </DialogFooter>
             </form>
           </Form>
@@ -792,14 +1197,15 @@ export default function QuestionsEnhanced() {
       </Dialog>
 
       {/* Edit Question Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="sm:max-w-[500px]">
+      <Dialog open={showEditDialog} onOpenChange={handleEditDialogClose}>
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>Edit Question</DialogTitle>
             <DialogDescription>
               Update the question details
             </DialogDescription>
           </DialogHeader>
+
           <Form {...editForm}>
             <form onSubmit={editForm.handleSubmit(onEditSubmit)} className="space-y-4">
               <FormField
@@ -807,14 +1213,9 @@ export default function QuestionsEnhanced() {
                 name="text"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Question Text</FormLabel>
+                    <FormLabel>Question</FormLabel>
                     <FormControl>
-                      <Textarea 
-                        placeholder="What would you like to ask your team?" 
-                        className="min-h-[100px]" 
-                        {...field}
-                        data-testid="edit-question-text"
-                      />
+                      <Textarea {...field} placeholder="Enter your question..." />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -828,16 +1229,16 @@ export default function QuestionsEnhanced() {
                   <FormItem>
                     <FormLabel>Category</FormLabel>
                     <Select 
-                      onValueChange={(value) => field.onChange(value === "none" ? null : value)} 
-                      value={field.value || "none"}
+                      value={field.value || ""} 
+                      onValueChange={(value) => field.onChange(value || null)}
                     >
                       <FormControl>
-                        <SelectTrigger data-testid="edit-question-category">
+                        <SelectTrigger>
                           <SelectValue placeholder="Select a category" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="none">No Category</SelectItem>
+                        <SelectItem value="">No Category</SelectItem>
                         {categories.map((category) => (
                           <SelectItem key={category.id} value={category.id}>
                             {category.icon} {category.name}
@@ -857,16 +1258,16 @@ export default function QuestionsEnhanced() {
                   <FormItem>
                     <FormLabel>Assigned To</FormLabel>
                     <Select 
-                      onValueChange={(value) => field.onChange(value === "all" ? null : value)} 
-                      value={field.value || "all"}
+                      value={field.value || ""} 
+                      onValueChange={(value) => field.onChange(value || null)}
                     >
                       <FormControl>
-                        <SelectTrigger data-testid="edit-question-user">
-                          <SelectValue placeholder="Select assignment" />
+                        <SelectTrigger>
+                          <SelectValue placeholder="All team members" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="all">All Team Members</SelectItem>
+                        <SelectItem value="">All Team Members</SelectItem>
                         {users.map((user) => (
                           <SelectItem key={user.id} value={user.id}>
                             {user.name}
@@ -887,14 +1288,13 @@ export default function QuestionsEnhanced() {
                     <div className="space-y-0.5">
                       <FormLabel>Active</FormLabel>
                       <FormDescription>
-                        Active questions are used in check-ins
+                        Active questions will be included in check-ins
                       </FormDescription>
                     </div>
                     <FormControl>
                       <Switch
                         checked={field.value}
                         onCheckedChange={field.onChange}
-                        data-testid="edit-question-active"
                       />
                     </FormControl>
                   </FormItem>
@@ -902,12 +1302,10 @@ export default function QuestionsEnhanced() {
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={handleEditDialogClose}>
+                <Button variant="outline" type="button" onClick={handleEditDialogClose}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={updateQuestionMutation.isPending}>
-                  {updateQuestionMutation.isPending ? "Updating..." : "Update Question"}
-                </Button>
+                <Button type="submit">Update Question</Button>
               </DialogFooter>
             </form>
           </Form>
