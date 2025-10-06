@@ -9170,8 +9170,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.redirect(`${appBaseUrl}/#/settings?error=slack_auth_invalid_state`);
       }
       
+      // Get the organization ID that was stored when initiating the OAuth flow
       const orgId = (req.session as any).slackOrgId;
-      console.log(`🏢 Organization ID from session: ${orgId}`);
+      console.log(`🏢 Organization ID from session (slackOrgId): ${orgId}`);
       
       if (!orgId) {
         console.error("❌ No organization ID in session - OAuth flow was not properly initiated");
