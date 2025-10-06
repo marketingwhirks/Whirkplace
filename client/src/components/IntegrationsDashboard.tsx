@@ -43,6 +43,7 @@ interface OrganizationIntegrations {
   // Slack fields
   slackWorkspaceId?: string;
   slackChannelId?: string;
+  slackWinsChannelId?: string; // Specific channel for wins notifications
   hasSlackBotToken?: boolean; // Boolean indicator only, never actual token
   enableSlackIntegration: boolean;
   slackConnectionStatus: string;
@@ -440,6 +441,7 @@ export function IntegrationsDashboard() {
   // Form state for integrations
   const [slackBotToken, setSlackBotToken] = useState("");
   const [slackChannelId, setSlackChannelId] = useState("");
+  const [slackWinsChannelId, setSlackWinsChannelId] = useState("");
   const [microsoftTenantId, setMicrosoftTenantId] = useState("");
   const [microsoftClientId, setMicrosoftClientId] = useState("");
   const [microsoftClientSecret, setMicrosoftClientSecret] = useState("");
@@ -576,7 +578,7 @@ export function IntegrationsDashboard() {
 
   // Save Slack integration (channel settings only - token saved via OAuth)
   const saveSlackIntegration = useMutation({
-    mutationFn: async (data: { channelId: string; enable: boolean }) => {
+    mutationFn: async (data: { channelId: string; winsChannelId?: string; enable: boolean }) => {
       // Validate organizationId before making API call
       if (!organizationId) {
         throw new Error('Organization context is missing. Please refresh the page and try again.');
@@ -1081,6 +1083,13 @@ export function IntegrationsDashboard() {
                            orgIntegrations.slackChannelId.startsWith('#') ? ' (Channel name format)' : ''}
                         </p>
                       )}
+                      {orgIntegrations?.slackWinsChannelId && (
+                        <p className="text-sm text-green-600 dark:text-green-300 mt-1">
+                          Wins Channel: {orgIntegrations.slackWinsChannelId}
+                          {orgIntegrations.slackWinsChannelId.startsWith('C') ? ' (Channel ID format)' : 
+                           orgIntegrations.slackWinsChannelId.startsWith('#') ? ' (Channel name format)' : ''}
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -1097,10 +1106,33 @@ export function IntegrationsDashboard() {
                       </p>
                     </div>
 
+                    <div className="space-y-2">
+                      <Label htmlFor="slack-wins-channel-id">Wins Channel ID (optional)</Label>
+                      <Input
+                        id="slack-wins-channel-id"
+                        placeholder="#shout-outs or C1234567890"
+                        value={slackWinsChannelId}
+                        onChange={(e) => setSlackWinsChannelId(e.target.value)}
+                        data-testid="input-slack-wins-channel-id"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Enter the channel ID where wins should be posted (e.g., C1234567890). Leave empty to use the main channel.
+                      </p>
+                      <Alert>
+                        <AlertCircle className="h-4 w-4" />
+                        <AlertDescription className="text-xs">
+                          <strong>Finding the Channel ID:</strong> Right-click on your #shout-outs channel in Slack → View channel details → Channel ID is at the bottom.
+                          <br />
+                          <strong>Important:</strong> The WhirkPlace bot must be invited to this channel. In the channel, type <code>/invite @Whirkplace</code>
+                        </AlertDescription>
+                      </Alert>
+                    </div>
+
                     <div className="flex gap-3">
                       <Button
                         onClick={() => saveSlackIntegration.mutate({ 
                           channelId: slackChannelId, 
+                          winsChannelId: slackWinsChannelId,
                           enable: true 
                         })}
                         disabled={saveSlackIntegration.isPending}

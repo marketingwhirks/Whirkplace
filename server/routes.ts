@@ -4840,8 +4840,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (recipient) {
         // Handle Slack notifications based on visibility
         if (win.isPublic) {
-          // Public win: post to organization's configured Slack channel
-          const channelId = organization?.slackChannelId || 'C09JR9655B7'; // Default to #whirkplace-pulse
+          // Public win: post to organization's configured wins channel, or fallback to main channel
+          const channelId = organization?.slackWinsChannelId || organization?.slackChannelId || 'C09JR9655B7'; // Use wins channel first, then main channel, then default
           
           console.log(`📢 Announcing public win to channel ${channelId}`);
           const slackMessageId = await announceWin(
@@ -10010,15 +10010,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const channelUpdateSchema = z.object({
         channelId: z.string(),
+        winsChannelId: z.string().optional(),
         enable: z.boolean().optional()
       });
       
-      const { channelId, enable } = channelUpdateSchema.parse(req.body);
+      const { channelId, winsChannelId, enable } = channelUpdateSchema.parse(req.body);
       
       // Update only the channel-related fields
       const updateData: any = {
         slackChannelId: channelId
       };
+      
+      // Add wins channel if provided
+      if (winsChannelId !== undefined) {
+        updateData.slackWinsChannelId = winsChannelId || null; // Store null if empty string
+      }
       
       if (enable !== undefined) {
         updateData.enableSlackIntegration = enable;

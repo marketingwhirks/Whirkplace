@@ -126,6 +126,7 @@ export const organizations = pgTable("organizations", {
   slackClientSecret: text("slack_client_secret"), // Organization's Slack app client secret
   slackWorkspaceId: text("slack_workspace_id"), // Slack workspace ID for validation
   slackChannelId: text("slack_channel_id"), // Default Slack channel for notifications
+  slackWinsChannelId: text("slack_wins_channel_id"), // Specific channel for wins notifications (optional, falls back to slackChannelId)
   slackBotToken: text("slack_bot_token"), // Slack bot token for API calls
   slackSigningSecret: text("slack_signing_secret"), // For webhook verification
   enableSlackIntegration: boolean("enable_slack_integration").notNull().default(false),
