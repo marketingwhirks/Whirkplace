@@ -1,6 +1,7 @@
 import { storage } from "./storage";
 import type { User, Organization } from "@shared/schema";
 import * as bcrypt from "bcryptjs";
+import { seedQuestionBank } from "./seedQuestionBank";
 
 /**
  * Test User Seeding for Development Environment
@@ -237,6 +238,9 @@ export async function runDevelopmentSeeding(): Promise<void> {
 
   try {
     console.log("Starting development seeding...");
+    
+    // Seed question bank first (global data)
+    await seedQuestionBank();
     
     // Ensure default organization exists
     const defaultOrg = await ensureDefaultOrganization();

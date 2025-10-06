@@ -4530,6 +4530,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...clientData,
         organizationId: req.orgId,
         createdBy: req.currentUser?.id || "unknown", // Use authenticated user
+        assignedToUserId: clientData.assignedToUserId || null, // Assign to specific user or all
+        isFromBank: false, // Custom questions are not from bank
         isActive: true // Default to active
       };
       
@@ -4687,6 +4689,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.post("/api/question-bank/:id/use", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {
+      const { assignedToUserId, order = 0 } = req.body;
+      
       // When a question from the bank is used, increment its usage count
       await storage.incrementQuestionBankUsage(req.params.id);
       
@@ -4703,8 +4707,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdBy: req.user!.id,
         categoryId: bankItem.categoryId,
         bankQuestionId: bankItem.id,
+        assignedToUserId: assignedToUserId || null, // Assign to specific user or all
+        isFromBank: true, // Mark as from bank
         isActive: true,
-        order: 0, // Will be set by the client
+        order: order,
         addToBank: false,
       });
       

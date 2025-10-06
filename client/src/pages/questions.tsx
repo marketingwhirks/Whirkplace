@@ -3,10 +3,10 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { z } from "zod";
-import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff, Send, XCircle, Search, BookOpen, Users, Heart, Briefcase, TrendingUp, MessageCircle, Target, Sparkles, Wand2, Lightbulb, Library, Upload, CheckCircle } from "lucide-react";
+import { Plus, Edit, Trash2, GripVertical, Eye, EyeOff, Send, XCircle, Search, BookOpen, Users, Heart, Briefcase, TrendingUp, MessageCircle, Target, Sparkles, Wand2, Lightbulb, Library, Upload, CheckCircle, User, UserCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -21,49 +21,55 @@ import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Question, QuestionCategory, QuestionBank } from "@shared/schema";
+import type { Question, QuestionCategory, QuestionBank, User as UserType } from "@shared/schema";
 
-// Only allow client to set fields they should control
+// Category icons mapping
+const categoryIcons: { [key: string]: any } = {
+  "team-health": Heart,
+  "personal-growth": TrendingUp,
+  "work-progress": Briefcase,
+  "wellbeing": Heart,
+  "feedback": MessageCircle,
+  "innovation": Lightbulb,
+};
+
+// Schema for creating questions with assignment
 const createQuestionSchema = z.object({
   text: z.string().min(5, "Question must be at least 5 characters"),
   order: z.number().min(0, "Order must be 0 or greater").default(0),
   categoryId: z.string().optional(),
+  assignedToUserId: z.string().optional().nullable(),
   addToBank: z.boolean().default(false),
 });
 
 type CreateQuestionForm = z.infer<typeof createQuestionSchema>;
 
-// Schema for contributing to question bank
-const contributeQuestionSchema = z.object({
-  text: z.string().min(5, "Question must be at least 5 characters").max(500, "Question text too long"),
-  categoryId: z.string().min(1, "Category is required"),
-  description: z.string().max(200, "Description too long").optional(),
-  tags: z.array(z.string()).default([]),
-});
-
-type ContributeQuestionForm = z.infer<typeof contributeQuestionSchema>;
-
-export default function Questions() {
+export default function QuestionsEnhanced() {
   const { toast } = useToast();
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [showContributeDialog, setShowContributeDialog] = useState(false);
+  const [showBankDialog, setShowBankDialog] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
-  const [creationMode, setCreationMode] = useState<"custom" | "template">("template");
-  const [selectedTemplate, setSelectedTemplate] = useState<QuestionBank | null>(null);
+  const [creationMode, setCreationMode] = useState<"custom" | "bank">("bank");
+  const [selectedBankQuestion, setSelectedBankQuestion] = useState<QuestionBank | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<string>("");
-  const [showAIGenerator, setShowAIGenerator] = useState(false);
-  const [aiTheme, setAITheme] = useState("");
-  const [aiTeamFocus, setAITeamFocus] = useState("");
-  const [aiCount, setAICount] = useState(3);
-  const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [assignmentType, setAssignmentType] = useState<"all" | "specific">("all");
+  const [selectedUserId, setSelectedUserId] = useState<string>("");
 
   // Fetch questions
   const { data: questions = [], isLoading } = useQuery<Question[]>({
     queryKey: ["/api/questions"],
+    enabled: !userLoading && !!currentUser && ((currentUser as any).role === "manager" || (currentUser as any).role === "admin"),
+  });
+
+  // Fetch users for assignment dropdown
+  const { data: users = [], isLoading: usersLoading } = useQuery<UserType[]>({
+    queryKey: ["/api/users"],
     enabled: !userLoading && !!currentUser && ((currentUser as any).role === "manager" || (currentUser as any).role === "admin"),
   });
 
@@ -87,8 +93,13 @@ export default function Questions() {
     enabled: !userLoading && !!currentUser && ((currentUser as any).role === "manager" || (currentUser as any).role === "admin"),
   });
 
-  // Sort questions by order
-  const sortedQuestions = [...questions].sort((a, b) => a.order - b.order);
+  // Group questions by category
+  const questionsByCategory = questions.reduce((acc, question) => {
+    const categoryId = question.categoryId || "uncategorized";
+    if (!acc[categoryId]) acc[categoryId] = [];
+    acc[categoryId].push(question);
+    return acc;
+  }, {} as Record<string, Question[]>);
 
   // Filter question bank by search
   const filteredQuestionBank = questionBank.filter(q =>
@@ -103,18 +114,8 @@ export default function Questions() {
       text: "",
       order: questions.length,
       categoryId: undefined,
+      assignedToUserId: null,
       addToBank: false,
-    },
-  });
-
-  // Form for contributing questions
-  const contributeForm = useForm<ContributeQuestionForm>({
-    resolver: zodResolver(contributeQuestionSchema),
-    defaultValues: {
-      text: "",
-      categoryId: "",
-      description: "",
-      tags: [],
     },
   });
 
@@ -123,25 +124,13 @@ export default function Questions() {
     mutationFn: async (data: CreateQuestionForm) => {
       return apiRequest("POST", "/api/questions", data);
     },
-    onSuccess: (_, data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
-      handleDialogClose(false);
+      handleDialogClose();
       toast({
         title: "Success",
-        description: data.addToBank 
-          ? "Question created and submitted to the bank for review" 
-          : "Question created successfully",
+        description: "Question created successfully",
       });
-      
-      // If addToBank is true, also contribute to the bank
-      if (data.addToBank && data.categoryId) {
-        contributeToBank({
-          text: data.text,
-          categoryId: data.categoryId,
-          description: "",
-          tags: [],
-        });
-      }
     },
     onError: () => {
       toast({
@@ -152,23 +141,27 @@ export default function Questions() {
     },
   });
 
-  // Update question mutation
-  const updateQuestionMutation = useMutation({
-    mutationFn: async (data: { id: string; updates: Partial<Question> }) => {
-      return apiRequest("PATCH", `/api/questions/${data.id}`, data.updates);
+  // Use question from bank mutation
+  const useQuestionFromBankMutation = useMutation({
+    mutationFn: async (data: { bankQuestionId: string; assignedToUserId: string | null; order: number }) => {
+      return apiRequest("POST", `/api/question-bank/${data.bankQuestionId}/use`, {
+        assignedToUserId: data.assignedToUserId,
+        order: data.order,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
-      handleDialogClose(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/question-bank"] });
+      handleBankDialogClose();
       toast({
         title: "Success",
-        description: "Question updated successfully",
+        description: "Question added from bank",
       });
     },
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to update question",
+        description: "Failed to use question from bank",
         variant: "destructive",
       });
     },
@@ -195,175 +188,68 @@ export default function Questions() {
     },
   });
 
-  // Use question from bank mutation
-  const useQuestionFromBankMutation = useMutation({
-    mutationFn: async (bankQuestionId: string) => {
-      return apiRequest("POST", `/api/question-bank/${bankQuestionId}/use`, {});
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/question-bank"] });
-      setSelectedTemplate(null);
-      setShowCreateDialog(false);
-      toast({
-        title: "Success",
-        description: "Question added from bank",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to use question from bank",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Contribute question to bank mutation
-  const contributeQuestionMutation = useMutation({
-    mutationFn: async (data: ContributeQuestionForm) => {
-      return apiRequest("POST", "/api/question-bank", data);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/question-bank"] });
-      setShowContributeDialog(false);
-      contributeForm.reset();
-      toast({
-        title: "Success",
-        description: "Question submitted to the bank for review",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Error",
-        description: "Failed to contribute question",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const contributeToBank = (data: ContributeQuestionForm) => {
-    contributeQuestionMutation.mutate(data);
+  // Handle dialog close
+  const handleDialogClose = () => {
+    setShowCreateDialog(false);
+    setEditingQuestion(null);
+    form.reset();
+    setAssignmentType("all");
+    setSelectedUserId("");
   };
 
-  // Toggle question visibility
-  const toggleQuestionVisibility = async (question: Question) => {
-    updateQuestionMutation.mutate({
-      id: question.id,
-      updates: { isActive: !question.isActive },
+  // Handle bank dialog close
+  const handleBankDialogClose = () => {
+    setShowBankDialog(false);
+    setSelectedBankQuestion(null);
+    setAssignmentType("all");
+    setSelectedUserId("");
+  };
+
+  // Handle adding question from bank
+  const handleAddFromBank = () => {
+    if (!selectedBankQuestion) return;
+    
+    useQuestionFromBankMutation.mutate({
+      bankQuestionId: selectedBankQuestion.id,
+      assignedToUserId: assignmentType === "specific" ? selectedUserId : null,
+      order: questions.length,
     });
   };
 
-  // Handle dialog open/close
-  const handleDialogClose = (open: boolean) => {
-    if (!open) {
-      setShowCreateDialog(false);
-      setEditingQuestion(null);
-      form.reset();
-      setSelectedTemplate(null);
-      setCreationMode("template");
-    } else {
-      setShowCreateDialog(true);
-    }
-  };
-
-  // Generate AI questions
-  const generateAIQuestions = async () => {
-    if (!aiTheme && !aiTeamFocus) {
-      toast({
-        title: "Error",
-        description: "Please provide at least a theme or team focus",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      const response = await apiRequest("POST", "/api/questions/generate", {
-        theme: aiTheme,
-        teamFocus: aiTeamFocus,
-        count: aiCount,
-      });
-      
-      if (response && response.questions) {
-        setGeneratedQuestions(response.questions);
-        toast({
-          title: "Success",
-          description: `Generated ${response.questions.length} questions`,
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to generate questions",
-        variant: "destructive",
-      });
-    }
-  };
-
-  // Add generated question
-  const addGeneratedQuestion = (question: any, index: number) => {
-    form.setValue("text", question.text);
-    setGeneratedQuestions(prev => prev.filter((_, i) => i !== index));
-    setShowAIGenerator(false);
-  };
-
-  // Improve question with AI
-  const improveQuestion = async (questionId: string) => {
-    try {
-      const response = await apiRequest("POST", `/api/questions/${questionId}/improve`, {});
-      
-      if (response && response.improvedText) {
-        updateQuestionMutation.mutate({
-          id: questionId,
-          updates: { text: response.improvedText },
-        });
-        toast({
-          title: "Success",
-          description: "Question improved successfully",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to improve question",
-        variant: "destructive",
-      });
-    }
-  };
-
+  // Submit form
   const onSubmit = (data: CreateQuestionForm) => {
-    if (editingQuestion) {
-      updateQuestionMutation.mutate({
-        id: editingQuestion.id,
-        updates: data,
-      });
-    } else {
-      createQuestionMutation.mutate(data);
-    }
+    const submitData = {
+      ...data,
+      assignedToUserId: assignmentType === "specific" ? selectedUserId : null,
+    };
+    createQuestionMutation.mutate(submitData);
   };
 
-  const onContributeSubmit = (data: ContributeQuestionForm) => {
-    contributeQuestionMutation.mutate(data);
+  // Get category name
+  const getCategoryName = (categoryId: string) => {
+    const category = categories.find(c => c.id === categoryId);
+    return category?.name || "Uncategorized";
   };
 
-  if (userLoading || isLoading || categoriesLoading) {
-    return (
-      <div className="container mx-auto py-8">
-        <div className="space-y-4">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-64 w-full" />
-        </div>
-      </div>
-    );
+  // Get user name
+  const getUserName = (userId: string | null) => {
+    if (!userId) return "All Team";
+    const user = users.find(u => u.id === userId);
+    return user?.name || "Unknown User";
+  };
+
+  if (userLoading || !currentUser) {
+    return <div>Loading...</div>;
   }
 
-  if (!currentUser || ((currentUser as any).role !== "manager" && (currentUser as any).role !== "admin")) {
+  const isManager = (currentUser as any).role === "manager" || (currentUser as any).role === "admin";
+
+  if (!isManager) {
     return (
-      <div className="container mx-auto py-8">
+      <div className="container mx-auto py-10">
         <Alert>
           <AlertDescription>
-            You don't have permission to manage questions.
+            Only managers and admins can manage questions.
           </AlertDescription>
         </Alert>
       </div>
@@ -371,538 +257,341 @@ export default function Questions() {
   }
 
   return (
-    <div className="container mx-auto py-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Question Management</h1>
-        <p className="text-muted-foreground">
-          Manage check-in questions for your team
-        </p>
+    <div className="container mx-auto py-10">
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-3xl font-bold" data-testid="text-page-title">
+            Check-in Questions
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            Manage weekly check-in questions for your team
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={() => setShowBankDialog(true)}
+            variant="outline"
+            data-testid="button-add-from-bank"
+          >
+            <Library className="w-4 h-4 mr-2" />
+            Add from Bank
+          </Button>
+          <Button
+            onClick={() => {
+              setCreationMode("custom");
+              setShowCreateDialog(true);
+            }}
+            data-testid="button-add-custom"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add Custom Question
+          </Button>
+        </div>
       </div>
 
-      <Tabs defaultValue="active" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="active">Active Questions</TabsTrigger>
-          <TabsTrigger value="bank">Question Bank</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="active" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <div className="text-sm text-muted-foreground">
-              {sortedQuestions.filter(q => q.isActive).length} active questions
-            </div>
-            <div className="flex gap-2">
-              <Dialog open={showCreateDialog} onOpenChange={handleDialogClose}>
-                <DialogTrigger asChild>
-                  <Button data-testid="button-add-question">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Question
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>
-                      {editingQuestion ? "Edit Question" : "Add Question"}
-                    </DialogTitle>
-                    <DialogDescription>
-                      {editingQuestion 
-                        ? "Update the question details" 
-                        : "Choose from templates or create a custom question"}
-                    </DialogDescription>
-                  </DialogHeader>
-
-                  {!editingQuestion && (
-                    <Tabs value={creationMode} onValueChange={(v) => setCreationMode(v as "custom" | "template")}>
-                      <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="template" data-testid="tab-template">From Template</TabsTrigger>
-                        <TabsTrigger value="custom" data-testid="tab-custom">Custom Question</TabsTrigger>
-                      </TabsList>
-
-                      <TabsContent value="template" className="space-y-4">
-                        <div className="space-y-4">
-                          <div className="flex gap-2">
-                            <Select
-                              value={selectedCategory}
-                              onValueChange={setSelectedCategory}
-                            >
-                              <SelectTrigger data-testid="select-category">
-                                <SelectValue placeholder="All Categories" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="all">All Categories</SelectItem>
-                                {categories.map(cat => (
-                                  <SelectItem key={cat.id} value={cat.id} data-testid={`category-${cat.id}`}>
-                                    {cat.icon && <span className="mr-2">{cat.icon}</span>}
-                                    {cat.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <Input
-                              placeholder="Search questions..."
-                              value={searchTerm}
-                              onChange={(e) => setSearchTerm(e.target.value)}
-                              className="flex-1"
-                              data-testid="input-search-questions"
-                            />
-                          </div>
-
-                          <ScrollArea className="h-96">
-                            <div className="space-y-2">
-                              {bankLoading ? (
-                                <div className="text-center py-8 text-muted-foreground">
-                                  Loading question bank...
-                                </div>
-                              ) : filteredQuestionBank.length === 0 ? (
-                                <div className="text-center py-8 text-muted-foreground">
-                                  No questions found
-                                </div>
-                              ) : (
-                                filteredQuestionBank.map((template) => (
-                                  <Card
-                                    key={template.id}
-                                    className={`cursor-pointer transition-colors ${
-                                      selectedTemplate?.id === template.id
-                                        ? "border-primary bg-primary/5"
-                                        : ""
-                                    }`}
-                                    onClick={() => setSelectedTemplate(template)}
-                                    data-testid={`template-${template.id}`}
-                                  >
-                                    <CardContent className="p-4 space-y-2">
-                                      <div className="flex items-start justify-between">
-                                        <p className="font-medium flex-1">{template.text}</p>
-                                        {template.isApproved && (
-                                          <CheckCircle className="h-4 w-4 text-green-500 ml-2" />
-                                        )}
-                                      </div>
-                                      {template.description && (
-                                        <p className="text-sm text-muted-foreground">
-                                          {template.description}
-                                        </p>
-                                      )}
-                                      <div className="flex items-center gap-2">
-                                        {template.tags && template.tags.map(tag => (
-                                          <Badge key={tag} variant="secondary" className="text-xs">
-                                            {tag}
-                                          </Badge>
-                                        ))}
-                                        {template.usageCount > 0 && (
-                                          <Badge variant="outline" className="text-xs">
-                                            Used {template.usageCount} times
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </CardContent>
-                                  </Card>
-                                ))
-                              )}
-                            </div>
-                          </ScrollArea>
-
-                          {selectedTemplate && (
-                            <Button
-                              onClick={() => useQuestionFromBankMutation.mutate(selectedTemplate.id)}
-                              disabled={useQuestionFromBankMutation.isPending}
-                              data-testid="button-use-template"
-                            >
-                              Use Selected Question
-                            </Button>
-                          )}
-                        </div>
-                      </TabsContent>
-
-                      <TabsContent value="custom" className="space-y-4">
-                        <Form {...form}>
-                          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                            <FormField
-                              control={form.control}
-                              name="text"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Question Text</FormLabel>
-                                  <FormControl>
-                                    <Textarea
-                                      placeholder="Enter your question..."
-                                      className="min-h-[100px]"
-                                      {...field}
-                                      data-testid="textarea-question-text"
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name="categoryId"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Category (Optional)</FormLabel>
-                                  <Select onValueChange={field.onChange} value={field.value}>
-                                    <FormControl>
-                                      <SelectTrigger data-testid="select-question-category">
-                                        <SelectValue placeholder="Select a category" />
-                                      </SelectTrigger>
-                                    </FormControl>
-                                    <SelectContent>
-                                      {categories.map(cat => (
-                                        <SelectItem key={cat.id} value={cat.id}>
-                                          {cat.icon && <span className="mr-2">{cat.icon}</span>}
-                                          {cat.name}
-                                        </SelectItem>
-                                      ))}
-                                    </SelectContent>
-                                  </Select>
-                                  <FormDescription>
-                                    Categorize your question for better organization
-                                  </FormDescription>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name="addToBank"
-                              render={({ field }) => (
-                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                                  <div className="space-y-0.5">
-                                    <FormLabel className="text-base">
-                                      Share with Question Bank
-                                    </FormLabel>
-                                    <FormDescription>
-                                      Contribute this question to the shared bank for others to use
-                                    </FormDescription>
-                                  </div>
-                                  <FormControl>
-                                    <Switch
-                                      checked={field.value}
-                                      onCheckedChange={field.onChange}
-                                      disabled={!form.watch("categoryId")}
-                                      data-testid="switch-add-to-bank"
-                                    />
-                                  </FormControl>
-                                </FormItem>
-                              )}
-                            />
-
-                            <div className="flex gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setShowAIGenerator(true)}
-                                data-testid="button-ai-generate"
-                              >
-                                <Sparkles className="mr-2 h-4 w-4" />
-                                AI Generate
-                              </Button>
-                              <Button type="submit" className="flex-1" data-testid="button-create-question">
-                                {editingQuestion ? "Update" : "Create"} Question
-                              </Button>
-                            </div>
-                          </form>
-                        </Form>
-                      </TabsContent>
-                    </Tabs>
-                  )}
-
-                  {editingQuestion && (
-                    <Form {...form}>
-                      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                        <FormField
-                          control={form.control}
-                          name="text"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Question Text</FormLabel>
-                              <FormControl>
-                                <Textarea
-                                  placeholder="Enter your question..."
-                                  className="min-h-[100px]"
-                                  {...field}
-                                  data-testid="textarea-edit-question"
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-
-                        <Button type="submit" className="w-full" data-testid="button-update-question">
-                          Update Question
-                        </Button>
-                      </form>
-                    </Form>
-                  )}
-                </DialogContent>
-              </Dialog>
-
-              <Button
-                variant="outline"
-                onClick={() => setShowContributeDialog(true)}
-                data-testid="button-contribute-bank"
-              >
-                <Upload className="mr-2 h-4 w-4" />
-                Contribute to Bank
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-20 w-full" />
+          ))}
+        </div>
+      ) : questions.length === 0 ? (
+        <Card>
+          <CardContent className="text-center py-10">
+            <BookOpen className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+            <p className="text-lg font-semibold mb-2">No questions yet</p>
+            <p className="text-muted-foreground mb-4">
+              Start by adding questions from the bank or creating custom ones
+            </p>
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" onClick={() => setShowBankDialog(true)}>
+                <Library className="w-4 h-4 mr-2" />
+                Browse Question Bank
+              </Button>
+              <Button onClick={() => {
+                setCreationMode("custom");
+                setShowCreateDialog(true);
+              }}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Custom
               </Button>
             </div>
-          </div>
-
-          <Card>
-            <CardContent className="p-0">
-              {sortedQuestions.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground">
-                  No questions yet. Add your first question to get started.
-                </div>
-              ) : (
-                <div className="divide-y">
-                  {sortedQuestions.map((question, index) => {
-                    const category = question.categoryId ? categories.find(c => c.id === question.categoryId) : null;
-                    return (
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-6">
+          {/* Questions grouped by category */}
+          {Object.entries(questionsByCategory).map(([categoryId, categoryQuestions]) => {
+            const category = categories.find(c => c.id === categoryId);
+            const Icon = categoryIcons[categoryId] || BookOpen;
+            
+            return (
+              <Card key={categoryId}>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    {category?.icon && <span className="text-2xl">{category.icon}</span>}
+                    {getCategoryName(categoryId)}
+                    <Badge variant="secondary" className="ml-2">
+                      {categoryQuestions.length} {categoryQuestions.length === 1 ? "question" : "questions"}
+                    </Badge>
+                  </CardTitle>
+                  {category?.description && (
+                    <CardDescription>{category.description}</CardDescription>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {categoryQuestions.map((question) => (
                       <div
                         key={question.id}
-                        className="p-4 flex items-center gap-4 hover:bg-muted/50 transition-colors"
-                        data-testid={`question-row-${question.id}`}
+                        className="flex items-start justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
                       >
-                        <GripVertical className="h-5 w-5 text-muted-foreground cursor-move" />
                         <div className="flex-1 space-y-1">
                           <div className="flex items-center gap-2">
-                            <p className={`${!question.isActive ? "line-through text-muted-foreground" : ""}`} data-testid={`question-text-${question.id}`}>
-                              {question.text}
-                            </p>
-                            {category && (
+                            <p className="font-medium">{question.text}</p>
+                            {question.isFromBank && (
                               <Badge variant="outline" className="text-xs">
-                                {category.icon && <span className="mr-1">{category.icon}</span>}
-                                {category.name}
-                              </Badge>
-                            )}
-                            {question.bankQuestionId && (
-                              <Badge variant="secondary" className="text-xs">
-                                <Library className="h-3 w-3 mr-1" />
+                                <Library className="w-3 h-3 mr-1" />
                                 From Bank
                               </Badge>
                             )}
                           </div>
-                          <div className="text-sm text-muted-foreground">
-                            Question {index + 1}
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              {question.assignedToUserId ? (
+                                <>
+                                  <User className="w-3 h-3" />
+                                  <span>Assigned to: {getUserName(question.assignedToUserId)}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Users className="w-3 h-3" />
+                                  <span>All Team Members</span>
+                                </>
+                              )}
+                            </div>
+                            {!question.isActive && (
+                              <Badge variant="secondary">Hidden</Badge>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <Button
                             variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setEditingQuestion(question);
-                              form.reset({
-                                text: question.text,
-                                order: question.order,
-                                categoryId: question.categoryId || undefined,
-                                addToBank: false,
-                              });
-                              setShowCreateDialog(true);
-                            }}
-                            data-testid={`button-edit-${question.id}`}
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => toggleQuestionVisibility(question)}
-                            data-testid={`button-toggle-${question.id}`}
-                          >
-                            {question.isActive ? (
-                              <Eye className="h-4 w-4" />
-                            ) : (
-                              <EyeOff className="h-4 w-4" />
-                            )}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => improveQuestion(question.id)}
-                            data-testid={`button-improve-${question.id}`}
-                          >
-                            <Wand2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
+                            size="icon"
                             onClick={() => deleteQuestionMutation.mutate(question.id)}
                             data-testid={`button-delete-${question.id}`}
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <Trash2 className="w-4 h-4 text-destructive" />
                           </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Question Bank Dialog */}
+      <Dialog open={showBankDialog} onOpenChange={setShowBankDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle>Question Bank</DialogTitle>
+            <DialogDescription>
+              Browse and add pre-defined questions to your team's check-ins
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Search and Filter */}
+            <div className="flex gap-2">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search questions..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.icon} {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Questions List */}
+            <ScrollArea className="h-[400px] pr-4">
+              {bankLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+              ) : filteredQuestionBank.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No questions found</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {filteredQuestionBank.map((bankQuestion) => {
+                    const category = categories.find(c => c.id === bankQuestion.categoryId);
+                    return (
+                      <div
+                        key={bankQuestion.id}
+                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                          selectedBankQuestion?.id === bankQuestion.id
+                            ? "border-primary bg-primary/5"
+                            : "hover:bg-muted/50"
+                        }`}
+                        onClick={() => setSelectedBankQuestion(bankQuestion)}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 space-y-1">
+                            <p className="font-medium">{bankQuestion.text}</p>
+                            {bankQuestion.description && (
+                              <p className="text-sm text-muted-foreground">
+                                {bankQuestion.description}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="text-xs">
+                                {category?.icon} {category?.name}
+                              </Badge>
+                              {bankQuestion.tags && bankQuestion.tags.length > 0 && (
+                                <>
+                                  {bankQuestion.tags.map((tag) => (
+                                    <Badge key={tag} variant="outline" className="text-xs">
+                                      {tag}
+                                    </Badge>
+                                  ))}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          {selectedBankQuestion?.id === bankQuestion.id && (
+                            <CheckCircle className="w-5 h-5 text-primary" />
+                          )}
                         </div>
                       </div>
                     );
                   })}
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </ScrollArea>
 
-        <TabsContent value="bank" className="space-y-4">
-          <div className="space-y-4">
-            <div className="flex gap-2">
-              <Select
-                value={selectedCategory}
-                onValueChange={setSelectedCategory}
-              >
-                <SelectTrigger className="w-[200px]" data-testid="select-bank-category">
-                  <SelectValue placeholder="All Categories" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map(cat => (
-                    <SelectItem key={cat.id} value={cat.id}>
-                      {cat.icon && <span className="mr-2">{cat.icon}</span>}
-                      {cat.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input
-                placeholder="Search question bank..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="flex-1"
-                data-testid="input-search-bank"
-              />
-              <Button onClick={() => setShowContributeDialog(true)} data-testid="button-contribute">
-                <Upload className="mr-2 h-4 w-4" />
-                Contribute
-              </Button>
-            </div>
-
-            <div className="grid gap-4">
-              {bankLoading ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-muted-foreground">
-                    Loading question bank...
-                  </CardContent>
-                </Card>
-              ) : filteredQuestionBank.length === 0 ? (
-                <Card>
-                  <CardContent className="p-8 text-center text-muted-foreground">
-                    No questions found in the bank
-                  </CardContent>
-                </Card>
-              ) : (
-                filteredQuestionBank.map((item) => {
-                  const category = categories.find(c => c.id === item.categoryId);
-                  return (
-                    <Card key={item.id} data-testid={`bank-item-${item.id}`}>
-                      <CardContent className="p-6">
-                        <div className="space-y-3">
-                          <div className="flex items-start justify-between">
-                            <div className="space-y-1 flex-1">
-                              <p className="font-medium">{item.text}</p>
-                              {item.description && (
-                                <p className="text-sm text-muted-foreground">
-                                  {item.description}
-                                </p>
-                              )}
-                            </div>
-                            <Button
-                              size="sm"
-                              onClick={() => useQuestionFromBankMutation.mutate(item.id)}
-                              data-testid={`button-use-bank-${item.id}`}
-                            >
-                              Use Question
-                            </Button>
-                          </div>
-                          
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {category && (
-                              <Badge variant="outline">
-                                {category.icon && <span className="mr-1">{category.icon}</span>}
-                                {category.name}
-                              </Badge>
-                            )}
-                            {item.isApproved && (
-                              <Badge variant="secondary">
-                                <CheckCircle className="h-3 w-3 mr-1" />
-                                Approved
-                              </Badge>
-                            )}
-                            {item.isSystem && (
-                              <Badge variant="secondary">
-                                System
-                              </Badge>
-                            )}
-                            {item.tags && item.tags.map(tag => (
-                              <Badge key={tag} variant="outline" className="text-xs">
-                                {tag}
-                              </Badge>
-                            ))}
-                            {item.usageCount > 0 && (
-                              <Badge variant="outline" className="text-xs">
-                                Used {item.usageCount} times
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })
-              )}
-            </div>
+            {/* Assignment Options */}
+            {selectedBankQuestion && (
+              <div className="space-y-3 pt-4 border-t">
+                <Label>Assign Question To:</Label>
+                <RadioGroup value={assignmentType} onValueChange={(value: "all" | "specific") => setAssignmentType(value)}>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="all" id="all" />
+                    <Label htmlFor="all" className="flex items-center gap-2 cursor-pointer">
+                      <Users className="w-4 h-4" />
+                      All Team Members
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="specific" id="specific" />
+                    <Label htmlFor="specific" className="flex items-center gap-2 cursor-pointer">
+                      <UserCheck className="w-4 h-4" />
+                      Specific Team Member
+                    </Label>
+                  </div>
+                </RadioGroup>
+                
+                {assignmentType === "specific" && (
+                  <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a team member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.name || user.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
           </div>
-        </TabsContent>
-      </Tabs>
 
-      {/* Contribute to Bank Dialog */}
-      <Dialog open={showContributeDialog} onOpenChange={setShowContributeDialog}>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleBankDialogClose}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleAddFromBank}
+              disabled={!selectedBankQuestion || (assignmentType === "specific" && !selectedUserId)}
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Add Question
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Custom Question Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Contribute to Question Bank</DialogTitle>
+            <DialogTitle>Create Custom Question</DialogTitle>
             <DialogDescription>
-              Share your question with other organizations. Your contribution will be reviewed before being made available.
+              Create a custom check-in question for your team
             </DialogDescription>
           </DialogHeader>
           
-          <Form {...contributeForm}>
-            <form onSubmit={contributeForm.handleSubmit(onContributeSubmit)} className="space-y-4">
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
               <FormField
-                control={contributeForm.control}
+                control={form.control}
                 name="text"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Question Text</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Enter your question..."
-                        className="min-h-[100px]"
                         {...field}
-                        data-testid="textarea-contribute-text"
+                        placeholder="What would you like to ask your team?"
+                        className="min-h-[100px]"
                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
-
+              
               <FormField
-                control={contributeForm.control}
+                control={form.control}
                 name="categoryId"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Category</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
-                        <SelectTrigger data-testid="select-contribute-category">
+                        <SelectTrigger>
                           <SelectValue placeholder="Select a category" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {categories.map(cat => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {cat.icon && <span className="mr-2">{cat.icon}</span>}
-                            {cat.name}
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.icon} {category.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -912,112 +601,72 @@ export default function Questions() {
                 )}
               />
 
+              <div className="space-y-3">
+                <Label>Assign To:</Label>
+                <RadioGroup value={assignmentType} onValueChange={(value: "all" | "specific") => setAssignmentType(value)}>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="all" id="custom-all" />
+                    <Label htmlFor="custom-all" className="flex items-center gap-2 cursor-pointer">
+                      <Users className="w-4 h-4" />
+                      All Team Members
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="specific" id="custom-specific" />
+                    <Label htmlFor="custom-specific" className="flex items-center gap-2 cursor-pointer">
+                      <UserCheck className="w-4 h-4" />
+                      Specific Team Member
+                    </Label>
+                  </div>
+                </RadioGroup>
+                
+                {assignmentType === "specific" && (
+                  <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a team member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((user) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.name || user.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
               <FormField
-                control={contributeForm.control}
-                name="description"
+                control={form.control}
+                name="addToBank"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Description (Optional)</FormLabel>
+                  <FormItem className="flex items-center justify-between rounded-lg border p-3 space-y-0">
+                    <div className="space-y-0.5">
+                      <FormLabel>Contribute to Question Bank</FormLabel>
+                      <FormDescription>
+                        Share this question with other organizations (requires approval)
+                      </FormDescription>
+                    </div>
                     <FormControl>
-                      <Input
-                        placeholder="Brief description of when to use this question"
-                        {...field}
-                        data-testid="input-contribute-description"
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
                       />
                     </FormControl>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
 
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setShowContributeDialog(false)}>
+                <Button type="button" variant="outline" onClick={handleDialogClose}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={contributeQuestionMutation.isPending} data-testid="button-submit-contribution">
-                  Submit for Review
+                <Button type="submit" disabled={createQuestionMutation.isPending}>
+                  {createQuestionMutation.isPending ? "Creating..." : "Create Question"}
                 </Button>
               </DialogFooter>
             </form>
           </Form>
-        </DialogContent>
-      </Dialog>
-
-      {/* AI Generator Dialog */}
-      <Dialog open={showAIGenerator} onOpenChange={setShowAIGenerator}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>AI Question Generator</DialogTitle>
-            <DialogDescription>
-              Generate custom questions based on your team's needs
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Theme or Topic</label>
-              <Input
-                placeholder="e.g., remote work challenges, team collaboration"
-                value={aiTheme}
-                onChange={(e) => setAITheme(e.target.value)}
-                data-testid="input-ai-theme"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium">Team Focus</label>
-              <Input
-                placeholder="e.g., engineering team, customer success"
-                value={aiTeamFocus}
-                onChange={(e) => setAITeamFocus(e.target.value)}
-                data-testid="input-ai-focus"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium">Number of Questions</label>
-              <Input
-                type="number"
-                min={1}
-                max={10}
-                value={aiCount}
-                onChange={(e) => setAICount(Number(e.target.value))}
-                data-testid="input-ai-count"
-              />
-            </div>
-
-            <Button onClick={generateAIQuestions} className="w-full" data-testid="button-generate-ai">
-              <Sparkles className="mr-2 h-4 w-4" />
-              Generate Questions
-            </Button>
-
-            {generatedQuestions.length > 0 && (
-              <div className="space-y-2">
-                <Separator />
-                <h4 className="font-medium">Generated Questions</h4>
-                <ScrollArea className="h-64">
-                  <div className="space-y-2">
-                    {generatedQuestions.map((q, idx) => (
-                      <Card key={idx} data-testid={`generated-question-${idx}`}>
-                        <CardContent className="p-4">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="flex-1">{q.text}</p>
-                            <Button
-                              size="sm"
-                              onClick={() => addGeneratedQuestion(q, idx)}
-                              data-testid={`button-use-generated-${idx}`}
-                            >
-                              Use
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </div>
-            )}
-          </div>
         </DialogContent>
       </Dialog>
     </div>

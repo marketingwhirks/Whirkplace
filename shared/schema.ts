@@ -313,6 +313,8 @@ export const questions = pgTable("questions", {
   createdBy: varchar("created_by").notNull(),
   categoryId: varchar("category_id"), // Link to category
   bankQuestionId: varchar("bank_question_id"), // If this came from the question bank
+  assignedToUserId: varchar("assigned_to_user_id"), // Assign to specific user (null = all)
+  isFromBank: boolean("is_from_bank").notNull().default(false), // Track if from bank
   isActive: boolean("is_active").notNull().default(true),
   order: integer("order").notNull().default(0),
   addToBank: boolean("add_to_bank").notNull().default(false), // Flag to contribute to bank
