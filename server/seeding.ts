@@ -53,7 +53,7 @@ export async function ensurePatrickAccountingOrganization(): Promise<Organizatio
       isActive: true,
       // Slack Integration Configuration
       slackWorkspaceId: "T3SEH2T9C",
-      slackChannelId: "C03JR965G7",
+      slackChannelId: "C09JR9655B7",
       slackBotToken: slackBotToken,
       enableSlackIntegration: true,
       slackConnectionStatus: "connected",
