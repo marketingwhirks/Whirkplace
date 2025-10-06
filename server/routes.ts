@@ -1003,15 +1003,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Remove the trailing slash to get the base URL
           const appUrl = baseRedirectUri.endsWith('/') ? baseRedirectUri.slice(0, -1) : baseRedirectUri;
           
-          // Check if organization needs onboarding
-          const needsOnboarding = isNewOrganization || 
-            !organization.onboardingStatus || 
-            organization.onboardingStatus === 'not_started' || 
-            organization.onboardingStatus === 'in_progress';
+          // DISABLED: Old onboarding check - users now go directly to dashboard after signup
+          // const needsOnboarding = isNewOrganization || 
+          //   !organization.onboardingStatus || 
+          //   organization.onboardingStatus === 'not_started' || 
+          //   organization.onboardingStatus === 'in_progress';
           
           // For super admin users, redirect to organization selection
-          // For new organizations or those still in onboarding, redirect to onboarding
-          // Otherwise, redirect to the specific organization dashboard
+          // All other users go directly to dashboard (onboarding is now handled in signup flow)
           const actualOrgSlug = organization.slug || organizationSlug;
           
           // Redirect directly to the appropriate page with auth params
@@ -1026,19 +1025,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (isSuperAdmin) {
             // Super admins go to organization selection
             redirectPath = `${appUrl}/select-organization?${authParams.toString()}`;
-          } else if (needsOnboarding) {
-            // New organizations go to onboarding with org slug and auth
-            authParams.append('org', actualOrgSlug);
-            redirectPath = `${appUrl}/onboarding?${authParams.toString()}`;
           } else {
-            // Existing organizations go to dashboard
+            // All users now go directly to dashboard (onboarding handled in signup)
             authParams.append('org', actualOrgSlug);
             redirectPath = `${appUrl}/dashboard?${authParams.toString()}`;
           }
           
           console.log(`🚀 Redirecting after OAuth authentication`);
           console.log(`   User: ${authenticatedUser.email}`);
-          console.log(`   Organization: ${actualOrgSlug} (new: ${isNewOrganization}, needs onboarding: ${needsOnboarding})`);
+          console.log(`   Organization: ${actualOrgSlug} (new: ${isNewOrganization})`);
           console.log(`   Redirect: ${redirectPath.replace(/auth_session=[^&]+/, 'auth_session=[REDACTED]')}`);
           
           res.redirect(redirectPath);
@@ -3123,8 +3118,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return next();
     }
     
-    // Apply onboarding requirement for all other routes
-    requireOnboarded()(req, res, next);
+    // DISABLED: Old onboarding requirement - now handled via signup flow
+    // requireOnboarded()(req, res, next);
+    
+    // Continue to next middleware since onboarding is no longer required
+    next();
   });
   
   // CSRF token endpoint (requires authentication)

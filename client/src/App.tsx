@@ -33,7 +33,6 @@ import SelectOrganizationPage from "@/pages/select-organization";
 import DemoPage from "@/pages/demo";
 import DemoLoginPage from "@/pages/demo-login";
 import RoadmapPage from "@/pages/roadmap";
-import { OnboardingPage } from "@/pages/onboarding";
 import OAuthCallbackPage from "@/pages/oauth-callback";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
@@ -123,7 +122,6 @@ function App() {
               <Route path="/login" component={LoginPage} />
               <Route path="/forgot-password" component={ForgotPasswordPage} />
               <Route path="/partners" component={PartnerPage} />
-              <Route path="/onboarding" component={OnboardingPage} />
               <Route path="/oauth-callback" component={OAuthCallbackPage} />
               <Route component={AuthenticatedApp} />
             </Switch>
