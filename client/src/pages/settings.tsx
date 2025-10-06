@@ -31,6 +31,7 @@ import { useTours, useResetTour } from "@/hooks/useTours";
 import type { User as UserType, Team, Vacation } from "@shared/schema";
 import { DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
 import { addWeeks, startOfWeek, format as formatDate, parseISO, isSameWeek } from "date-fns";
+import { getCheckinWeekFriday } from "@shared/utils/dueDates";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -1183,7 +1184,7 @@ export default function Settings() {
                                   <Calendar className="w-4 h-4 text-muted-foreground" />
                                   <div>
                                     <p className="text-sm font-medium">
-                                      Week of {formatDate(weekStart, "MMM dd, yyyy")}
+                                      Week ending {formatDate(getCheckinWeekFriday(typeof vacation.weekOf === 'string' ? parseISO(vacation.weekOf) : vacation.weekOf), "MMMM d, yyyy")}
                                     </p>
                                     {vacation.note && (
                                       <p className="text-xs text-muted-foreground">{vacation.note}</p>

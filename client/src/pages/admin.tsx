@@ -39,6 +39,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { User as UserType, Team as TeamType, Vacation } from "@shared/schema";
 import { startOfWeek, addWeeks, format as formatDate, parseISO } from "date-fns";
+import { getCheckinWeekFriday } from "@shared/utils/dueDates";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
@@ -1469,7 +1470,7 @@ export default function Admin() {
                               <Calendar className="w-4 h-4 text-muted-foreground" />
                               <div>
                                 <p className="text-sm font-medium">
-                                  Week of {formatDate(weekStart, "MMM dd, yyyy")}
+                                  Week ending {formatDate(getCheckinWeekFriday(typeof vacation.weekOf === 'string' ? parseISO(vacation.weekOf) : vacation.weekOf), "MMMM d, yyyy")}
                                 </p>
                                 {vacation.note && (
                                   <p className="text-xs text-muted-foreground">{vacation.note}</p>

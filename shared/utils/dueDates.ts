@@ -1,4 +1,4 @@
-import { startOfWeek, setHours, setMinutes, setSeconds, setMilliseconds } from 'date-fns';
+import { startOfWeek, endOfWeek, setHours, setMinutes, setSeconds, setMilliseconds, addDays, isSaturday, isSunday } from 'date-fns';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
 
 // Central Time zone identifier
@@ -180,4 +180,104 @@ export function getWeekStartCentral(date: Date): Date {
   
   // Convert the Central Time date to UTC for storage
   return fromZonedTime(mondayAt00AM, CENTRAL_TIME_ZONE);
+}
+
+/**
+ * Calculates the Friday 23:59:59.999 Central Time (end of week) for the week containing the given date.
+ * 
+ * This function determines which Friday is the "week ending" date:
+ * - If the date is Monday-Friday: Returns this Friday
+ * - If the date is Saturday-Sunday: Returns next Friday
+ * 
+ * @param date - The date within the week for which to calculate the week ending
+ * @returns A Date object representing Friday at 23:59:59.999 Central Time (in UTC)
+ * 
+ * @example
+ * ```typescript
+ * // For a Wednesday (Jan 15, 2025)
+ * const weekEnding = getWeekEndingFriday(new Date('2025-01-15'));
+ * // Returns: Friday, Jan 17, 2025 at 23:59:59.999 Central Time
+ * 
+ * // For a Saturday (Jan 18, 2025)
+ * const weekEnding = getWeekEndingFriday(new Date('2025-01-18'));
+ * // Returns: Friday, Jan 24, 2025 at 23:59:59.999 Central Time (next week's Friday)
+ * ```
+ */
+export function getWeekEndingFriday(date: Date): Date {
+  // Convert the input date to Central Time
+  const centralDate = toZonedTime(date, CENTRAL_TIME_ZONE);
+  
+  let friday: Date;
+  
+  // If it's Saturday or Sunday, use next week's Friday
+  if (isSaturday(centralDate) || isSunday(centralDate)) {
+    // Get next Monday, then add 4 days to get to Friday
+    const nextMonday = startOfWeek(addDays(centralDate, 7), { weekStartsOn: 1 });
+    friday = addDays(nextMonday, 4);
+  } else {
+    // It's Monday-Friday, use this week's Friday
+    const monday = startOfWeek(centralDate, { weekStartsOn: 1 });
+    friday = addDays(monday, 4);
+  }
+  
+  // Set time to 23:59:59.999 in Central Time (end of day)
+  const fridayEndOfDay = setMilliseconds(
+    setSeconds(
+      setMinutes(
+        setHours(friday, 23),
+        59
+      ),
+      59
+    ),
+    999
+  );
+  
+  // Convert the Central Time date to UTC for storage
+  return fromZonedTime(fridayEndOfDay, CENTRAL_TIME_ZONE);
+}
+
+/**
+ * Gets the Friday (week ending) date for display purposes.
+ * Returns Friday at 00:00:00 Central Time for consistent date display.
+ * 
+ * @param date - The date within the week
+ * @returns A Date object representing Friday at 00:00:00 Central Time (in UTC)
+ * 
+ * @example
+ * ```typescript
+ * const friday = getCheckinWeekFriday(new Date('2025-01-15'));
+ * // Returns: Friday, Jan 17, 2025 at 00:00:00 Central Time
+ * ```
+ */
+export function getCheckinWeekFriday(date: Date): Date {
+  // Convert the input date to Central Time
+  const centralDate = toZonedTime(date, CENTRAL_TIME_ZONE);
+  
+  let friday: Date;
+  
+  // If it's Saturday or Sunday, use next week's Friday
+  if (isSaturday(centralDate) || isSunday(centralDate)) {
+    // Get next Monday, then add 4 days to get to Friday
+    const nextMonday = startOfWeek(addDays(centralDate, 7), { weekStartsOn: 1 });
+    friday = addDays(nextMonday, 4);
+  } else {
+    // It's Monday-Friday, use this week's Friday
+    const monday = startOfWeek(centralDate, { weekStartsOn: 1 });
+    friday = addDays(monday, 4);
+  }
+  
+  // Set time to 00:00:00.000 in Central Time (start of day for display)
+  const fridayStartOfDay = setMilliseconds(
+    setSeconds(
+      setMinutes(
+        setHours(friday, 0),
+        0
+      ),
+      0
+    ),
+    0
+  );
+  
+  // Convert the Central Time date to UTC for storage
+  return fromZonedTime(fridayStartOfDay, CENTRAL_TIME_ZONE);
 }

@@ -38,6 +38,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format, isToday, isThisWeek, parseISO, addMinutes } from "date-fns";
+import { getCheckinWeekFriday } from "@shared/utils/dueDates";
 import type { OneOnOne, User as UserType } from "@shared/schema";
 
 interface OneOnOneMeeting extends OneOnOne {
@@ -355,7 +356,7 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
                           <CardHeader className="pb-3">
                             <div className="flex items-start justify-between">
                               <CardTitle className="text-sm font-medium">
-                                Week of {format(parseISO(checkin.weekOf), "MMM d, yyyy")}
+                                Week ending {format(getCheckinWeekFriday(parseISO(checkin.weekOf)), "MMMM d, yyyy")}
                               </CardTitle>
                               <div className="flex items-center gap-2">
                                 <Badge variant={checkin.moodRating >= 4 ? "default" : checkin.moodRating >= 3 ? "secondary" : "destructive"}>

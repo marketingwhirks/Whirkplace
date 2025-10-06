@@ -3,8 +3,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import { Send, MessageCircle, X, Edit, Trash2, Check } from "lucide-react";
+import { getCheckinWeekFriday } from "@shared/utils/dueDates";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -195,7 +196,7 @@ export default function CheckinDetail({ checkin, questions, open, onOpenChange }
             </div>
           </DialogTitle>
           <DialogDescription>
-            Weekly check-in for {new Date(checkin.weekOf).toLocaleDateString()}
+            Weekly check-in for week ending {format(getCheckinWeekFriday(new Date(checkin.weekOf)), 'MMMM d, yyyy')}
           </DialogDescription>
         </DialogHeader>
 

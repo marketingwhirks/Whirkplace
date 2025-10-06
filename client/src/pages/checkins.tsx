@@ -3,8 +3,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { formatDistanceToNow, startOfWeek, addWeeks, isSameWeek } from "date-fns";
+import { formatDistanceToNow, startOfWeek, addWeeks, isSameWeek, format } from "date-fns";
 import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle, Smile, Flag, UserPlus, CheckCheck } from "lucide-react";
+import { getCheckinWeekFriday } from "@shared/utils/dueDates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -290,7 +291,7 @@ export default function Checkins() {
                   <span>This Week's Check-in</span>
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Week of {currentWeekStart.toLocaleDateString()}
+                  Week ending {format(getCheckinWeekFriday(new Date()), 'MMMM d, yyyy')}
                 </p>
               </div>
               <Badge className={currentStatus.color} data-testid="badge-current-status">
@@ -626,7 +627,7 @@ export default function Checkins() {
                         <div className="flex items-center space-x-4">
                           <div>
                             <h4 className="font-medium" data-testid={`checkin-week-${checkin.id}`}>
-                              Week of {new Date(checkin.weekOf).toLocaleDateString()}
+                              Week ending {format(getCheckinWeekFriday(new Date(checkin.weekOf)), 'MMMM d, yyyy')}
                             </h4>
                             <p className="text-sm text-muted-foreground">
                               Submitted {formatDistanceToNow(new Date(checkin.createdAt), { addSuffix: true })}
@@ -670,7 +671,7 @@ export default function Checkins() {
                 {currentWeekCheckin ? "Edit Check-in" : "Submit Weekly Check-in"}
               </DialogTitle>
               <DialogDescription>
-                Week of {currentWeekStart.toLocaleDateString()}
+                Week ending {format(getCheckinWeekFriday(new Date()), 'MMMM d, yyyy')}
               </DialogDescription>
             </DialogHeader>
             
