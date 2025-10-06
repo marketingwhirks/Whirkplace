@@ -63,7 +63,7 @@ interface PreviewChanges {
 
 export default function BillingPage() {
   const { toast } = useToast();
-  const { currentUser } = useCurrentUser();
+  const { data: currentUser } = useCurrentUser();
   const [previewUsers, setPreviewUsers] = useState({ add: 0, remove: 0 });
   const [showPreview, setShowPreview] = useState(false);
 
