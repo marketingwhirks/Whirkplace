@@ -121,7 +121,11 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
   const { data: currentUser } = useViewAsRole();
 
   // Fetch comprehensive agenda (KRAs, check-ins, action items)
-  const { data: agenda, isLoading: agendaLoading, refetch: refetchAgenda } = useQuery({
+  const { data: agenda, isLoading: agendaLoading, refetch: refetchAgenda } = useQuery<{
+    kras?: any[];
+    recentCheckins?: any[];
+    actionItems?: any[];
+  }>({
     queryKey: [`/api/one-on-ones/${meeting.id}/agenda`],
     enabled: open,
   });
@@ -287,7 +291,7 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
             <>
               <TabsContent value="kras" className="space-y-4">
                 <ScrollArea className="h-[400px] pr-4">
-                  {agenda?.kras?.length > 0 ? (
+                  {agenda?.kras && agenda.kras.length > 0 ? (
                     <div className="space-y-4">
                       {agenda.kras.map((kra: any) => (
                         <Card key={kra.kra.id} data-testid={`kra-card-${kra.kra.id}`}>
@@ -349,7 +353,7 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
 
               <TabsContent value="checkins" className="space-y-4">
                 <ScrollArea className="h-[400px] pr-4">
-                  {agenda?.recentCheckins?.length > 0 ? (
+                  {agenda?.recentCheckins && agenda.recentCheckins.length > 0 ? (
                     <div className="space-y-3">
                       {agenda.recentCheckins.map((checkin: any) => (
                         <Card key={checkin.id} data-testid={`checkin-card-${checkin.id}`}>
@@ -472,7 +476,7 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
                   <Separator />
 
                   <ScrollArea className="h-[350px] pr-4">
-                    {agenda?.actionItems?.length > 0 ? (
+                    {agenda?.actionItems && agenda.actionItems.length > 0 ? (
                       <div className="space-y-3">
                         {agenda.actionItems.map((item: any) => (
                           <Card
@@ -638,7 +642,8 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
       };
 
       // Create the one-on-one meeting first
-      const createdMeeting = await apiRequest("POST", "/api/one-on-ones", meetingData);
+      const meetingResponse = await apiRequest("POST", "/api/one-on-ones", meetingData);
+      const createdMeeting = await meetingResponse.json();
 
       // If Outlook sync is enabled and calendar is connected, create calendar event
       if (data.syncWithOutlook && calendarStatus?.connected && participant) {
@@ -663,7 +668,8 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
           };
 
           // Create calendar event
-          const calendarEvent = await apiRequest("POST", "/api/calendar/events", calendarEventData);
+          const calendarEventResponse = await apiRequest("POST", "/api/calendar/events", calendarEventData);
+          const calendarEvent = await calendarEventResponse.json();
           
           // Update meeting with calendar event details
           if (calendarEvent?.id) {
@@ -685,8 +691,8 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
 
       return createdMeeting;
     },
-    onSuccess: (data) => {
-      const successMessage = data?.syncWithOutlook && calendarStatus?.connected
+    onSuccess: (createdMeeting) => {
+      const successMessage = calendarStatus?.connected && form.getValues("syncWithOutlook")
         ? "Your one-on-one meeting has been successfully scheduled and added to your calendar!"
         : "Your one-on-one meeting has been successfully scheduled.";
         
@@ -1348,19 +1354,13 @@ export default function OneOnOnesPage() {
   // Show loading while checking feature access
   if (featureLoading) {
     return (
-      <>
-        <Header
-          title="One-on-One Meetings"
-          description="Schedule and manage one-on-one meetings with your team"
-        />
-        <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
+      <div className="flex-1 space-y-4 p-4 md:p-8 pt-6">
         <div className="space-y-4">
           <Skeleton className="h-8 w-64" />
           <Skeleton className="h-4 w-96" />
           <Skeleton className="h-64 w-full" />
         </div>
       </div>
-      </>
     );
   }
   

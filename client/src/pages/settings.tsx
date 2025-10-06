@@ -17,7 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -116,7 +116,8 @@ function AccountOwnershipTransfer() {
   // Transfer ownership mutation
   const transferOwnershipMutation = useMutation({
     mutationFn: async (newOwnerId: string) => {
-      return apiRequest("POST", "/api/account/transfer-ownership", { newOwnerId });
+      const response = await apiRequest("POST", "/api/account/transfer-ownership", { newOwnerId });
+      return response.json();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/account/owner"] });
@@ -337,9 +338,7 @@ function ToursManagement() {
     try {
       // Reset each tour individually
       const resetPromises = tours.map(tour => 
-        apiRequest(`/api/tours/${tour.tourId}/reset`, {
-          method: 'POST',
-        })
+        apiRequest('POST', `/api/tours/${tour.tourId}/reset`)
       );
       
       await Promise.all(resetPromises);
