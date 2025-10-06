@@ -9537,10 +9537,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update Slack channel settings only
   app.patch("/api/organizations/:id/integrations/slack/channel", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
-      console.log('📝 PATCH /api/organizations/:id/integrations/slack/channel - Request received');
-      console.log('   Request body:', req.body);
-      console.log('   Organization ID from URL:', req.params.id);
-      
       const targetOrgId = req.params.id;
       const userOrgId = req.orgId || req.currentUser?.organizationId;
       const canUpdateAnyOrg = req.currentUser?.isSuperAdmin === true;
