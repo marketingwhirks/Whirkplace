@@ -8636,6 +8636,293 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Comprehensive Slack diagnostic endpoint for troubleshooting sync issues
+  app.post("/api/integrations/slack/diagnose", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      console.log(`🔍 Slack diagnostic endpoint called for org: ${req.orgId}`);
+      console.log(`   User: ${req.currentUser?.name} (${req.currentUser?.email})`);
+      
+      // Get organization details
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization) {
+        return res.status(404).json({ 
+          success: false, 
+          message: "Organization not found",
+          organizationId: req.orgId
+        });
+      }
+      
+      console.log(`📋 Diagnosing Slack integration for: ${organization.name}`);
+      console.log(`   Organization slug: ${organization.slug}`);
+      console.log(`   Slack status: ${organization.slackConnectionStatus}`);
+      console.log(`   Workspace ID: ${organization.slackWorkspaceId}`);
+      console.log(`   Channel ID: ${organization.slackChannelId}`);
+      console.log(`   Has bot token: ${!!organization.slackBotToken}`);
+      
+      const diagnosticResults = {
+        organization: {
+          id: organization.id,
+          name: organization.name,
+          slug: organization.slug,
+        },
+        configuration: {
+          connectionStatus: organization.slackConnectionStatus,
+          workspaceId: organization.slackWorkspaceId,
+          channelId: organization.slackChannelId,
+          hasBotToken: !!organization.slackBotToken,
+          integrationEnabled: organization.enableSlackIntegration,
+          lastConnected: organization.slackLastConnected
+        },
+        tests: {
+          tokenValidation: { success: false, message: "", details: {} },
+          channelAccess: { success: false, message: "", details: {} },
+          permissions: { success: false, message: "", details: {} },
+          membersList: { success: false, message: "", details: {} }
+        }
+      };
+      
+      // Check if bot token exists
+      const botToken = organization.slackBotToken || process.env.SLACK_BOT_TOKEN;
+      if (!botToken) {
+        diagnosticResults.tests.tokenValidation = {
+          success: false,
+          message: "No bot token configured",
+          details: {
+            hasOrgToken: false,
+            hasEnvToken: !!process.env.SLACK_BOT_TOKEN
+          }
+        };
+        return res.json(diagnosticResults);
+      }
+      
+      // Test 1: Validate bot token
+      console.log(`🔑 Testing bot token...`);
+      const authResponse = await fetch("https://slack.com/api/auth.test", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${botToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      const authData = await authResponse.json();
+      if (authData.ok) {
+        diagnosticResults.tests.tokenValidation = {
+          success: true,
+          message: "Token is valid",
+          details: {
+            workspace: authData.team,
+            workspaceId: authData.team_id,
+            botUserId: authData.user_id,
+            botName: authData.user,
+            matchesStoredWorkspace: authData.team_id === organization.slackWorkspaceId
+          }
+        };
+        console.log(`✅ Token valid for workspace: ${authData.team} (${authData.team_id})`);
+        
+        // Check if workspace ID matches
+        if (authData.team_id !== organization.slackWorkspaceId) {
+          console.warn(`⚠️ Workspace mismatch! Token workspace: ${authData.team_id}, Stored: ${organization.slackWorkspaceId}`);
+        }
+      } else {
+        diagnosticResults.tests.tokenValidation = {
+          success: false,
+          message: `Token validation failed: ${authData.error}`,
+          details: {
+            error: authData.error
+          }
+        };
+        console.error(`❌ Token validation failed: ${authData.error}`);
+        return res.json(diagnosticResults);
+      }
+      
+      // Test 2: Check channel access
+      const channelId = organization.slackChannelId;
+      if (channelId) {
+        console.log(`📺 Testing channel access for: ${channelId}`);
+        
+        try {
+          const channelResponse = await fetch(`https://slack.com/api/conversations.info?channel=${channelId}`, {
+            headers: {
+              "Authorization": `Bearer ${botToken}`,
+              "Content-Type": "application/json",
+            },
+          });
+          
+          const channelData = await channelResponse.json();
+          if (channelData.ok) {
+            diagnosticResults.tests.channelAccess = {
+              success: true,
+              message: "Channel accessible",
+              details: {
+                channelId: channelId,
+                channelName: channelData.channel?.name,
+                isMember: channelData.channel?.is_member,
+                isPrivate: channelData.channel?.is_private,
+                memberCount: channelData.channel?.num_members
+              }
+            };
+            console.log(`✅ Channel accessible: #${channelData.channel?.name}, Bot is member: ${channelData.channel?.is_member}`);
+            
+            if (!channelData.channel?.is_member) {
+              console.warn(`⚠️ Bot is NOT a member of channel ${channelId}`);
+            }
+          } else {
+            diagnosticResults.tests.channelAccess = {
+              success: false,
+              message: `Cannot access channel: ${channelData.error}`,
+              details: {
+                channelId: channelId,
+                error: channelData.error,
+                needsInvite: channelData.error === 'channel_not_found' || channelData.error === 'not_in_channel'
+              }
+            };
+            console.error(`❌ Channel access failed: ${channelData.error}`);
+          }
+        } catch (error) {
+          console.error("Channel test error:", error);
+          diagnosticResults.tests.channelAccess = {
+            success: false,
+            message: "Failed to test channel access",
+            details: { error: error.message }
+          };
+        }
+      } else {
+        diagnosticResults.tests.channelAccess = {
+          success: false,
+          message: "No channel ID configured",
+          details: {}
+        };
+      }
+      
+      // Test 3: Check bot permissions/scopes
+      console.log(`🔐 Testing bot permissions...`);
+      const scopesResponse = await fetch("https://slack.com/api/auth.test", {
+        method: "POST", 
+        headers: {
+          "Authorization": `Bearer ${botToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+      
+      const scopesData = await scopesResponse.json();
+      const requiredScopes = ["channels:read", "groups:read", "users:read", "users:read.email"];
+      
+      // Note: auth.test doesn't return scopes directly, we'd need to try operations to check
+      diagnosticResults.tests.permissions = {
+        success: true,
+        message: "Permissions check requires testing operations",
+        details: {
+          requiredScopes: requiredScopes,
+          note: "Will be tested when accessing members"
+        }
+      };
+      
+      // Test 4: Try to list channel members (ultimate test)
+      if (channelId && diagnosticResults.tests.channelAccess.success) {
+        console.log(`👥 Testing member list access...`);
+        try {
+          const membersResponse = await fetch(`https://slack.com/api/conversations.members?channel=${channelId}`, {
+            headers: {
+              "Authorization": `Bearer ${botToken}`,
+              "Content-Type": "application/json",
+            },
+          });
+          
+          const membersData = await membersResponse.json();
+          if (membersData.ok) {
+            diagnosticResults.tests.membersList = {
+              success: true,
+              message: "Can list channel members",
+              details: {
+                memberCount: membersData.members?.length || 0,
+                sampleMembers: membersData.members?.slice(0, 3) || []
+              }
+            };
+            console.log(`✅ Can list members: ${membersData.members?.length || 0} members found`);
+            
+            // Update permissions test based on success
+            diagnosticResults.tests.permissions = {
+              success: true,
+              message: "All required permissions present",
+              details: {
+                requiredScopes: requiredScopes,
+                verified: true
+              }
+            };
+          } else {
+            diagnosticResults.tests.membersList = {
+              success: false,
+              message: `Cannot list members: ${membersData.error}`,
+              details: {
+                error: membersData.error,
+                needed: membersData.needed,
+                provided: membersData.provided
+              }
+            };
+            console.error(`❌ Cannot list members: ${membersData.error}`);
+            
+            // Update permissions test if it's a scope issue
+            if (membersData.error === 'missing_scope') {
+              diagnosticResults.tests.permissions = {
+                success: false,
+                message: "Missing required permissions",
+                details: {
+                  needed: membersData.needed,
+                  provided: membersData.provided
+                }
+              };
+            }
+          }
+        } catch (error) {
+          console.error("Members list error:", error);
+          diagnosticResults.tests.membersList = {
+            success: false,
+            message: "Failed to test member list",
+            details: { error: error.message }
+          };
+        }
+      }
+      
+      // Summary and recommendations
+      const allTestsPassed = Object.values(diagnosticResults.tests).every(test => test.success);
+      const recommendations = [];
+      
+      if (!diagnosticResults.tests.tokenValidation.success) {
+        recommendations.push("Reconnect Slack integration with a valid bot token");
+      }
+      if (!diagnosticResults.tests.channelAccess.success) {
+        if (diagnosticResults.tests.channelAccess.details?.needsInvite) {
+          recommendations.push(`Invite the bot to channel ${channelId} using: /invite @YourBotName`);
+        } else {
+          recommendations.push("Verify the channel ID is correct or reconfigure the channel");
+        }
+      }
+      if (!diagnosticResults.tests.permissions.success) {
+        recommendations.push("Update Slack app permissions to include: channels:read, groups:read, users:read, users:read.email");
+      }
+      
+      console.log(`📊 Diagnostic complete. All tests passed: ${allTestsPassed}`);
+      
+      res.json({
+        ...diagnosticResults,
+        summary: {
+          allTestsPassed,
+          canSync: allTestsPassed,
+          recommendations
+        }
+      });
+      
+    } catch (error) {
+      console.error("Slack diagnostic error:", error);
+      res.status(500).json({ 
+        success: false, 
+        message: "Diagnostic failed",
+        error: error.message 
+      });
+    }
+  });
+
   // Test Microsoft connection
   app.post("/api/integrations/microsoft/test", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {

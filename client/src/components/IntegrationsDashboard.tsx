@@ -1074,6 +1074,13 @@ export function IntegrationsDashboard() {
                           Workspace ID: {orgIntegrations.slackWorkspaceId}
                         </p>
                       )}
+                      {orgIntegrations?.slackChannelId && (
+                        <p className="text-sm text-green-600 dark:text-green-300 mt-1">
+                          Default Channel: {orgIntegrations.slackChannelId} 
+                          {orgIntegrations.slackChannelId.startsWith('C') ? ' (Channel ID format)' : 
+                           orgIntegrations.slackChannelId.startsWith('#') ? ' (Channel name format)' : ''}
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -1110,6 +1117,64 @@ export function IntegrationsDashboard() {
                       >
                         <RefreshCw className="w-4 h-4 mr-2" />
                         Reconnect Workspace
+                      </Button>
+                      <Button
+                        onClick={async () => {
+                          try {
+                            const response = await fetch('/api/integrations/slack/diagnose', {
+                              method: 'POST',
+                              headers: {
+                                'Content-Type': 'application/json',
+                              },
+                              credentials: 'include'
+                            });
+                            const diagnostics = await response.json();
+                            
+                            // Display diagnostic results
+                            if (diagnostics.summary?.allTestsPassed) {
+                              toast({
+                                title: "✅ Slack Integration Working",
+                                description: "All tests passed. Sync should work correctly.",
+                              });
+                            } else {
+                              const failedTests = Object.entries(diagnostics.tests || {})
+                                .filter(([_, test]: [string, any]) => !test.success)
+                                .map(([name, test]: [string, any]) => `${name}: ${test.message}`)
+                                .join('\n');
+                              
+                              toast({
+                                title: "⚠️ Slack Integration Issues Detected",
+                                description: failedTests || "Some tests failed. Check console for details.",
+                                variant: "destructive",
+                              });
+                              
+                              // Log detailed diagnostics to console for debugging
+                              console.log("Slack Diagnostic Results:", diagnostics);
+                              
+                              // Show recommendations if available
+                              if (diagnostics.summary?.recommendations?.length > 0) {
+                                setTimeout(() => {
+                                  toast({
+                                    title: "💡 Recommendations",
+                                    description: diagnostics.summary.recommendations.join(', '),
+                                  });
+                                }, 2000);
+                              }
+                            }
+                          } catch (error) {
+                            console.error("Diagnostic failed:", error);
+                            toast({
+                              title: "Error",
+                              description: "Failed to run diagnostics. Check console for details.",
+                              variant: "destructive",
+                            });
+                          }
+                        }}
+                        variant="outline"
+                        data-testid="button-diagnose-slack"
+                      >
+                        <HelpCircle className="w-4 h-4 mr-2" />
+                        Run Diagnostics
                       </Button>
                     </div>
                   </div>
