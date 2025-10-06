@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Edit, Trash2, Users, Lock, Unlock, Sparkles, Star, MessageCircle, Send, Gift, Check, ChevronsUpDown, X, InfoIcon } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Lock, Unlock, Sparkles, Star, MessageCircle, Send, Gift, Check, ChevronsUpDown, X, InfoIcon, User2, UsersIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from "@/components/ui/command";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,16 +25,30 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 
-import type { Shoutout, User, InsertShoutout } from "@shared/schema";
+import type { Shoutout, User, InsertShoutout, Team } from "@shared/schema";
 import { insertShoutoutSchema, defaultCompanyValuesArray } from "@shared/schema";
 
 // Form schema for shoutout creation - fromUserId is set server-side  
 const shoutoutFormSchema = insertShoutoutSchema.omit({
-  toUserId: true, // Replace single recipient with multiple
+  toUserId: true,
+  toTeamId: true,
 }).extend({
+  recipientType: z.enum(["individual", "team"]).default("individual"),
   message: z.string().min(1, "Message is required").max(500, "Message too long"),
-  toUserIds: z.array(z.string()).min(1, "Please select at least one recipient"),
+  toUserIds: z.array(z.string()).optional(),
+  toTeamId: z.string().optional(),
   values: z.array(z.string()).min(1, "At least one company value must be selected"),
+}).refine((data) => {
+  if (data.recipientType === "individual") {
+    return data.toUserIds && data.toUserIds.length > 0;
+  } else {
+    return !!data.toTeamId;
+  }
+}, {
+  message: data => data.recipientType === "individual" 
+    ? "Please select at least one recipient" 
+    : "Please select a team",
+  path: ["recipientType"]
 });
 
 type ShoutoutForm = z.infer<typeof shoutoutFormSchema>;
@@ -45,6 +60,7 @@ export default function ShoutoutsPage() {
   const [filter, setFilter] = useState<"all" | "received" | "given" | "public">("all");
   const [deleteShoutout, setDeleteShoutout] = useState<Shoutout | null>(null);
   const [recipientSelectorOpen, setRecipientSelectorOpen] = useState(false);
+  const [teamSelectorOpen, setTeamSelectorOpen] = useState(false);
 
   // Fetch shoutouts with proper filter parameters
   const { data: shoutouts = [], isLoading: shoutoutsLoading } = useQuery<Shoutout[]>({
@@ -60,6 +76,11 @@ export default function ShoutoutsPage() {
     queryKey: ["/api/users"],
   });
 
+  // Fetch teams for team shoutouts
+  const { data: teams = [] } = useQuery<Team[]>({
+    queryKey: ["/api/teams"],
+  });
+
   // Fetch current user for defaults
   const { data: currentUser } = useCurrentUser();
 
@@ -67,8 +88,10 @@ export default function ShoutoutsPage() {
   const createForm = useForm<ShoutoutForm>({
     resolver: zodResolver(shoutoutFormSchema),
     defaultValues: {
+      recipientType: "individual",
       message: "",
       toUserIds: [],
+      toTeamId: undefined,
       isPublic: false,
       values: [],
       organizationId: "",
@@ -101,13 +124,29 @@ export default function ShoutoutsPage() {
   // Create shoutout mutation
   const createShoutoutMutation = useMutation({
     mutationFn: async (data: ShoutoutForm) => {
-      return apiRequest("POST", "/api/shoutouts", data);
+      // Prepare data based on recipient type
+      const payload: any = {
+        message: data.message,
+        isPublic: data.isPublic,
+        values: data.values,
+        organizationId: data.organizationId,
+      };
+      
+      if (data.recipientType === "individual") {
+        payload.toUserIds = data.toUserIds;
+      } else {
+        payload.toTeamId = data.toTeamId;
+      }
+      
+      return apiRequest("POST", "/api/shoutouts", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shoutouts"] });
       createForm.reset({
+        recipientType: "individual",
         message: "",
         toUserIds: [],
+        toTeamId: undefined,
         isPublic: false,
         values: [],
         organizationId: currentUser?.organizationId || ""
@@ -178,6 +217,12 @@ export default function ShoutoutsPage() {
     return user?.name || "Unknown User";
   };
 
+  // Get team name by ID
+  const getTeamName = (teamId: string) => {
+    const team = teams.find(t => t.id === teamId);
+    return team?.name || "Unknown Team";
+  };
+
   // Get user initials for avatar
   const getUserInitials = (userId: string) => {
     const user = users.find(u => u.id === userId);
@@ -245,7 +290,42 @@ export default function ShoutoutsPage() {
 
                 <Form {...createForm}>
                   <form onSubmit={onCreateSubmit} className="space-y-4">
-                    {/* Recipients Selection */}
+                    {/* Recipient Type Selection */}
+                    <FormField
+                      control={createForm.control}
+                      name="recipientType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Recognize</FormLabel>
+                          <FormControl>
+                            <RadioGroup
+                              onValueChange={field.onChange}
+                              value={field.value}
+                              className="flex flex-row space-x-4"
+                            >
+                              <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="individual" id="individual" />
+                                <label htmlFor="individual" className="flex items-center cursor-pointer">
+                                  <User2 className="mr-1 h-4 w-4" />
+                                  Individual
+                                </label>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <RadioGroupItem value="team" id="team" />
+                                <label htmlFor="team" className="flex items-center cursor-pointer">
+                                  <UsersIcon className="mr-1 h-4 w-4" />
+                                  Team
+                                </label>
+                              </div>
+                            </RadioGroup>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    {/* Individual Recipients Selection */}
+                    {createForm.watch("recipientType") === "individual" && (
                     <FormField
                       control={createForm.control}
                       name="toUserIds"
@@ -357,6 +437,74 @@ export default function ShoutoutsPage() {
                         );
                       }}
                     />
+                    )}
+
+                    {/* Team Selection */}
+                    {createForm.watch("recipientType") === "team" && (
+                    <FormField
+                      control={createForm.control}
+                      name="toTeamId"
+                      render={({ field }) => {
+                        const selectedTeam = teams.find(t => t.id === field.value);
+                        
+                        return (
+                          <FormItem>
+                            <FormLabel>Team *</FormLabel>
+                            <FormDescription className="text-sm text-muted-foreground">
+                              Select a team to recognize
+                            </FormDescription>
+                            
+                            <FormControl>
+                              <Popover open={teamSelectorOpen} onOpenChange={setTeamSelectorOpen}>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    aria-expanded={teamSelectorOpen}
+                                    aria-label="Select team"
+                                    aria-controls="team-popover"
+                                    className="w-full justify-between"
+                                    data-testid="button-select-team"
+                                  >
+                                    {selectedTeam ? selectedTeam.name : "Choose team..."}
+                                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-full p-0" id="team-popover">
+                                  <Command>
+                                    <CommandInput placeholder="Search teams..." />
+                                    <CommandEmpty>No teams found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {teams.map((team) => (
+                                        <CommandItem
+                                          key={team.id}
+                                          value={team.name}
+                                          onSelect={() => {
+                                            field.onChange(team.id);
+                                            setTeamSelectorOpen(false);
+                                          }}
+                                          data-testid={`option-team-${team.id}`}
+                                        >
+                                          <UsersIcon className="mr-2 h-4 w-4" />
+                                          {team.name}
+                                          <Check
+                                            className={`ml-auto h-4 w-4 ${
+                                              field.value === team.id ? "opacity-100" : "opacity-0"
+                                            }`}
+                                          />
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </Command>
+                                </PopoverContent>
+                              </Popover>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
+                    />
+                    )}
 
                     {/* Message */}
                     <FormField
@@ -483,7 +631,7 @@ export default function ShoutoutsPage() {
           <Alert>
             <InfoIcon className="h-4 w-4" />
             <AlertDescription>
-              Give recognition to teammates and teams! Shoutouts are public acknowledgments of great work, collaboration, and support.
+              Shoutouts are public recognitions to celebrate teammates and teams who embody our company values. Give kudos to individuals or entire teams for their outstanding contributions, collaboration, and achievements.
             </AlertDescription>
           </Alert>
 
@@ -546,9 +694,16 @@ export default function ShoutoutsPage() {
                                   {getUserName(shoutoutItem.fromUserId)}
                                 </span>
                                 {" → "}
-                                <span data-testid={`text-to-${shoutoutItem.toUserId}`}>
-                                  {getUserName(shoutoutItem.toUserId)}
-                                </span>
+                                {shoutoutItem.toTeamId ? (
+                                  <span className="inline-flex items-center" data-testid={`text-to-team-${shoutoutItem.toTeamId}`}>
+                                    <UsersIcon className="mr-1 h-4 w-4" />
+                                    Team: {getTeamName(shoutoutItem.toTeamId)}
+                                  </span>
+                                ) : (
+                                  <span data-testid={`text-to-${shoutoutItem.toUserId}`}>
+                                    {getUserName(shoutoutItem.toUserId || "")}
+                                  </span>
+                                )}
                               </p>
                               <p className="text-sm text-muted-foreground">
                                 {formatDistanceToNow(new Date(shoutoutItem.createdAt))} ago

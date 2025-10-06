@@ -5224,11 +5224,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Custom schema for multi-recipient shoutouts - omit server-side fields
       const multiShoutoutSchema = insertShoutoutSchema.omit({
         toUserId: true,
+        toTeamId: true,
         fromUserId: true,
         organizationId: true,
         slackMessageId: true
       }).extend({
-        toUserIds: z.array(z.string()).min(1, "At least one recipient is required")
+        toUserIds: z.array(z.string()).min(1, "At least one recipient is required").optional(),
+        toTeamId: z.string().optional()
+      }).refine((data) => {
+        // Either toUserIds OR toTeamId must be provided, not both
+        return (data.toUserIds && data.toUserIds.length > 0) || data.toTeamId;
+      }, {
+        message: "Either individual recipients or a team must be selected"
       });
       
       const shoutoutData = multiShoutoutSchema.parse(req.body);
@@ -5239,49 +5246,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       const currentUserId = req.currentUser.id;
       
-      // Validate and deduplicate recipients
-      const uniqueRecipientIds = [...new Set(shoutoutData.toUserIds)];
-      
-      // Validate all recipients exist in the organization
-      for (const recipientId of uniqueRecipientIds) {
-        const recipientUser = await storage.getUser(req.orgId, recipientId);
-        if (!recipientUser) {
-          return res.status(400).json({ 
-            message: "Invalid recipient", 
-            details: `User ${recipientId} not found in organization` 
-          });
-        }
-      }
-      
-      // Create individual shoutouts for each recipient
       const createdShoutouts = [];
       
-      for (const toUserId of uniqueRecipientIds) {
-        // SECURITY: Never accept fromUserId from client - set server-side
-        const individualShoutout = {
+      // Handle team shoutout
+      if (shoutoutData.toTeamId) {
+        // Validate team exists
+        const team = await storage.getTeam(req.orgId, shoutoutData.toTeamId);
+        if (!team) {
+          return res.status(400).json({ 
+            message: "Invalid team", 
+            details: `Team ${shoutoutData.toTeamId} not found in organization` 
+          });
+        }
+        
+        // Create team shoutout
+        const teamShoutout = {
           ...shoutoutData,
-          toUserId, // Set individual recipient
+          toTeamId: shoutoutData.toTeamId,
+          toUserId: null, // Explicitly null for team shoutouts
           fromUserId: currentUserId
         };
         
-        // Remove toUserIds from the data that goes to the database
-        const { toUserIds, ...dbData } = individualShoutout;
+        // Remove toUserIds and toTeamId from the data that goes to the database (they're already set above)
+        const { toUserIds, toTeamId, ...dbData } = teamShoutout;
         
-        const sanitizedData = sanitizeForOrganization(dbData, req.orgId);
+        const sanitizedData = sanitizeForOrganization({
+          ...dbData,
+          toTeamId: teamShoutout.toTeamId,
+          toUserId: teamShoutout.toUserId
+        }, req.orgId);
         const shoutout = await storage.createShoutout(req.orgId, sanitizedData);
         createdShoutouts.push(shoutout);
         
         // Send Slack notification if public
         if (shoutout.isPublic) {
           const fromUser = await storage.getUser(req.orgId, shoutout.fromUserId);
-          const toUser = await storage.getUser(req.orgId, shoutout.toUserId);
           
-          if (fromUser && toUser) {
+          if (fromUser && team) {
             try {
               const slackMessageId = await announceShoutout(
                 shoutout.message,
                 fromUser.name,
-                toUser.name,
+                `Team ${team.name}`, // Use team name for Slack notification
                 shoutout.values
               );
               
@@ -5289,7 +5295,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
               }
             } catch (slackError) {
-              console.warn("Failed to send Slack notification for shoutout:", slackError);
+              console.warn("Failed to send Slack notification for team shoutout:", slackError);
+            }
+          }
+        }
+      } 
+      // Handle individual shoutouts
+      else if (shoutoutData.toUserIds) {
+        // Validate and deduplicate recipients
+        const uniqueRecipientIds = [...new Set(shoutoutData.toUserIds)];
+        
+        // Validate all recipients exist in the organization
+        for (const recipientId of uniqueRecipientIds) {
+          const recipientUser = await storage.getUser(req.orgId, recipientId);
+          if (!recipientUser) {
+            return res.status(400).json({ 
+              message: "Invalid recipient", 
+              details: `User ${recipientId} not found in organization` 
+            });
+          }
+        }
+        
+        // Create individual shoutouts for each recipient
+        for (const toUserId of uniqueRecipientIds) {
+          // SECURITY: Never accept fromUserId from client - set server-side
+          const individualShoutout = {
+            ...shoutoutData,
+            toUserId, // Set individual recipient
+            toTeamId: null, // Explicitly null for individual shoutouts
+            fromUserId: currentUserId
+          };
+          
+          // Remove toUserIds from the data that goes to the database
+          const { toUserIds, toTeamId, ...dbData } = individualShoutout;
+          
+          const sanitizedData = sanitizeForOrganization({
+            ...dbData,
+            toUserId: individualShoutout.toUserId,
+            toTeamId: individualShoutout.toTeamId
+          }, req.orgId);
+          const shoutout = await storage.createShoutout(req.orgId, sanitizedData);
+          createdShoutouts.push(shoutout);
+          
+          // Send Slack notification if public
+          if (shoutout.isPublic) {
+            const fromUser = await storage.getUser(req.orgId, shoutout.fromUserId);
+            const toUser = await storage.getUser(req.orgId, shoutout.toUserId!);
+            
+            if (fromUser && toUser) {
+              try {
+                const slackMessageId = await announceShoutout(
+                  shoutout.message,
+                  fromUser.name,
+                  toUser.name,
+                  shoutout.values
+                );
+                
+                if (slackMessageId) {
+                  await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
+                }
+              } catch (slackError) {
+                console.warn("Failed to send Slack notification for shoutout:", slackError);
+              }
             }
           }
         }

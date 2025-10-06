@@ -257,7 +257,7 @@ export default function Wins() {
           <Alert>
             <InfoIcon className="h-4 w-4" />
             <AlertDescription>
-              Celebrate your achievements and milestones! Wins are personal accomplishments you want to share with your team.
+              Wins are personal or professional achievements worth celebrating. Share your successes, milestones, and accomplishments with your team to foster a culture of recognition and positivity.
             </AlertDescription>
           </Alert>
 
