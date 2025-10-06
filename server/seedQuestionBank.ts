@@ -1,18 +1,41 @@
 import { db } from "./db";
-import { questionCategories, questionBank } from "@shared/schema";
+import { questionCategories, questionBank, type QuestionCategory, type QuestionBank } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 
-export async function seedQuestionBank() {
+export interface SeedResult {
+  success: boolean;
+  categoriesCreated: number;
+  questionsCreated: number;
+  categoriesExisting: number;
+  questionsExisting: number;
+  message: string;
+}
+
+export async function seedQuestionBank(): Promise<SeedResult> {
   console.log("🌱 Seeding question bank...");
   
   // Check if categories already exist
   const existingCategories = await db.select().from(questionCategories);
-  if (existingCategories.length > 0) {
-    console.log("✓ Question categories already exist, skipping seed");
-    return;
+  const existingQuestions = await db.select().from(questionBank);
+  
+  // If both already exist with sufficient data, return early
+  if (existingCategories.length >= 6 && existingQuestions.length >= 24) {
+    console.log("✓ Question bank already fully seeded");
+    return {
+      success: true,
+      categoriesCreated: 0,
+      questionsCreated: 0,
+      categoriesExisting: existingCategories.length,
+      questionsExisting: existingQuestions.length,
+      message: "Question bank already fully populated"
+    };
   }
 
-  // Create question categories
-  const categories = await db.insert(questionCategories).values([
+  let categoriesCreated = 0;
+  let questionsCreated = 0;
+
+  // Define categories to seed
+  const categoriesToSeed = [
     {
       id: "team-health",
       name: "Team Health",
@@ -67,12 +90,22 @@ export async function seedQuestionBank() {
       order: 6,
       isDefault: true
     }
-  ]).returning();
+  ];
 
-  console.log(`✓ Created ${categories.length} question categories`);
+  // Create missing categories
+  const existingCategoryIds = new Set(existingCategories.map(c => c.id));
+  const categoriesToCreate = categoriesToSeed.filter(c => !existingCategoryIds.has(c.id));
+  
+  if (categoriesToCreate.length > 0) {
+    const createdCategories = await db.insert(questionCategories).values(categoriesToCreate).returning();
+    categoriesCreated = createdCategories.length;
+    console.log(`✓ Created ${categoriesCreated} question categories`);
+  } else {
+    console.log("✓ All question categories already exist");
+  }
 
-  // Create question bank items
-  const bankQuestions = await db.insert(questionBank).values([
+  // Define questions to seed
+  const questionsToSeed = [
     // Team Health Questions
     {
       text: "How would you rate team collaboration this week?",
@@ -276,11 +309,34 @@ export async function seedQuestionBank() {
       isSystem: true,
       isApproved: true
     }
-  ]).returning();
+  ];
 
-  console.log(`✓ Created ${bankQuestions.length} question bank items`);
-  console.log("✅ Question bank seeding completed!");
+  // Create missing questions by checking text uniqueness
+  const existingQuestionTexts = new Set(existingQuestions.map(q => q.text));
+  const questionsToCreate = questionsToSeed.filter(q => !existingQuestionTexts.has(q.text));
+  
+  if (questionsToCreate.length > 0) {
+    const createdQuestions = await db.insert(questionBank).values(questionsToCreate).returning();
+    questionsCreated = createdQuestions.length;
+    console.log(`✓ Created ${questionsCreated} question bank items`);
+  } else {
+    console.log("✓ All question bank items already exist");
+  }
+
+  const message = `Seeding completed: ${categoriesCreated} categories created, ${questionsCreated} questions created`;
+  console.log(`✅ ${message}`);
+  
+  return {
+    success: true,
+    categoriesCreated,
+    questionsCreated,
+    categoriesExisting: existingCategories.length,
+    questionsExisting: existingQuestions.length,
+    message
+  };
 }
 
 // Run if executed directly (for manual seeding)
 // To run manually: npx tsx server/seedQuestionBank.ts
+// Note: Commenting out direct execution to avoid ES module issues
+// This function is now primarily called via the API endpoint

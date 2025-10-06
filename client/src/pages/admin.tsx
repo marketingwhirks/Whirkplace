@@ -31,7 +31,9 @@ import {
   Crown,
   Plus,
   Calendar,
-  CalendarOff
+  CalendarOff,
+  BookOpen,
+  Database
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -488,6 +490,36 @@ export default function Admin() {
     });
   };
 
+  // Seed question bank mutation (super admin only)
+  const seedQuestionBankMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/admin/seed-question-bank", {});
+      if (!response.ok) {
+        const error = await response.json();
+        throw error;
+      }
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/question-bank"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/question-categories"] });
+      
+      const detailsMessage = `Categories: ${data.details.categoriesCreated} created (${data.details.categoriesExisting} existing), Questions: ${data.details.questionsCreated} created (${data.details.questionsExisting} existing)`;
+      
+      toast({
+        title: "Question bank seeding completed",
+        description: detailsMessage,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to seed question bank",
+        description: error.message || "An error occurred while seeding the question bank.",
+      });
+    },
+  });
+
   const getRoleBadge = (role: string) => {
     switch (role) {
       case "admin":
@@ -869,6 +901,72 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Question Bank Management - Super Admin Only */}
+        {actualUser?.isSuperAdmin && (
+          <Card data-testid="card-question-bank-management">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="w-5 h-5" />
+                Question Bank Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Initialize or refresh the global question bank with default categories and questions. 
+                  This operation is idempotent and can be run safely multiple times.
+                </p>
+                
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <div className="flex items-start gap-2">
+                    <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-blue-800 dark:text-blue-200">
+                        About Question Bank
+                      </p>
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                        The question bank contains 6 categories and 24 pre-configured questions that teams can use for check-ins, 
+                        one-on-ones, and other team interactions. If the bank is already populated, running this will only add missing items.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => seedQuestionBankMutation.mutate()}
+                    disabled={seedQuestionBankMutation.isPending}
+                    data-testid="button-seed-question-bank"
+                  >
+                    {seedQuestionBankMutation.isPending ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Seeding Question Bank...
+                      </>
+                    ) : (
+                      <>
+                        <Database className="w-4 h-4 mr-2" />
+                        Seed Question Bank
+                      </>
+                    )}
+                  </Button>
+                </div>
+                
+                {seedQuestionBankMutation.isSuccess && (
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                      <p className="text-sm text-green-800 dark:text-green-200">
+                        Question bank successfully seeded!
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Sync Confirmation Dialog */}
         <Dialog open={showSyncDialog} onOpenChange={setShowSyncDialog}>

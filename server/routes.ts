@@ -11484,6 +11484,39 @@ Return the response as a JSON object with this structure:
     }
   });
 
+  // Admin endpoint to seed question bank (idempotent - safe to run multiple times)
+  app.post("/api/admin/seed-question-bank", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      console.log("📚 Admin-triggered question bank seeding initiated by:", req.currentUser?.email);
+      
+      // Import the seedQuestionBank function
+      const { seedQuestionBank } = await import("./seedQuestionBank");
+      
+      // Run the seeding (it's idempotent - safe to run multiple times)
+      const result = await seedQuestionBank();
+      
+      console.log("📚 Question bank seeding result:", result);
+      
+      res.json({
+        success: result.success,
+        message: result.message,
+        details: {
+          categoriesCreated: result.categoriesCreated,
+          questionsCreated: result.questionsCreated,
+          categoriesExisting: result.categoriesExisting,
+          questionsExisting: result.questionsExisting
+        }
+      });
+    } catch (error) {
+      console.error("Failed to seed question bank:", error);
+      res.status(500).json({ 
+        success: false,
+        message: "Failed to seed question bank",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
   // Super Admin: Get all active sessions
   app.get("/api/super-admin/sessions", requireAuth(), requireSuperAdmin(), async (req, res) => {
     try {
