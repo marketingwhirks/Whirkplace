@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
-import { CheckCircle, XCircle, Clock, Eye, MessageSquare, Filter, Calendar, User } from "lucide-react";
+import { formatDistanceToNow, formatDistance } from "date-fns";
+import { CheckCircle, XCircle, Clock, Eye, MessageSquare, Filter, Calendar, User, AlertCircle, Send, UserMinus, Bell } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -34,6 +35,15 @@ interface ReviewModalData {
   checkin: EnhancedCheckin;
 }
 
+interface UserWithoutCheckin {
+  user: UserType & {
+    teamName?: string | null;
+  };
+  lastCheckin: Checkin | null;
+  daysSinceLastCheckin: number | null;
+  lastReminderSent: Date | null;
+}
+
 export default function Reviews() {
   const { toast } = useToast();
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
@@ -44,6 +54,7 @@ export default function Reviews() {
   const [responseComments, setResponseComments] = useState<Record<string, string>>({});
   const [addToOneOnOne, setAddToOneOnOne] = useState(false);
   const [flagForFollowUp, setFlagForFollowUp] = useState(false);
+  const [selectedReminders, setSelectedReminders] = useState<Set<string>>(new Set());
 
   // Fetch pending check-ins
   const { data: pendingCheckins = [], isLoading: pendingLoading } = useQuery<EnhancedCheckin[]>({
@@ -54,6 +65,12 @@ export default function Reviews() {
   // Fetch recently reviewed check-ins
   const { data: reviewedCheckins = [], isLoading: reviewedLoading } = useQuery<EnhancedCheckin[]>({
     queryKey: ["/api/checkins/review-status", "reviewed"],
+    enabled: !userLoading && !!currentUser && (currentUser.role === "manager" || currentUser.role === "admin"),
+  });
+
+  // Fetch users without check-ins  
+  const { data: missingCheckins = [], isLoading: missingLoading } = useQuery<UserWithoutCheckin[]>({
+    queryKey: ["/api/checkins/missing"],
     enabled: !userLoading && !!currentUser && (currentUser.role === "manager" || currentUser.role === "admin"),
   });
 
@@ -95,6 +112,28 @@ export default function Reviews() {
     },
   });
 
+  // Reminder mutation
+  const reminderMutation = useMutation({
+    mutationFn: async (userIds: string[]) => {
+      return apiRequest("POST", "/api/checkins/remind", { userIds });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/checkins/missing"] });
+      toast({
+        title: "Reminders sent",
+        description: data.message || `Sent ${data.results?.sent?.length || 0} reminders successfully.`,
+      });
+      setSelectedReminders(new Set());
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to send reminders",
+        description: error.message || "An error occurred while sending reminders",
+      });
+    },
+  });
+
   // Handle review submission
   const handleReview = async () => {
     if (!reviewModal) return;
@@ -116,6 +155,40 @@ export default function Reviews() {
       checkinId: reviewModal.checkin.id,
       reviewData,
     });
+  };
+
+  // Handle sending reminders
+  const handleSendReminders = () => {
+    const userIds = Array.from(selectedReminders);
+    if (userIds.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No users selected",
+        description: "Please select at least one user to send reminders to.",
+      });
+      return;
+    }
+    reminderMutation.mutate(userIds);
+  };
+
+  // Toggle reminder selection
+  const toggleReminderSelection = (userId: string) => {
+    const newSet = new Set(selectedReminders);
+    if (newSet.has(userId)) {
+      newSet.delete(userId);
+    } else {
+      newSet.add(userId);
+    }
+    setSelectedReminders(newSet);
+  };
+
+  // Toggle select all reminders
+  const toggleSelectAllReminders = () => {
+    if (selectedReminders.size === missingCheckins.length) {
+      setSelectedReminders(new Set());
+    } else {
+      setSelectedReminders(new Set(missingCheckins.map(item => item.user.id)));
+    }
   };
 
   // Filter checkins based on selected filters
@@ -262,6 +335,9 @@ export default function Reviews() {
             <TabsTrigger value="reviewed" data-testid="tab-reviewed">
               Reviewed ({filteredReviewed.length})
             </TabsTrigger>
+            <TabsTrigger value="missing" data-testid="tab-missing">
+              Missing ({missingCheckins.length})
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="pending">
@@ -337,6 +413,124 @@ export default function Reviews() {
                         onReview={() => {}}
                         isPending={false}
                       />
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="missing">
+            <Card>
+              <CardHeader>
+                <CardTitle>Missing Check-ins</CardTitle>
+                <CardDescription>
+                  Team members who haven't submitted their check-ins for this week
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {missingLoading ? (
+                  <div className="space-y-4">
+                    {[...Array(3)].map((_, i) => (
+                      <Skeleton key={i} className="h-20 w-full" />
+                    ))}
+                  </div>
+                ) : missingCheckins.length === 0 ? (
+                  <div className="text-center py-8">
+                    <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold mb-2">All Check-ins Submitted</h3>
+                    <p className="text-muted-foreground">
+                      Great job! All team members have submitted their check-ins this week.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {/* Select All and Send Reminders Button */}
+                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                      <label className="flex items-center gap-2">
+                        <Checkbox
+                          checked={selectedReminders.size === missingCheckins.length && missingCheckins.length > 0}
+                          onCheckedChange={toggleSelectAllReminders}
+                          data-testid="checkbox-select-all-reminders"
+                        />
+                        <span className="text-sm font-medium">
+                          Select All ({missingCheckins.length})
+                        </span>
+                      </label>
+                      <Button
+                        onClick={handleSendReminders}
+                        disabled={selectedReminders.size === 0 || reminderMutation.isPending}
+                        size="sm"
+                        className="gap-2"
+                        data-testid="button-send-reminders"
+                      >
+                        <Send className="w-4 h-4" />
+                        {reminderMutation.isPending 
+                          ? "Sending..." 
+                          : `Send Reminders (${selectedReminders.size})`}
+                      </Button>
+                    </div>
+
+                    {/* Missing Check-ins List */}
+                    {missingCheckins.map((item) => (
+                      <div 
+                        key={item.user.id} 
+                        className="border border-border rounded-lg p-4 hover:bg-muted/30 transition-colors"
+                        data-testid={`missing-checkin-${item.user.id}`}
+                      >
+                        <div className="flex items-start gap-3">
+                          <Checkbox
+                            checked={selectedReminders.has(item.user.id)}
+                            onCheckedChange={() => toggleReminderSelection(item.user.id)}
+                            className="mt-1"
+                            data-testid={`checkbox-reminder-${item.user.id}`}
+                          />
+                          
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="font-medium" data-testid={`text-user-name-${item.user.id}`}>
+                                  {item.user.name}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {item.user.teamName || "No Team"} • {item.user.email}
+                                </p>
+                              </div>
+                              
+                              {/* Warning icon if no Slack connected */}
+                              {!item.user.slackUserId && (
+                                <div className="flex items-center gap-1 text-yellow-600">
+                                  <AlertCircle className="w-4 h-4" />
+                                  <span className="text-xs">No Slack</span>
+                                </div>
+                              )}
+                            </div>
+                            
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              {item.lastCheckin ? (
+                                <>
+                                  <span className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    Last check-in: {item.daysSinceLastCheckin} days ago
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="flex items-center gap-1 text-orange-600">
+                                  <UserMinus className="w-3 h-3" />
+                                  Never submitted a check-in
+                                </span>
+                              )}
+                              
+                              {item.lastReminderSent && (
+                                <span className="flex items-center gap-1">
+                                  <Bell className="w-3 h-3" />
+                                  Reminded: {formatDistanceToNow(new Date(item.lastReminderSent))} ago
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}

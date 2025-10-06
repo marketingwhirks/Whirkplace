@@ -4455,6 +4455,153 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get users without check-ins for current week
+  app.get("/api/checkins/missing", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const user = req.currentUser!;
+      
+      // If user is manager, pass their ID; if admin, don't pass managerId
+      const managerId = user.role === 'manager' ? user.id : undefined;
+      
+      const usersWithoutCheckins = await storage.getUsersWithoutCheckins(req.orgId, managerId);
+      
+      // Enhance with team information
+      const enhancedUsers = await Promise.all(
+        usersWithoutCheckins.map(async (item) => {
+          const team = item.user.teamId 
+            ? await storage.getTeam(req.orgId, item.user.teamId)
+            : null;
+          
+          return {
+            ...item,
+            user: {
+              ...item.user,
+              teamName: team?.name || null
+            }
+          };
+        })
+      );
+      
+      res.json(enhancedUsers);
+    } catch (error) {
+      console.error("Failed to fetch users without check-ins:", error);
+      res.status(500).json({ message: "Failed to fetch users without check-ins" });
+    }
+  });
+
+  // Send check-in reminders to selected users  
+  app.post("/api/checkins/remind", requireAuth(), requireRole(['admin', 'manager']), requireFeatureAccess('slack_integration'), async (req, res) => {
+    try {
+      const user = req.currentUser!;
+      const { userIds } = req.body;
+      
+      if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).json({ message: "Please provide user IDs to remind" });
+      }
+      
+      // Rate limiting: Check if reminders were sent recently
+      const recentReminders = await db
+        .select()
+        .from(notifications)
+        .where(and(
+          eq(notifications.organizationId, req.orgId),
+          eq(notifications.type, 'checkin_reminder'),
+          eq(notifications.createdBy, user.id),
+          gte(notifications.createdAt, new Date(Date.now() - 60 * 60 * 1000)) // Within last hour
+        ));
+      
+      if (recentReminders.length > 10) {
+        return res.status(429).json({ 
+          message: "Rate limit exceeded. You can only send 10 reminder batches per hour." 
+        });
+      }
+      
+      // Get users without check-ins to verify they still need reminders
+      const managerId = user.role === 'manager' ? user.id : undefined;
+      const usersWithoutCheckins = await storage.getUsersWithoutCheckins(req.orgId, managerId);
+      const validUserIds = new Set(usersWithoutCheckins.map(item => item.user.id));
+      
+      // Filter to only valid users who actually need reminders
+      const usersToRemind = userIds.filter(id => validUserIds.has(id));
+      
+      if (usersToRemind.length === 0) {
+        return res.status(400).json({ 
+          message: "None of the selected users need reminders (they may have already submitted check-ins)" 
+        });
+      }
+      
+      const results = {
+        sent: [] as string[],
+        failed: [] as { userId: string; reason: string }[]
+      };
+      
+      // Send reminders
+      for (const userId of usersToRemind) {
+        try {
+          const userInfo = usersWithoutCheckins.find(item => item.user.id === userId);
+          if (!userInfo) continue;
+          
+          const { user: targetUser, daysSinceLastCheckin } = userInfo;
+          
+          // Skip if no Slack ID
+          if (!targetUser.slackUserId) {
+            results.failed.push({ 
+              userId, 
+              reason: `${targetUser.name} doesn't have Slack connected` 
+            });
+            continue;
+          }
+          
+          // Send Slack reminder
+          const { sendMissingCheckinReminder } = await import("./services/slack");
+          const sent = await sendMissingCheckinReminder(
+            targetUser.slackUserId,
+            targetUser.name,
+            daysSinceLastCheckin
+          );
+          
+          if (sent) {
+            // Track reminder in notifications
+            await storage.createNotification(req.orgId, {
+              userId: targetUser.id,
+              type: 'checkin_reminder',
+              title: 'Check-in Reminder Sent',
+              message: `Reminder sent by ${user.name}`,
+              createdBy: user.id,
+              metadata: {
+                sentBy: user.id,
+                sentByName: user.name,
+                daysSinceLastCheckin
+              }
+            });
+            
+            results.sent.push(targetUser.name);
+          } else {
+            results.failed.push({ 
+              userId, 
+              reason: `Failed to send Slack message to ${targetUser.name}` 
+            });
+          }
+        } catch (error) {
+          console.error(`Error sending reminder to user ${userId}:`, error);
+          const userInfo = usersWithoutCheckins.find(item => item.user.id === userId);
+          results.failed.push({ 
+            userId, 
+            reason: `Error sending to ${userInfo?.user.name || 'user'}` 
+          });
+        }
+      }
+      
+      res.json({
+        message: `Sent ${results.sent.length} reminders`,
+        results
+      });
+    } catch (error) {
+      console.error("Failed to send check-in reminders:", error);
+      res.status(500).json({ message: "Failed to send check-in reminders" });
+    }
+  });
+
   // AI Question Generation
   app.post("/api/questions/generate", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {

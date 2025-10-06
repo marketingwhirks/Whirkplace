@@ -3218,3 +3218,67 @@ export async function getWeeklyReminderStats(organizationId: string, storage: an
     throw error;
   }
 }
+
+/**
+ * Send a personalized check-in reminder to a specific user for missing check-ins
+ * @param slackUserId - The Slack user ID to send to
+ * @param userName - The user's name for personalization  
+ * @param daysOverdue - How many days since their last check-in (optional)
+ * @returns Promise<boolean> - true if message sent successfully
+ */
+export async function sendMissingCheckinReminder(
+  slackUserId: string,
+  userName: string,
+  daysOverdue?: number | null
+): Promise<boolean> {
+  if (!slack || !slackUserId) {
+    console.warn("Slack not configured or no Slack user ID provided");
+    return false;
+  }
+
+  try {
+    let message = `Hi ${userName}! 👋\n\nThis is a friendly reminder to submit your weekly check-in.\nYour team would love to hear how you're doing!`;
+    
+    if (daysOverdue && daysOverdue > 7) {
+      message = `Hi ${userName}! 👋\n\nWe noticed it's been ${daysOverdue} days since your last check-in.\nYour team would love to hear how you're doing!`;
+    }
+    
+    const baseUrl = process.env.PUBLIC_BASE_URL || 'https://whirkplace.com';
+    message += `\n\nSubmit your check-in: ${baseUrl}/checkins`;
+    message += `\n\nIf you've already submitted, please ignore this message.`;
+    
+    await slack.chat.postMessage({
+      channel: slackUserId,
+      text: message,
+      blocks: [
+        {
+          type: 'section', 
+          text: {
+            type: 'mrkdwn',
+            text: message
+          }
+        },
+        {
+          type: 'actions',
+          elements: [
+            {
+              type: 'button',
+              text: {
+                type: 'plain_text',
+                text: 'Submit Check-In Now'
+              },
+              style: 'primary',
+              url: `${baseUrl}/checkins`
+            }
+          ]
+        }
+      ]
+    });
+    
+    console.log(`Sent personalized check-in reminder to ${userName} (${slackUserId})`);
+    return true;
+  } catch (error) {
+    console.error(`Error sending personalized check-in reminder to ${userName}:`, error);
+    return false;
+  }
+}

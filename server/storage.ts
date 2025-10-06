@@ -234,6 +234,12 @@ export interface IStorage {
   reviewCheckin(organizationId: string, checkinId: string, reviewedBy: string, reviewData: ReviewCheckin): Promise<Checkin | undefined>;
   getCheckinsByReviewStatus(organizationId: string, status: ReviewStatusType): Promise<Checkin[]>;
   getCheckinsByTeamLeader(organizationId: string, leaderId: string): Promise<Checkin[]>;
+  getUsersWithoutCheckins(organizationId: string, managerId?: string): Promise<Array<{
+    user: User;
+    lastCheckin: Checkin | null;
+    daysSinceLastCheckin: number | null;
+    lastReminderSent: Date | null;
+  }>>;
 
   // Analytics
   getPulseMetrics(organizationId: string, options: PulseMetricsOptions): Promise<PulseMetricsResult[]>;
@@ -1479,6 +1485,98 @@ export class DatabaseStorage implements IStorage {
         eq(checkins.reviewedBy, leaderId)
       ))
       .orderBy(desc(checkins.reviewedAt));
+  }
+
+  async getUsersWithoutCheckins(organizationId: string, managerId?: string): Promise<Array<{
+    user: User;
+    lastCheckin: Checkin | null;
+    daysSinceLastCheckin: number | null;
+    lastReminderSent: Date | null;
+  }>> {
+    // Get the current week start (Monday 00:00 Central Time)
+    const currentWeekStart = getWeekStartCentral(new Date());
+    
+    let allUsers: User[] = [];
+    
+    if (managerId) {
+      // Get users managed by this manager (include inactive for comprehensive reporting)
+      allUsers = await this.getUsersByManager(organizationId, managerId, false);
+    } else {
+      // Admin: get all active users in organization
+      allUsers = await this.getAllUsers(organizationId, false);
+    }
+    
+    const results: Array<{
+      user: User;
+      lastCheckin: Checkin | null;
+      daysSinceLastCheckin: number | null;
+      lastReminderSent: Date | null;
+    }> = [];
+    
+    for (const user of allUsers) {
+      // Check if user has a check-in for the current week
+      const currentWeekCheckin = await db
+        .select()
+        .from(checkins)
+        .where(and(
+          eq(checkins.userId, user.id),
+          eq(checkins.organizationId, organizationId),
+          gte(checkins.weekOf, currentWeekStart)
+        ))
+        .limit(1);
+      
+      // If they have a check-in for this week, skip them
+      if (currentWeekCheckin.length > 0) {
+        continue;
+      }
+      
+      // Get their most recent check-in
+      const [lastCheckin] = await db
+        .select()
+        .from(checkins)
+        .where(and(
+          eq(checkins.userId, user.id),
+          eq(checkins.organizationId, organizationId)
+        ))
+        .orderBy(desc(checkins.createdAt))
+        .limit(1);
+      
+      // Calculate days since last check-in
+      let daysSinceLastCheckin: number | null = null;
+      if (lastCheckin) {
+        const now = new Date();
+        const lastCheckinDate = new Date(lastCheckin.createdAt);
+        daysSinceLastCheckin = Math.floor((now.getTime() - lastCheckinDate.getTime()) / (1000 * 60 * 60 * 24));
+      }
+      
+      // Get the most recent reminder notification for this user
+      const [lastReminder] = await db
+        .select()
+        .from(notifications)
+        .where(and(
+          eq(notifications.userId, user.id),
+          eq(notifications.organizationId, organizationId),
+          eq(notifications.type, 'checkin_reminder')
+        ))
+        .orderBy(desc(notifications.createdAt))
+        .limit(1);
+      
+      results.push({
+        user,
+        lastCheckin: lastCheckin || null,
+        daysSinceLastCheckin,
+        lastReminderSent: lastReminder?.createdAt || null
+      });
+    }
+    
+    // Sort by days since last check-in (users who haven't checked in the longest first)
+    results.sort((a, b) => {
+      if (a.daysSinceLastCheckin === null) return -1;
+      if (b.daysSinceLastCheckin === null) return 1;
+      return b.daysSinceLastCheckin - a.daysSinceLastCheckin;
+    });
+    
+    return results;
   }
 
   // Questions
