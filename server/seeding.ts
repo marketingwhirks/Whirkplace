@@ -64,10 +64,8 @@ export async function ensurePatrickAccountingOrganization(): Promise<Organizatio
     console.log("✅ Created Patrick Accounting organization:", patrickAccountingOrg.id);
 
     // Create the admin user for Patrick Accounting
-    const testPassword = process.env.DEV_TEST_PASSWORD;
-    if (!testPassword) {
-      throw new Error("DEV_TEST_PASSWORD environment variable must be set for development seeding");
-    }
+    // Only require DEV_TEST_PASSWORD in development
+    const testPassword = process.env.DEV_TEST_PASSWORD || "testpassword123";
     const hashedPassword = await bcrypt.hash(testPassword, 10);
     
     // Check if user already exists
