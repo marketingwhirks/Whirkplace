@@ -262,9 +262,9 @@ export interface IStorage {
   getUserTours(organizationId: string, userId: string): Promise<UserTour[]>;
   createUserTour(organizationId: string, tour: InsertUserTour): Promise<UserTour>;
   updateUserTour(organizationId: string, userId: string, tourId: string, tour: Partial<InsertUserTour>): Promise<UserTour | undefined>;
-  markTourCompleted(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
-  markTourSkipped(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
-  resetUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
+  markTourCompleted(organizationId: string, userId: string, tourId: string, version?: string): Promise<UserTour>;
+  markTourSkipped(organizationId: string, userId: string, tourId: string, version?: string): Promise<UserTour>;
+  resetUserTour(organizationId: string, userId: string, tourId: string): Promise<boolean>;
 
   // Team Goals
   getTeamGoal(organizationId: string, id: string): Promise<TeamGoal | undefined>;
@@ -449,12 +449,6 @@ export interface IStorage {
   deleteUserIdentity(userId: string, provider: string): Promise<boolean>;
   findUserByProviderIdentity(organizationId: string, provider: string, providerUserId: string): Promise<User | undefined>;
 
-  // User Tours
-  getUserTourStatus(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined>;
-  markTourCompleted(organizationId: string, userId: string, tourId: string, version?: string): Promise<UserTour>;
-  markTourSkipped(organizationId: string, userId: string, tourId: string, version?: string): Promise<UserTour>;
-  getAllUserTours(organizationId: string, userId: string): Promise<UserTour[]>;
-  resetUserTour(organizationId: string, userId: string, tourId: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1527,6 +1521,153 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
+  // Team Goals
+  async getTeamGoal(organizationId: string, id: string): Promise<TeamGoal | undefined> {
+    const [goal] = await db.select().from(teamGoals)
+      .where(and(
+        eq(teamGoals.organizationId, organizationId),
+        eq(teamGoals.id, id)
+      ));
+    return goal;
+  }
+
+  async getAllTeamGoals(organizationId: string, activeOnly: boolean = false): Promise<TeamGoal[]> {
+    let query = db.select().from(teamGoals)
+      .where(eq(teamGoals.organizationId, organizationId));
+    
+    if (activeOnly) {
+      query = query.where(eq(teamGoals.status, 'active'));
+    }
+    
+    return await query.orderBy(desc(teamGoals.createdAt));
+  }
+
+  async getTeamGoalsByTeam(organizationId: string, teamId: string, activeOnly: boolean = false): Promise<TeamGoal[]> {
+    let conditions = [
+      eq(teamGoals.organizationId, organizationId),
+      or(eq(teamGoals.teamId, teamId), sql`${teamGoals.teamId} IS NULL`)
+    ];
+    
+    if (activeOnly) {
+      conditions.push(eq(teamGoals.status, 'active'));
+    }
+    
+    return await db.select().from(teamGoals)
+      .where(and(...conditions))
+      .orderBy(desc(teamGoals.createdAt));
+  }
+
+  async createTeamGoal(organizationId: string, goal: InsertTeamGoal): Promise<TeamGoal> {
+    const [result] = await db.insert(teamGoals)
+      .values({
+        ...goal,
+        organizationId,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      })
+      .returning();
+    return result!;
+  }
+
+  async updateTeamGoal(organizationId: string, id: string, goal: Partial<InsertTeamGoal>): Promise<TeamGoal | undefined> {
+    const [result] = await db.update(teamGoals)
+      .set({ ...goal, updatedAt: new Date() })
+      .where(and(
+        eq(teamGoals.organizationId, organizationId),
+        eq(teamGoals.id, id)
+      ))
+      .returning();
+    return result;
+  }
+
+  async deleteTeamGoal(organizationId: string, id: string): Promise<boolean> {
+    const result = await db.delete(teamGoals)
+      .where(and(
+        eq(teamGoals.organizationId, organizationId),
+        eq(teamGoals.id, id)
+      ));
+    return result.rowCount! > 0;
+  }
+
+  async updateTeamGoalProgress(organizationId: string, id: string, incrementValue: number): Promise<TeamGoal | undefined> {
+    const goal = await this.getTeamGoal(organizationId, id);
+    if (!goal) return undefined;
+    
+    const newValue = goal.currentValue + incrementValue;
+    const isCompleted = newValue >= goal.targetValue;
+    
+    const [result] = await db.update(teamGoals)
+      .set({
+        currentValue: newValue,
+        status: isCompleted ? 'completed' : goal.status,
+        completedAt: isCompleted ? new Date() : goal.completedAt,
+        updatedAt: new Date()
+      })
+      .where(and(
+        eq(teamGoals.organizationId, organizationId),
+        eq(teamGoals.id, id)
+      ))
+      .returning();
+    return result;
+  }
+
+  async checkAndCompleteGoal(organizationId: string, id: string): Promise<TeamGoal | undefined> {
+    const goal = await this.getTeamGoal(organizationId, id);
+    if (!goal) return undefined;
+    
+    if (goal.currentValue >= goal.targetValue && goal.status === 'active') {
+      const [result] = await db.update(teamGoals)
+        .set({
+          status: 'completed',
+          completedAt: new Date(),
+          updatedAt: new Date()
+        })
+        .where(and(
+          eq(teamGoals.organizationId, organizationId),
+          eq(teamGoals.id, id)
+        ))
+        .returning();
+      return result;
+    }
+    
+    return goal;
+  }
+
+  async expireOutdatedGoals(organizationId: string): Promise<number> {
+    const now = new Date();
+    const result = await db.update(teamGoals)
+      .set({
+        status: 'expired',
+        updatedAt: now
+      })
+      .where(and(
+        eq(teamGoals.organizationId, organizationId),
+        eq(teamGoals.status, 'active'),
+        lt(teamGoals.endDate, now)
+      ));
+    return result.rowCount || 0;
+  }
+
+  async getActiveGoalsByMetric(organizationId: string, metric: string): Promise<TeamGoal[]> {
+    return await db.select().from(teamGoals)
+      .where(and(
+        eq(teamGoals.organizationId, organizationId),
+        eq(teamGoals.status, 'active'),
+        eq(teamGoals.metric, metric)
+      ))
+      .orderBy(desc(teamGoals.createdAt));
+  }
+
+  async getDashboardGoals(organizationId: string): Promise<TeamGoal[]> {
+    return await db.select().from(teamGoals)
+      .where(and(
+        eq(teamGoals.organizationId, organizationId),
+        eq(teamGoals.status, 'active')
+      ))
+      .orderBy(desc(teamGoals.createdAt))
+      .limit(5);
+  }
+
   // Check-in Review Methods
   async getPendingCheckins(organizationId: string, managerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]> {
     let whereConditions = [
@@ -2547,7 +2688,7 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async markTourCompleted(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+  async markTourCompleted(organizationId: string, userId: string, tourId: string, version: string = "1.0"): Promise<UserTour> {
     const [result] = await db
       .update(userTours)
       .set({ 
@@ -2561,10 +2702,10 @@ export class DatabaseStorage implements IStorage {
         eq(userTours.tourId, tourId)
       ))
       .returning();
-    return result;
+    return result!;
   }
 
-  async markTourSkipped(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+  async markTourSkipped(organizationId: string, userId: string, tourId: string, version: string = "1.0"): Promise<UserTour> {
     const [result] = await db
       .update(userTours)
       .set({ 
@@ -2578,11 +2719,11 @@ export class DatabaseStorage implements IStorage {
         eq(userTours.tourId, tourId)
       ))
       .returning();
-    return result;
+    return result!;
   }
 
-  async resetUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
-    const [result] = await db
+  async resetUserTour(organizationId: string, userId: string, tourId: string): Promise<boolean> {
+    const result = await db
       .update(userTours)
       .set({ 
         status: 'not_started',
@@ -2596,9 +2737,8 @@ export class DatabaseStorage implements IStorage {
         eq(userTours.organizationId, organizationId),
         eq(userTours.userId, userId),
         eq(userTours.tourId, tourId)
-      ))
-      .returning();
-    return result;
+      ));
+    return result.rowCount! > 0;
   }
 
   // Helper methods for aggregation strategy
@@ -6543,10 +6683,19 @@ export class MemStorage implements IStorage {
     return updatedTour;
   }
 
-  async markTourCompleted(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+  async markTourCompleted(organizationId: string, userId: string, tourId: string, version: string = "1.0"): Promise<UserTour> {
     const key = `${organizationId}:${userId}:${tourId}`;
     const tour = this.userToursMap.get(key);
-    if (!tour || tour.organizationId !== organizationId) return undefined;
+    if (!tour || tour.organizationId !== organizationId) {
+      // Create new tour if it doesn't exist
+      return this.createUserTour(organizationId, {
+        userId,
+        tourId,
+        status: 'completed',
+        completedAt: new Date(),
+        version
+      });
+    }
     
     const updatedTour = { 
       ...tour, 
@@ -6558,10 +6707,19 @@ export class MemStorage implements IStorage {
     return updatedTour;
   }
 
-  async markTourSkipped(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+  async markTourSkipped(organizationId: string, userId: string, tourId: string, version: string = "1.0"): Promise<UserTour> {
     const key = `${organizationId}:${userId}:${tourId}`;
     const tour = this.userToursMap.get(key);
-    if (!tour || tour.organizationId !== organizationId) return undefined;
+    if (!tour || tour.organizationId !== organizationId) {
+      // Create new tour if it doesn't exist
+      return this.createUserTour(organizationId, {
+        userId,
+        tourId,
+        status: 'skipped',
+        skippedAt: new Date(),
+        version
+      });
+    }
     
     const updatedTour = { 
       ...tour, 
@@ -6573,10 +6731,10 @@ export class MemStorage implements IStorage {
     return updatedTour;
   }
 
-  async resetUserTour(organizationId: string, userId: string, tourId: string): Promise<UserTour | undefined> {
+  async resetUserTour(organizationId: string, userId: string, tourId: string): Promise<boolean> {
     const key = `${organizationId}:${userId}:${tourId}`;
     const tour = this.userToursMap.get(key);
-    if (!tour || tour.organizationId !== organizationId) return undefined;
+    if (!tour || tour.organizationId !== organizationId) return false;
     
     const updatedTour = { 
       ...tour, 
@@ -6588,7 +6746,7 @@ export class MemStorage implements IStorage {
       updatedAt: new Date()
     };
     this.userToursMap.set(key, updatedTour);
-    return updatedTour;
+    return true;
   }
 
   // Analytics helper methods

@@ -7,7 +7,7 @@ import type { Request } from 'express';
 export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft/callback'): string {
   // Determine host from headers (for proxied environments) or request
   // Handle comma-separated hosts from multiple proxies
-  const rawHost = (req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000')
+  const rawHost = (req.get('X-Forwarded-Host') || req.get('host') || req.hostname || '0.0.0.0:5000')
     .split(',')[0]  // Take first host if comma-separated
     .trim()
     .toLowerCase();
