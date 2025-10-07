@@ -390,8 +390,8 @@ export default function QuestionsEnhanced() {
     editForm.reset({
       text: question.text,
       order: question.order || 0,
-      categoryId: question.categoryId || null,
-      assignedToUserId: question.assignedToUserId || null,
+      categoryId: question.categoryId || "",
+      assignedToUserId: question.assignedToUserId || "",
       isActive: question.isActive !== undefined ? question.isActive : true,
     });
     setShowEditDialog(true);
@@ -450,9 +450,15 @@ export default function QuestionsEnhanced() {
   // Submit edit form
   const onEditSubmit = (data: QuestionForm) => {
     if (!editingQuestion) return;
+    // Convert empty strings back to null for database
+    const cleanedData = {
+      ...data,
+      categoryId: data.categoryId || null,
+      assignedToUserId: data.assignedToUserId || null,
+    };
     updateQuestionMutation.mutate({
       id: editingQuestion.id,
-      data,
+      data: cleanedData,
     });
     handleEditDialogClose();
   };
