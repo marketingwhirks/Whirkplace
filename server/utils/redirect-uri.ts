@@ -23,7 +23,8 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
   // Check if this is a development environment (Replit dev)
   const isDevelopmentEnvironment = fullHost.includes('.replit.dev') || 
                                    fullHost.includes('repl.co') ||
-                                   fullHost.includes('localhost');
+                                   fullHost.startsWith('0.0.0.0:') ||
+                                   fullHost === '0.0.0.0';
   
   // Better production domain detection - check if it ends with whirkplace.com
   const isProductionDomain = host === 'whirkplace.com' || 
@@ -115,7 +116,8 @@ export function isAllowedHost(host: string): boolean {
   }
 
   // Development and staging environment hosts
-  if (host === 'localhost:5000' || 
+  if (host === '0.0.0.0:5000' || 
+      host.startsWith('0.0.0.0:') ||
       host.endsWith('.repl.co') || 
       host.endsWith('.replit.dev') ||
       host === 'whirkplace.com' ||

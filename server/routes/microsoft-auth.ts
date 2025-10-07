@@ -66,7 +66,7 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
       const redirectUri = resolveRedirectUri(req);
       
       // Optional: Validate host for security
-      const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
+      const host = req.get('X-Forwarded-Host') || req.get('host') || '0.0.0.0:5000';
       if (!isAllowedHost(host)) {
         return res.status(400).json({ message: "Unauthorized host" });
       }
@@ -246,7 +246,7 @@ export function registerMicrosoftAuthRoutes(app: Express): void {
         
         // Redirect to dashboard
         const protocol = req.get('X-Forwarded-Proto') || req.protocol || 'http';
-        const host = req.get('X-Forwarded-Host') || req.get('host') || 'localhost:5000';
+        const host = req.get('X-Forwarded-Host') || req.get('host') || '0.0.0.0:5000';
         const baseUrl = `${protocol}://${host}`;
         const dashboardUrl = `${baseUrl}/#/dashboard?org=${organization?.slug}`;
         

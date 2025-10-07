@@ -148,8 +148,8 @@ export function generateOAuthURL(organizationSlug: string, session: any, req?: R
       // Production always uses whirkplace.com with HTTPS
       redirectUri = 'https://whirkplace.com/auth/slack/callback';
     } else {
-      // Development uses override if available, otherwise localhost
-      redirectUri = process.env.SLACK_REDIRECT_URI_OVERRIDE || 'http://localhost:5000/auth/slack/callback';
+      // Development uses override if available, otherwise 0.0.0.0
+      redirectUri = process.env.SLACK_REDIRECT_URI_OVERRIDE || 'http://0.0.0.0:5000/auth/slack/callback';
     }
   }
   
@@ -274,8 +274,8 @@ export async function exchangeOIDCCode(code: string, redirectUri?: string): Prom
       // Production always uses whirkplace.com with HTTPS
       finalRedirectUri = 'https://whirkplace.com/auth/slack/callback';
     } else {
-      // Development uses override if available, otherwise localhost
-      finalRedirectUri = process.env.SLACK_REDIRECT_URI_OVERRIDE || 'http://localhost:5000/auth/slack/callback';
+      // Development uses override if available, otherwise 0.0.0.0
+      finalRedirectUri = process.env.SLACK_REDIRECT_URI_OVERRIDE || 'http://0.0.0.0:5000/auth/slack/callback';
     }
   }
   

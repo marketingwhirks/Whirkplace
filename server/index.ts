@@ -47,7 +47,7 @@ app.use((req, res, next) => {
   // Content Security Policy - allow embedding for Teams/Slack tabs but restrict sources
   const cspFrameAncestors = process.env.NODE_ENV === 'production' 
     ? "'self' https://teams.microsoft.com https://slack.com" 
-    : "'self' https://teams.microsoft.com https://slack.com http://localhost:*";
+    : "'self' https://teams.microsoft.com https://slack.com http://0.0.0.0:* http://*:*";
   
   res.setHeader('Content-Security-Policy', `frame-ancestors ${cspFrameAncestors};`);
   
