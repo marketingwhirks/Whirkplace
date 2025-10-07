@@ -25,13 +25,46 @@ export default function ForgotPasswordPage() {
       return;
     }
 
-    // For now, just show a success message
-    // In production, this would send a password reset email
-    setIsSubmitted(true);
-    toast({
-      title: "Check Your Email",
-      description: "If an account exists with this email, you'll receive password reset instructions shortly.",
-    });
+    try {
+      const response = await fetch("/api/auth/password-reset/request", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setIsSubmitted(true);
+        toast({
+          title: "Check Your Email",
+          description: data.message || "If an account exists with this email, you'll receive password reset instructions shortly.",
+        });
+        
+        // In development, show additional hint
+        if (data.development) {
+          toast({
+            title: "Development Mode",
+            description: data.development,
+          });
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: data.message || "Failed to process password reset request",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Password reset request error:", error);
+      toast({
+        title: "Error",
+        description: "An error occurred. Please try again later.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleBackToLogin = () => {
@@ -135,13 +168,6 @@ export default function ForgotPasswordPage() {
               </button>
             </div>
           </form>
-          
-          <div className="mt-6 p-4 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-            <p className="text-sm text-amber-800 dark:text-amber-200">
-              <strong>Note:</strong> Password reset functionality is currently being implemented. 
-              For immediate assistance, please contact your administrator.
-            </p>
-          </div>
         </CardContent>
       </Card>
     </div>

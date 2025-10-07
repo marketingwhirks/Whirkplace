@@ -36,8 +36,9 @@ import {
   type OrganizationAuthProvider, type InsertOrganizationAuthProvider,
   type UserIdentity, type InsertUserIdentity,
   type UserTour, type InsertUserTour,
+  type PasswordResetToken, type InsertPasswordResetToken,
   users, teams, checkins, questions, questionCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
-  organizationAuthProviders, userIdentities, userTours, teamGoals,
+  organizationAuthProviders, userIdentities, userTours, teamGoals, passwordResetTokens,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
@@ -141,6 +142,12 @@ export interface IStorage {
   getUsersByTeamLeadership(organizationId: string, leaderId: string, includeInactive?: boolean): Promise<User[]>;
   getAllUsers(organizationId: string, includeInactive?: boolean): Promise<User[]>;
   getUserOrganizations(email: string): Promise<Array<{user: User; organization: Organization}>>;
+
+  // Password Reset
+  createPasswordResetToken(userId: string): Promise<string>;
+  getPasswordResetToken(token: string): Promise<{userId: string, expiresAt: Date} | null>;
+  deletePasswordResetToken(token: string): Promise<void>;
+  updateUserPassword(userId: string, hashedPassword: string): Promise<void>;
 
   // Teams
   getTeam(organizationId: string, id: string): Promise<Team | undefined>;
@@ -748,6 +755,81 @@ export class DatabaseStorage implements IStorage {
       return results;
     } catch (error) {
       return [];
+    }
+  }
+
+  // Password Reset Methods
+  async createPasswordResetToken(userId: string): Promise<string> {
+    try {
+      // Generate a secure random token
+      const token = randomUUID() + randomUUID();
+      
+      // Set expiration to 1 hour from now
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+      
+      // Delete any existing tokens for this user first
+      await db.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, userId));
+      
+      // Create new token
+      await db.insert(passwordResetTokens).values({
+        userId,
+        token,
+        expiresAt
+      });
+      
+      return token;
+    } catch (error) {
+      console.error("Failed to create password reset token:", error);
+      throw error;
+    }
+  }
+
+  async getPasswordResetToken(token: string): Promise<{userId: string, expiresAt: Date} | null> {
+    try {
+      const [resetToken] = await db
+        .select()
+        .from(passwordResetTokens)
+        .where(eq(passwordResetTokens.token, token));
+      
+      if (!resetToken) {
+        return null;
+      }
+      
+      // Check if token is expired
+      if (resetToken.expiresAt < new Date()) {
+        // Delete expired token
+        await db.delete(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+        return null;
+      }
+      
+      return {
+        userId: resetToken.userId,
+        expiresAt: resetToken.expiresAt
+      };
+    } catch (error) {
+      console.error("Failed to get password reset token:", error);
+      return null;
+    }
+  }
+
+  async deletePasswordResetToken(token: string): Promise<void> {
+    try {
+      await db.delete(passwordResetTokens).where(eq(passwordResetTokens.token, token));
+    } catch (error) {
+      console.error("Failed to delete password reset token:", error);
+      throw error;
+    }
+  }
+
+  async updateUserPassword(userId: string, hashedPassword: string): Promise<void> {
+    try {
+      await db
+        .update(users)
+        .set({ password: hashedPassword })
+        .where(eq(users.id, userId));
+    } catch (error) {
+      console.error("Failed to update user password:", error);
+      throw error;
     }
   }
 

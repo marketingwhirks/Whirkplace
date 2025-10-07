@@ -693,6 +693,22 @@ export const userIdentities = pgTable("user_identities", {
   orgProviderUserUnique: unique("user_identities_org_provider_user_unique").on(table.organizationId, table.provider, table.providerUserId),
 }));
 
+// Password Reset Tokens table for password recovery
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  token: varchar("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for token lookups
+  tokenIdx: index("password_reset_tokens_token_idx").on(table.token),
+  // Index for user lookups
+  userIdx: index("password_reset_tokens_user_idx").on(table.userId),
+  // Index for cleanup of expired tokens
+  expiresIdx: index("password_reset_tokens_expires_idx").on(table.expiresAt),
+}));
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
@@ -961,6 +977,16 @@ export const insertUserIdentitySchema = createInsertSchema(userIdentities).omit(
   profile: z.record(z.any()).default({}),
 });
 
+// Password Reset Token Schema
+export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  userId: z.string().min(1, "User ID is required"),
+  token: z.string().min(1, "Token is required"),
+  expiresAt: z.date(),
+});
+
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
@@ -970,6 +996,9 @@ export type OrganizationAuthProvider = typeof organizationAuthProviders.$inferSe
 
 export type InsertUserIdentity = z.infer<typeof insertUserIdentitySchema>;
 export type UserIdentity = typeof userIdentities.$inferSelect;
+
+export type InsertPasswordResetToken = z.infer<typeof insertPasswordResetTokenSchema>;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 
 export type InsertTeam = z.infer<typeof insertTeamSchema>;
 export type Team = typeof teams.$inferSelect;

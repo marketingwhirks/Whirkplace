@@ -29,6 +29,7 @@ import IntegrationTest from "@/pages/IntegrationTest";
 import LoginPage from "@/pages/login";
 import BusinessSignupPage from "@/pages/BusinessSignupPage";
 import ForgotPasswordPage from "@/pages/forgot-password";
+import ResetPasswordPage from "@/pages/ResetPassword";
 import LandingPage from "@/pages/LandingPage";
 import PartnerPage from "@/pages/PartnerPage";
 import SelectOrganizationPage from "@/pages/select-organization";
@@ -125,6 +126,7 @@ function App() {
               <Route path="/business-signup" component={BusinessSignupPage} />
               <Route path="/login" component={LoginPage} />
               <Route path="/forgot-password" component={ForgotPasswordPage} />
+              <Route path="/reset-password" component={ResetPasswordPage} />
               <Route path="/partners" component={PartnerPage} />
               <Route path="/oauth-callback" component={OAuthCallbackPage} />
               <Route component={AuthenticatedApp} />

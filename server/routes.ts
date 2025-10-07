@@ -151,6 +151,96 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Password Reset Request - for dev environment
+  app.post("/api/auth/password-reset/request", requireOrganization(), async (req, res) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ 
+          message: "Email is required" 
+        });
+      }
+      
+      // Get organization from middleware
+      const organization = (req as any).organization;
+      if (!organization) {
+        return res.status(404).json({ message: "Organization context not found" });
+      }
+      
+      // Find user by email in the current organization
+      const user = await storage.getUserByEmail(organization.id, email);
+      
+      if (user) {
+        // Create password reset token
+        const token = await storage.createPasswordResetToken(user.id);
+        
+        // In development, log the token to console
+        if (isDevelopment) {
+          const resetUrl = `${req.protocol}://${req.get('host')}/reset-password?token=${token}`;
+          console.log('🔐 Password Reset Token Generated:');
+          console.log('   Email:', email);
+          console.log('   Token:', token);
+          console.log('   Reset URL:', resetUrl);
+          console.log('   Expires in: 1 hour');
+        }
+      }
+      
+      // Always return success to avoid user enumeration
+      res.json({ 
+        message: "If an account exists with this email, a password reset link has been sent.",
+        development: isDevelopment ? "Check the console for the reset token" : undefined
+      });
+    } catch (error) {
+      console.error("Password reset request error:", error);
+      res.status(500).json({ message: "Failed to process password reset request" });
+    }
+  });
+
+  // Password Reset Confirmation
+  app.post("/api/auth/password-reset/confirm", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      
+      if (!token || !password) {
+        return res.status(400).json({ 
+          message: "Token and password are required" 
+        });
+      }
+      
+      // Validate password length
+      if (password.length < 8) {
+        return res.status(400).json({ 
+          message: "Password must be at least 8 characters long" 
+        });
+      }
+      
+      // Get token info
+      const tokenInfo = await storage.getPasswordResetToken(token);
+      
+      if (!tokenInfo) {
+        return res.status(400).json({ 
+          message: "Invalid or expired password reset token" 
+        });
+      }
+      
+      // Hash the new password
+      const hashedPassword = await bcrypt.hash(password, 10);
+      
+      // Update user's password
+      await storage.updateUserPassword(tokenInfo.userId, hashedPassword);
+      
+      // Delete the used token
+      await storage.deletePasswordResetToken(token);
+      
+      res.json({ 
+        message: "Password has been successfully reset. You can now log in with your new password." 
+      });
+    } catch (error) {
+      console.error("Password reset confirmation error:", error);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
+  });
 
   // Backward compatibility: redirect /auth to /login
   app.get("/auth", (req, res) => {
