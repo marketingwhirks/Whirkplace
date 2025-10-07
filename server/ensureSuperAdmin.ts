@@ -20,15 +20,20 @@ export async function ensureWhirkplaceSuperAdmin() {
     let superAdmin = await storage.getUserByEmail(whirkplaceOrg.id, 'mpatrick@whirks.com');
     
     if (superAdmin) {
-      // Update to ensure super admin status is set
+      // Always reset the password in development to ensure it works
+      const hashedPassword = await bcrypt.hash('SuperAdmin2025!', 10);
+      
+      // Update to ensure super admin status is set and password is correct
       await storage.updateUser(whirkplaceOrg.id, superAdmin.id, {
         isSuperAdmin: true,
         role: 'admin',
         isActive: true,
         name: 'Matthew Patrick',
-        username: 'mpatrickSA'
+        username: 'mpatrickSA',
+        password: hashedPassword
       });
       console.log("✅ Super admin account updated: mpatrick@whirks.com");
+      console.log("   Password reset to: SuperAdmin2025!");
     } else {
       // Create the super admin account with a secure password
       // This password should be changed through proper channels
