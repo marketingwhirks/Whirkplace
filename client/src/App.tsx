@@ -71,7 +71,6 @@ function Router() {
             <Route path="/roadmap" component={RoadmapPage} />
             <Route path="/super-admin" component={SuperAdmin} />
             <Route path="/integration-test" component={IntegrationTest} />
-            <Route path="/deployment-test" component={DeploymentTest} />
             <Route path="/select-organization" component={SelectOrganizationPage} />
             <Route path="/brand-guide" component={BrandGuideViewer} />
             <Route path="/theme-customizer" component={ThemeCustomizer} />
@@ -131,6 +130,7 @@ function App() {
               <Route path="/reset-password" component={ResetPasswordPage} />
               <Route path="/partners" component={PartnerPage} />
               <Route path="/oauth-callback" component={OAuthCallbackPage} />
+              <Route path="/deployment-test" component={DeploymentTest} />
               <Route component={AuthenticatedApp} />
             </Switch>
           </RoleSwitchProvider>
