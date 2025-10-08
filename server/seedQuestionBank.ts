@@ -46,46 +46,46 @@ export async function seedQuestionBank(): Promise<SeedResult> {
       isDefault: true
     },
     {
-      id: "personal-growth",
-      name: "Personal Growth",
-      description: "Questions focused on individual development and learning",
-      icon: "🌱",
-      color: "green",
+      id: "work-life-balance",
+      name: "Work-Life Balance",
+      description: "Questions about maintaining healthy work-life boundaries and wellness",
+      icon: "⚖️",
+      color: "purple",
       order: 2,
       isDefault: true
     },
     {
-      id: "work-progress",
-      name: "Work Progress",
-      description: "Questions about current projects, goals, and blockers",
-      icon: "📊",
-      color: "blue",
+      id: "growth-development",
+      name: "Growth & Development",
+      description: "Questions focused on personal and professional development",
+      icon: "🌱",
+      color: "green",
       order: 3,
       isDefault: true
     },
     {
-      id: "wellbeing",
-      name: "Wellbeing",
-      description: "Questions about work-life balance and personal wellness",
-      icon: "🧘",
-      color: "purple",
+      id: "communication",
+      name: "Communication",
+      description: "Questions about team communication, feedback, and information sharing",
+      icon: "💬",
+      color: "blue",
       order: 4,
       isDefault: true
     },
     {
-      id: "feedback",
-      name: "Feedback & Recognition",
-      description: "Questions about feedback, recognition, and appreciation",
+      id: "recognition",
+      name: "Recognition",
+      description: "Questions about appreciation, achievements, and celebrating wins",
       icon: "⭐",
       color: "yellow",
       order: 5,
       isDefault: true
     },
     {
-      id: "innovation",
-      name: "Innovation & Ideas",
-      description: "Questions about new ideas, improvements, and creativity",
-      icon: "💡",
+      id: "engagement",
+      name: "Engagement",
+      description: "Questions about motivation, purpose, and connection to work",
+      icon: "🚀",
       color: "orange",
       order: 6,
       isDefault: true
@@ -116,10 +116,10 @@ export async function seedQuestionBank(): Promise<SeedResult> {
       isApproved: true
     },
     {
-      text: "What's one thing we could do to improve team communication?",
+      text: "What's one thing we could do to improve our team culture?",
       categoryId: "team-health",
-      description: "Identify specific communication challenges and solutions",
-      tags: ["weekly", "communication", "improvement"],
+      description: "Identify ways to strengthen team culture",
+      tags: ["weekly", "culture", "improvement"],
       isSystem: true,
       isApproved: true
     },
@@ -139,173 +139,229 @@ export async function seedQuestionBank(): Promise<SeedResult> {
       isSystem: true,
       isApproved: true
     },
+    {
+      text: "How well does our team handle conflicts and disagreements?",
+      categoryId: "team-health",
+      description: "Assess conflict resolution and team dynamics",
+      tags: ["monthly", "conflict", "teamwork"],
+      isSystem: true,
+      isApproved: true
+    },
+    {
+      text: "What makes you proud to be part of this team?",
+      categoryId: "team-health",
+      description: "Identify team strengths and positive attributes",
+      tags: ["monthly", "pride", "team"],
+      isSystem: true,
+      isApproved: true
+    },
     
-    // Personal Growth Questions
+    // Work-Life Balance Questions
     {
-      text: "What new skill or knowledge did you develop this week?",
-      categoryId: "personal-growth",
-      description: "Track continuous learning and development",
-      tags: ["weekly", "learning", "skills"],
+      text: "How would you rate your work-life balance this week?",
+      categoryId: "work-life-balance",
+      description: "Monitor work-life balance and identify stress points",
+      tags: ["weekly", "balance", "wellbeing"],
       isSystem: true,
       isApproved: true
     },
     {
-      text: "What's one area you'd like to grow in over the next month?",
-      categoryId: "personal-growth",
-      description: "Identify development goals and aspirations",
-      tags: ["monthly", "goals", "development"],
+      text: "Are you able to disconnect from work during personal time?",
+      categoryId: "work-life-balance",
+      description: "Assess ability to maintain boundaries",
+      tags: ["weekly", "boundaries", "disconnect"],
       isSystem: true,
       isApproved: true
     },
     {
-      text: "What learning opportunity would you like to pursue?",
-      categoryId: "personal-growth",
-      description: "Discover learning interests and training needs",
-      tags: ["quarterly", "training", "opportunities"],
+      text: "What support would help improve your work-life balance?",
+      categoryId: "work-life-balance",
+      description: "Identify needed support for better balance",
+      tags: ["monthly", "support", "balance"],
       isSystem: true,
       isApproved: true
     },
     {
-      text: "How confident do you feel in your current role?",
-      categoryId: "personal-growth",
-      description: "Assess role confidence and identify support needs",
-      tags: ["monthly", "confidence", "role"],
+      text: "How sustainable is your current workload?",
+      categoryId: "work-life-balance",
+      description: "Evaluate workload sustainability",
+      tags: ["bi-weekly", "workload", "sustainability"],
+      isSystem: true,
+      isApproved: true
+    },
+    {
+      text: "What's one thing that would reduce your stress levels?",
+      categoryId: "work-life-balance",
+      description: "Identify stress reduction opportunities",
+      tags: ["weekly", "stress", "wellness"],
       isSystem: true,
       isApproved: true
     },
 
-    // Work Progress Questions
+    // Growth & Development Questions
     {
-      text: "What are your top priorities for this week?",
-      categoryId: "work-progress",
-      description: "Align on weekly priorities and focus areas",
-      tags: ["weekly", "priorities", "planning"],
+      text: "What new skills would you like to develop this quarter?",
+      categoryId: "growth-development",
+      description: "Identify skill development goals",
+      tags: ["quarterly", "skills", "learning"],
       isSystem: true,
       isApproved: true
     },
     {
-      text: "What blockers are preventing you from being productive?",
-      categoryId: "work-progress",
-      description: "Identify and address productivity blockers",
-      tags: ["weekly", "blockers", "productivity"],
+      text: "How satisfied are you with your career progression?",
+      categoryId: "growth-development",
+      description: "Assess career satisfaction and growth",
+      tags: ["monthly", "career", "progression"],
       isSystem: true,
       isApproved: true
     },
     {
-      text: "How satisfied are you with your progress on current goals?",
-      categoryId: "work-progress",
-      description: "Measure goal progress satisfaction",
-      tags: ["bi-weekly", "goals", "progress"],
+      text: "What learning opportunities have you taken advantage of recently?",
+      categoryId: "growth-development",
+      description: "Track learning engagement",
+      tags: ["weekly", "learning", "development"],
+      isSystem: true,
+      isApproved: true
+    },
+    {
+      text: "What mentorship or guidance would benefit you most?",
+      categoryId: "growth-development",
+      description: "Identify mentorship needs",
+      tags: ["monthly", "mentorship", "guidance"],
+      isSystem: true,
+      isApproved: true
+    },
+    {
+      text: "How clear are you on your career path at this company?",
+      categoryId: "growth-development",
+      description: "Assess career path clarity",
+      tags: ["quarterly", "career", "clarity"],
+      isSystem: true,
+      isApproved: true
+    },
+
+    // Communication Questions
+    {
+      text: "How effective is communication within your team?",
+      categoryId: "communication",
+      description: "Assess team communication effectiveness",
+      tags: ["weekly", "communication", "effectiveness"],
+      isSystem: true,
+      isApproved: true
+    },
+    {
+      text: "Do you receive the information you need to do your job effectively?",
+      categoryId: "communication",
+      description: "Evaluate information flow and transparency",
+      tags: ["weekly", "information", "transparency"],
+      isSystem: true,
+      isApproved: true
+    },
+    {
+      text: "How comfortable are you providing feedback to your teammates?",
+      categoryId: "communication",
+      description: "Assess feedback culture",
+      tags: ["monthly", "feedback", "comfort"],
+      isSystem: true,
+      isApproved: true
+    },
+    {
+      text: "What communication channels or tools would improve team collaboration?",
+      categoryId: "communication",
+      description: "Identify communication improvement opportunities",
+      tags: ["monthly", "tools", "improvement"],
+      isSystem: true,
+      isApproved: true
+    },
+    {
+      text: "How clear are expectations and goals communicated to you?",
+      categoryId: "communication",
+      description: "Evaluate clarity of expectations",
+      tags: ["bi-weekly", "expectations", "clarity"],
+      isSystem: true,
+      isApproved: true
+    },
+
+    // Recognition Questions
+    {
+      text: "Who on your team deserves recognition this week?",
+      categoryId: "recognition",
+      description: "Encourage peer recognition",
+      tags: ["weekly", "peers", "appreciation"],
       isSystem: true,
       isApproved: true
     },
     {
       text: "What accomplishment are you most proud of this week?",
-      categoryId: "work-progress",
-      description: "Celebrate wins and achievements",
+      categoryId: "recognition",
+      description: "Celebrate personal wins and achievements",
       tags: ["weekly", "achievements", "wins"],
-      isSystem: true,
-      isApproved: true
-    },
-
-    // Wellbeing Questions
-    {
-      text: "How would you rate your work-life balance this week?",
-      categoryId: "wellbeing",
-      description: "Monitor work-life balance and identify issues",
-      tags: ["weekly", "work-life-balance", "wellness"],
-      isSystem: true,
-      isApproved: true
-    },
-    {
-      text: "What's your stress level on a scale of 1-10?",
-      categoryId: "wellbeing",
-      description: "Track stress levels and provide support",
-      tags: ["weekly", "stress", "mental-health"],
-      isSystem: true,
-      isApproved: true
-    },
-    {
-      text: "Are you able to disconnect from work outside of hours?",
-      categoryId: "wellbeing",
-      description: "Assess ability to maintain boundaries",
-      tags: ["monthly", "boundaries", "disconnect"],
-      isSystem: true,
-      isApproved: true
-    },
-    {
-      text: "What would help improve your wellbeing at work?",
-      categoryId: "wellbeing",
-      description: "Identify wellbeing improvement opportunities",
-      tags: ["monthly", "improvement", "wellness"],
-      isSystem: true,
-      isApproved: true
-    },
-
-    // Feedback & Recognition Questions
-    {
-      text: "Who deserves recognition this week and why?",
-      categoryId: "feedback",
-      description: "Encourage peer recognition and appreciation",
-      tags: ["weekly", "recognition", "appreciation"],
-      isSystem: true,
-      isApproved: true
-    },
-    {
-      text: "What feedback would help you grow?",
-      categoryId: "feedback",
-      description: "Identify desired feedback areas",
-      tags: ["monthly", "feedback", "growth"],
       isSystem: true,
       isApproved: true
     },
     {
       text: "How valued do you feel for your contributions?",
-      categoryId: "feedback",
+      categoryId: "recognition",
       description: "Measure sense of value and appreciation",
       tags: ["monthly", "value", "appreciation"],
       isSystem: true,
       isApproved: true
     },
     {
-      text: "What's one piece of constructive feedback for the team?",
-      categoryId: "feedback",
-      description: "Gather team improvement feedback",
-      tags: ["monthly", "team-feedback", "improvement"],
+      text: "When was the last time you received meaningful recognition?",
+      categoryId: "recognition",
+      description: "Track recognition frequency and impact",
+      tags: ["monthly", "recognition", "feedback"],
+      isSystem: true,
+      isApproved: true
+    },
+    {
+      text: "What type of recognition is most meaningful to you?",
+      categoryId: "recognition",
+      description: "Understand recognition preferences",
+      tags: ["quarterly", "preferences", "recognition"],
       isSystem: true,
       isApproved: true
     },
 
-    // Innovation & Ideas Questions
+    // Engagement Questions
     {
-      text: "What's one process we could improve?",
-      categoryId: "innovation",
-      description: "Identify process improvement opportunities",
-      tags: ["monthly", "process", "improvement"],
+      text: "How motivated do you feel about your work right now?",
+      categoryId: "engagement",
+      description: "Gauge current motivation levels",
+      tags: ["weekly", "motivation", "engagement"],
       isSystem: true,
       isApproved: true
     },
     {
-      text: "What innovative idea would you like to explore?",
-      categoryId: "innovation",
-      description: "Encourage creative thinking and innovation",
-      tags: ["quarterly", "ideas", "innovation"],
+      text: "How connected do you feel to the company's mission?",
+      categoryId: "engagement",
+      description: "Assess alignment with company purpose",
+      tags: ["monthly", "mission", "purpose"],
       isSystem: true,
       isApproved: true
     },
     {
-      text: "What's one thing we should stop doing?",
-      categoryId: "innovation",
-      description: "Identify inefficiencies and unnecessary work",
-      tags: ["quarterly", "efficiency", "improvement"],
+      text: "What aspect of your work energizes you most?",
+      categoryId: "engagement",
+      description: "Identify energizing work elements",
+      tags: ["monthly", "energy", "passion"],
       isSystem: true,
       isApproved: true
     },
     {
-      text: "If you could change one thing about how we work, what would it be?",
-      categoryId: "innovation",
-      description: "Gather transformative improvement ideas",
-      tags: ["quarterly", "change", "improvement"],
+      text: "How likely are you to recommend this company as a place to work?",
+      categoryId: "engagement",
+      description: "Measure employee Net Promoter Score",
+      tags: ["quarterly", "nps", "satisfaction"],
+      isSystem: true,
+      isApproved: true
+    },
+    {
+      text: "What would make you more excited to come to work?",
+      categoryId: "engagement",
+      description: "Identify engagement improvement opportunities",
+      tags: ["monthly", "excitement", "improvement"],
       isSystem: true,
       isApproved: true
     }

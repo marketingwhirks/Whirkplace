@@ -29,13 +29,11 @@ export function useUpdateTour(tourId: TourId) {
       status?: string;
       lastShownAt?: Date;
     }) => {
-      return apiRequest(`/api/tours/${tourId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          ...data,
-          lastShownAt: data.lastShownAt?.toISOString(),
-        }),
+      const response = await apiRequest('PATCH', `/api/tours/${tourId}`, {
+        ...data,
+        lastShownAt: data.lastShownAt?.toISOString(),
       });
+      return response.json();
     },
     onSuccess: () => {
       // Invalidate both the specific tour and the list of all tours
@@ -51,9 +49,8 @@ export function useCompleteTour(tourId: TourId) {
 
   return useMutation({
     mutationFn: async () => {
-      return apiRequest(`/api/tours/${tourId}/complete`, {
-        method: 'POST',
-      });
+      const response = await apiRequest('POST', `/api/tours/${tourId}/complete`);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/tours/${tourId}`] });
@@ -68,9 +65,8 @@ export function useSkipTour(tourId: TourId) {
 
   return useMutation({
     mutationFn: async () => {
-      return apiRequest(`/api/tours/${tourId}/skip`, {
-        method: 'POST',
-      });
+      const response = await apiRequest('POST', `/api/tours/${tourId}/skip`);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/tours/${tourId}`] });
@@ -85,9 +81,8 @@ export function useResetTour(tourId: TourId) {
 
   return useMutation({
     mutationFn: async () => {
-      return apiRequest(`/api/tours/${tourId}/reset`, {
-        method: 'POST',
-      });
+      const response = await apiRequest('POST', `/api/tours/${tourId}/reset`);
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/tours/${tourId}`] });

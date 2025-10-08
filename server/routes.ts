@@ -5050,7 +5050,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const item = await storage.createQuestionBankItem({
         ...itemData,
-        contributedBy: req.user!.id,
+        contributedBy: req.userId,
         contributedByOrg: req.orgId,
         isSystem: false,
         isApproved: false, // New items need approval
@@ -5082,7 +5082,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const question = await storage.createQuestion(req.orgId, {
         text: bankItem.text,
         organizationId: req.orgId,
-        createdBy: req.user!.id,
+        createdBy: req.userId,
         categoryId: bankItem.categoryId,
         bankQuestionId: bankItem.id,
         assignedToUserId: assignedToUserId || null, // Assign to specific user or all
@@ -5102,7 +5102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/question-bank/:id/approve", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
       // Only super admins can approve questions for the bank
-      if (!req.user?.isSuperAdmin) {
+      if (!req.currentUser?.isSuperAdmin) {
         return res.status(403).json({ message: "Only super admins can approve questions" });
       }
       
@@ -5125,11 +5125,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Question not found" });
       }
       
-      if (item.isApproved && !req.user?.isSuperAdmin) {
+      if (item.isApproved && !req.currentUser?.isSuperAdmin) {
         return res.status(403).json({ message: "Cannot delete approved questions" });
       }
       
-      if (item.contributedByOrg !== req.orgId && !req.user?.isSuperAdmin) {
+      if (item.contributedByOrg !== req.orgId && !req.currentUser?.isSuperAdmin) {
         return res.status(403).json({ message: "Can only delete your own contributions" });
       }
       
@@ -12254,7 +12254,7 @@ Return the response as a JSON object with this structure:
   app.get('/api/test-integrations', requireAuth(), async (req, res) => {
     try {
       // Only admins can test integrations
-      if (req.user?.role !== 'admin' && !req.user?.isSuperAdmin) {
+      if (req.currentUser?.role !== 'admin' && !req.currentUser?.isSuperAdmin) {
         return res.status(403).json({ message: 'Access denied' });
       }
 
@@ -12455,7 +12455,8 @@ Return the response as a JSON object with this structure:
   });
 
   // Admin endpoint to seed question bank (idempotent - safe to run multiple times)
-  app.post("/api/admin/seed-question-bank", requireAuth(), requireSuperAdmin(), async (req, res) => {
+  // Allow managers and admins to seed the question bank
+  app.post("/api/admin/seed-question-bank", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       console.log("📚 Admin-triggered question bank seeding initiated by:", req.currentUser?.email);
       
