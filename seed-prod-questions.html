@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Seed Production Question Bank</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0a0e27;
+            color: white;
+        }
+        button {
+            background: #4a9eff;
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px 0;
+            display: block;
+            width: 100%;
+        }
+        button:hover {
+            background: #357abd;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.1);
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        .success { color: #84ae56; }
+        .error { color: #ff6b6b; }
+        .info { color: #4a9eff; }
+        h1 { color: #4a9eff; }
+        .instruction {
+            background: rgba(74, 158, 255, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #4a9eff;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌱 Seed Production Question Bank</h1>
+    
+    <div class="instruction">
+        <h3>📋 Instructions:</h3>
+        <ol>
+            <li>Make sure you're logged in to <strong>https://whirkplace.replit.app</strong> as super admin (mpatrick@whirks.com)</li>
+            <li>Click the button below to populate the question bank</li>
+            <li>This will create 6 categories and 30 questions</li>
+            <li>Safe to run multiple times (won't create duplicates)</li>
+        </ol>
+    </div>
+    
+    <button id="seedBtn" onclick="seedQuestions()">🚀 Seed Question Bank Now</button>
+    
+    <div id="result"></div>
+    
+    <script>
+        async function seedQuestions() {
+            const button = document.getElementById('seedBtn');
+            const resultDiv = document.getElementById('result');
+            
+            button.disabled = true;
+            button.textContent = '⏳ Seeding in progress...';
+            resultDiv.innerHTML = '<div class="info">🔄 Connecting to production database...</div>';
+            
+            try {
+                // Make the request to the PRODUCTION URL
+                const response = await fetch('https://whirkplace.replit.app/api/admin/seed-question-bank', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    resultDiv.innerHTML = `
+<div class="success">
+✅ SUCCESS! Question Bank Seeded
+
+${data.message}
+
+📊 Results:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Categories:
+  • Created: ${data.categoriesCreated || 0}
+  • Already existed: ${data.categoriesExisting || 0}
+  • Total: ${(data.categoriesCreated || 0) + (data.categoriesExisting || 0)}
+
+Questions:
+  • Created: ${data.questionsCreated || 0}
+  • Already existed: ${data.questionsExisting || 0}
+  • Total: ${(data.questionsCreated || 0) + (data.questionsExisting || 0)}
+
+🎉 Your question bank is ready!
+Go to https://whirkplace.replit.app/questions to see the results.
+</div>`;
+                    button.textContent = '✅ Seeding Complete!';
+                    button.style.background = '#84ae56';
+                } else if (response.status === 403) {
+                    resultDiv.innerHTML = `
+<div class="error">
+❌ Permission Denied
+
+You need to be logged in as a super admin to seed the question bank.
+
+Please:
+1. Go to https://whirkplace.replit.app/login
+2. Log in with super admin credentials (mpatrick@whirks.com)
+3. Try again
+</div>`;
+                    button.textContent = '❌ Permission Denied';
+                    button.disabled = false;
+                } else {
+                    resultDiv.innerHTML = `
+<div class="error">
+❌ Error: ${data.message || 'Failed to seed questions'}
+
+Status: ${response.status}
+Details: ${JSON.stringify(data, null, 2)}
+</div>`;
+                    button.textContent = '❌ Seeding Failed - Try Again';
+                    button.disabled = false;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+<div class="error">
+❌ Network Error
+
+${error.message}
+
+This could mean:
+• You're not connected to the internet
+• The production server is not responding
+• CORS issue (try opening this file directly in the browser)
+
+Please check your connection and try again.
+</div>`;
+                button.textContent = '❌ Network Error - Try Again';
+                button.disabled = false;
+            }
+        }
+        
+        // Add keyboard shortcut (Enter key)
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !document.getElementById('seedBtn').disabled) {
+                seedQuestions();
+            }
+        });
+    </script>
+</body>
+</html>
