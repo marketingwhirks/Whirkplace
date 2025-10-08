@@ -190,7 +190,7 @@ export default function BillingPage() {
             <CreditCard className="h-5 w-5" />
             Current Billing Period
           </CardTitle>
-          {usage && (
+          {usage && usage.currentPeriodStart && usage.currentPeriodEnd && (
             <CardDescription>
               {format(new Date(usage.currentPeriodStart), 'MMM d, yyyy')} - {format(new Date(usage.currentPeriodEnd), 'MMM d, yyyy')}
             </CardDescription>

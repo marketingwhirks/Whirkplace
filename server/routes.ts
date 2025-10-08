@@ -11750,7 +11750,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         .orderBy(desc(billingEvents.createdAt))
         .limit(100);
       
-      res.json(events);
+      // Transform snake_case column names to camelCase for frontend
+      const transformedEvents = events.map(event => ({
+        ...event,
+        previousUserCount: event.previous_user_count,
+        stripeInvoiceItemId: event.stripe_invoice_item_id,
+        stripeSubscriptionId: event.stripe_subscription_id,
+        createdAt: event.created_at,
+        eventType: event.event_type,
+        userCount: event.user_count,
+        organizationId: event.organization_id,
+        userId: event.user_id
+      }));
+      
+      res.json(transformedEvents);
     } catch (error) {
       console.error("Error fetching billing history:", error);
       res.status(500).json({ message: "Failed to fetch billing history" });
