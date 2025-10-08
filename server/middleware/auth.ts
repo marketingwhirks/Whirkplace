@@ -5,6 +5,16 @@ import { sanitizeUser } from "../utils/sanitizeUser";
 import { getSessionUser } from "./session";
 import { AuthService } from "../services/authService";
 
+// Extend Express Request to include userId and currentUser
+declare global {
+  namespace Express {
+    interface Request {
+      userId?: string;
+      currentUser?: any;
+    }
+  }
+}
+
 // Instantiate the auth service
 const authService = new AuthService();
 
@@ -35,6 +45,7 @@ export function authenticateUser() {
               organizationId: demoUser.organizationId
             };
             req.orgId = demoUser.organizationId;
+            req.userId = demoUser.id;
             return next();
           }
         }
@@ -59,6 +70,7 @@ export function authenticateUser() {
               organizationId: demoUser.organizationId
             };
             req.orgId = demoUser.organizationId;
+            req.userId = demoUser.id;
             return next();
           }
         }
@@ -71,6 +83,7 @@ export function authenticateUser() {
         req.currentUser = sanitizeUser(user);
         req.currentUser.organizationId = sessionData?.organizationId || user.organizationId;
         req.orgId = req.currentUser.organizationId;
+        req.userId = req.currentUser.id;
         return next();
       }
       
