@@ -4,7 +4,6 @@ import { jwtVerify, createRemoteJWKSet } from 'jose';
 import * as cron from "node-cron";
 import type { Request } from 'express';
 import { resolveRedirectUri } from '../utils/redirect-uri';
-import bcrypt from "bcryptjs";
 import { billingService } from './billing';
 
 if (!process.env.SLACK_BOT_TOKEN) {
@@ -38,33 +37,6 @@ if (!process.env.SLACK_REDIRECT_URI) {
 // OAuth state is now stored in user sessions for better reliability
 // No need for in-memory storage or cleanup intervals
 
-/**
- * Generate a secure temporary password
- * Returns a 10 character password with letters, numbers, and symbols
- */
-export function generateTemporaryPassword(): string {
-  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
-  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const numbers = '0123456789';
-  const symbols = '!@#$%^&*';
-  const allChars = lowercase + uppercase + numbers + symbols;
-  
-  let password = '';
-  
-  // Ensure at least one character from each set
-  password += lowercase[Math.floor(Math.random() * lowercase.length)];
-  password += uppercase[Math.floor(Math.random() * uppercase.length)];
-  password += numbers[Math.floor(Math.random() * numbers.length)];
-  password += symbols[Math.floor(Math.random() * symbols.length)];
-  
-  // Fill the rest randomly from all characters
-  for (let i = 4; i < 10; i++) {
-    password += allChars[Math.floor(Math.random() * allChars.length)];
-  }
-  
-  // Shuffle the password to randomize character positions
-  return password.split('').sort(() => Math.random() - 0.5).join('');
-}
 
 // Slack OpenID Connect Types
 interface SlackOIDCTokenResponse {
@@ -1511,12 +1483,12 @@ export async function sendWelcomeMessage(userId: string, userName: string, chann
 }
 
 /**
- * Send onboarding DM with login credentials to newly synced users
+ * Send onboarding DM with password reset link to newly synced users
  */
 export async function sendOnboardingDM(
   slackUserId: string, 
   email: string, 
-  tempPassword: string, 
+  resetToken: string, 
   organizationName: string,
   userName?: string,
   botToken?: string
@@ -1539,6 +1511,7 @@ export async function sendOnboardingDM(
       return { success: false, error: `Failed to open DM: ${dmResult.error}` };
     }
 
+    const passwordSetupUrl = `https://whirkplace.com/reset-password?token=${resetToken}`;
     const loginUrl = 'https://whirkplace.com/login';
     const settingsUrl = 'https://whirkplace.com/settings';
     const checkinUrl = 'https://whirkplace.com/checkins';
@@ -1568,7 +1541,7 @@ export async function sendOnboardingDM(
         type: 'section' as const,
         text: {
           type: 'mrkdwn' as const,
-          text: `*🔐 Your Login Credentials:*\n\n*Email:* \`${email}\`\n*Temporary Password:* \`${tempPassword}\`\n\n_⚠️ Please change your password after your first login for security._`
+          text: `*🔐 Set Up Your Password:*\n\nTo access WhirkPlace, you'll need to set up your password first.\n\n*Your email:* \`${email}\`\n\n_⚠️ This link expires in 48 hours for security._`
         }
       },
       {
@@ -1578,10 +1551,10 @@ export async function sendOnboardingDM(
             type: 'button' as const,
             text: {
               type: 'plain_text' as const,
-              text: '🚀 Login Now',
+              text: '🔑 Set Up Password',
               emoji: true
             },
-            url: loginUrl,
+            url: passwordSetupUrl,
             style: 'primary' as const
           }
         ]
@@ -1603,7 +1576,7 @@ export async function sendOnboardingDM(
         type: 'section' as const,
         text: {
           type: 'mrkdwn' as const,
-          text: `*✅ Next Steps:*\n\n1. *Login and change your password* - Use the button above to access WhirkPlace\n2. *Complete your profile* - Add your details and preferences\n3. *Set notification preferences* - Choose how often you want reminders\n4. *Submit your first check-in* - Share how you're doing this week`
+          text: `*✅ Next Steps:*\n\n1. *Set up your password* - Click the "Set Up Password" button above (required to access WhirkPlace)\n2. *Login to WhirkPlace* - Use your email and new password to sign in\n3. *Complete your profile* - Add your details and preferences\n4. *Submit your first check-in* - Share how you're doing this week`
         }
       },
       {
@@ -1663,7 +1636,7 @@ export async function sendOnboardingDM(
     const messageResult = await slackClient.chat.postMessage({
       channel: dmResult.channel.id,
       blocks: onboardingBlocks,
-      text: `Welcome to WhirkPlace! Your login credentials: Email: ${email}, Temporary Password: ${tempPassword}. Please login at ${loginUrl} and change your password.`
+      text: `Welcome to WhirkPlace! To access your account, please set up your password first. Click here: ${passwordSetupUrl}. Your email: ${email}.`
     });
 
     if (messageResult.ok) {
@@ -2561,7 +2534,7 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
   const newlyCreatedUsers: Array<{
     slackUserId: string;
     email: string;
-    tempPassword: string;
+    resetToken: string;
     name: string;
   }> = [];
 
@@ -2611,19 +2584,14 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
         }
       }
     } else {
-      // New user - create them with a temporary password
+      // New user - create them without a password (they'll set it up via reset link)
       try {
-        // Generate temporary password for the new user
-        const tempPassword = generateTemporaryPassword();
-        
-        // Hash the password before storing
-        const hashedPassword = await bcrypt.hash(tempPassword, 10);
-        
         const userEmail = member.email || `${member.id}@slack.local`;
         
+        // Create user without password (null/empty password)
         const newUser = await storage.createUser(organizationId, {
           username: member.email?.split('@')[0] || member.name?.toLowerCase().replace(/\s+/g, '.') || member.id,
-          password: hashedPassword,
+          password: '', // Empty password - user will set it up via reset link
           name: member.name,
           email: userEmail,
           role: 'member',
@@ -2633,6 +2601,10 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
         
         stats.created++;
         console.log(`Created new user: ${member.name} (${member.id})`);
+        
+        // Generate password reset token for the new user
+        const resetToken = await storage.createPasswordResetToken(newUser.id);
+        console.log(`Generated password reset token for ${member.name} (${userEmail})`);
         
         // Handle billing for new user addition
         const organization = await storage.getOrganization(organizationId);
@@ -2645,7 +2617,7 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
         newlyCreatedUsers.push({
           slackUserId: member.id,
           email: userEmail,
-          tempPassword: tempPassword,
+          resetToken: resetToken,
           name: member.name
         });
       } catch (error) {
@@ -2704,7 +2676,7 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
         const result = await sendOnboardingDM(
           newUser.slackUserId,
           newUser.email,
-          newUser.tempPassword,
+          newUser.resetToken,
           organizationName,
           newUser.name,
           botToken

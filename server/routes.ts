@@ -3700,7 +3700,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Send password to user via Slack (Admin only)
+  // Send password reset link to user via Slack (Admin only)
   app.post("/api/users/:userId/send-password", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
       const userId = req.params.userId;
@@ -3724,38 +3724,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Organization not found" });
       }
       
-      // Generate a new temporary password
-      const { generateTemporaryPassword, sendOnboardingDM } = await import("./services/slack");
-      const tempPassword = generateTemporaryPassword();
+      // Generate a password reset token
+      const { sendOnboardingDM } = await import("./services/slack");
+      const resetToken = await storage.createPasswordResetToken(userId);
       
-      // Hash the password before storing
-      const hashedPassword = await bcrypt.hash(tempPassword, 10);
-      
-      // Update the user's password in the database
-      await storage.updateUser(req.orgId, userId, { password: hashedPassword });
-      
-      // Send the password via Slack DM
+      // Send the password reset link via Slack DM
       const result = await sendOnboardingDM(
         user.slackUserId,
         user.email,
-        tempPassword,
+        resetToken,
         organization.name,
         user.name || user.username,
         organization.slackBotToken
       );
       
       if (!result.success) {
-        // Even if Slack sending fails, the password was already updated
         return res.status(500).json({ 
-          message: `Password was reset but failed to send via Slack: ${result.error}`,
-          passwordUpdated: true,
+          message: `Failed to send password reset link via Slack: ${result.error}`,
+          resetTokenCreated: true,
           slackSent: false
         });
       }
       
       res.json({ 
-        message: "Password successfully sent to user via Slack",
-        passwordUpdated: true,
+        message: "Password reset link successfully sent to user via Slack",
+        resetTokenCreated: true,
         slackSent: true,
         user: {
           id: user.id,
@@ -3765,9 +3758,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
     } catch (error) {
-      console.error("Error sending password via Slack:", error);
+      console.error("Error sending password reset link via Slack:", error);
       res.status(500).json({ 
-        message: "Failed to send password",
+        message: "Failed to send password reset link",
         error: error instanceof Error ? error.message : "Unknown error"
       });
     }
