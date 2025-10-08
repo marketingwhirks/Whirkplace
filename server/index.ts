@@ -8,6 +8,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import rateLimit from 'express-rate-limit';
+import path from "path";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { resolveOrganization } from "./middleware/organization";
@@ -238,6 +239,21 @@ app.use((req, res, next) => {
     } else {
       console.log('📁 Setting up static file serving...');
       serveStatic(app);
+      
+      // Add SPA catch-all route for production
+      // This overrides the too-broad catch-all in serveStatic and properly handles SPA routing
+      app.get('*', (req, res, next) => {
+        // Skip API and auth routes - let them be handled by their own handlers
+        if (req.path.startsWith('/api') || req.path.startsWith('/auth')) {
+          return next();
+        }
+        
+        // Serve index.html for all other GET requests (SPA client-side routing)
+        // This allows the React router to handle routes like /deployment-test, /dashboard, etc.
+        const indexPath = path.resolve(import.meta.dirname, 'public', 'index.html');
+        res.sendFile(indexPath);
+      });
+      
       console.log('✅ Static file serving setup complete');
     }
 
