@@ -9195,7 +9195,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/team-goals", requireAuth(), async (req, res) => {
     try {
       const activeOnly = req.query.activeOnly === 'true';
-      const goals = await storage.getAllTeamGoals(req.orgId, activeOnly);
+      const userId = req.userId!;
+      const user = await storage.getUser(req.orgId, userId);
+      
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      let goals: TeamGoal[];
+      
+      // Check if user is admin (case insensitive)
+      const isAdmin = user.role?.toLowerCase() === 'admin';
+      
+      if (isAdmin) {
+        // Admins see ALL team goals across all teams
+        goals = await storage.getAllTeamGoals(req.orgId, activeOnly);
+        
+        // Enrich goals with team names for better display
+        const teams = await storage.getAllTeams(req.orgId);
+        goals = goals.map(goal => {
+          const team = teams.find(t => t.id === goal.teamId);
+          return {
+            ...goal,
+            teamName: team?.name || 'Organization-wide'
+          } as TeamGoal & { teamName: string };
+        });
+      } else {
+        // Non-admins only see their team's goals
+        if (user.teamId) {
+          goals = await storage.getTeamGoalsByTeam(req.orgId, user.teamId, activeOnly);
+          // Add team name for consistency
+          const team = await storage.getTeam(req.orgId, user.teamId);
+          goals = goals.map(goal => ({
+            ...goal,
+            teamName: goal.teamId === user.teamId ? team?.name : 'Organization-wide'
+          } as TeamGoal & { teamName: string }));
+        } else {
+          // User without a team only sees org-wide goals
+          const allGoals = await storage.getAllTeamGoals(req.orgId, activeOnly);
+          goals = allGoals.filter(goal => !goal.teamId);
+          goals = goals.map(goal => ({
+            ...goal,
+            teamName: 'Organization-wide'
+          } as TeamGoal & { teamName: string }));
+        }
+      }
+      
       res.json(goals);
     } catch (error) {
       console.error("GET /api/team-goals - Error:", error);

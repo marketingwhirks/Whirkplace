@@ -90,6 +90,7 @@ interface TeamGoal {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  teamName?: string; // Added to display team name
 }
 
 interface Team {
@@ -108,6 +109,7 @@ export default function TeamGoals() {
 
   // Check for team leader role (case-insensitive to handle "Admin", "admin", "ADMIN", etc.)
   const isTeamLeader = user?.role?.toLowerCase() === "admin" || user?.role?.toLowerCase() === "manager";
+  const isAdmin = user?.role?.toLowerCase() === "admin";
 
   // Fetch team goals
   const { data: goals = [], isLoading } = useQuery<TeamGoal[]>({
@@ -215,6 +217,32 @@ export default function TeamGoals() {
   const completedGoals = goals.filter((g) => g.status === "completed");
   const expiredGoals = goals.filter((g) => g.status === "expired");
 
+  // Group goals by team for admin view
+  const groupGoalsByTeam = (goalsList: TeamGoal[]) => {
+    if (!isAdmin) return { "All Goals": goalsList };
+    
+    const grouped = goalsList.reduce((acc, goal) => {
+      const teamKey = goal.teamName || "Organization-wide";
+      if (!acc[teamKey]) acc[teamKey] = [];
+      acc[teamKey].push(goal);
+      return acc;
+    }, {} as Record<string, TeamGoal[]>);
+    
+    // Sort teams alphabetically, with Organization-wide first
+    const sortedTeams = Object.keys(grouped).sort((a, b) => {
+      if (a === "Organization-wide") return -1;
+      if (b === "Organization-wide") return 1;
+      return a.localeCompare(b);
+    });
+    
+    const sortedGrouped: Record<string, TeamGoal[]> = {};
+    sortedTeams.forEach(team => {
+      sortedGrouped[team] = grouped[team];
+    });
+    
+    return sortedGrouped;
+  };
+
   // Check for newly completed goals
   const checkCompletedGoals = () => {
     const newlyCompleted = activeGoals.filter(
@@ -310,7 +338,7 @@ export default function TeamGoals() {
                 {goal.description}
               </CardDescription>
             </div>
-            {isTeamLeader && goal.createdBy === user?.id && !isCompleted && !isExpired && (
+            {isTeamLeader && (isAdmin || goal.createdBy === user?.id) && !isCompleted && !isExpired && (
               <div className="flex gap-1">
                 <Button
                   size="icon"
@@ -338,10 +366,15 @@ export default function TeamGoals() {
               {timeRemaining}
             </span>
             <Badge variant="outline">{goal.goalType}</Badge>
-            {goal.teamId ? (
+            {goal.teamName && isAdmin ? (
+              <Badge variant="secondary" className="flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                {goal.teamName}
+              </Badge>
+            ) : goal.teamId ? (
               <span className="flex items-center gap-1">
                 <Users className="h-3 w-3" />
-                Team Goal
+                {goal.teamName || "Team Goal"}
               </span>
             ) : (
               <span className="flex items-center gap-1">
@@ -452,7 +485,26 @@ export default function TeamGoals() {
                 </p>
               </CardContent>
             </Card>
+          ) : isAdmin ? (
+            // Admin view: Group goals by team
+            <div className="space-y-6">
+              {Object.entries(groupGoalsByTeam(activeGoals)).map(([teamName, teamGoals]) => (
+                <div key={teamName} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-primary" />
+                    <h3 className="text-lg font-semibold">{teamName}</h3>
+                    <Badge variant="outline">{teamGoals.length} goal{teamGoals.length !== 1 ? 's' : ''}</Badge>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {teamGoals.map((goal) => (
+                      <GoalCard key={goal.id} goal={goal} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
+            // Non-admin view: Simple grid
             <div className="grid gap-4 md:grid-cols-2">
               {activeGoals.map((goal) => (
                 <GoalCard key={goal.id} goal={goal} />
@@ -472,7 +524,28 @@ export default function TeamGoals() {
                 </p>
               </CardContent>
             </Card>
+          ) : isAdmin ? (
+            // Admin view: Group goals by team
+            <div className="space-y-6">
+              {Object.entries(groupGoalsByTeam(completedGoals)).map(([teamName, teamGoals]) => (
+                <div key={teamName} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Trophy className="h-5 w-5 text-green-500" />
+                    <h3 className="text-lg font-semibold">{teamName}</h3>
+                    <Badge variant="outline" className="bg-green-50">
+                      {teamGoals.length} completed
+                    </Badge>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {teamGoals.map((goal) => (
+                      <GoalCard key={goal.id} goal={goal} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
+            // Non-admin view: Simple grid
             <div className="grid gap-4 md:grid-cols-2">
               {completedGoals.map((goal) => (
                 <GoalCard key={goal.id} goal={goal} />
@@ -492,7 +565,28 @@ export default function TeamGoals() {
                 </p>
               </CardContent>
             </Card>
+          ) : isAdmin ? (
+            // Admin view: Group goals by team
+            <div className="space-y-6">
+              {Object.entries(groupGoalsByTeam(expiredGoals)).map(([teamName, teamGoals]) => (
+                <div key={teamName} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-gray-500" />
+                    <h3 className="text-lg font-semibold">{teamName}</h3>
+                    <Badge variant="outline" className="bg-gray-50">
+                      {teamGoals.length} expired
+                    </Badge>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {teamGoals.map((goal) => (
+                      <GoalCard key={goal.id} goal={goal} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           ) : (
+            // Non-admin view: Simple grid
             <div className="grid gap-4 md:grid-cols-2">
               {expiredGoals.map((goal) => (
                 <GoalCard key={goal.id} goal={goal} />
