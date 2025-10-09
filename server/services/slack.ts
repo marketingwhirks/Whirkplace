@@ -117,8 +117,15 @@ export function generateOAuthURL(organizationSlug: string, session: any, req?: R
                            (process.env.PUBLIC_BASE_URL && process.env.PUBLIC_BASE_URL.includes('whirkplace.com'));
     
     if (likelyProduction) {
-      // Production always uses whirkplace.com with HTTPS
-      redirectUri = 'https://whirkplace.com/auth/slack/callback';
+      // Production - check environment variables to determine which domain to use
+      // Support both whirkplace.com and whirkplace.replit.app as valid production domains
+      if (process.env.REPLIT_URL && process.env.REPLIT_URL.includes('whirkplace.replit.app')) {
+        // Use the Replit app domain if that's where we're deployed
+        redirectUri = 'https://whirkplace.replit.app/auth/slack/callback';
+      } else {
+        // Default to whirkplace.com for standard production
+        redirectUri = 'https://whirkplace.com/auth/slack/callback';
+      }
     } else {
       // Development uses override if available, otherwise 0.0.0.0
       redirectUri = process.env.SLACK_REDIRECT_URI_OVERRIDE || 'http://0.0.0.0:5000/auth/slack/callback';
@@ -243,8 +250,15 @@ export async function exchangeOIDCCode(code: string, redirectUri?: string): Prom
                          process.env.REPL_SLUG?.includes('whirkplace');
     
     if (isProduction) {
-      // Production always uses whirkplace.com with HTTPS
-      finalRedirectUri = 'https://whirkplace.com/auth/slack/callback';
+      // Production - check environment variables to determine which domain to use
+      // Support both whirkplace.com and whirkplace.replit.app as valid production domains
+      if (process.env.REPLIT_URL && process.env.REPLIT_URL.includes('whirkplace.replit.app')) {
+        // Use the Replit app domain if that's where we're deployed
+        finalRedirectUri = 'https://whirkplace.replit.app/auth/slack/callback';
+      } else {
+        // Default to whirkplace.com for standard production
+        finalRedirectUri = 'https://whirkplace.com/auth/slack/callback';
+      }
     } else {
       // Development uses override if available, otherwise 0.0.0.0
       finalRedirectUri = process.env.SLACK_REDIRECT_URI_OVERRIDE || 'http://0.0.0.0:5000/auth/slack/callback';
@@ -256,10 +270,13 @@ export async function exchangeOIDCCode(code: string, redirectUri?: string): Prom
   console.log('  NODE_ENV:', process.env.NODE_ENV);
   console.log('  FORCE_PRODUCTION_OAUTH:', process.env.FORCE_PRODUCTION_OAUTH);
   
-  // Extra safety: if redirect URI contains whirkplace.com, ensure it uses HTTPS and correct path
+  // Extra safety: ensure redirect URIs use HTTPS and correct path for production domains
   if (finalRedirectUri.includes('whirkplace.com') && !finalRedirectUri.startsWith('https://whirkplace.com/auth/slack/callback')) {
     console.warn('⚠️  Correcting whirkplace.com redirect URI format');
     finalRedirectUri = 'https://whirkplace.com/auth/slack/callback';
+  } else if (finalRedirectUri.includes('whirkplace.replit.app') && !finalRedirectUri.startsWith('https://whirkplace.replit.app/auth/slack/callback')) {
+    console.warn('⚠️  Correcting whirkplace.replit.app redirect URI format');
+    finalRedirectUri = 'https://whirkplace.replit.app/auth/slack/callback';
   }
   
   if (!clientId || !clientSecret || !finalRedirectUri) {

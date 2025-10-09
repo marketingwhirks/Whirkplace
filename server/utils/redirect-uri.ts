@@ -46,9 +46,19 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
     console.log('🔧 Development environment detected, using actual host:', fullHost);
     return `${protocol}://${fullHost}${path}`;
   } else if (isProduction) {
-    // Production environment - always use whirkplace.com with HTTPS
-    console.log('🚀 Production environment detected, using whirkplace.com');
-    return `https://whirkplace.com${path}`;
+    // Production environment - preserve the actual production domain (whirkplace.com or whirkplace.replit.app)
+    // Both are valid production domains that should be preserved
+    if (fullHost.endsWith('whirkplace.replit.app')) {
+      console.log('🚀 Production Replit app detected, preserving domain:', fullHost);
+      return `https://${fullHost}${path}`;
+    } else if (host === 'whirkplace.com' || host === 'www.whirkplace.com' || host === 'app.whirkplace.com' || host.endsWith('.whirkplace.com')) {
+      console.log('🚀 Production whirkplace.com detected, preserving domain:', host);
+      return `https://${host}${path}`;
+    } else {
+      // Fallback to whirkplace.com for any other production scenario
+      console.log('🚀 Production environment detected, defaulting to whirkplace.com');
+      return `https://whirkplace.com${path}`;
+    }
   }
   
   // Fallback to OAUTH_REDIRECT_BASE_URL if set (for custom configurations)
@@ -80,11 +90,20 @@ export function resolveRedirectUri(req: Request, path: string = '/auth/microsoft
     return process.env.MICROSOFT_REDIRECT_URI;
   }
 
-  // For production domains, always use whirkplace.com with HTTPS
-  // This ensures OAuth callbacks work correctly across all production deployments
+  // For production domains, preserve the actual domain (whirkplace.com or whirkplace.replit.app)
+  // Both are valid production domains that should be preserved
   if (isProductionDomain) {
-    console.log('  → Production domain detected, using whirkplace.com');
-    return `https://whirkplace.com${path}`;
+    if (fullHost.endsWith('whirkplace.replit.app')) {
+      console.log('  → Production Replit app detected, preserving domain:', fullHost);
+      return `https://${fullHost}${path}`;
+    } else if (host === 'whirkplace.com' || host === 'www.whirkplace.com' || host === 'app.whirkplace.com' || host.endsWith('.whirkplace.com')) {
+      console.log('  → Production whirkplace.com detected, preserving domain:', host);
+      return `https://${host}${path}`;
+    } else {
+      // Fallback to whirkplace.com for any other production scenario
+      console.log('  → Production domain detected, defaulting to whirkplace.com');
+      return `https://whirkplace.com${path}`;
+    }
   }
 
   // Use the actual current host for Replit environments  
@@ -121,7 +140,9 @@ export function isAllowedHost(host: string): boolean {
       host.endsWith('.repl.co') || 
       host.endsWith('.replit.dev') ||
       host === 'whirkplace.com' ||
-      host === 'www.whirkplace.com') {
+      host === 'www.whirkplace.com' ||
+      host === 'whirkplace.replit.app' ||
+      host.endsWith('.whirkplace.replit.app')) {
     return true;
   }
 
