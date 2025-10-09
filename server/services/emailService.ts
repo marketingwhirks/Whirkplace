@@ -76,6 +76,83 @@ export async function sendEmail(params: EmailParams): Promise<boolean> {
 
 // Email templates for different types of notifications
 export const emailTemplates = {
+  slackPasswordSetup: (userName: string, organizationName: string, setupLink: string) => ({
+    subject: `Set up your password for ${organizationName}`,
+    text: `Hi ${userName},
+
+You're currently using Slack to sign in to ${organizationName} on Whirkplace. We're giving you the option to also log in using an email and password.
+
+This is completely optional - you can continue using Slack to sign in if you prefer.
+
+If you'd like to set up a password for direct login, click the link below:
+${setupLink}
+
+This link will expire in 24 hours for security reasons.
+
+Benefits of setting up a password:
+• Sign in directly without going through Slack
+• Access your account even when Slack is unavailable
+• Use either method - Slack or password - whatever is more convenient
+
+If you didn't request this or prefer to keep using only Slack authentication, you can safely ignore this email.
+
+Best regards,
+The ${organizationName} Team`,
+    html: `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <div style="width: 60px; height: 60px; background-color: #1b365d; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 16px;">
+          <div style="width: 24px; height: 24px; color: #84ae56;">💚</div>
+        </div>
+        <h1 style="color: #1b365d; margin: 0; font-size: 24px;">Whirkplace</h1>
+      </div>
+      
+      <h2 style="color: #333; margin-bottom: 20px;">Set Up Your Password for ${organizationName}</h2>
+      
+      <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">Hi ${userName},</p>
+      
+      <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+        You're currently using <strong>Slack</strong> to sign in to ${organizationName} on Whirkplace. We're giving you the option to also log in using an email and password.
+      </p>
+      
+      <p style="color: #666; line-height: 1.6; margin-bottom: 20px;">
+        <em>This is completely optional</em> - you can continue using Slack to sign in if you prefer.
+      </p>
+      
+      <div style="text-align: center; margin: 30px 0;">
+        <a href="${setupLink}" style="background-color: #1b365d; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; display: inline-block; font-weight: bold;">
+          Set Up Password
+        </a>
+      </div>
+      
+      <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+        <h3 style="color: #1b365d; margin-top: 0;">Benefits of setting up a password:</h3>
+        <ul style="color: #666; line-height: 1.6; margin: 0; padding-left: 20px;">
+          <li>Sign in directly without going through Slack</li>
+          <li>Access your account even when Slack is unavailable</li>
+          <li>Use either method - Slack or password - whatever is more convenient</li>
+        </ul>
+      </div>
+      
+      <p style="color: #999; font-size: 14px; margin-bottom: 20px;">
+        ⏰ This link will expire in 24 hours for security reasons.
+      </p>
+      
+      <div style="background-color: #e8f4fd; border: 1px solid #bee5eb; padding: 15px; border-radius: 6px; margin: 20px 0;">
+        <p style="color: #0c5460; margin: 0; font-size: 14px;">
+          <strong>Note:</strong> If you didn't request this or prefer to keep using only Slack authentication, you can safely ignore this email.
+        </p>
+      </div>
+      
+      <div style="text-align: center; padding-top: 30px; border-top: 1px solid #eee;">
+        <p style="color: #888; font-size: 14px; margin: 0;">
+          Best regards,<br>
+          The ${organizationName} Team
+        </p>
+      </div>
+    </div>`
+  }),
+
   welcome: (userName: string, organizationName: string) => ({
     subject: `Welcome to ${organizationName} on Whirkplace!`,
     text: `Hi ${userName},
@@ -301,6 +378,39 @@ export async function sendPasswordResetEmail(
   const resetBaseUrl = baseUrl || process.env.BASE_URL || 'https://app.whirkplace.com';
   const resetLink = `${resetBaseUrl}/reset-password?token=${resetToken}`;
   const template = emailTemplates.passwordReset(userName, resetLink, organizationName);
+  
+  return sendEmail({
+    to: userEmail,
+    from: `${sender.name} <${sender.email}>`,
+    subject: template.subject,
+    text: template.text,
+    html: template.html
+  });
+}
+
+export async function sendSlackPasswordSetupEmail(
+  userEmail: string,
+  userName: string,
+  resetToken: string,
+  organizationName: string,
+  baseUrl?: string
+): Promise<boolean> {
+  // Check if email service is configured
+  if (!mailService) {
+    console.log(`📧 Email sending disabled - would have sent Slack password setup email to ${userEmail}`);
+    return false;
+  }
+  
+  const sender = tryGetSender();
+  if (!sender) {
+    console.log(`📧 Sender email not configured - cannot send Slack password setup email to ${userEmail}`);
+    return false;
+  }
+  
+  // Use dynamic base URL or default
+  const resetBaseUrl = baseUrl || process.env.BASE_URL || 'https://app.whirkplace.com';
+  const setupLink = `${resetBaseUrl}/reset-password?token=${resetToken}`;
+  const template = emailTemplates.slackPasswordSetup(userName, organizationName, setupLink);
   
   return sendEmail({
     to: userEmail,

@@ -37,7 +37,8 @@ import {
   Upload,
   Download,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  Key
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -46,6 +47,7 @@ import { startOfWeek, addWeeks, format as formatDate, parseISO } from "date-fns"
 import { getCheckinWeekFriday } from "@shared/utils/dueDates";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import RoleSwitcher from "@/components/admin/role-switcher";
 
@@ -138,6 +140,30 @@ export default function Admin() {
   const { data: channelData, isLoading: channelLoading } = useQuery<ChannelMembersResponse>({
     queryKey: ["/api/admin/channel-members"],
     enabled: (actualUser?.role === "admin") || canSwitchRoles,
+  });
+
+  // Send password setup email mutation
+  const sendPasswordSetupMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return apiRequest(`/api/admin/users/${userId}/send-password-setup`, {
+        method: "POST",
+      });
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Password Setup Email Sent",
+        description: data.message,
+      });
+      // Refetch users to update the UI
+      refetchUsers();
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to send email",
+        description: error.message || "Failed to send password setup email",
+      });
+    },
   });
 
   // Bulk import mutation
@@ -1009,6 +1035,25 @@ export default function Admin() {
                       >
                         Assign Team
                       </Button>
+                      {user.authProvider === 'slack' && !user.password && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => sendPasswordSetupMutation.mutate(user.id)}
+                              disabled={sendPasswordSetupMutation.isPending}
+                              data-testid={`button-send-password-setup-${user.id}`}
+                            >
+                              <Key className="w-4 h-4 mr-1" />
+                              {sendPasswordSetupMutation.isPending ? "Sending..." : "Send Password Setup"}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Send password setup link to Slack users so they can also log in with email/password</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
                     </div>
                   </div>
                 ))}

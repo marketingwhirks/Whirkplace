@@ -38,7 +38,7 @@ import { registerMicrosoftCalendarRoutes } from "./routes/microsoft-calendar";
 // import { registerAuthDiagnosticRoutes } from "./routes/auth-diagnostic"; // Disabled - temporary debugging endpoint
 import { registerAuthRoutes } from "./routes/auth";
 import { resolveRedirectUri } from "./utils/redirect-uri";
-import { sendWelcomeEmail } from "./services/emailService";
+import { sendWelcomeEmail, sendSlackPasswordSetupEmail } from "./services/emailService";
 import { sanitizeUser, sanitizeUsers } from "./utils/sanitizeUser";
 
 // Initialize Stripe with appropriate keys based on environment
@@ -8085,6 +8085,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Failed to update user team assignment:", error);
       res.status(500).json({ message: "Failed to update user team assignment" });
+    }
+  });
+
+  // Admin endpoint to send password setup email to Slack users
+  app.post("/api/admin/users/:userId/send-password-setup", requireAuth(), requireRole("admin"), async (req, res) => {
+    try {
+      const targetUserId = req.params.userId;
+      const organizationId = req.orgId;
+
+      // Get target user to verify they exist and belong to this organization
+      const targetUser = await storage.getUser(organizationId, targetUserId);
+      if (!targetUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Check if user authenticated via Slack
+      if (targetUser.authProvider !== 'slack') {
+        return res.status(400).json({ 
+          message: "This feature is only available for users who authenticate via Slack" 
+        });
+      }
+
+      // Check if user already has a password set
+      if (targetUser.password) {
+        return res.status(400).json({ 
+          message: "User already has a password set up" 
+        });
+      }
+
+      // Generate password reset token with 24-hour expiration
+      const token = await storage.createPasswordResetToken(targetUserId);
+      
+      // Get organization info for email
+      const organization = await storage.getOrganization(organizationId);
+      if (!organization) {
+        return res.status(500).json({ message: "Organization not found" });
+      }
+
+      // Send password setup email
+      const baseUrl = req.protocol + '://' + req.get('host');
+      const emailSent = await sendSlackPasswordSetupEmail(
+        targetUser.email,
+        targetUser.name,
+        token,
+        organization.name,
+        baseUrl
+      );
+
+      if (!emailSent) {
+        // Delete the token if email failed to send
+        await storage.deletePasswordResetToken(token);
+        return res.status(500).json({ 
+          message: "Failed to send password setup email. Please check email configuration." 
+        });
+      }
+
+      console.log(`✅ Password setup email sent to Slack user ${targetUser.email} by admin ${req.currentUser?.email}`);
+
+      res.json({
+        message: `Password setup email sent successfully to ${targetUser.email}`,
+        userId: targetUserId,
+        email: targetUser.email
+      });
+    } catch (error) {
+      console.error("Failed to send password setup email:", error);
+      res.status(500).json({ 
+        message: "Failed to send password setup email" 
+      });
     }
   });
 
