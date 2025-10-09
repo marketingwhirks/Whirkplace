@@ -187,9 +187,6 @@ export default function LandingPage() {
             <Button size="lg" variant="outline" onClick={() => setLocation('/demo')} data-testid="button-try-demo">
               <Play className="mr-2 h-5 w-5" /> Try Live Demo
             </Button>
-            <Button size="lg" variant="outline" onClick={handleSignIn} data-testid="button-signin-hero">
-              Sign In
-            </Button>
           </div>
         </div>
       </section>
