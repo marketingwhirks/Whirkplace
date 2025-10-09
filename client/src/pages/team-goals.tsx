@@ -99,7 +99,7 @@ interface Team {
 }
 
 export default function TeamGoals() {
-  const { user } = useCurrentUser();
+  const { data: user } = useCurrentUser();
   const { toast } = useToast();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -111,6 +111,15 @@ export default function TeamGoals() {
   // Also check for super admin status
   const isTeamLeader = user?.isSuperAdmin || user?.role?.toLowerCase() === "admin" || user?.role?.toLowerCase() === "manager";
   const isAdmin = user?.isSuperAdmin || user?.role?.toLowerCase() === "admin";
+  
+  // Debug logging to troubleshoot button visibility
+  console.log("Team Goals Debug:", {
+    user: user,
+    role: user?.role,
+    isSuperAdmin: user?.isSuperAdmin,
+    isTeamLeader: isTeamLeader,
+    isAdmin: isAdmin
+  });
 
   // Fetch team goals
   const { data: goals = [], isLoading } = useQuery<TeamGoal[]>({
