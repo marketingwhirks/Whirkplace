@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow, format } from "date-fns";
-import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle, Check, InfoIcon, Flame, Medal, TrendingUp, Award } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle, Check, InfoIcon, Flame, Medal, TrendingUp, Award, Target } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +26,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
+import { Link } from "wouter";
 
 import type { Win, User, InsertWin, CompanyValue } from "@shared/schema";
 import { insertWinSchema, DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
@@ -297,6 +298,39 @@ export default function Wins() {
               Wins are personal or professional achievements worth celebrating. Share your successes, milestones, and accomplishments with your team to foster a culture of recognition and positivity.
             </AlertDescription>
           </Alert>
+
+          {/* Team Goals Quick Access - NEW Feature */}
+          <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border-emerald-200 dark:border-emerald-800">
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2 bg-emerald-100 dark:bg-emerald-900 rounded-lg">
+                    <Target className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Team Goals</CardTitle>
+                    <p className="text-sm text-muted-foreground">Set collective targets to motivate your team</p>
+                  </div>
+                </div>
+                <Badge className="bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 animate-pulse">
+                  NEW
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Create weekly, monthly, or quarterly goals for your team. Track progress and celebrate achievements together!
+                </p>
+                <Link href="/team-goals">
+                  <Button variant="default" className="bg-emerald-600 hover:bg-emerald-700 text-white" data-testid="button-view-team-goals">
+                    View Team Goals
+                    <Target className="ml-2 h-4 w-4" />
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Team Leaderboard Section */}
           <Card className="border-primary/20">

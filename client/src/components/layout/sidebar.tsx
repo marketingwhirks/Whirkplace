@@ -36,7 +36,7 @@ const baseNavigation = [
   { name: "Check-ins", href: "/checkins", icon: ClipboardList, roles: ["member", "manager", "admin"] },
   { name: "Shout Outs", href: "/shoutouts", icon: Sparkles, roles: ["member", "manager", "admin"] },
   { name: "Wins", href: "/wins", icon: Trophy, roles: ["member", "manager", "admin"] },
-  { name: "Team Goals", href: "/team-goals", icon: Target, roles: ["member", "manager", "admin"] },
+  { name: "Team Goals", href: "/team-goals", icon: Target, roles: ["member", "manager", "admin"], isNew: true },
   { name: "One-on-Ones", href: "/one-on-ones", icon: Calendar, roles: ["member", "manager", "admin"] },
   { name: "Questions", href: "/questions", icon: HelpCircle, roles: ["manager", "admin"] },
   { name: "Reviews", href: "/reviews", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
@@ -178,6 +178,11 @@ function SidebarContent() {
                 <span className={cn("text-sm", isActive && "font-medium")}>
                   {item.name}
                 </span>
+                {item.isNew && (
+                  <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900 text-emerald-600 dark:text-emerald-400 font-medium animate-pulse">
+                    NEW
+                  </span>
+                )}
                 {needsUpgrade && (
                   <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-400 font-medium">
                     Upgrade
