@@ -106,9 +106,8 @@ export default function TeamGoals() {
   const [selectedGoal, setSelectedGoal] = useState<TeamGoal | null>(null);
   const [completedGoal, setCompletedGoal] = useState<TeamGoal | null>(null);
 
-  // Debug log to see actual role value
-  console.log("Team Goals - User role:", user?.role, "User:", user);
-  const isTeamLeader = user?.role === "admin" || user?.role === "manager";
+  // Check for team leader role (case-insensitive to handle "Admin", "admin", "ADMIN", etc.)
+  const isTeamLeader = user?.role?.toLowerCase() === "admin" || user?.role?.toLowerCase() === "manager";
 
   // Fetch team goals
   const { data: goals = [], isLoading } = useQuery<TeamGoal[]>({
