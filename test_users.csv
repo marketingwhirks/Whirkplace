@@ -1,0 +1,5 @@
+email,name,role,team_name,manager_email
+test.user1@example.com,Test User One,member,Engineering,
+test.user2@example.com,Test User Two,manager,Engineering,
+test.user3@example.com,Test User Three,member,Sales,test.user2@example.com
+test.admin@example.com,Test Admin,admin,Leadership,

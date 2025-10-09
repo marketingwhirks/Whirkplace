@@ -33,7 +33,11 @@ import {
   Calendar,
   CalendarOff,
   BookOpen,
-  Database
+  Database,
+  Upload,
+  Download,
+  FileText,
+  AlertTriangle
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -118,6 +122,11 @@ export default function Admin() {
   const [selectedVacationDate, setSelectedVacationDate] = useState<Date | undefined>();
   const [vacationNote, setVacationNote] = useState("");
 
+  // Bulk import state
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [importResults, setImportResults] = useState<any>(null);
+  const [showImportResultsDialog, setShowImportResultsDialog] = useState(false);
+
   const { data: currentUser, actualUser, canSwitchRoles } = useViewAsRole();
 
   // Fetch all users
@@ -130,6 +139,103 @@ export default function Admin() {
     queryKey: ["/api/admin/channel-members"],
     enabled: (actualUser?.role === "admin") || canSwitchRoles,
   });
+
+  // Bulk import mutation
+  const bulkImportMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const response = await fetch("/api/admin/users/bulk-import", {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/csv",
+        },
+        body: file,
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to import users");
+      }
+      
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setImportResults(data);
+      setShowImportResultsDialog(true);
+      setCsvFile(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({
+        title: "Import completed",
+        description: data.message,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Import failed",
+        description: error.message || "Failed to import users",
+      });
+    },
+  });
+
+  // Handle CSV file selection
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (!file.name.endsWith('.csv')) {
+        toast({
+          variant: "destructive",
+          title: "Invalid file type",
+          description: "Please select a CSV file",
+        });
+        return;
+      }
+      
+      if (file.size > 10 * 1024 * 1024) { // 10MB limit
+        toast({
+          variant: "destructive",
+          title: "File too large",
+          description: "File size should not exceed 10MB",
+        });
+        return;
+      }
+      
+      setCsvFile(file);
+    }
+  };
+
+  // Download CSV template
+  const downloadTemplate = async () => {
+    try {
+      const response = await fetch("/api/admin/users/template", {
+        method: "GET",
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to download template");
+      }
+      
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "user_import_template.csv";
+      a.click();
+      window.URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Template downloaded",
+        description: "Check your downloads folder for the CSV template",
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Download failed",
+        description: "Failed to download the template file",
+      });
+    }
+  };
 
   // Sync users mutation
   const syncUsersMutation = useMutation({
@@ -660,6 +766,167 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Bulk Import Users */}
+        <Card data-testid="card-bulk-import">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="w-5 h-5" />
+              Bulk Import Users
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Import multiple users at once using a CSV file. Download the template to see the required format.
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button 
+                onClick={downloadTemplate}
+                variant="outline"
+                data-testid="button-download-template"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download CSV Template
+              </Button>
+              
+              <div className="flex-1">
+                <Input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileSelect}
+                  className="cursor-pointer"
+                  data-testid="input-csv-file"
+                />
+                {csvFile && (
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Selected: {csvFile.name} ({(csvFile.size / 1024).toFixed(2)} KB)
+                  </p>
+                )}
+              </div>
+              
+              <Button
+                onClick={() => csvFile && bulkImportMutation.mutate(csvFile)}
+                disabled={!csvFile || bulkImportMutation.isPending}
+                data-testid="button-import-users"
+              >
+                {bulkImportMutation.isPending ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4 mr-2" />
+                )}
+                Import Users
+              </Button>
+            </div>
+            
+            {/* Import instructions */}
+            <div className="rounded-lg bg-muted p-4">
+              <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
+                <FileText className="w-4 h-4" />
+                CSV Format Requirements
+              </h4>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                <li>Required columns: email, name, role</li>
+                <li>Optional columns: team_name, manager_email</li>
+                <li>Valid roles: admin, manager, member</li>
+                <li>Teams will be created if they don't exist</li>
+                <li>Users will receive temporary passwords via email if email service is configured</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Import Results Dialog */}
+        <Dialog open={showImportResultsDialog} onOpenChange={setShowImportResultsDialog}>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Import Results</DialogTitle>
+              <DialogDescription>
+                {importResults?.message || "Import process completed"}
+              </DialogDescription>
+            </DialogHeader>
+            
+            {importResults && (
+              <div className="space-y-4">
+                {/* Summary */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Total Processed</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{importResults.summary?.total || 0}</div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-green-600">Successfully Created</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-green-600">
+                        {importResults.summary?.created || 0}
+                      </div>
+                    </CardContent>
+                  </Card>
+                  
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm text-red-600">Failed</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-red-600">
+                        {importResults.summary?.failed || 0}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+                
+                {/* Successful imports */}
+                {importResults.successful?.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      Successfully Imported
+                    </h4>
+                    <div className="border rounded-lg p-2 max-h-40 overflow-y-auto">
+                      {importResults.successful.map((user: any, index: number) => (
+                        <div key={index} className="text-sm py-1 border-b last:border-0">
+                          Row {user.row}: {user.name} ({user.email}) - {user.role}
+                          {user.team && user.team !== 'None' && ` - ${user.team}`}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Failed imports */}
+                {importResults.failed?.length > 0 && (
+                  <div>
+                    <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
+                      <AlertTriangle className="w-4 h-4 text-red-600" />
+                      Failed to Import
+                    </h4>
+                    <div className="border rounded-lg p-2 max-h-40 overflow-y-auto">
+                      {importResults.failed.map((failure: any, index: number) => (
+                        <div key={index} className="text-sm py-1 border-b last:border-0">
+                          <span className="font-medium">Row {failure.row}:</span>{" "}
+                          {failure.email} - <span className="text-red-600">{failure.reason}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex justify-end">
+                  <Button onClick={() => setShowImportResultsDialog(false)}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Users Management */}
         <Card data-testid="card-users-management">

@@ -24,6 +24,7 @@ import { WebClient } from "@slack/web-api";
 import { sendCheckinReminder, announceWin, sendPrivateWinNotification, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo } from "./services/slack";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
+import Papa from "papaparse";
 import { aggregationService } from "./services/aggregation";
 import { billingService } from "./services/billing";
 import { requireOrganization, resolveOrganization, sanitizeForOrganization } from "./middleware/organization";
@@ -7395,6 +7396,217 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: error?.message || "Failed to fetch channel members",
         members: [],
         count: 0
+      });
+    }
+  });
+
+  // CSV Template Download Endpoint
+  app.get("/api/admin/users/template", requireAuth(), requireRole("admin"), async (req, res) => {
+    try {
+      console.log(`📋 CSV template download requested by ${req.currentUser?.email}`);
+      
+      // Create CSV template with headers and a sample row
+      const csvData = [
+        ['email', 'name', 'role', 'team_name', 'manager_email'],
+        ['john.doe@example.com', 'John Doe', 'member', 'Engineering', 'jane.smith@example.com']
+      ];
+      
+      const csv = Papa.unparse(csvData);
+      
+      // Set response headers for CSV download
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="user_import_template.csv"');
+      res.send(csv);
+    } catch (error) {
+      console.error("Failed to generate CSV template:", error);
+      res.status(500).json({ message: "Failed to generate CSV template" });
+    }
+  });
+
+  // Bulk User Import Endpoint
+  app.post("/api/admin/users/bulk-import", requireAuth(), requireRole("admin"), express.raw({ type: 'text/csv', limit: '10mb' }), async (req, res) => {
+    try {
+      const organizationId = req.orgId;
+      const adminUser = req.currentUser;
+      
+      console.log(`📋 Bulk user import initiated by ${adminUser?.email} for organization ${organizationId}`);
+      
+      // Parse CSV data
+      const csvText = req.body.toString();
+      
+      const parseResult = Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (header) => header.trim().toLowerCase().replace(/\s+/g, '_'),
+      });
+      
+      if (parseResult.errors.length > 0) {
+        return res.status(400).json({
+          message: "CSV parsing failed",
+          errors: parseResult.errors.map(e => ({
+            row: e.row,
+            message: e.message
+          }))
+        });
+      }
+      
+      const results = {
+        successful: [] as any[],
+        failed: [] as any[],
+        created: 0,
+        skipped: 0,
+        errors: 0
+      };
+      
+      // Validate and process each row
+      for (let rowIndex = 0; rowIndex < parseResult.data.length; rowIndex++) {
+        const row: any = parseResult.data[rowIndex];
+        const rowNumber = rowIndex + 2; // +2 because header is row 1, and array is 0-indexed
+        
+        try {
+          // Validate required fields
+          if (!row.email || !row.name || !row.role) {
+            results.failed.push({
+              row: rowNumber,
+              email: row.email || 'N/A',
+              reason: "Missing required fields (email, name, or role)"
+            });
+            results.errors++;
+            continue;
+          }
+          
+          // Validate email format
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(row.email)) {
+            results.failed.push({
+              row: rowNumber,
+              email: row.email,
+              reason: "Invalid email format"
+            });
+            results.errors++;
+            continue;
+          }
+          
+          // Validate role
+          const validRoles = ['admin', 'manager', 'member'];
+          if (!validRoles.includes(row.role.toLowerCase())) {
+            results.failed.push({
+              row: rowNumber,
+              email: row.email,
+              reason: `Invalid role '${row.role}'. Must be one of: admin, manager, member`
+            });
+            results.errors++;
+            continue;
+          }
+          
+          // Check if user already exists
+          const existingUser = await storage.getUserByEmail(organizationId, row.email);
+          if (existingUser) {
+            results.failed.push({
+              row: rowNumber,
+              email: row.email,
+              reason: "User already exists"
+            });
+            results.skipped++;
+            continue;
+          }
+          
+          // Handle team assignment
+          let teamId: string | undefined = undefined;
+          if (row.team_name) {
+            // Check if team exists
+            const teams = await storage.getAllTeams(organizationId);
+            let team = teams.find(t => t.name.toLowerCase() === row.team_name.toLowerCase());
+            
+            if (!team) {
+              // Create new team
+              console.log(`Creating new team: ${row.team_name}`);
+              team = await storage.createTeam(organizationId, {
+                name: row.team_name,
+                organizationId,
+                teamType: 'team'
+              });
+            }
+            teamId = team.id;
+          }
+          
+          // Handle manager assignment
+          let managerId: string | undefined = undefined;
+          if (row.manager_email) {
+            const manager = await storage.getUserByEmail(organizationId, row.manager_email);
+            if (manager) {
+              managerId = manager.id;
+            } else {
+              console.log(`Warning: Manager ${row.manager_email} not found for user ${row.email}`);
+            }
+          }
+          
+          // Generate temporary password
+          const tempPassword = `Welcome${Math.random().toString(36).slice(2, 10)}!`;
+          const hashedPassword = await bcrypt.hash(tempPassword, 10);
+          
+          // Create user
+          const newUser = await storage.createUser(organizationId, {
+            email: row.email,
+            name: row.name,
+            role: row.role.toLowerCase() as 'admin' | 'manager' | 'member',
+            teamId: teamId,
+            managerId: managerId,
+            password: hashedPassword,
+            organizationId,
+            isActive: true,
+            isOnboarded: false, // Will need to complete onboarding
+            hasCompletedTour: false
+          });
+          
+          // Try to send welcome email if email service is configured
+          try {
+            const { sendWelcomeEmail } = await import('./services/emailService');
+            await sendWelcomeEmail(newUser.email, newUser.name, tempPassword, organizationId);
+            console.log(`Welcome email sent to ${newUser.email}`);
+          } catch (emailError) {
+            console.log(`Could not send welcome email to ${newUser.email} - email service may not be configured`);
+          }
+          
+          results.successful.push({
+            row: rowNumber,
+            email: newUser.email,
+            name: newUser.name,
+            role: newUser.role,
+            team: row.team_name || 'None'
+          });
+          results.created++;
+          
+        } catch (error: any) {
+          console.error(`Failed to import user at row ${rowNumber}:`, error);
+          results.failed.push({
+            row: rowNumber,
+            email: row.email || 'N/A',
+            reason: error.message || "Unknown error occurred"
+          });
+          results.errors++;
+        }
+      }
+      
+      console.log(`✅ Bulk import completed: ${results.created} created, ${results.skipped} skipped, ${results.errors} failed`);
+      
+      res.json({
+        message: `Import completed: ${results.created} users created successfully`,
+        summary: {
+          total: parseResult.data.length,
+          created: results.created,
+          skipped: results.skipped,
+          failed: results.errors
+        },
+        successful: results.successful,
+        failed: results.failed
+      });
+      
+    } catch (error: any) {
+      console.error("Bulk import failed:", error);
+      res.status(500).json({ 
+        message: "Failed to process bulk import",
+        error: error.message 
       });
     }
   });
