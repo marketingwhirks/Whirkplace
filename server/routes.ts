@@ -12456,6 +12456,121 @@ Return the response as a JSON object with this structure:
     }
   });
 
+  // Organization Pricing Management - Super Admin Only
+  app.get("/api/admin/organizations/pricing", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const organizations = await storage.getAllOrganizations();
+      
+      // Get billing data for each organization
+      const orgsWithPricing = await Promise.all(
+        organizations.map(async (org) => {
+          const billingUsage = await billingService.getCurrentBillingUsage(org.id);
+          
+          // Determine billing cycle based on price
+          // Annual pricing typically offers a discount, so we detect based on common patterns
+          let billingCycle = 'monthly';
+          if (org.billingPricePerUser > 0) {
+            // Check if price seems to be annual (typically annual is monthly * 10 or monthly * 12)
+            const monthlyEquivalent = org.billingPricePerUser / 12;
+            const standardMonthlyPrices = [2000, 5000]; // $20 and $50 in cents
+            
+            // If the monthly equivalent is close to standard prices, it's likely annual
+            for (const price of standardMonthlyPrices) {
+              if (Math.abs(monthlyEquivalent - price) < price * 0.2) { // within 20%
+                billingCycle = 'annual';
+                break;
+              }
+            }
+          }
+          
+          return {
+            organizationId: org.id,
+            name: org.name,
+            plan: org.plan,
+            billingPricePerUser: org.billingPricePerUser,
+            billingUserCount: billingUsage.billedUserCount,
+            billingCycle
+          };
+        })
+      );
+      
+      res.json(orgsWithPricing);
+    } catch (error) {
+      console.error("Failed to get organizations pricing:", error);
+      res.status(500).json({ message: "Failed to get organizations pricing" });
+    }
+  });
+
+  app.patch("/api/admin/organizations/:orgId/pricing", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { orgId } = req.params;
+      const { pricePerUser, billingCycle } = req.body;
+      
+      // Validate input
+      if (pricePerUser === undefined || billingCycle === undefined) {
+        return res.status(400).json({ message: "pricePerUser and billingCycle are required" });
+      }
+      
+      if (pricePerUser < 0) {
+        return res.status(400).json({ message: "Price per user must be non-negative" });
+      }
+      
+      if (!['monthly', 'annual'].includes(billingCycle)) {
+        return res.status(400).json({ message: "Billing cycle must be 'monthly' or 'annual'" });
+      }
+      
+      // Get organization
+      const organization = await storage.getOrganization(orgId);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Store the previous price for audit trail
+      const previousPrice = organization.billingPricePerUser;
+      
+      // Update organization's billing price
+      await storage.updateOrganization(orgId, {
+        billingPricePerUser: pricePerUser
+      });
+      
+      // Create billing event for audit trail
+      await db.insert(billingEvents).values({
+        organizationId: orgId,
+        eventType: 'pricing_updated',
+        userId: req.currentUser!.id,
+        userCount: organization.billingUserCount || 0,
+        previousUserCount: organization.billingUserCount || 0,
+        amount: pricePerUser,
+        currency: 'usd',
+        description: `Pricing updated from ${previousPrice} to ${pricePerUser} cents per user (${billingCycle})`,
+        metadata: {
+          previousPrice,
+          newPrice: pricePerUser,
+          billingCycle,
+          updatedBy: req.currentUser!.email,
+          updatedAt: new Date().toISOString()
+        }
+      });
+      
+      // Get updated billing usage
+      const billingUsage = await billingService.getCurrentBillingUsage(orgId);
+      
+      // Return updated pricing info
+      res.json({
+        organizationId: orgId,
+        name: organization.name,
+        plan: organization.plan,
+        billingPricePerUser: pricePerUser,
+        billingUserCount: billingUsage.billedUserCount,
+        billingCycle,
+        message: "Pricing updated successfully"
+      });
+    } catch (error) {
+      console.error("Failed to update organization pricing:", error);
+      res.status(500).json({ message: "Failed to update organization pricing" });
+    }
+  });
+
   // System statistics
   app.get("/api/super-admin/stats", requireAuth(), requireSuperAdmin(), async (req, res) => {
     try {
