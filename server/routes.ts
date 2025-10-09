@@ -5488,28 +5488,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Helper function to check if user can view a win
   const canViewWin = (win: any, viewer: any, directReportsSet: Set<string>): boolean => {
-    // Role-based access control for wins
+    // Role-based access control for wins per requirements
     
-    // Admins and super admins can see all wins
+    // Admins and super admins can see all wins (public and private)
     if (viewer.role === 'admin' || viewer.role === 'super admin') {
       return true;
     }
     
-    // Managers can see wins from their direct reports and team members
+    // Managers can see public wins AND private wins from their team members
     if (viewer.role === 'manager') {
-      // Can see their own wins
-      if (win.userId === viewer.id || win.nominatedBy === viewer.id) return true;
-      // Can see direct reports' wins
-      if (directReportsSet.has(win.userId) || (win.nominatedBy && directReportsSet.has(win.nominatedBy))) return true;
-      // Public wins are visible to managers
+      // Public wins are always visible
       if (win.isPublic) return true;
+      // Private wins: only if from their team members
+      if (directReportsSet.has(win.userId) || (win.nominatedBy && directReportsSet.has(win.nominatedBy))) {
+        return true;
+      }
       return false;
     }
     
-    // Members can only see their own wins (as user or nominator) 
+    // Regular members can only see public wins
     if (viewer.role === 'member' || !viewer.role) {
-      // Can see wins where they are the user or nominator
-      return win.userId === viewer.id || win.nominatedBy === viewer.id;
+      return win.isPublic;
     }
     
     return false;
