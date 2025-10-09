@@ -20,7 +20,7 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { Crown, Settings, DollarSign, Ticket, Users, Building2, Trash2, Edit, Plus, Eye, ShieldAlert, AlertCircle, CheckCircle2, RefreshCw, Key, Info, ChevronDown } from "lucide-react";
+import { Crown, Settings, DollarSign, Ticket, Users, Building2, Trash2, Edit, Plus, Eye, ShieldAlert, AlertCircle, CheckCircle2, RefreshCw, Key, Info, ChevronDown, CreditCard } from "lucide-react";
 import { format } from "date-fns";
 import type { User as CurrentUser } from "@shared/schema";
 
@@ -79,6 +79,21 @@ interface DiscountCode {
   updatedAt: string;
 }
 
+// Organization Pricing interfaces
+interface OrganizationPricing {
+  organizationId: string;
+  name: string;
+  plan: string;
+  billingPricePerUser: number;
+  billingUserCount: number;
+  billingCycle: string;
+}
+
+interface PricingUpdateData {
+  pricePerUser: number;
+  billingCycle: "monthly" | "annual";
+}
+
 // Form schemas
 const systemSettingSchema = z.object({
   key: z.string().min(1, "Setting key is required"),
@@ -116,6 +131,14 @@ const discountCodeSchema = z.object({
   isActive: z.boolean().default(true),
 });
 
+// Form schema for pricing update
+const pricingUpdateSchema = z.object({
+  pricePerUser: z.number().min(0, "Price must be non-negative"),
+  billingCycle: z.enum(["monthly", "annual"]),
+});
+
+type PricingUpdateFormData = z.infer<typeof pricingUpdateSchema>;
+
 export default function SuperAdminPage() {
   const { toast } = useToast();
   const [selectedTab, setSelectedTab] = useState("dashboard");
@@ -128,6 +151,10 @@ export default function SuperAdminPage() {
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [userToDelete, setUserToDelete] = useState<any>(null);
   const [showUserDeleteConfirmation, setShowUserDeleteConfirmation] = useState(false);
+  
+  // Pricing management state
+  const [selectedOrgForPricing, setSelectedOrgForPricing] = useState<OrganizationPricing | null>(null);
+  const [showPricingEditDialog, setShowPricingEditDialog] = useState(false);
   
   // Get current user to check super admin status
   const { data: currentUser } = useCurrentUser();
@@ -217,6 +244,12 @@ export default function SuperAdminPage() {
 
   const { data: users } = useQuery({
     queryKey: ["/api/super-admin/users"],
+  });
+  
+  // Fetch organizations pricing
+  const { data: organizationsPricing = [], isLoading: pricingLoading, refetch: refetchPricing } = useQuery<OrganizationPricing[]>({
+    queryKey: ["/api/admin/organizations/pricing"],
+    enabled: isSuperAdmin === true,
   });
 
   // Mutations
@@ -365,6 +398,37 @@ export default function SuperAdminPage() {
       setUserToDelete(null);
     },
   });
+  
+  // Update organization pricing mutation
+  const updatePricingMutation = useMutation({
+    mutationFn: async ({ orgId, pricePerUser, billingCycle }: { orgId: string; pricePerUser: number; billingCycle: "monthly" | "annual" }) => {
+      const response = await apiRequest("PATCH", `/api/admin/organizations/${orgId}/pricing`, {
+        pricePerUser,
+        billingCycle
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw error;
+      }
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/organizations/pricing"] });
+      toast({
+        title: "Pricing updated successfully",
+        description: `Updated pricing for ${data.name}`,
+      });
+      setShowPricingEditDialog(false);
+      setSelectedOrgForPricing(null);
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to update pricing",
+        description: error.message || "An error occurred while updating organization pricing.",
+      });
+    },
+  });
 
   const handleDeleteOrganization = (org: any) => {
     setOrgToDelete(org);
@@ -386,6 +450,49 @@ export default function SuperAdminPage() {
     if (userToDelete) {
       deleteUserMutation.mutate(userToDelete.id);
     }
+  };
+  
+  // Pricing management form
+  const pricingForm = useForm<PricingUpdateFormData>({
+    resolver: zodResolver(pricingUpdateSchema),
+    defaultValues: {
+      pricePerUser: 0,
+      billingCycle: "monthly",
+    },
+  });
+
+  const handleEditPricing = (org: OrganizationPricing) => {
+    setSelectedOrgForPricing(org);
+    // Convert cents to dollars for display
+    const priceInDollars = org.billingPricePerUser / 100;
+    pricingForm.reset({
+      pricePerUser: priceInDollars,
+      billingCycle: org.billingCycle as "monthly" | "annual",
+    });
+    setShowPricingEditDialog(true);
+  };
+
+  const handlePricingSubmit = (data: PricingUpdateFormData) => {
+    if (selectedOrgForPricing) {
+      // Convert dollars to cents for API
+      const priceInCents = Math.round(data.pricePerUser * 100);
+      updatePricingMutation.mutate({
+        orgId: selectedOrgForPricing.organizationId,
+        pricePerUser: priceInCents,
+        billingCycle: data.billingCycle,
+      });
+    }
+  };
+
+  const setPredefinedPrice = (plan: string, cycle: "monthly" | "annual") => {
+    let price = 0;
+    if (plan === "professional") {
+      price = cycle === "monthly" ? 20 : 200;
+    } else if (plan === "enterprise") {
+      price = cycle === "monthly" ? 50 : 500;
+    }
+    pricingForm.setValue("pricePerUser", price);
+    pricingForm.setValue("billingCycle", cycle);
   };
 
   return (
@@ -573,13 +680,14 @@ export default function SuperAdminPage() {
 
         {/* Main Content */}
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6 lg:w-[720px]">
+          <TabsList className="grid w-full grid-cols-7 lg:w-[840px]">
             <TabsTrigger value="dashboard" data-testid="tab-dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="organizations" data-testid="tab-organizations">Organizations</TabsTrigger>
             <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
             <TabsTrigger value="pricing" data-testid="tab-pricing">Pricing</TabsTrigger>
             <TabsTrigger value="discounts" data-testid="tab-discounts">Discounts</TabsTrigger>
             <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
+            <TabsTrigger value="org-pricing" data-testid="tab-org-pricing">Org Pricing</TabsTrigger>
           </TabsList>
 
           {/* Dashboard Tab */}
@@ -988,6 +1096,99 @@ export default function SuperAdminPage() {
               ))}
             </div>
           </TabsContent>
+          
+          {/* Organization Pricing Tab */}
+          <TabsContent value="org-pricing" className="space-y-6">
+            <Card data-testid="card-org-pricing-management">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="w-5 h-5" />
+                  Organization Pricing Management
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Configure billing prices for each organization. Set monthly or annual billing cycles and custom pricing.
+                  </p>
+                  
+                  {pricingLoading ? (
+                    <div className="space-y-2">
+                      <div className="h-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                      <div className="h-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                      <div className="h-12 bg-gray-200 dark:bg-gray-700 rounded animate-pulse" />
+                    </div>
+                  ) : organizationsPricing.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <CreditCard className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                      <p>No organizations found</p>
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="text-left p-3 font-medium">Organization</th>
+                            <th className="text-left p-3 font-medium">Plan</th>
+                            <th className="text-left p-3 font-medium">Price per User</th>
+                            <th className="text-left p-3 font-medium">Billing Cycle</th>
+                            <th className="text-left p-3 font-medium">Billed Users</th>
+                            <th className="text-left p-3 font-medium">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {organizationsPricing.map((org) => (
+                            <tr key={org.organizationId} className="border-t hover:bg-muted/50">
+                              <td className="p-3">
+                                <div className="font-medium">{org.name}</div>
+                                <div className="text-xs text-muted-foreground">{org.organizationId}</div>
+                              </td>
+                              <td className="p-3">
+                                <Badge variant={
+                                  org.plan === 'enterprise' ? 'default' : 
+                                  org.plan === 'professional' ? 'secondary' : 
+                                  'outline'
+                                }>
+                                  {org.plan}
+                                </Badge>
+                              </td>
+                              <td className="p-3">
+                                <div className="font-mono">
+                                  ${(org.billingPricePerUser / 100).toFixed(2)}
+                                </div>
+                                {org.billingCycle === 'annual' && (
+                                  <div className="text-xs text-muted-foreground">
+                                    ${(org.billingPricePerUser / 100 / 12).toFixed(2)}/mo
+                                  </div>
+                                )}
+                              </td>
+                              <td className="p-3">
+                                <Badge variant="outline" className="capitalize">
+                                  {org.billingCycle}
+                                </Badge>
+                              </td>
+                              <td className="p-3">{org.billingUserCount}</td>
+                              <td className="p-3">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEditPricing(org)}
+                                  data-testid={`button-edit-pricing-${org.organizationId}`}
+                                >
+                                  <Edit className="w-3 h-3 mr-1" />
+                                  Edit
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
         
         {/* Delete Organization Confirmation Dialog */}
@@ -1047,6 +1248,183 @@ export default function SuperAdminPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        
+        {/* Pricing Edit Dialog */}
+        <Dialog open={showPricingEditDialog} onOpenChange={(open) => {
+          if (!open) {
+            setShowPricingEditDialog(false);
+            setSelectedOrgForPricing(null);
+            pricingForm.reset();
+          }
+        }}>
+          <DialogContent data-testid="dialog-edit-pricing" className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Organization Pricing</DialogTitle>
+              <DialogDescription>
+                Configure pricing for {selectedOrgForPricing?.name}
+              </DialogDescription>
+            </DialogHeader>
+            
+            <Form {...pricingForm}>
+              <form onSubmit={pricingForm.handleSubmit(handlePricingSubmit)} className="space-y-4">
+                {/* Billing Cycle Selection */}
+                <FormField
+                  control={pricingForm.control}
+                  name="billingCycle"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Billing Cycle</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-billing-cycle">
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="monthly" data-testid="option-monthly">Monthly</SelectItem>
+                          <SelectItem value="annual" data-testid="option-annual">Annual (Save ~17%)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Predefined Pricing Suggestions */}
+                <div>
+                  <Label>Quick Price Options</Label>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPredefinedPrice("standard", pricingForm.getValues("billingCycle"))}
+                      data-testid="button-price-free"
+                    >
+                      <DollarSign className="w-3 h-3 mr-1" />
+                      Free
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPredefinedPrice("professional", pricingForm.getValues("billingCycle"))}
+                      data-testid="button-price-professional"
+                    >
+                      <DollarSign className="w-3 h-3 mr-1" />
+                      Professional
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPredefinedPrice("enterprise", pricingForm.getValues("billingCycle"))}
+                      data-testid="button-price-enterprise"
+                    >
+                      <DollarSign className="w-3 h-3 mr-1" />
+                      Enterprise
+                    </Button>
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-2 space-y-1">
+                    <div>• Professional: $20/mo or $200/year ($16.67/mo)</div>
+                    <div>• Enterprise: $50/mo or $500/year ($41.67/mo)</div>
+                  </div>
+                </div>
+
+                {/* Price per User Input */}
+                <FormField
+                  control={pricingForm.control}
+                  name="pricePerUser"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Price per User (in dollars)</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                          <Input
+                            {...field}
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="pl-8"
+                            placeholder="0.00"
+                            data-testid="input-price-per-user"
+                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                          />
+                        </div>
+                      </FormControl>
+                      {pricingForm.watch("billingCycle") === "annual" && pricingForm.watch("pricePerUser") > 0 && (
+                        <p className="text-sm text-muted-foreground">
+                          Monthly equivalent: ${(pricingForm.watch("pricePerUser") / 12).toFixed(2)}
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Summary */}
+                <div className="bg-muted rounded-lg p-3">
+                  <div className="text-sm space-y-1">
+                    <div className="flex justify-between">
+                      <span>Organization:</span>
+                      <span className="font-medium">{selectedOrgForPricing?.name}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Current Plan:</span>
+                      <Badge variant="outline" className="capitalize">
+                        {selectedOrgForPricing?.plan}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Billed Users:</span>
+                      <span className="font-medium">{selectedOrgForPricing?.billingUserCount}</span>
+                    </div>
+                    <div className="border-t pt-1 mt-1">
+                      <div className="flex justify-between font-medium">
+                        <span>New Monthly Charge:</span>
+                        <span>
+                          ${((pricingForm.watch("pricePerUser") || 0) * (selectedOrgForPricing?.billingUserCount || 0)).toFixed(2)}
+                          {pricingForm.watch("billingCycle") === "annual" && " (billed annually)"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Form Actions */}
+                <div className="flex justify-end gap-2">
+                  <Button 
+                    type="button" 
+                    variant="outline"
+                    onClick={() => {
+                      setShowPricingEditDialog(false);
+                      setSelectedOrgForPricing(null);
+                      pricingForm.reset();
+                    }}
+                    data-testid="button-cancel-pricing"
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    type="submit"
+                    disabled={updatePricingMutation.isPending}
+                    data-testid="button-save-pricing"
+                  >
+                    {updatePricingMutation.isPending ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save Changes"
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
