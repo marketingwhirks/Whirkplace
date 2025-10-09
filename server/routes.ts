@@ -3038,6 +3038,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Demo Login endpoint - specifically for demo accounts
+  app.post("/api/auth/demo-login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      
+      if (!email || !password) {
+        return res.status(400).json({ 
+          message: "Email and password are required" 
+        });
+      }
+      
+      // Check if this is a valid demo account
+      const validDemoAccounts = [
+        { email: 'john@delicious.com', role: 'admin', name: 'John Delicious', isAccountOwner: true },
+        { email: 'sarah@delicious.com', role: 'admin', name: 'Sarah Delicious', isAccountOwner: false },
+        { email: 'mike@delicious.com', role: 'member', name: 'Mike Delicious', isAccountOwner: false }
+      ];
+      
+      const demoAccount = validDemoAccounts.find(acc => acc.email === email.toLowerCase());
+      
+      if (!demoAccount) {
+        return res.status(401).json({ 
+          message: "Invalid demo account" 
+        });
+      }
+      
+      // Verify the demo password
+      if (password !== 'Demo1234!') {
+        return res.status(401).json({ 
+          message: "Invalid password for demo account" 
+        });
+      }
+      
+      console.log('🎬 Demo login attempt for:', email);
+      
+      // Get or create the demo organization
+      const demoOrgSlug = 'fictitious-delicious';
+      let organization = await storage.getOrganizationBySlug(demoOrgSlug);
+      
+      if (!organization) {
+        console.log('📝 Creating demo organization...');
+        
+        // Create the demo organization
+        organization = await storage.createOrganization({
+          id: 'b74d00fd-e1ce-41ae-afca-4a0d55cb1fe1',
+          name: 'Fictitious Delicious',
+          slug: demoOrgSlug,
+          description: 'A fine dining restaurant showcasing Whirkplace for hospitality teams',
+          isDemo: true,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+        
+        // Run the demo data seeder to create teams and other data
+        const { ensureDemoDataExists } = await import('./seedDemoData');
+        await ensureDemoDataExists();
+      }
+      
+      // Check if user exists in the organization
+      let user = await storage.getUserByEmail(organization.id, email.toLowerCase());
+      
+      if (!user) {
+        console.log('📝 Creating demo user:', email);
+        
+        // Hash the demo password
+        const hashedPassword = await bcrypt.hash('Demo1234!', 10);
+        
+        // Create the user
+        user = await storage.createUser({
+          organizationId: organization.id,
+          email: email.toLowerCase(),
+          name: demoAccount.name,
+          password: hashedPassword,
+          role: demoAccount.role,
+          isAccountOwner: demoAccount.isAccountOwner,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      } else {
+        // Update user to ensure correct role and account owner status
+        if (user.role !== demoAccount.role || user.isAccountOwner !== demoAccount.isAccountOwner) {
+          await storage.updateUser(organization.id, user.id, {
+            role: demoAccount.role,
+            isAccountOwner: demoAccount.isAccountOwner
+          });
+          
+          // Refresh user data
+          user = await storage.getUser(organization.id, user.id);
+        }
+      }
+      
+      if (!user) {
+        return res.status(500).json({ 
+          message: "Failed to create or retrieve demo user" 
+        });
+      }
+      
+      // Import the centralized AuthService
+      const { authService } = await import('./services/authService');
+      
+      // Create session using the centralized AuthService
+      try {
+        await authService.createSession(req, user, organization);
+        
+        console.log('✅ Demo login successful for:', email);
+        
+        // Return sanitized user data (matching the expected response format)
+        res.json({ 
+          message: "Login successful",
+          user: authService.getSanitizedUser(user),
+          token: null // No JWT token needed for demo, using session-based auth
+        });
+      } catch (sessionError) {
+        console.error('Failed to create session:', sessionError);
+        return res.status(500).json({ message: "Session creation failed" });
+      }
+    } catch (error) {
+      console.error("Demo login error:", error);
+      res.status(500).json({ message: "Demo login failed" });
+    }
+  });
+
   // Email/Password Registration endpoint (before auth middleware)
   app.post("/api/auth/register", requireOrganization(), async (req, res) => {
     try {
