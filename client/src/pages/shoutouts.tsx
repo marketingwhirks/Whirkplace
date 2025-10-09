@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Edit, Trash2, Users, Lock, Unlock, Sparkles, Star, MessageCircle, Send, Gift, Check, ChevronsUpDown, X, InfoIcon, User2, UsersIcon } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Lock, Unlock, Sparkles, Star, MessageCircle, Send, Gift, Check, ChevronsUpDown, X, InfoIcon, User2, UsersIcon, Heart } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -628,12 +628,18 @@ export default function ShoutoutsPage() {
           </div>
 
           {/* Explanatory Text */}
-          <Alert>
-            <InfoIcon className="h-4 w-4" />
-            <AlertDescription>
-              Shoutouts are public recognitions to celebrate teammates and teams who embody our company values. Give kudos to individuals or entire teams for their outstanding contributions, collaboration, and achievements.
-            </AlertDescription>
-          </Alert>
+          <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+            <CardContent className="pt-6">
+              <div className="flex items-start space-x-3">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                  <Heart className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <p className="text-sm text-muted-foreground flex-1">
+                  Recognize your teammates. A simple thank you goes a long way in building strong team relationships.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Tabs for filtering */}
           <Tabs value={filter} onValueChange={(value) => setFilter(value as any)}>

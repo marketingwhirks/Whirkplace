@@ -410,7 +410,7 @@ export default function TeamGoals() {
             Team Goals
           </h1>
           <p className="text-muted-foreground mt-2">
-            Track your team's progress towards collective goals and earn prizes!
+            Compete, collaborate, and win together! Join team contests, track progress, and earn prizes.
           </p>
         </div>
 

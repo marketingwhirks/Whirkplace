@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow, format } from "date-fns";
-import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle, Check, InfoIcon, Flame, Medal, TrendingUp, Award, Target } from "lucide-react";
+import { Plus, Edit, Trash2, Users, Lock, Unlock, Trophy, Star, MessageCircle, Check, InfoIcon, Flame, Medal, TrendingUp, Award, Target, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -292,12 +292,18 @@ export default function Wins() {
       
       <div className="space-y-6" data-testid="wins-container">
           {/* Explanatory Text */}
-          <Alert>
-            <InfoIcon className="h-4 w-4" />
-            <AlertDescription>
-              Wins are personal or professional achievements worth celebrating. Share your successes, milestones, and accomplishments with your team to foster a culture of recognition and positivity.
-            </AlertDescription>
-          </Alert>
+          <Card className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+            <CardContent className="pt-6">
+              <div className="flex items-start space-x-3">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                  <Sparkles className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <p className="text-sm text-muted-foreground flex-1">
+                  Celebrate achievements that matter. Share your successes, big or small, to inspire the team and build momentum.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Team Goals Quick Access - NEW Feature */}
           <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/20 dark:to-teal-950/20 border-emerald-200 dark:border-emerald-800">
