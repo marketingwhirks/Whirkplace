@@ -38,6 +38,7 @@ import DemoLoginPage from "@/pages/demo-login";
 import RoadmapPage from "@/pages/roadmap";
 import OAuthCallbackPage from "@/pages/oauth-callback";
 import DeploymentTest from "@/pages/DeploymentTest";
+import OnboardingPage from "@/pages/onboarding";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
@@ -70,6 +71,7 @@ function Router() {
             <Route path="/billing" component={BillingPage} />
             <Route path="/roadmap" component={RoadmapPage} />
             <Route path="/super-admin" component={SuperAdmin} />
+            <Route path="/onboarding" component={OnboardingPage} />
             <Route path="/integration-test" component={IntegrationTest} />
             <Route path="/select-organization" component={SelectOrganizationPage} />
             <Route path="/brand-guide" component={BrandGuideViewer} />
