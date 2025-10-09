@@ -106,6 +106,8 @@ export default function TeamGoals() {
   const [selectedGoal, setSelectedGoal] = useState<TeamGoal | null>(null);
   const [completedGoal, setCompletedGoal] = useState<TeamGoal | null>(null);
 
+  // Debug log to see actual role value
+  console.log("Team Goals - User role:", user?.role, "User:", user);
   const isTeamLeader = user?.role === "admin" || user?.role === "manager";
 
   // Fetch team goals
