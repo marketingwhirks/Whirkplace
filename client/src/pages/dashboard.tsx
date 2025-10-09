@@ -10,7 +10,7 @@ import RatingStars from "@/components/checkin/rating-stars";
 import WinCard from "@/components/wins/win-card";
 import TeamMemberCard from "@/components/team/team-member-card";
 import CheckinDetail from "@/components/checkin/checkin-detail";
-import { Heart, Sparkles, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer, TrendingUp } from "lucide-react";
+import { Heart, Sparkles, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer, TrendingUp, Gift, ArrowRight, Users } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
@@ -20,6 +20,7 @@ import type { Checkin, Win, User, Question, ComplianceMetricsResult, Shoutout, T
 import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
+import { Link } from "wouter";
 
 interface DashboardStats {
   averageRating: number;
@@ -855,16 +856,20 @@ export default function Dashboard() {
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <Target className="w-5 h-5" />
-                  Active Team Goals
+                  Team Goal Progress
                 </CardTitle>
-                <Button 
-                  variant="link" 
-                  data-testid="button-view-all-goals"
-                  onClick={() => window.location.href = "/team-goals"}
-                >
-                  View All
-                </Button>
+                <Link href="/team-goals" data-testid="button-view-all-goals">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    View All Team Goals
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </Link>
               </div>
+              {currentUser.role === 'admin' && (
+                <p className="text-sm text-muted-foreground">
+                  Viewing goals across all teams
+                </p>
+              )}
             </CardHeader>
             <CardContent className="space-y-4">
               {goalsLoading ? (
@@ -877,46 +882,153 @@ export default function Dashboard() {
                   ))}
                 </div>
               ) : (
-                teamGoals.map((goal) => {
-                  const progressPercent = goal.targetValue > 0 
-                    ? Math.min((goal.currentValue / goal.targetValue) * 100, 100)
-                    : 0;
-                  const daysLeft = goal.endDate 
-                    ? Math.ceil((new Date(goal.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-                    : 0;
+                (() => {
+                  // Group goals by team for admin users
+                  if (currentUser.role === 'admin') {
+                    const goalsByTeam = teamGoals.reduce((acc, goal) => {
+                      const teamKey = (goal as any).teamName || 'Organization-wide';
+                      if (!acc[teamKey]) acc[teamKey] = [];
+                      acc[teamKey].push(goal);
+                      return acc;
+                    }, {} as Record<string, typeof teamGoals>);
 
-                  return (
-                    <div key={goal.id} className="space-y-2 p-4 bg-muted rounded-lg">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="font-medium text-sm">{goal.title}</h4>
-                          <p className="text-xs text-muted-foreground">
-                            {goal.metric} · {goal.currentValue}/{goal.targetValue}
-                          </p>
+                    return Object.entries(goalsByTeam).map(([teamName, goals]) => (
+                      <div key={teamName} className="space-y-3">
+                        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                          <Users className="w-4 h-4" />
+                          {teamName}
                         </div>
-                        {goal.status === "completed" ? (
-                          <Badge className="bg-green-100 text-green-800">
-                            <Trophy className="w-3 h-3 mr-1" />
-                            Achieved!
-                          </Badge>
-                        ) : daysLeft > 0 ? (
-                          <Badge variant="secondary">
-                            {daysLeft} days left
-                          </Badge>
-                        ) : (
-                          <Badge variant="destructive">Expired</Badge>
-                        )}
+                        {goals.map((goal) => {
+                          const progressPercent = goal.targetValue > 0 
+                            ? Math.min((goal.currentValue / goal.targetValue) * 100, 100)
+                            : 0;
+                          const daysLeft = goal.endDate 
+                            ? Math.ceil((new Date(goal.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                            : 0;
+
+                          return (
+                            <div key={goal.id} className="space-y-2 p-4 bg-muted rounded-lg ml-6">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <h4 className="font-medium text-sm">{goal.title}</h4>
+                                  <p className="text-xs text-muted-foreground">
+                                    {goal.goalType} · {goal.metric} · {goal.currentValue}/{goal.targetValue}
+                                  </p>
+                                </div>
+                                {goal.status === "completed" ? (
+                                  <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                                    <Trophy className="w-3 h-3 mr-1" />
+                                    Achieved!
+                                  </Badge>
+                                ) : goal.status === "expired" ? (
+                                  <Badge variant="destructive">Expired</Badge>
+                                ) : daysLeft > 7 ? (
+                                  <Badge variant="secondary">
+                                    <Timer className="w-3 h-3 mr-1" />
+                                    {daysLeft} days
+                                  </Badge>
+                                ) : daysLeft > 0 ? (
+                                  <Badge variant="outline" className="text-orange-600 border-orange-600">
+                                    <Timer className="w-3 h-3 mr-1" />
+                                    {daysLeft} days left
+                                  </Badge>
+                                ) : (
+                                  <Badge variant="destructive">Expired</Badge>
+                                )}
+                              </div>
+                              <Progress value={progressPercent} className="h-2" />
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-muted-foreground">
+                                  {progressPercent.toFixed(0)}% complete
+                                </span>
+                                {goal.prize && (
+                                  <span className="text-muted-foreground flex items-center gap-1">
+                                    <Gift className="w-3 h-3" />
+                                    {goal.prize}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <Progress value={progressPercent} className="h-2" />
-                      {goal.prize && (
-                        <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <TrendingUp className="w-3 h-3" />
-                          Prize: {goal.prize}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })
+                    ));
+                  } else {
+                    // Non-admin view - flat list with team name inline
+                    return teamGoals.map((goal) => {
+                      const progressPercent = goal.targetValue > 0 
+                        ? Math.min((goal.currentValue / goal.targetValue) * 100, 100)
+                        : 0;
+                      const daysLeft = goal.endDate 
+                        ? Math.ceil((new Date(goal.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+                        : 0;
+
+                      return (
+                        <div key={goal.id} className="space-y-2 p-4 bg-muted rounded-lg">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h4 className="font-medium text-sm">{goal.title}</h4>
+                              <p className="text-xs text-muted-foreground">
+                                {(goal as any).teamName && (
+                                  <>
+                                    <Users className="w-3 h-3 inline mr-1" />
+                                    {(goal as any).teamName} · 
+                                  </>
+                                )}
+                                {goal.goalType} · {goal.metric} · {goal.currentValue}/{goal.targetValue}
+                              </p>
+                            </div>
+                            {goal.status === "completed" ? (
+                              <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                                <Trophy className="w-3 h-3 mr-1" />
+                                Achieved!
+                              </Badge>
+                            ) : goal.status === "expired" ? (
+                              <Badge variant="destructive">Expired</Badge>
+                            ) : daysLeft > 7 ? (
+                              <Badge variant="secondary">
+                                <Timer className="w-3 h-3 mr-1" />
+                                {daysLeft} days
+                              </Badge>
+                            ) : daysLeft > 0 ? (
+                              <Badge variant="outline" className="text-orange-600 border-orange-600">
+                                <Timer className="w-3 h-3 mr-1" />
+                                {daysLeft} days left
+                              </Badge>
+                            ) : (
+                              <Badge variant="destructive">Expired</Badge>
+                            )}
+                          </div>
+                          <Progress value={progressPercent} className="h-2" />
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">
+                              {progressPercent.toFixed(0)}% complete
+                            </span>
+                            {goal.prize && (
+                              <span className="text-muted-foreground flex items-center gap-1">
+                                <Gift className="w-3 h-3" />
+                                {goal.prize}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    });
+                  }
+                })()
+              )}
+              {!goalsLoading && teamGoals.length === 0 && (
+                <div className="text-center py-8">
+                  <Target className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-sm text-muted-foreground">
+                    No active team goals at the moment
+                  </p>
+                  <Link href="/team-goals">
+                    <Button variant="link" size="sm" className="mt-2">
+                      View all goals
+                    </Button>
+                  </Link>
+                </div>
               )}
             </CardContent>
           </Card>

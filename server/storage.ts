@@ -46,7 +46,7 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { eq, desc, and, gte, or, sql, sum, count, avg, lt, lte, inArray } from "drizzle-orm";
+import { eq, desc, and, gte, or, sql, sum, count, avg, lt, lte, inArray, isNull } from "drizzle-orm";
 import { AggregationService } from "./services/aggregation";
 import { getCheckinDueDate, getReviewDueDate, isSubmittedOnTime, isReviewedOnTime, getWeekStartCentral } from "@shared/utils/dueDates";
 
@@ -1658,14 +1658,34 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(teamGoals.createdAt));
   }
 
-  async getDashboardGoals(organizationId: string): Promise<TeamGoal[]> {
-    return await db.select().from(teamGoals)
-      .where(and(
-        eq(teamGoals.organizationId, organizationId),
-        eq(teamGoals.status, 'active')
-      ))
+  async getDashboardGoals(organizationId: string, userId?: string, userRole?: string): Promise<TeamGoal[]> {
+    let query = db.select().from(teamGoals);
+    let whereConditions: any[] = [
+      eq(teamGoals.organizationId, organizationId),
+      eq(teamGoals.status, 'active')
+    ];
+
+    // Apply role-based filtering
+    if (userId && userRole !== 'admin') {
+      // For non-admin users, only show goals for their team
+      const user = await this.getUser(organizationId, userId);
+      if (user?.teamId) {
+        // Show team-specific goals and org-wide goals (null teamId)
+        whereConditions.push(or(
+          eq(teamGoals.teamId, user.teamId),
+          isNull(teamGoals.teamId)
+        ));
+      } else {
+        // User without a team only sees org-wide goals
+        whereConditions.push(isNull(teamGoals.teamId));
+      }
+    }
+    // Admins see all goals (no additional filtering needed)
+
+    return await query
+      .where(and(...whereConditions))
       .orderBy(desc(teamGoals.createdAt))
-      .limit(5);
+      .limit(10); // Increased limit for dashboard display
   }
 
   // Check-in Review Methods

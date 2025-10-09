@@ -9205,8 +9205,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/team-goals/dashboard", requireAuth(), async (req, res) => {
     try {
-      const goals = await storage.getDashboardGoals(req.orgId);
-      res.json(goals);
+      const userId = (req as any).userId;
+      const user = await storage.getUser(req.orgId, userId);
+      const goals = await storage.getDashboardGoals(req.orgId, userId, user?.role);
+      
+      // For admins, enrich goals with team information for better display
+      if (user?.role === 'admin') {
+        const teams = await storage.getAllTeams(req.orgId);
+        const enrichedGoals = goals.map(goal => {
+          const team = teams.find(t => t.id === goal.teamId);
+          return {
+            ...goal,
+            teamName: team?.name || 'Organization-wide'
+          };
+        });
+        res.json(enrichedGoals);
+      } else {
+        // For non-admins, also include team name for clarity
+        const userTeam = user?.teamId ? await storage.getTeam(req.orgId, user.teamId) : null;
+        const enrichedGoals = goals.map(goal => ({
+          ...goal,
+          teamName: goal.teamId ? userTeam?.name : 'Organization-wide'
+        }));
+        res.json(enrichedGoals);
+      }
     } catch (error) {
       console.error("GET /api/team-goals/dashboard - Error:", error);
       res.status(500).json({ message: "Failed to fetch dashboard goals" });
