@@ -145,14 +145,13 @@ export default function Admin() {
   // Send password setup email mutation
   const sendPasswordSetupMutation = useMutation({
     mutationFn: async (userId: string) => {
-      return apiRequest(`/api/admin/users/${userId}/send-password-setup`, {
-        method: "POST",
-      });
+      const response = await apiRequest("POST", `/api/admin/users/${userId}/send-password-setup`);
+      return response.json();
     },
     onSuccess: (data) => {
       toast({
-        title: "Password Setup Email Sent",
-        description: data.message,
+        title: "Password Setup Sent",
+        description: data.message || "Password setup instructions sent via Slack DM",
       });
       // Refetch users to update the UI
       refetchUsers();
@@ -160,8 +159,8 @@ export default function Admin() {
     onError: (error: any) => {
       toast({
         variant: "destructive",
-        title: "Failed to send email",
-        description: error.message || "Failed to send password setup email",
+        title: "Failed to send password setup",
+        description: error.message || "Failed to send password setup via Slack DM",
       });
     },
   });
