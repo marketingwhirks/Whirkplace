@@ -48,6 +48,9 @@ The application adopts a multi-tenant architecture to support multiple organizat
 
 ### Third-party Integrations
 - **Slack Web API**: For check-in reminders, win announcements, team health updates, password reset links via DM, and customizable notifications.
+  - **Password Setup via Slack DM**: New users synced from Slack automatically receive password setup instructions via Slack DM
+  - **Admin Password Reset**: Admins can send password setup links to Slack users directly via DM from the Admin Panel
+  - **Organization Context**: Password reset links now include organization context for better routing
 
 ### State Management
 - **TanStack React Query**: Server state management.
