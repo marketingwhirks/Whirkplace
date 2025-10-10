@@ -1013,6 +1013,12 @@ export default function Admin() {
                       </div>
                       {getRoleBadge(user.role)}
                       {getTeamBadge(user)}
+                      {/* Debug: Show auth provider and password status */}
+                      {user.authProvider === 'slack' && (
+                        <span className="text-xs text-muted-foreground">
+                          Slack Auth | Password: {user.password ? 'Set' : 'Not Set'}
+                        </span>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
@@ -1035,7 +1041,8 @@ export default function Admin() {
                       >
                         Assign Team
                       </Button>
-                      {user.authProvider === 'slack' && (!user.password || user.password === '') && (
+                      {/* Show button for Slack users who either have no password, empty password, or a temporary/default password */}
+                      {user.authProvider === 'slack' && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button

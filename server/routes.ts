@@ -8107,12 +8107,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Check if user already has a password set (not empty)
-      if (targetUser.password && targetUser.password !== '') {
-        return res.status(400).json({ 
-          message: "User already has a password set up" 
-        });
-      }
+      // For Slack users, we'll allow sending password setup email even if they have a password
+      // This helps in cases where they were synced with a default/temporary password
+      // Skip the password check for Slack users to allow password reset anytime
 
       // Generate password reset token with 24-hour expiration
       const token = await storage.createPasswordResetToken(targetUserId);
