@@ -1035,7 +1035,7 @@ export default function Admin() {
                       >
                         Assign Team
                       </Button>
-                      {user.authProvider === 'slack' && !user.password && (
+                      {user.authProvider === 'slack' && (!user.password || user.password === '') && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button

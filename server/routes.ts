@@ -8107,8 +8107,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Check if user already has a password set
-      if (targetUser.password) {
+      // Check if user already has a password set (not empty)
+      if (targetUser.password && targetUser.password !== '') {
         return res.status(400).json({ 
           message: "User already has a password set up" 
         });
