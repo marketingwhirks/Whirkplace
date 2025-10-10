@@ -19,6 +19,7 @@ export default function LoginPage() {
   const [loginStep, setLoginStep] = useState<'organization' | 'auth'>('auth');
   const [isLoadingProviders, setIsLoadingProviders] = useState(false);
   const [orgContext, setOrgContext] = useState<any>(null);
+  const [availableProviders, setAvailableProviders] = useState<{slack?: boolean, microsoft?: boolean}>({});
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -36,18 +37,58 @@ export default function LoginPage() {
     // Fetch organization context based on subdomain
     fetchOrganizationContext();
     
-    // Get organization from URL parameter if provided
+    // Get organization from URL parameter if provided (e.g., from Slack link)
     const orgParam = urlParams.get('org');
     if (orgParam) {
       setOrganizationSlug(orgParam);
       fetchAuthProviders(orgParam);
+    } else {
+      // Try to get last used organization from localStorage
+      const lastOrg = localStorage.getItem('last-organization');
+      if (lastOrg) {
+        setOrganizationSlug(lastOrg);
+        // Don't auto-fetch providers, let user confirm
+      }
     }
     
     // Only clear auth if explicitly logging out
     if (urlParams.get('logout') === 'true') {
       clearOldAuthTokens();
     }
+    
+    // Check for common organizations to show available auth methods hint
+    checkCommonOrganizationProviders();
   }, []);
+  
+  // Check if common organizations have Slack/Microsoft enabled for hint text
+  const checkCommonOrganizationProviders = async () => {
+    try {
+      // Check a few common orgs to see what auth providers are typically available
+      const commonOrgs = ['patrick-accounting', 'delicious', 'whirkplace'];
+      const providers: {slack?: boolean, microsoft?: boolean} = {};
+      
+      for (const org of commonOrgs) {
+        try {
+          const response = await fetch(`/api/auth/providers/${org}`);
+          if (response.ok) {
+            const data = await response.json();
+            if (data.providers) {
+              data.providers.forEach((p: any) => {
+                if (p.enabled && p.provider === 'slack') providers.slack = true;
+                if (p.enabled && p.provider === 'microsoft') providers.microsoft = true;
+              });
+            }
+          }
+        } catch {
+          // Ignore errors for individual checks
+        }
+      }
+      
+      setAvailableProviders(providers);
+    } catch (error) {
+      // Ignore errors, this is just for helpful hints
+    }
+  };
   
   const fetchOrganizationContext = async () => {
     try {
@@ -118,6 +159,8 @@ export default function LoginPage() {
       return;
     }
     setOrganizationSlug(normalizedSlug);
+    // Remember this organization for next time
+    localStorage.setItem('last-organization', normalizedSlug);
     fetchAuthProviders(normalizedSlug);
   };
 
@@ -162,6 +205,9 @@ export default function LoginPage() {
     localStorage.removeItem('demo_user');
     localStorage.removeItem('demo_org');
     
+    // Remember this organization for next time
+    localStorage.setItem('last-organization', organizationSlug);
+    
     // Include the org parameter in the Slack auth URL
     const url = `/auth/slack/login?org=${organizationSlug}`;
     window.location.href = url;
@@ -172,6 +218,9 @@ export default function LoginPage() {
     localStorage.removeItem('demo_token');
     localStorage.removeItem('demo_user');
     localStorage.removeItem('demo_org');
+    
+    // Remember this organization for next time
+    localStorage.setItem('last-organization', organizationSlug);
     
     // Redirect to the Microsoft OAuth endpoint with organization parameter
     window.location.href = `/auth/microsoft?org=${organizationSlug}`;
@@ -360,17 +409,45 @@ export default function LoginPage() {
                 <>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="organization">Organization Name</Label>
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="organization">Organization Name</Label>
+                        {localStorage.getItem('last-organization') === organizationSlug && organizationSlug && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            Recently used
+                          </span>
+                        )}
+                      </div>
                       <div className="flex space-x-2">
-                        <Input 
-                          id="organization"
-                          type="text"
-                          value={organizationSlug}
-                          onChange={(e) => setOrganizationSlug(e.target.value)}
-                          placeholder="e.g., acme-corp or acme"
-                          onKeyDown={(e) => e.key === 'Enter' && handleOrganizationSubmit()}
-                          data-testid="input-organization"
-                        />
+                        <div className="relative flex-1">
+                          <Input 
+                            id="organization"
+                            type="text"
+                            value={organizationSlug}
+                            onChange={(e) => setOrganizationSlug(e.target.value)}
+                            placeholder="e.g., acme-corp or acme"
+                            onKeyDown={(e) => e.key === 'Enter' && handleOrganizationSubmit()}
+                            data-testid="input-organization"
+                            className="pr-8"
+                          />
+                          {organizationSlug && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOrganizationSlug('');
+                                localStorage.removeItem('last-organization');
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                              aria-label="Clear organization"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                         <Button 
                           onClick={handleOrganizationSubmit}
                           disabled={!organizationSlug || isLoadingProviders}
@@ -382,6 +459,33 @@ export default function LoginPage() {
                       <p className="text-sm text-muted-foreground">
                         Enter your company or team name as provided by your administrator
                       </p>
+                      {/* Show helpful hints about available auth methods */}
+                      {(availableProviders.slack || availableProviders.microsoft) && (
+                        <div className="flex items-center gap-2 mt-2">
+                          <p className="text-xs text-muted-foreground">Quick login available:</p>
+                          <div className="flex gap-1">
+                            {availableProviders.slack && (
+                              <span className="inline-flex items-center gap-1 text-xs bg-[#4A154B]/10 text-[#4A154B] px-2 py-0.5 rounded">
+                                <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
+                                  <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52-2.523c0-1.398 1.13-2.528 2.52-2.528h2.52v2.528c0 1.393-1.122 2.523-2.52 2.523Zm0 0a2.528 2.528 0 0 1-2.52 2.523c0-1.398 1.13-2.528 2.52-2.528v2.528h2.52c1.398 0 2.528-1.13 2.528-2.523a2.528 2.528 0 0 1-2.528-2.52H5.042v2.52Z"/>
+                                  <path d="M8.958 8.835a2.528 2.528 0 0 1 2.523-2.52c1.398 0 2.528 1.13 2.528 2.52v2.52h-2.528a2.528 2.528 0 0 1-2.523-2.52Zm0 0a2.528 2.528 0 0 1-2.523-2.52c1.398 0 2.528 1.13 2.528 2.52H8.958v2.52c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523-2.528v-2.52Z"/>
+                                  <path d="M15.165 18.958a2.528 2.528 0 0 1 2.523 2.52c0-1.398 1.13-2.528 2.523-2.528a2.528 2.528 0 0 1-2.523-2.52v-2.52h2.523c1.398 0 2.528 1.13 2.528 2.52a2.528 2.528 0 0 1-2.528 2.523h-2.523v2.523Z"/>
+                                  <path d="M18.958 8.835a2.528 2.528 0 0 1-2.52-2.523c0 1.398-1.13 2.528-2.523 2.528a2.528 2.528 0 0 1 2.523 2.52v2.52h-2.523c-1.398 0-2.528-1.13-2.528-2.52a2.528 2.528 0 0 1 2.528 2.523h2.52V8.835Z"/>
+                                </svg>
+                                Slack
+                              </span>
+                            )}
+                            {availableProviders.microsoft && (
+                              <span className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">
+                                <svg viewBox="0 0 24 24" className="w-3 h-3" fill="currentColor">
+                                  <path d="M11.4 24H0V12.6h11.4V24zM24 24H12.6V12.6H24V24zM11.4 11.4H0V0h11.4v11.4zM24 11.4H12.6V0H24v11.4z"/>
+                                </svg>
+                                Microsoft
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
