@@ -8100,17 +8100,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
 
-      // Check if user authenticated via Slack
-      if (targetUser.authProvider !== 'slack') {
-        return res.status(400).json({ 
-          message: "This feature is only available for users who authenticate via Slack" 
-        });
-      }
-
-      // Check if user has Slack ID
+      // Check if user has Slack ID (they must be connected to Slack)
       if (!targetUser.slackUserId) {
         return res.status(400).json({ 
-          message: "User does not have a Slack ID configured" 
+          message: "User does not have a Slack ID configured. This feature is only available for users connected to Slack." 
         });
       }
 
