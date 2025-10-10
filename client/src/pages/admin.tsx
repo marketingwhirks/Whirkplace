@@ -1041,7 +1041,7 @@ export default function Admin() {
                       >
                         Assign Team
                       </Button>
-                      {/* Show button for Slack users who either have no password, empty password, or a temporary/default password */}
+                      {/* Show button for ALL Slack users to send password setup via Slack DM */}
                       {user.authProvider === 'slack' && (
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -1057,7 +1057,7 @@ export default function Admin() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            <p>Send password setup link to Slack users so they can also log in with email/password</p>
+                            <p>Send password setup instructions via Slack DM so users can also log in with email/password</p>
                           </TooltipContent>
                         </Tooltip>
                       )}

@@ -21,7 +21,7 @@ import {
 import { eq, desc, and } from "drizzle-orm";
 import Stripe from "stripe";
 import { WebClient } from "@slack/web-api";
-import { sendCheckinReminder, announceWin, sendPrivateWinNotification, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo } from "./services/slack";
+import { sendCheckinReminder, announceWin, sendPrivateWinNotification, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo, sendPasswordSetupViaSlackDM } from "./services/slack";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import Papa from "papaparse";
@@ -8088,7 +8088,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Admin endpoint to send password setup email to Slack users
+  // Admin endpoint to send password setup via Slack DM to Slack users
   app.post("/api/admin/users/:userId/send-password-setup", requireAuth(), requireRole("admin"), async (req, res) => {
     try {
       const targetUserId = req.params.userId;
@@ -8107,48 +8107,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // For Slack users, we'll allow sending password setup email even if they have a password
+      // Check if user has Slack ID
+      if (!targetUser.slackUserId) {
+        return res.status(400).json({ 
+          message: "User does not have a Slack ID configured" 
+        });
+      }
+
+      // For Slack users, we'll allow sending password setup DM even if they have a password
       // This helps in cases where they were synced with a default/temporary password
       // Skip the password check for Slack users to allow password reset anytime
 
       // Generate password reset token with 24-hour expiration
       const token = await storage.createPasswordResetToken(targetUserId);
       
-      // Get organization info for email
+      // Get organization info
       const organization = await storage.getOrganization(organizationId);
       if (!organization) {
         return res.status(500).json({ message: "Organization not found" });
       }
 
-      // Send password setup email
-      const baseUrl = req.protocol + '://' + req.get('host');
-      const emailSent = await sendSlackPasswordSetupEmail(
+      // Send password setup via Slack DM
+      const result = await sendPasswordSetupViaSlackDM(
+        targetUser.slackUserId,
         targetUser.email,
-        targetUser.name,
         token,
         organization.name,
-        baseUrl
+        organization.slug || organizationId,
+        targetUser.name,
+        organization.slackBotToken // Use organization-specific bot token if available
       );
 
-      if (!emailSent) {
-        // Delete the token if email failed to send
+      if (!result.success) {
+        // Delete the token if DM failed to send
         await storage.deletePasswordResetToken(token);
         return res.status(500).json({ 
-          message: "Failed to send password setup email. Please check email configuration." 
+          message: result.error || "Failed to send password setup via Slack DM. Please check Slack configuration." 
         });
       }
 
-      console.log(`✅ Password setup email sent to Slack user ${targetUser.email} by admin ${req.currentUser?.email}`);
+      console.log(`✅ Password setup DM sent to Slack user ${targetUser.email} (${targetUser.slackUserId}) by admin ${req.currentUser?.email}`);
 
       res.json({
-        message: `Password setup email sent successfully to ${targetUser.email}`,
+        message: `Password setup instructions sent successfully via Slack DM`,
         userId: targetUserId,
-        email: targetUser.email
+        email: targetUser.email,
+        slackUserId: targetUser.slackUserId
       });
     } catch (error) {
-      console.error("Failed to send password setup email:", error);
+      console.error("Failed to send password setup DM:", error);
       res.status(500).json({ 
-        message: "Failed to send password setup email" 
+        message: "Failed to send password setup via Slack DM" 
       });
     }
   });

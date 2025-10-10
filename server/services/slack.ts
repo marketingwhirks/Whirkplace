@@ -1500,6 +1500,131 @@ export async function sendWelcomeMessage(userId: string, userName: string, chann
 }
 
 /**
+ * Send password setup DM to Slack users
+ * This is used by admins to send password reset instructions to existing Slack users
+ */
+export async function sendPasswordSetupViaSlackDM(
+  slackUserId: string,
+  email: string,
+  resetToken: string,
+  organizationName: string,
+  organizationSlug: string,
+  userName?: string,
+  botToken?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const slackClient = botToken ? new WebClient(botToken) : slack;
+    
+    if (!slackClient) {
+      console.error('No Slack client available for sending password setup DM');
+      return { success: false, error: 'Slack not configured' };
+    }
+
+    // Open a DM channel with the user
+    const dmResult = await slackClient.conversations.open({
+      users: slackUserId
+    });
+
+    if (!dmResult.ok || !dmResult.channel?.id) {
+      console.error(`Failed to open DM with user ${slackUserId}: ${dmResult.error}`);
+      return { success: false, error: `Failed to open DM: ${dmResult.error}` };
+    }
+
+    // Include organization context in the reset URL
+    const passwordSetupUrl = `https://whirkplace.com/reset-password?token=${resetToken}&org=${organizationSlug}`;
+
+    // Create message blocks
+    const passwordSetupBlocks = [
+      {
+        type: 'header' as const,
+        text: {
+          type: 'plain_text' as const,
+          text: '🔐 Set Up Your WhirkPlace Password',
+          emoji: true
+        }
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `Hi ${userName || 'there'}! You're currently using Slack to sign in to *${organizationName}* on WhirkPlace.`
+        }
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `We're giving you the option to also log in using an email and password.\n\n*This is completely optional* - you can continue using Slack to sign in if you prefer.`
+        }
+      },
+      {
+        type: 'divider' as const
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*Your login email:* \`${email}\`\n\n⏰ _This link expires in 24 hours for security._`
+        }
+      },
+      {
+        type: 'actions' as const,
+        elements: [
+          {
+            type: 'button' as const,
+            text: {
+              type: 'plain_text' as const,
+              text: '🔑 Set Up Password',
+              emoji: true
+            },
+            url: passwordSetupUrl,
+            style: 'primary' as const
+          }
+        ]
+      },
+      {
+        type: 'divider' as const
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*Benefits of setting up a password:*\n• Sign in directly without going through Slack\n• Access your account even when Slack is unavailable\n• Use either method - Slack or password - whatever is more convenient`
+        }
+      },
+      {
+        type: 'context' as const,
+        elements: [
+          {
+            type: 'mrkdwn' as const,
+            text: `If you didn't request this or prefer to keep using only Slack authentication, you can safely ignore this message.`
+          }
+        ]
+      }
+    ];
+
+    // Send the DM
+    const messageResult = await slackClient.chat.postMessage({
+      channel: dmResult.channel.id,
+      blocks: passwordSetupBlocks,
+      text: 'Set up your WhirkPlace password', // Fallback text
+    });
+
+    if (!messageResult.ok) {
+      console.error(`Failed to send password setup DM to ${slackUserId}: ${messageResult.error}`);
+      return { success: false, error: `Failed to send message: ${messageResult.error}` };
+    }
+
+    console.log(`✅ Password setup DM sent successfully to Slack user ${slackUserId} (${email})`);
+    return { success: true };
+
+  } catch (error: any) {
+    console.error(`Error sending password setup DM to ${slackUserId}:`, error);
+    return { success: false, error: error?.message || 'Failed to send password setup message' };
+  }
+}
+
+/**
  * Send onboarding DM with password reset link to newly synced users
  */
 export async function sendOnboardingDM(
@@ -1508,6 +1633,7 @@ export async function sendOnboardingDM(
   resetToken: string, 
   organizationName: string,
   userName?: string,
+  organizationSlug?: string,
   botToken?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -1528,7 +1654,10 @@ export async function sendOnboardingDM(
       return { success: false, error: `Failed to open DM: ${dmResult.error}` };
     }
 
-    const passwordSetupUrl = `https://whirkplace.com/reset-password?token=${resetToken}`;
+    // Include organization context in reset URL if available
+    const passwordSetupUrl = organizationSlug 
+      ? `https://whirkplace.com/reset-password?token=${resetToken}&org=${organizationSlug}`
+      : `https://whirkplace.com/reset-password?token=${resetToken}`;
     const loginUrl = 'https://whirkplace.com/login';
     const settingsUrl = 'https://whirkplace.com/settings';
     const checkinUrl = 'https://whirkplace.com/checkins';
@@ -2681,38 +2810,40 @@ export async function syncUsersFromSlack(organizationId: string, storage: any, b
     }
   }
 
-  // Send onboarding DMs to newly created users
+  // Send password setup DMs to newly created users
   if (newlyCreatedUsers.length > 0) {
-    console.log(`📨 Sending onboarding DMs to ${newlyCreatedUsers.length} newly created users...`);
+    console.log(`📨 Sending password setup DMs to ${newlyCreatedUsers.length} newly created users...`);
     
     for (const newUser of newlyCreatedUsers) {
       try {
         // Add a small delay to avoid rate limits
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        const result = await sendOnboardingDM(
+        // Use sendPasswordSetupViaSlackDM for new users
+        const result = await sendPasswordSetupViaSlackDM(
           newUser.slackUserId,
           newUser.email,
           newUser.resetToken,
           organizationName,
+          organization?.slug || organizationId,
           newUser.name,
           botToken
         );
         
         if (result.success) {
           stats.newUsersOnboarded++;
-          console.log(`✅ Onboarding DM sent to ${newUser.name} (${newUser.email})`);
+          console.log(`✅ Password setup DM sent to ${newUser.name} (${newUser.email})`);
         } else {
           stats.onboardingErrors++;
-          console.error(`❌ Failed to send onboarding DM to ${newUser.name}: ${result.error}`);
+          console.error(`❌ Failed to send password setup DM to ${newUser.name}: ${result.error}`);
         }
       } catch (error: any) {
         stats.onboardingErrors++;
-        console.error(`❌ Error sending onboarding DM to ${newUser.name}:`, error?.message || error);
+        console.error(`❌ Error sending password setup DM to ${newUser.name}:`, error?.message || error);
       }
     }
     
-    console.log(`📨 Onboarding complete: ${stats.newUsersOnboarded} sent, ${stats.onboardingErrors} errors`);
+    console.log(`📨 Password setup DMs complete: ${stats.newUsersOnboarded} sent, ${stats.onboardingErrors} errors`);
   }
 
     console.log(`✅ User sync completed for organization ${organizationId}:`, stats);
