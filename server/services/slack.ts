@@ -1411,10 +1411,11 @@ export async function sendOneOnOneReportToUser(
 export async function sendWelcomeMessage(userId: string, userName: string, channelId: string, organizationName?: string) {
   if (!slack) return;
 
-  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
+  const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://whirkplace.replit.app';
   const loginUrl = `${appUrl}/#/login`;
   const checkinUrl = `${appUrl}/#/checkins`;
   const dashboardUrl = `${appUrl}/#/dashboard`;
+  const winsUrl = `${appUrl}/#/wins`;
 
   const welcomeBlocks = [
     {
@@ -1432,10 +1433,13 @@ export async function sendWelcomeMessage(userId: string, userName: string, chann
       }
     },
     {
+      type: 'divider' as const
+    },
+    {
       type: 'section' as const,
       text: {
         type: 'mrkdwn' as const,
-        text: `*Here's how to get started:*\n\n1️⃣ *Access the App*: Click the button below to login\n2️⃣ *Complete Your Profile*: Set up your profile and preferences\n3️⃣ *Weekly Check-ins*: Share how you're doing each week\n4️⃣ *Celebrate Wins*: Recognize your team's achievements`
+        text: `🌐 *Access WhirkPlace Web App:*\n\nGet the full experience with our web app where you can view analytics, manage your profile, and interact with your team:`
       }
     },
     {
@@ -1445,40 +1449,65 @@ export async function sendWelcomeMessage(userId: string, userName: string, chann
           type: 'button' as const,
           text: {
             type: 'plain_text' as const,
-            text: '🚀 Get Started'
+            text: '🚀 Visit WhirkPlace'
           },
-          url: loginUrl,
+          url: appUrl,
           style: 'primary' as const
         },
         {
           type: 'button' as const,
           text: {
             type: 'plain_text' as const,
-            text: '📊 View Dashboard'
+            text: '📊 Dashboard'
           },
-          url: dashboardUrl
+          url: dashboardUrl,
+          style: 'secondary' as const
+        },
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '✅ Check-ins'
+          },
+          url: checkinUrl,
+          style: 'secondary' as const
+        },
+        {
+          type: 'button' as const,
+          text: {
+            type: 'plain_text' as const,
+            text: '🏆 Wins'
+          },
+          url: winsUrl,
+          style: 'secondary' as const
         }
       ]
     },
     {
+      type: 'divider' as const
+    },
+    {
       type: 'section' as const,
       text: {
         type: 'mrkdwn' as const,
-        text: `📱 *Available Slack Commands:*\n\nYou can use these commands directly in Slack:`
+        text: `*Here's how to get started:*\n\n1️⃣ *Access the App*: Click "Visit WhirkPlace" above to login\n2️⃣ *Complete Your Profile*: Set up your profile and preferences\n3️⃣ *Weekly Check-ins*: Share how you're doing each week\n4️⃣ *Celebrate Wins*: Recognize your team's achievements`
+      }
+    },
+    {
+      type: 'divider' as const
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `📱 *Available Slack Commands:*\n\nYou can also use these commands directly in Slack:`
       }
     },
     {
       type: 'section' as const,
       text: {
         type: 'mrkdwn' as const,
-        text: `• \`/checkin\` - Submit your weekly check-in\n• \`/wins\` - Share a win or celebration\n• \`/shoutout\` - Recognize a teammate\n• \`/goals\` - View or create team goals\n• \`/mystatus\` - View your personal dashboard\n• \`/teamstatus\` - Team overview (managers only)\n• \`/vacation\` - Set or view vacation time\n• \`/help\` - Show all available commands`
-      }
-    },
-    {
-      type: 'section' as const,
-      text: {
-        type: 'mrkdwn' as const,
-        text: `Just type any command in Slack to get started! 🚀`
+        text: `• \`/checkin\` - Submit your weekly check-in\n• \`/wins\` - Share a win or celebration\n• \`/shoutout\` - Recognize a teammate\n• \`/goals\` - View or create team goals\n• \`/mystatus\` - View your personal dashboard\n• \`/teamstatus\` - Team overview (managers only)\n• \`/vacation\` - Set or view vacation time\n• \`/help\` - Show all available commands\n\n💡 *Pro tip:* For the best experience, use the web app at <${appUrl}|whirkplace.replit.app>`
       }
     },
     {
@@ -1545,6 +1574,11 @@ export async function sendPasswordSetupViaSlackDM(
       return { success: false, error: `Failed to open DM: ${dmResult.error}` };
     }
 
+    // Get the app URL for navigation links
+    const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://whirkplace.replit.app';
+    const dashboardUrl = `${appUrl}/#/dashboard`;
+    const checkinUrl = `${appUrl}/#/checkins`;
+    
     // Include organization context in the reset URL
     const passwordSetupUrl = `https://whirkplace.com/reset-password?token=${resetToken}&org=${organizationSlug}`;
 
@@ -1604,21 +1638,59 @@ export async function sendPasswordSetupViaSlackDM(
         type: 'section' as const,
         text: {
           type: 'mrkdwn' as const,
-          text: `📱 *Available Slack Commands:*\n\nYou can use these commands directly in Slack:`
+          text: `🚀 *Access WhirkPlace App:*\n\nYou can access WhirkPlace directly from your browser anytime:`
+        }
+      },
+      {
+        type: 'actions' as const,
+        elements: [
+          {
+            type: 'button' as const,
+            text: {
+              type: 'plain_text' as const,
+              text: '🌐 Visit WhirkPlace',
+              emoji: true
+            },
+            url: appUrl,
+            style: 'primary' as const
+          },
+          {
+            type: 'button' as const,
+            text: {
+              type: 'plain_text' as const,
+              text: '📊 Dashboard',
+              emoji: true
+            },
+            url: dashboardUrl,
+            style: 'secondary' as const
+          },
+          {
+            type: 'button' as const,
+            text: {
+              type: 'plain_text' as const,
+              text: '✅ Check-ins',
+              emoji: true
+            },
+            url: checkinUrl,
+            style: 'secondary' as const
+          }
+        ]
+      },
+      {
+        type: 'divider' as const
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `📱 *Available Slack Commands:*\n\nYou can also use these commands directly in Slack:`
         }
       },
       {
         type: 'section' as const,
         text: {
           type: 'mrkdwn' as const,
-          text: `• \`/checkin\` - Submit your weekly check-in\n• \`/wins\` - Share a win or celebration\n• \`/shoutout\` - Recognize a teammate\n• \`/goals\` - View or create team goals\n• \`/mystatus\` - View your personal dashboard\n• \`/teamstatus\` - Team overview (managers only)\n• \`/vacation\` - Set or view vacation time\n• \`/help\` - Show all available commands`
-        }
-      },
-      {
-        type: 'section' as const,
-        text: {
-          type: 'mrkdwn' as const,
-          text: `Just type any command in Slack to get started! 🚀`
+          text: `• \`/checkin\` - Submit your weekly check-in\n• \`/wins\` - Share a win or celebration\n• \`/shoutout\` - Recognize a teammate\n• \`/goals\` - View or create team goals\n• \`/mystatus\` - View your personal dashboard\n• \`/teamstatus\` - Team overview (managers only)\n• \`/vacation\` - Set or view vacation time\n• \`/help\` - Show all available commands\n\n💡 *Pro tip:* Access the full app at <${appUrl}|whirkplace.replit.app> for more features!`
         }
       },
       {
