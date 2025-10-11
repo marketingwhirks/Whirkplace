@@ -138,7 +138,8 @@ export default function ShoutoutsPage() {
         payload.toTeamId = data.toTeamId;
       }
       
-      return apiRequest("POST", "/api/shoutouts", payload);
+      const response = await apiRequest("POST", "/api/shoutouts", payload);
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shoutouts"] });
@@ -170,7 +171,8 @@ export default function ShoutoutsPage() {
   // Update shoutout mutation
   const updateShoutoutMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<ShoutoutForm> }) => {
-      return apiRequest("PATCH", `/api/shoutouts/${id}`, data);
+      const response = await apiRequest("PATCH", `/api/shoutouts/${id}`, data);
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shoutouts"] });
@@ -193,7 +195,8 @@ export default function ShoutoutsPage() {
   // Delete shoutout mutation
   const deleteShoutoutMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/shoutouts/${id}`);
+      const response = await apiRequest("DELETE", `/api/shoutouts/${id}`);
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/shoutouts"] });

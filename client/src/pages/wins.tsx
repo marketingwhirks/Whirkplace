@@ -109,10 +109,11 @@ export default function Wins() {
   // Create win mutation
   const createWinMutation = useMutation({
     mutationFn: async (data: WinForm) => {
-      return apiRequest("POST", "/api/wins", {
+      const response = await apiRequest("POST", "/api/wins", {
         ...data,
         nominatedBy: data.nominatedBy === "none" ? null : data.nominatedBy || null,
       });
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/wins"] });
@@ -143,7 +144,8 @@ export default function Wins() {
   // Update win mutation
   const updateWinMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<WinForm> }) => {
-      return apiRequest("PATCH", `/api/wins/${id}`, data);
+      const response = await apiRequest("PATCH", `/api/wins/${id}`, data);
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/wins"] });
@@ -166,7 +168,8 @@ export default function Wins() {
   // Delete win mutation
   const deleteWinMutation = useMutation({
     mutationFn: async (id: string) => {
-      return apiRequest("DELETE", `/api/wins/${id}`);
+      const response = await apiRequest("DELETE", `/api/wins/${id}`);
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/wins"] });

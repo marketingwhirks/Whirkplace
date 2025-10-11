@@ -177,14 +177,20 @@ export default function Checkins() {
         isComplete: true,
       };
 
+      let response: Response;
+      
       // If updating existing check-in (either current or previous week)
       if (data.weekStartDate && previousCheckin) {
-        return apiRequest("PATCH", `/api/checkins/${previousCheckin.id}`, checkinPayload);
+        response = await apiRequest("PATCH", `/api/checkins/${previousCheckin.id}`, checkinPayload);
       } else if (!data.weekStartDate && currentWeekCheckin) {
-        return apiRequest("PATCH", `/api/checkins/${currentWeekCheckin.id}`, checkinPayload);
+        response = await apiRequest("PATCH", `/api/checkins/${currentWeekCheckin.id}`, checkinPayload);
       } else {
-        return apiRequest("POST", "/api/checkins", checkinPayload);
+        response = await apiRequest("POST", "/api/checkins", checkinPayload);
       }
+      
+      // Parse and return the JSON response
+      // This ensures React Query receives the actual data, not the Response object
+      return await response.json();
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });

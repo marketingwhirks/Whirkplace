@@ -88,7 +88,8 @@ export default function Reviews() {
   // Review mutation
   const reviewMutation = useMutation({
     mutationFn: async ({ checkinId, reviewData }: { checkinId: string; reviewData: ReviewCheckin }) => {
-      return apiRequest("PATCH", `/api/checkins/${checkinId}/review`, reviewData);
+      const response = await apiRequest("PATCH", `/api/checkins/${checkinId}/review`, reviewData);
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/checkins/pending"] });
@@ -115,7 +116,8 @@ export default function Reviews() {
   // Reminder mutation
   const reminderMutation = useMutation({
     mutationFn: async (userIds: string[]) => {
-      return apiRequest("POST", "/api/checkins/remind", { userIds });
+      const response = await apiRequest("POST", "/api/checkins/remind", { userIds });
+      return await response.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/checkins/missing"] });
