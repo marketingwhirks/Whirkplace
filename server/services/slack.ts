@@ -5,6 +5,7 @@ import * as cron from "node-cron";
 import type { Request } from 'express';
 import { resolveRedirectUri } from '../utils/redirect-uri';
 import { billingService } from './billing';
+import { getWeekStartCentral, getCheckinDueDate } from '@shared/utils/dueDates';
 
 if (!process.env.SLACK_BOT_TOKEN) {
   console.warn("SLACK_BOT_TOKEN environment variable not set. Slack integration will be disabled.");
@@ -2986,6 +2987,648 @@ export async function scheduleWeeklyReminders(organizationId: string, storage: a
  * Handle Slack interactive components (buttons, modals, etc.)
  */
 /**
+ * Send interactive wins submission modal
+ */
+export async function sendInteractiveWinsModal(userId: string, triggerId: string, userName: string) {
+  if (!slack) return;
+
+  const modal = {
+    type: 'modal' as const,
+    callback_id: 'wins_modal',
+    title: {
+      type: 'plain_text' as const,
+      text: 'Submit a Win 🏆'
+    },
+    blocks: [
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `Celebrate your achievements, ${userName}! 🎉`
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'win_title',
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'title_value',
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'e.g., Completed major project milestone'
+          }
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Win Title'
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'win_description',
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'description_value',
+          multiline: true,
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'Tell us more about your achievement...'
+          }
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Description'
+        },
+        optional: true
+      },
+      {
+        type: 'input' as const,
+        block_id: 'win_visibility',
+        element: {
+          type: 'radio_buttons' as const,
+          action_id: 'visibility_value',
+          initial_option: {
+            text: {
+              type: 'plain_text' as const,
+              text: '🌍 Public - Share with the entire team'
+            },
+            value: 'public'
+          },
+          options: [
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '🌍 Public - Share with the entire team'
+              },
+              value: 'public'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '🔒 Private - Keep to myself'
+              },
+              value: 'private'
+            }
+          ]
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Visibility'
+        }
+      }
+    ],
+    submit: {
+      type: 'plain_text' as const,
+      text: 'Submit Win'
+    },
+    close: {
+      type: 'plain_text' as const,
+      text: 'Cancel'
+    }
+  };
+
+  try {
+    await slack.views.open({
+      trigger_id: triggerId,
+      view: modal
+    });
+  } catch (error) {
+    console.error('Error opening wins modal:', error);
+  }
+}
+
+/**
+ * Send interactive shoutout modal with user selection
+ */
+export async function sendInteractiveShoutoutModal(userId: string, triggerId: string, userName: string, organizationId: string, storage: any) {
+  if (!slack) return;
+
+  // Get organization users for the dropdown
+  const users = await storage.getAllUsers(organizationId, false);
+  const userOptions = users
+    .filter((user: any) => user.slackUserId && user.slackUserId !== userId)
+    .map((user: any) => ({
+      text: {
+        type: 'plain_text' as const,
+        text: user.name || user.username
+      },
+      value: user.id
+    }));
+
+  const modal = {
+    type: 'modal' as const,
+    callback_id: 'shoutout_modal',
+    title: {
+      type: 'plain_text' as const,
+      text: 'Give a Shoutout 👏'
+    },
+    blocks: [
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `Recognize a team member's great work, ${userName}! 🌟`
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'shoutout_recipient',
+        element: {
+          type: 'static_select' as const,
+          action_id: 'recipient_value',
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'Select a team member'
+          },
+          options: userOptions.length > 0 ? userOptions : [
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: 'No team members available'
+              },
+              value: 'none'
+            }
+          ]
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Who would you like to recognize?'
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'shoutout_message',
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'message_value',
+          multiline: true,
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'e.g., Thanks for your amazing help with the project presentation!'
+          }
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Shoutout Message'
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'company_values',
+        element: {
+          type: 'checkboxes' as const,
+          action_id: 'values_value',
+          options: [
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '🎯 Own It'
+              },
+              value: 'own it'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '🚀 Challenge It'
+              },
+              value: 'challenge it'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '🤝 Team First'
+              },
+              value: 'team first'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '❤️ Empathy for Others'
+              },
+              value: 'empathy for others'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: '🔥 Passion for Our Purpose'
+              },
+              value: 'passion for our purpose'
+            }
+          ]
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Company Values Demonstrated'
+        },
+        optional: true
+      }
+    ],
+    submit: {
+      type: 'plain_text' as const,
+      text: 'Send Shoutout'
+    },
+    close: {
+      type: 'plain_text' as const,
+      text: 'Cancel'
+    }
+  };
+
+  try {
+    await slack.views.open({
+      trigger_id: triggerId,
+      view: modal
+    });
+  } catch (error) {
+    console.error('Error opening shoutout modal:', error);
+  }
+}
+
+/**
+ * Send interactive goals modal for creating team goals
+ */
+export async function sendInteractiveGoalsModal(userId: string, triggerId: string, userName: string, organizationId: string, storage: any) {
+  if (!slack) return;
+
+  // Get teams for the dropdown (optional - org-wide if no team selected)
+  const teams = await storage.getAllTeams(organizationId);
+  const teamOptions = teams.map((team: any) => ({
+    text: {
+      type: 'plain_text' as const,
+      text: team.name
+    },
+    value: team.id
+  }));
+  
+  // Add org-wide option
+  teamOptions.unshift({
+    text: {
+      type: 'plain_text' as const,
+      text: 'Organization-wide Goal'
+    },
+    value: 'org_wide'
+  });
+
+  const modal = {
+    type: 'modal' as const,
+    callback_id: 'goals_modal',
+    title: {
+      type: 'plain_text' as const,
+      text: 'Create Team Goal 🎯'
+    },
+    blocks: [
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `Set an inspiring goal for your team, ${userName}! 🚀`
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'goal_team',
+        element: {
+          type: 'static_select' as const,
+          action_id: 'team_value',
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'Select team or org-wide'
+          },
+          initial_option: teamOptions[0],
+          options: teamOptions
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Goal Scope'
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'goal_title',
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'title_value',
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'e.g., Complete 50 customer interviews'
+          }
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Goal Title'
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'goal_description',
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'description_value',
+          multiline: true,
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'Describe the goal and why it matters...'
+          }
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Description'
+        },
+        optional: true
+      },
+      {
+        type: 'input' as const,
+        block_id: 'goal_type',
+        element: {
+          type: 'static_select' as const,
+          action_id: 'type_value',
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'Select goal duration'
+          },
+          options: [
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: 'Weekly Goal'
+              },
+              value: 'weekly'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: 'Monthly Goal'
+              },
+              value: 'monthly'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: 'Quarterly Goal'
+              },
+              value: 'quarterly'
+            }
+          ]
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Goal Type'
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'goal_metric',
+        element: {
+          type: 'static_select' as const,
+          action_id: 'metric_value',
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'What to measure'
+          },
+          options: [
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: 'Wins Submitted'
+              },
+              value: 'wins'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: 'Check-ins Completed'
+              },
+              value: 'check-ins'
+            },
+            {
+              text: {
+                type: 'plain_text' as const,
+                text: 'Kudos/Shoutouts Given'
+              },
+              value: 'kudos'
+            }
+          ]
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Metric to Track'
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'goal_target',
+        element: {
+          type: 'number_input' as const,
+          action_id: 'target_value',
+          is_decimal_allowed: false,
+          min_value: '1'
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Target Value'
+        }
+      },
+      {
+        type: 'input' as const,
+        block_id: 'goal_prize',
+        element: {
+          type: 'plain_text_input' as const,
+          action_id: 'prize_value',
+          placeholder: {
+            type: 'plain_text' as const,
+            text: 'e.g., Team lunch, Extra day off'
+          }
+        },
+        label: {
+          type: 'plain_text' as const,
+          text: 'Prize/Reward (optional)'
+        },
+        optional: true
+      }
+    ],
+    submit: {
+      type: 'plain_text' as const,
+      text: 'Create Goal'
+    },
+    close: {
+      type: 'plain_text' as const,
+      text: 'Cancel'
+    }
+  };
+
+  try {
+    await slack.views.open({
+      trigger_id: triggerId,
+      view: modal
+    });
+  } catch (error) {
+    console.error('Error opening goals modal:', error);
+  }
+}
+
+/**
+ * Format personal status message with comprehensive info
+ */
+export async function formatPersonalStatusMessage(userId: string, organizationId: string, storage: any): Promise<string> {
+  try {
+    const user = await storage.getUserBySlackId(organizationId, userId);
+    if (!user) {
+      return "❌ You're not registered in the system yet. Please complete a check-in first to get started.";
+    }
+
+    let statusMessage = `*📊 Your Personal Status Dashboard*\n\n`;
+
+    // Check-in Status
+    const currentWeekStart = getWeekStartCentral();
+    const currentCheckin = await storage.getCurrentWeekCheckin(organizationId, user.id);
+    
+    if (currentCheckin) {
+      const moodEmoji = currentCheckin.overallMood >= 4 ? '😊' : currentCheckin.overallMood >= 3 ? '😐' : '😔';
+      statusMessage += `*✅ Check-in Status:* Completed\n`;
+      statusMessage += `• Mood: ${moodEmoji} ${currentCheckin.overallMood}/5\n`;
+      statusMessage += `• Review Status: ${currentCheckin.reviewStatus === 'reviewed' ? '👁️ Reviewed' : '⏳ Pending Review'}\n\n`;
+    } else {
+      const dueDate = getCheckinDueDate();
+      statusMessage += `*❌ Check-in Status:* Not completed\n`;
+      statusMessage += `• Due: ${dueDate.toLocaleDateString()}\n`;
+      statusMessage += `• Use \`/checkin\` to complete it\n\n`;
+    }
+
+    // Recent Wins
+    const recentWins = await storage.getWinsByUser(organizationId, user.id, 5);
+    if (recentWins && recentWins.length > 0) {
+      statusMessage += `*🏆 Recent Wins:*\n`;
+      recentWins.slice(0, 3).forEach((win: any) => {
+        const icon = win.isPublic ? '🌍' : '🔒';
+        statusMessage += `• ${icon} ${win.title}\n`;
+      });
+      if (recentWins.length > 3) {
+        statusMessage += `• _...and ${recentWins.length - 3} more_\n`;
+      }
+      statusMessage += '\n';
+    } else {
+      statusMessage += `*🏆 Recent Wins:* None yet - share your first win with \`/wins\`!\n\n`;
+    }
+
+    // Upcoming One-on-Ones
+    const oneOnOnes = await storage.getUpcomingOneOnOnes(user.id, organizationId);
+    if (oneOnOnes && oneOnOnes.length > 0) {
+      statusMessage += `*🤝 Upcoming One-on-Ones:*\n`;
+      oneOnOnes.slice(0, 3).forEach((meeting: any) => {
+        const date = new Date(meeting.scheduledAt);
+        statusMessage += `• ${date.toLocaleDateString()} - with ${meeting.participantName}\n`;
+      });
+      statusMessage += '\n';
+    }
+
+    // Vacation Status
+    const currentDate = new Date();
+    const vacations = await storage.getVacationsByUser(organizationId, user.id);
+    const activeVacation = vacations?.find((v: any) => 
+      new Date(v.startDate) <= currentDate && new Date(v.endDate) >= currentDate
+    );
+    
+    if (activeVacation) {
+      statusMessage += `*🏖️ Vacation Status:* Currently on vacation\n`;
+      statusMessage += `• Returns: ${new Date(activeVacation.endDate).toLocaleDateString()}\n`;
+    } else {
+      const upcomingVacation = vacations?.find((v: any) => new Date(v.startDate) > currentDate);
+      if (upcomingVacation) {
+        statusMessage += `*🏖️ Upcoming Vacation:*\n`;
+        statusMessage += `• ${new Date(upcomingVacation.startDate).toLocaleDateString()} - ${new Date(upcomingVacation.endDate).toLocaleDateString()}\n`;
+      }
+    }
+
+    return statusMessage;
+  } catch (error) {
+    console.error('Error formatting personal status:', error);
+    return "❌ Sorry, I couldn't retrieve your status right now. Please try again later.";
+  }
+}
+
+/**
+ * Format team status message for managers/admins
+ */
+export async function formatTeamStatusMessage(userId: string, organizationId: string, storage: any): Promise<string> {
+  try {
+    const user = await storage.getUserBySlackId(organizationId, userId);
+    if (!user) {
+      return "❌ You're not registered in the system yet.";
+    }
+
+    // Check if user is manager or admin
+    if (user.role !== 'manager' && user.role !== 'admin') {
+      return "❌ This command is only available for managers and admins.";
+    }
+
+    let statusMessage = `*📊 Team Status Overview*\n\n`;
+
+    // Get team members
+    const teamMembers = user.role === 'admin' 
+      ? await storage.getAllUsers(organizationId, false) // All active users for admins
+      : await storage.getUsersByManager(organizationId, user.id, false); // Direct reports for managers
+
+    const currentWeekStart = getWeekStartCentral();
+
+    // Calculate check-in completion
+    let completedCheckins = 0;
+    let totalMood = 0;
+    let moodCount = 0;
+
+    for (const member of teamMembers) {
+      const checkin = await storage.getCurrentWeekCheckin(organizationId, member.id);
+      if (checkin) {
+        completedCheckins++;
+        if (checkin.overallMood) {
+          totalMood += checkin.overallMood;
+          moodCount++;
+        }
+      }
+    }
+
+    const completionRate = teamMembers.length > 0 
+      ? Math.round((completedCheckins / teamMembers.length) * 100) 
+      : 0;
+    
+    statusMessage += `*✅ Check-in Completion:* ${completionRate}%\n`;
+    statusMessage += `• ${completedCheckins}/${teamMembers.length} team members\n\n`;
+
+    // Team mood average
+    if (moodCount > 0) {
+      const avgMood = (totalMood / moodCount).toFixed(1);
+      const moodEmoji = parseFloat(avgMood) >= 4 ? '😊' : parseFloat(avgMood) >= 3 ? '😐' : '😔';
+      statusMessage += `*${moodEmoji} Team Mood Average:* ${avgMood}/5\n\n`;
+    }
+
+    // Recent team wins
+    const recentWins = await storage.getRecentWins(organizationId, 5);
+    if (recentWins && recentWins.length > 0) {
+      statusMessage += `*🏆 Recent Team Wins:*\n`;
+      recentWins.slice(0, 3).forEach((win: any) => {
+        statusMessage += `• ${win.title} - by ${win.userName || 'Team Member'}\n`;
+      });
+      statusMessage += '\n';
+    }
+
+    // Team goals progress
+    const activeGoals = await storage.getActiveTeamGoals(organizationId);
+    if (activeGoals && activeGoals.length > 0) {
+      statusMessage += `*🎯 Active Team Goals:*\n`;
+      activeGoals.slice(0, 2).forEach((goal: any) => {
+        const progress = goal.targetValue > 0 
+          ? Math.round((goal.currentValue / goal.targetValue) * 100) 
+          : 0;
+        statusMessage += `• ${goal.title}: ${progress}% complete (${goal.currentValue}/${goal.targetValue})\n`;
+      });
+    }
+
+    return statusMessage;
+  } catch (error) {
+    console.error('Error formatting team status:', error);
+    return "❌ Sorry, I couldn't retrieve team status right now. Please try again later.";
+  }
+}
+
+/**
  * Handle Slack slash commands like /checkin
  */
 export async function handleSlackSlashCommand(
@@ -3030,13 +3673,15 @@ export async function handleSlackSlashCommand(
           currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
           currentWeekStart.setHours(0, 0, 0, 0);
           
-          const checkins = await storage.getCheckins(organizationId, user.id, currentWeekStart, currentWeekStart);
-          const hasCheckedIn = checkins.length > 0;
+          const checkins = await storage.getCheckinsByUser(organizationId, user.id);
+          const currentCheckin = checkins.find((c: any) => {
+            const checkinWeek = new Date(c.weekOf);
+            return checkinWeek.getTime() === currentWeekStart.getTime();
+          });
           
-          if (hasCheckedIn) {
-            const checkin = checkins[0];
+          if (currentCheckin) {
             return {
-              text: `✅ You've completed your check-in for this week! (Mood: ${checkin.overallMood}/5, Status: ${checkin.reviewStatus})`,
+              text: `✅ You've completed your check-in for this week! (Mood: ${currentCheckin.overallMood}/5, Status: ${currentCheckin.reviewStatus})`,
               response_type: "ephemeral"
             };
           } else {
@@ -3053,21 +3698,274 @@ export async function handleSlackSlashCommand(
           };
         }
       
+      case '/wins':
+        // Open the interactive wins submission modal
+        if (triggerId) {
+          await sendInteractiveWinsModal(userId, triggerId, userName);
+          return {
+            text: "Opening the wins submission form...",
+            response_type: "ephemeral"
+          };
+        } else {
+          return {
+            text: "Sorry, I can't open the wins form right now. Please try again.",
+            response_type: "ephemeral"
+          };
+        }
+      
+      case '/shoutout':
+        // Open the interactive shoutout modal
+        if (triggerId) {
+          await sendInteractiveShoutoutModal(userId, triggerId, userName, organizationId, storage);
+          return {
+            text: "Opening the shoutout form...",
+            response_type: "ephemeral"
+          };
+        } else {
+          return {
+            text: "Sorry, I can't open the shoutout form right now. Please try again.",
+            response_type: "ephemeral"
+          };
+        }
+      
+      case '/goals':
+        // Handle goals command - list or create
+        if (text && text.trim().toLowerCase() === 'list') {
+          // Show current team goals
+          try {
+            const user = await storage.getUserBySlackId(organizationId, userId);
+            if (!user) {
+              return {
+                text: "You're not registered in the system yet.",
+                response_type: "ephemeral"
+              };
+            }
+            
+            const activeGoals = await storage.getActiveTeamGoals?.(organizationId) || [];
+            
+            if (activeGoals.length === 0) {
+              return {
+                text: "*No active team goals*\n\nUse `/goals` to create a new goal!",
+                response_type: "ephemeral"
+              };
+            }
+            
+            let goalsMessage = "*🎯 Active Team Goals:*\n\n";
+            activeGoals.forEach((goal: any) => {
+              const progress = goal.targetValue > 0 
+                ? Math.round((goal.currentValue / goal.targetValue) * 100) 
+                : 0;
+              const progressBar = '▓'.repeat(Math.floor(progress / 10)) + '░'.repeat(10 - Math.floor(progress / 10));
+              
+              goalsMessage += `*${goal.title}*\n`;
+              if (goal.description) {
+                goalsMessage += `_${goal.description}_\n`;
+              }
+              goalsMessage += `Progress: ${progressBar} ${progress}% (${goal.currentValue}/${goal.targetValue})\n`;
+              goalsMessage += `Type: ${goal.goalType} | Metric: ${goal.metric}\n`;
+              if (goal.prize) {
+                goalsMessage += `🏆 Prize: ${goal.prize}\n`;
+              }
+              goalsMessage += `Status: ${goal.status === 'active' ? '🟢 Active' : goal.status === 'completed' ? '✅ Completed' : '⏰ Expired'}\n\n`;
+            });
+            
+            return {
+              text: goalsMessage,
+              response_type: "ephemeral"
+            };
+          } catch (error) {
+            console.error('Error listing goals:', error);
+            return {
+              text: "Sorry, I couldn't retrieve the team goals right now. Please try again later.",
+              response_type: "ephemeral"
+            };
+          }
+        } else {
+          // Open modal to create new goal (check permissions)
+          try {
+            const user = await storage.getUserBySlackId(organizationId, userId);
+            if (!user) {
+              return {
+                text: "You're not registered in the system yet.",
+                response_type: "ephemeral"
+              };
+            }
+            
+            if (user.role !== 'manager' && user.role !== 'admin') {
+              return {
+                text: "❌ Only managers and admins can create team goals.\n\nUse `/goals list` to view current goals.",
+                response_type: "ephemeral"
+              };
+            }
+            
+            if (triggerId) {
+              await sendInteractiveGoalsModal(userId, triggerId, userName, organizationId, storage);
+              return {
+                text: "Opening the goal creation form...",
+                response_type: "ephemeral"
+              };
+            } else {
+              return {
+                text: "Sorry, I can't open the goals form right now. Please try again.",
+                response_type: "ephemeral"
+              };
+            }
+          } catch (error) {
+            console.error('Error opening goals modal:', error);
+            return {
+              text: "Sorry, there was an error. Please try again later.",
+              response_type: "ephemeral"
+            };
+          }
+        }
+      
+      case '/mystatus':
+        // Get comprehensive personal status
+        const personalStatus = await formatPersonalStatusMessage(userId, organizationId, storage);
+        return {
+          text: personalStatus,
+          response_type: "ephemeral"
+        };
+      
+      case '/teamstatus':
+        // Get team overview (managers/admins only)
+        const teamStatus = await formatTeamStatusMessage(userId, organizationId, storage);
+        return {
+          text: teamStatus,
+          response_type: "ephemeral"
+        };
+      
+      case '/vacation':
+        // Handle vacation command
+        try {
+          const user = await storage.getUserBySlackId(organizationId, userId);
+          if (!user) {
+            return {
+              text: "You're not registered in the system yet.",
+              response_type: "ephemeral"
+            };
+          }
+          
+          if (text && text.trim()) {
+            // Parse dates and set vacation
+            const dates = text.trim().split(' ');
+            if (dates.length === 1 || dates.length === 2) {
+              const startDate = new Date(dates[0]);
+              const endDate = dates[1] ? new Date(dates[1]) : new Date(dates[0]);
+              
+              if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                return {
+                  text: "❌ Invalid date format. Use `/vacation YYYY-MM-DD` or `/vacation YYYY-MM-DD YYYY-MM-DD`",
+                  response_type: "ephemeral"
+                };
+              }
+              
+              if (endDate < startDate) {
+                return {
+                  text: "❌ End date must be after start date.",
+                  response_type: "ephemeral"
+                };
+              }
+              
+              // Create vacation entry
+              await storage.createVacation?.(organizationId, {
+                userId: user.id,
+                organizationId,
+                startDate: startDate,
+                endDate: endDate,
+                reason: 'Set via Slack'
+              });
+              
+              return {
+                text: `✅ Vacation scheduled from ${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}`,
+                response_type: "ephemeral"
+              };
+            } else {
+              return {
+                text: "❌ Invalid format. Use `/vacation YYYY-MM-DD` or `/vacation YYYY-MM-DD YYYY-MM-DD`",
+                response_type: "ephemeral"
+              };
+            }
+          } else {
+            // Show current vacation schedule
+            const vacations = await storage.getVacationsByUser?.(organizationId, user.id) || [];
+            const currentDate = new Date();
+            
+            const activeVacation = vacations.find((v: any) => 
+              new Date(v.startDate) <= currentDate && new Date(v.endDate) >= currentDate
+            );
+            
+            const upcomingVacations = vacations.filter((v: any) => 
+              new Date(v.startDate) > currentDate
+            ).sort((a: any, b: any) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime());
+            
+            let vacationMessage = "*🏖️ Your Vacation Schedule:*\n\n";
+            
+            if (activeVacation) {
+              vacationMessage += `*Currently on vacation* until ${new Date(activeVacation.endDate).toLocaleDateString()}\n\n`;
+            }
+            
+            if (upcomingVacations.length > 0) {
+              vacationMessage += "*Upcoming Vacations:*\n";
+              upcomingVacations.slice(0, 5).forEach((v: any) => {
+                vacationMessage += `• ${new Date(v.startDate).toLocaleDateString()} - ${new Date(v.endDate).toLocaleDateString()}`;
+                if (v.reason) {
+                  vacationMessage += ` (${v.reason})`;
+                }
+                vacationMessage += '\n';
+              });
+            } else if (!activeVacation) {
+              vacationMessage += "No vacations scheduled.\n\n";
+              vacationMessage += "_Use `/vacation YYYY-MM-DD` to schedule time off._";
+            }
+            
+            return {
+              text: vacationMessage,
+              response_type: "ephemeral"
+            };
+          }
+        } catch (error) {
+          console.error('Error handling vacation command:', error);
+          return {
+            text: "Sorry, I couldn't process your vacation request. Please try again later.",
+            response_type: "ephemeral"
+          };
+        }
+      
       case '/help':
       case '/checkin-help':
         return {
-          text: `*Whirkplace Check-in Commands:*
+          text: `*🚀 Whirkplace Slack Commands:*
+
+*Check-ins & Status:*
 • \`/checkin\` - Start your weekly check-in
 • \`/checkin-status\` - Check if you've completed this week's check-in
-• \`/checkin-help\` or \`/help\` - Show this help message
+• \`/mystatus\` - View your comprehensive personal status
 
-Your check-ins help keep the team connected and ensure everyone is thriving! 🌟`,
+*Recognition & Wins:*
+• \`/wins\` - Submit a win or celebration
+• \`/shoutout\` - Give a shoutout to a team member
+
+*Goals & Team:*
+• \`/goals\` - Create a new team goal (managers/admins)
+• \`/goals list\` - View active team goals
+• \`/teamstatus\` - View team overview (managers/admins only)
+
+*Time Off:*
+• \`/vacation\` - View your vacation schedule
+• \`/vacation YYYY-MM-DD\` - Schedule a single day off
+• \`/vacation YYYY-MM-DD YYYY-MM-DD\` - Schedule a vacation period
+
+*Help:*
+• \`/help\` - Show this help message
+
+_Your participation helps keep the team connected and thriving!_ 🌟`,
           response_type: "ephemeral"
         };
       
       default:
         return {
-          text: `Unknown command: ${command}. Try \`/checkin-help\` for available commands.`,
+          text: `Unknown command: ${command}. Try \`/help\` for available commands.`,
           response_type: "ephemeral"
         };
     }
@@ -3124,6 +4022,12 @@ export async function handleSlackInteraction(payload: any, organizationId: strin
       // Handle modal submission
       if (view.callback_id === 'checkin_modal') {
         await handleCheckinModalSubmission(view, user, organizationId, storage);
+      } else if (view.callback_id === 'wins_modal') {
+        await handleWinsModalSubmission(view, user, organizationId, storage);
+      } else if (view.callback_id === 'shoutout_modal') {
+        await handleShoutoutModalSubmission(view, user, organizationId, storage);
+      } else if (view.callback_id === 'goals_modal') {
+        await handleGoalsModalSubmission(view, user, organizationId, storage);
       }
     }
     
@@ -3260,6 +4164,375 @@ async function scheduleReminderLater(userId: string, userName: string, hours: nu
   }, hours * 60 * 60 * 1000); // Convert hours to milliseconds
   
   console.log(`Scheduled reminder for ${userName} in ${hours} hours`);
+}
+
+/**
+ * Handle wins modal submission
+ */
+async function handleWinsModalSubmission(view: any, user: any, organizationId: string, storage: any) {
+  try {
+    const values = view.state.values;
+    
+    // Extract form values
+    const title = values.win_title?.title_value?.value || '';
+    const description = values.win_description?.description_value?.value || '';
+    const visibility = values.win_visibility?.visibility_value?.selected_option?.value || 'public';
+    
+    if (!title) {
+      console.error('Win title not provided');
+      return;
+    }
+    
+    // Find or create user in the system
+    let systemUser = await storage.getUserBySlackId(organizationId, user.id);
+    
+    if (!systemUser) {
+      console.log(`User not found, creating: ${user.name}`);
+      systemUser = await storage.createUser(organizationId, {
+        username: user.username || user.id,
+        password: randomBytes(32).toString('hex'),
+        name: user.real_name || user.name || 'Slack User',
+        email: user.profile?.email || `${user.id}@slack.local`,
+        role: 'member',
+        slackUserId: user.id,
+        isActive: true
+      });
+    }
+    
+    // Create win entry
+    const winData = {
+      userId: systemUser.id,
+      organizationId: organizationId,
+      title: title,
+      description: description || null,
+      isPublic: visibility === 'public',
+      createdAt: new Date()
+    };
+    
+    const win = await storage.createWin(organizationId, winData);
+    
+    // Send confirmation message
+    const dmResult = await slack!.conversations.open({ users: user.id });
+    if (dmResult.ok && dmResult.channel?.id) {
+      const confirmationText = visibility === 'public' 
+        ? `✅ Your win "${title}" has been submitted and shared with the team! 🎉`
+        : `✅ Your win "${title}" has been recorded privately! 🎉`;
+      
+      await sendSlackMessage({
+        channel: dmResult.channel.id,
+        text: confirmationText,
+        blocks: [
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `*Win Submitted Successfully!* 🏆`
+            }
+          },
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: confirmationText
+            }
+          }
+        ]
+      });
+    }
+    
+    // If public, announce to team channel
+    if (visibility === 'public' && process.env.SLACK_CHANNEL_ID) {
+      await announceWin(title, description || '', systemUser.name || user.name || 'Team Member');
+    }
+    
+    console.log(`Win submitted via Slack by ${user.name}: ${title} (${visibility})`);
+    
+  } catch (error) {
+    console.error('Error processing wins modal submission:', error);
+  }
+}
+
+/**
+ * Handle shoutout modal submission
+ */
+async function handleShoutoutModalSubmission(view: any, user: any, organizationId: string, storage: any) {
+  try {
+    const values = view.state.values;
+    
+    // Extract form values
+    const recipientId = values.shoutout_recipient?.recipient_value?.selected_option?.value;
+    const message = values.shoutout_message?.message_value?.value || '';
+    const companyValues = values.company_values?.values_value?.selected_options?.map((opt: any) => opt.value) || [];
+    
+    if (!recipientId || recipientId === 'none' || !message) {
+      console.error('Shoutout recipient or message not provided');
+      return;
+    }
+    
+    // Find sender in the system
+    let fromUser = await storage.getUserBySlackId(organizationId, user.id);
+    
+    if (!fromUser) {
+      console.log(`Sender not found, creating: ${user.name}`);
+      fromUser = await storage.createUser(organizationId, {
+        username: user.username || user.id,
+        password: randomBytes(32).toString('hex'),
+        name: user.real_name || user.name || 'Slack User',
+        email: user.profile?.email || `${user.id}@slack.local`,
+        role: 'member',
+        slackUserId: user.id,
+        isActive: true
+      });
+    }
+    
+    // Get recipient user
+    const toUser = await storage.getUser(organizationId, recipientId);
+    if (!toUser) {
+      console.error(`Recipient user not found: ${recipientId}`);
+      return;
+    }
+    
+    // Create shoutout entry
+    const shoutoutData = {
+      fromUserId: fromUser.id,
+      toUserId: toUser.id,
+      organizationId: organizationId,
+      message: message,
+      companyValues: companyValues.length > 0 ? companyValues : null,
+      createdAt: new Date()
+    };
+    
+    const shoutout = await storage.createShoutout(organizationId, shoutoutData);
+    
+    // Send confirmation message to sender
+    const dmResult = await slack!.conversations.open({ users: user.id });
+    if (dmResult.ok && dmResult.channel?.id) {
+      await sendSlackMessage({
+        channel: dmResult.channel.id,
+        text: `✅ Your shoutout to ${toUser.name} has been sent! 👏`,
+        blocks: [
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `*Shoutout Sent Successfully!* 👏`
+            }
+          },
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `Your recognition of ${toUser.name} has been shared with the team!`
+            }
+          }
+        ]
+      });
+    }
+    
+    // Send notification to recipient if they have Slack ID
+    if (toUser.slackUserId) {
+      const recipientDm = await slack!.conversations.open({ users: toUser.slackUserId });
+      if (recipientDm.ok && recipientDm.channel?.id) {
+        await sendSlackMessage({
+          channel: recipientDm.channel.id,
+          text: `🎉 You've received a shoutout from ${fromUser.name}!`,
+          blocks: [
+            {
+              type: 'section' as const,
+              text: {
+                type: 'mrkdwn' as const,
+                text: `*🎉 You've been recognized!*`
+              }
+            },
+            {
+              type: 'section' as const,
+              text: {
+                type: 'mrkdwn' as const,
+                text: `${fromUser.name} says: _"${message}"_`
+              }
+            },
+            ...(companyValues.length > 0 ? [{
+              type: 'section' as const,
+              text: {
+                type: 'mrkdwn' as const,
+                text: `*Values demonstrated:* ${companyValues.join(', ')}`
+              }
+            }] : [])
+          ]
+        });
+      }
+    }
+    
+    // Announce to team channel
+    if (process.env.SLACK_CHANNEL_ID) {
+      await announceShoutout(
+        message, 
+        fromUser.name || user.name || 'Team Member',
+        toUser.name || 'Team Member',
+        companyValues
+      );
+    }
+    
+    console.log(`Shoutout sent via Slack from ${user.name} to ${toUser.name}`);
+    
+  } catch (error) {
+    console.error('Error processing shoutout modal submission:', error);
+  }
+}
+
+/**
+ * Handle goals modal submission
+ */
+async function handleGoalsModalSubmission(view: any, user: any, organizationId: string, storage: any) {
+  try {
+    const values = view.state.values;
+    
+    // Extract form values
+    const teamValue = values.goal_team?.team_value?.selected_option?.value;
+    const title = values.goal_title?.title_value?.value || '';
+    const description = values.goal_description?.description_value?.value || '';
+    const goalType = values.goal_type?.type_value?.selected_option?.value || 'monthly';
+    const metric = values.goal_metric?.metric_value?.selected_option?.value || 'wins';
+    const targetValue = parseInt(values.goal_target?.target_value?.value || '0');
+    const prize = values.goal_prize?.prize_value?.value || '';
+    
+    if (!title || targetValue <= 0) {
+      console.error('Goal title or target value not provided');
+      return;
+    }
+    
+    // Find user in the system
+    let systemUser = await storage.getUserBySlackId(organizationId, user.id);
+    
+    if (!systemUser) {
+      console.error(`User not found in system: ${user.name}`);
+      return;
+    }
+    
+    // Check permissions
+    if (systemUser.role !== 'manager' && systemUser.role !== 'admin') {
+      console.error(`User ${systemUser.name} does not have permission to create goals`);
+      return;
+    }
+    
+    // Set up date range based on goal type
+    const startDate = new Date();
+    const endDate = new Date();
+    
+    switch (goalType) {
+      case 'weekly':
+        endDate.setDate(endDate.getDate() + 7);
+        break;
+      case 'monthly':
+        endDate.setMonth(endDate.getMonth() + 1);
+        break;
+      case 'quarterly':
+        endDate.setMonth(endDate.getMonth() + 3);
+        break;
+    }
+    
+    // Create goal entry
+    const goalData = {
+      organizationId: organizationId,
+      teamId: teamValue === 'org_wide' ? null : teamValue,
+      title: title,
+      description: description || null,
+      targetValue: targetValue,
+      currentValue: 0,
+      goalType: goalType,
+      metric: metric,
+      prize: prize || null,
+      startDate: startDate,
+      endDate: endDate,
+      status: 'active',
+      createdBy: systemUser.id,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    const goal = await storage.createTeamGoal?.(organizationId, goalData);
+    
+    // Send confirmation message
+    const dmResult = await slack!.conversations.open({ users: user.id });
+    if (dmResult.ok && dmResult.channel?.id) {
+      await sendSlackMessage({
+        channel: dmResult.channel.id,
+        text: `✅ Team goal "${title}" has been created! 🎯`,
+        blocks: [
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `*Goal Created Successfully!* 🎯`
+            }
+          },
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `*${title}*\n${description || 'No description'}`
+            }
+          },
+          {
+            type: 'section' as const,
+            fields: [
+              {
+                type: 'mrkdwn' as const,
+                text: `*Target:* ${targetValue} ${metric}`
+              },
+              {
+                type: 'mrkdwn' as const,
+                text: `*Duration:* ${goalType}`
+              }
+            ]
+          },
+          ...(prize ? [{
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `🏆 *Prize:* ${prize}`
+            }
+          }] : [])
+        ]
+      });
+    }
+    
+    // Announce to team channel if public channel exists
+    if (process.env.SLACK_CHANNEL_ID) {
+      await sendSlackMessage({
+        channel: process.env.SLACK_CHANNEL_ID,
+        text: `New team goal: ${title}`,
+        blocks: [
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `*🎯 New Team Goal Set!*`
+            }
+          },
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `*${title}*\n${description || ''}`
+            }
+          },
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `Target: *${targetValue} ${metric}* in the next *${goalType}*${prize ? `\n🏆 Prize: *${prize}*` : ''}`
+            }
+          }
+        ]
+      });
+    }
+    
+    console.log(`Goal created via Slack by ${user.name}: ${title}`);
+    
+  } catch (error) {
+    console.error('Error processing goals modal submission:', error);
+  }
 }
 
 /**
