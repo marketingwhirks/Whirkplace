@@ -1464,7 +1464,21 @@ export async function sendWelcomeMessage(userId: string, userName: string, chann
       type: 'section' as const,
       text: {
         type: 'mrkdwn' as const,
-        text: `💡 *Pro Tip*: You can also interact with me directly in Slack! Try clicking the buttons in messages or look out for weekly reminders.`
+        text: `📱 *Available Slack Commands:*\n\nYou can use these commands directly in Slack:`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `• \`/checkin\` - Submit your weekly check-in\n• \`/wins\` - Share a win or celebration\n• \`/shoutout\` - Recognize a teammate\n• \`/goals\` - View or create team goals\n• \`/mystatus\` - View your personal dashboard\n• \`/teamstatus\` - Team overview (managers only)\n• \`/vacation\` - Set or view vacation time\n• \`/help\` - Show all available commands`
+      }
+    },
+    {
+      type: 'section' as const,
+      text: {
+        type: 'mrkdwn' as const,
+        text: `Just type any command in Slack to get started! 🚀`
       }
     },
     {
@@ -1582,6 +1596,30 @@ export async function sendPasswordSetupViaSlackDM(
             style: 'primary' as const
           }
         ]
+      },
+      {
+        type: 'divider' as const
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `📱 *Available Slack Commands:*\n\nYou can use these commands directly in Slack:`
+        }
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `• \`/checkin\` - Submit your weekly check-in\n• \`/wins\` - Share a win or celebration\n• \`/shoutout\` - Recognize a teammate\n• \`/goals\` - View or create team goals\n• \`/mystatus\` - View your personal dashboard\n• \`/teamstatus\` - Team overview (managers only)\n• \`/vacation\` - Set or view vacation time\n• \`/help\` - Show all available commands`
+        }
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `Just type any command in Slack to get started! 🚀`
+        }
       },
       {
         type: 'divider' as const
