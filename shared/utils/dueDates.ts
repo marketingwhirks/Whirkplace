@@ -252,18 +252,10 @@ export function getWeekEndingFriday(date: Date, organization?: Partial<Organizat
   // Convert the input date to the organization's timezone
   const localDate = toZonedTime(date, timezone);
   
-  let friday: Date;
-  
-  // If it's Saturday or Sunday, use next week's Friday
-  if (isSaturday(localDate) || isSunday(localDate)) {
-    // Get next Monday, then add 4 days to get to Friday
-    const nextMonday = startOfWeek(addDays(localDate, 7), { weekStartsOn: 1 });
-    friday = addDays(nextMonday, 4);
-  } else {
-    // It's Monday-Friday, use this week's Friday
-    const monday = startOfWeek(localDate, { weekStartsOn: 1 });
-    friday = addDays(monday, 4);
-  }
+  // Get this week's Friday (week runs Monday-Sunday)
+  // Saturday and Sunday are part of the current week
+  const monday = startOfWeek(localDate, { weekStartsOn: 1 });
+  const friday = addDays(monday, 4);
   
   // Set time to 23:59:59.999 (end of day)
   const fridayEndOfDay = setMilliseconds(
@@ -295,18 +287,10 @@ export function getCheckinWeekFriday(date: Date, organization?: Partial<Organiza
   // Convert the input date to the organization's timezone
   const localDate = toZonedTime(date, timezone);
   
-  let friday: Date;
-  
-  // If it's Saturday or Sunday, use next week's Friday
-  if (isSaturday(localDate) || isSunday(localDate)) {
-    // Get next Monday, then add 4 days to get to Friday
-    const nextMonday = startOfWeek(addDays(localDate, 7), { weekStartsOn: 1 });
-    friday = addDays(nextMonday, 4);
-  } else {
-    // It's Monday-Friday, use this week's Friday
-    const monday = startOfWeek(localDate, { weekStartsOn: 1 });
-    friday = addDays(monday, 4);
-  }
+  // Get this week's Friday (week runs Monday-Sunday)
+  // Saturday and Sunday are part of the current week
+  const monday = startOfWeek(localDate, { weekStartsOn: 1 });
+  const friday = addDays(monday, 4);
   
   // Set time to 00:00:00.000 (start of day for display)
   const fridayStartOfDay = setMilliseconds(
