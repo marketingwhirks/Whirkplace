@@ -1595,13 +1595,16 @@ export async function sendPasswordSetupViaSlackDM(
     // Include organization context in the reset URL
     const passwordSetupUrl = `https://whirkplace.com/reset-password?token=${resetToken}&org=${organizationSlug}`;
 
+    // Create Slack OAuth login URL
+    const slackLoginUrl = `${normalizedAppUrl}/#/login?org=${organizationSlug}&auth_method=slack`;
+    
     // Create message blocks
     const passwordSetupBlocks = [
       {
         type: 'header' as const,
         text: {
           type: 'plain_text' as const,
-          text: '🔐 Set Up Your WhirkPlace Password',
+          text: '🚀 Access Your WhirkPlace Account',
           emoji: true
         }
       },
@@ -1609,14 +1612,14 @@ export async function sendPasswordSetupViaSlackDM(
         type: 'section' as const,
         text: {
           type: 'mrkdwn' as const,
-          text: `Hi ${userName || 'there'}! You're currently using Slack to sign in to *${organizationName}* on WhirkPlace.`
+          text: `Hi ${userName || 'there'}! You have access to *${organizationName}* on WhirkPlace.`
         }
       },
       {
         type: 'section' as const,
         text: {
           type: 'mrkdwn' as const,
-          text: `We're giving you the option to also log in using an email and password.\n\n*This is completely optional* - you can continue using Slack to sign in if you prefer.`
+          text: `✨ *You have two ways to sign in:*`
         }
       },
       {
@@ -1626,7 +1629,32 @@ export async function sendPasswordSetupViaSlackDM(
         type: 'section' as const,
         text: {
           type: 'mrkdwn' as const,
-          text: `*Your login email:* \`${email}\`\n\n⏰ _This link expires in 24 hours for security._`
+          text: `*Option 1: Sign in with Slack (Recommended)*\nContinue using your Slack account for seamless authentication. No password needed!`
+        }
+      },
+      {
+        type: 'actions' as const,
+        elements: [
+          {
+            type: 'button' as const,
+            text: {
+              type: 'plain_text' as const,
+              text: '🔗 Login with Slack',
+              emoji: true
+            },
+            url: slackLoginUrl,
+            style: 'primary' as const
+          }
+        ]
+      },
+      {
+        type: 'divider' as const
+      },
+      {
+        type: 'section' as const,
+        text: {
+          type: 'mrkdwn' as const,
+          text: `*Option 2: Set up a password (Optional)*\nIf you prefer, you can also set up a password to log in with your email.\n\n*Your login email:* \`${email}\`\n\n⏰ _Password setup link expires in 24 hours for security._`
         }
       },
       {
@@ -1640,7 +1668,7 @@ export async function sendPasswordSetupViaSlackDM(
               emoji: true
             },
             url: passwordSetupUrl,
-            style: 'primary' as const
+            style: 'secondary' as const
           }
         ]
       },

@@ -39,9 +39,29 @@ export default function LoginPage() {
     
     // Get organization from URL parameter if provided (e.g., from Slack link)
     const orgParam = urlParams.get('org');
+    const authMethod = urlParams.get('auth_method');
+    
     if (orgParam) {
       setOrganizationSlug(orgParam);
-      fetchAuthProviders(orgParam);
+      fetchAuthProviders(orgParam).then(() => {
+        // If auth_method=slack is specified, automatically trigger Slack login
+        if (authMethod === 'slack') {
+          // Small delay to ensure providers are loaded and displayed
+          setTimeout(() => {
+            const slackButton = document.querySelector('[data-auth-method="slack"]') as HTMLElement;
+            if (slackButton) {
+              // Highlight the Slack button briefly before clicking
+              slackButton.style.animation = 'pulse 1s';
+              setTimeout(() => {
+                slackButton.click();
+              }, 500);
+            } else {
+              // If no button found, directly navigate to Slack login
+              handleSlackLogin();
+            }
+          }, 100);
+        }
+      });
     } else {
       // Try to get last used organization from localStorage
       const lastOrg = localStorage.getItem('last-organization');
@@ -121,7 +141,7 @@ export default function LoginPage() {
     }
   };
   
-  const fetchAuthProviders = async (slug: string) => {
+  const fetchAuthProviders = async (slug: string): Promise<void> => {
     setIsLoadingProviders(true);
     try {
       const response = await fetch(`/api/auth/providers/${slug}`);
@@ -531,6 +551,7 @@ export default function LoginPage() {
                         className="w-full flex items-center justify-center space-x-2 bg-[#4A154B] hover:bg-[#350d36] text-white border-[#4A154B]"
                         size="lg"
                         data-testid="slack-login-button"
+                        data-auth-method="slack"
                       >
                         <svg 
                           viewBox="0 0 24 24" 
