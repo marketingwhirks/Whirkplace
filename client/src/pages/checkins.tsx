@@ -85,6 +85,8 @@ export default function Checkins() {
   const [activeTab, setActiveTab] = useState<"current" | "history">("current");
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [checkinToReview, setCheckinToReview] = useState<Checkin | null>(null);
+  const [showPreviousWeekDialog, setShowPreviousWeekDialog] = useState(false);
+  const [isSubmittingLate, setIsSubmittingLate] = useState(false);
   
   // Tour management
   const tourManager = useManagedTour(TOUR_IDS.CHECKINS_GUIDE);
@@ -94,6 +96,9 @@ export default function Checkins() {
 
   // Get current week start (Monday)
   const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  
+  // Get previous week start (Monday)
+  const previousWeekStart = addWeeks(currentWeekStart, -1);
 
   // Fetch active questions
   const { data: questions = [], isLoading: questionsLoading } = useQuery<Question[]>({
@@ -114,6 +119,12 @@ export default function Checkins() {
   // Get current week's check-in
   const { data: currentCheckin } = useQuery<Checkin | null>({
     queryKey: ["/api/users", currentUser?.id, "current-checkin"],
+    enabled: !!currentUser?.id,
+  });
+
+  // Get previous week's check-in
+  const { data: previousCheckin } = useQuery<Checkin | null>({
+    queryKey: ["/api/users", currentUser?.id, "previous-checkin"],
     enabled: !!currentUser?.id,
   });
 
@@ -155,30 +166,41 @@ export default function Checkins() {
 
   // Create/Update check-in mutation
   const createCheckinMutation = useMutation({
-    mutationFn: async (data: CheckinForm) => {
+    mutationFn: async (data: CheckinForm & { weekStartDate?: string }) => {
       // Only send user-provided data - server computes due dates and other fields
       const checkinPayload = {
         userId: currentUser!.id,
-        weekOf: currentWeekStart.toISOString(), // Convert to ISO string for server
+        weekOf: data.weekStartDate || currentWeekStart.toISOString(), // Use provided date for late submission
+        weekStartDate: data.weekStartDate, // Pass this for backend validation
         overallMood: data.overallMood,
         responses: data.responses,
         isComplete: true,
       };
 
-      if (currentWeekCheckin) {
+      // If updating existing check-in (either current or previous week)
+      if (data.weekStartDate && previousCheckin) {
+        return apiRequest("PATCH", `/api/checkins/${previousCheckin.id}`, checkinPayload);
+      } else if (!data.weekStartDate && currentWeekCheckin) {
         return apiRequest("PATCH", `/api/checkins/${currentWeekCheckin.id}`, checkinPayload);
       } else {
         return apiRequest("POST", "/api/checkins", checkinPayload);
       }
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser?.id, "current-checkin"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser?.id, "previous-checkin"] });
       form.reset();
       setShowCreateDialog(false);
+      setShowPreviousWeekDialog(false);
+      setIsSubmittingLate(false);
+      
+      const isLateSubmission = variables.weekStartDate ? true : false;
       toast({
-        title: "Check-in submitted!",
-        description: "Your weekly check-in has been submitted for review.",
+        title: isLateSubmission ? "Late check-in submitted!" : "Check-in submitted!",
+        description: isLateSubmission 
+          ? "Your late check-in for the previous week has been submitted for review."
+          : "Your weekly check-in has been submitted for review.",
       });
     },
     onError: (error) => {
@@ -277,6 +299,37 @@ export default function Checkins() {
                 Since you don't have an assigned manager, you need to self-review your check-ins. 
                 Click the "Self-Review" button below to approve your weekly check-in.
               </span>
+            </AlertDescription>
+          </Alert>
+        )}
+        
+        {/* Late Check-in Alert - Show if previous week's check-in is missing */}
+        {!previousCheckin && activeQuestions.length > 0 && (
+          <Alert className="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800">
+            <Clock className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+            <AlertDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-medium text-orange-900 dark:text-orange-300">Previous Week Check-in Missing:</span>
+                  <span className="text-orange-800 dark:text-orange-400 ml-2">
+                    You missed your check-in for the week ending {format(getCheckinWeekFriday(previousWeekStart), 'MMMM d, yyyy')}. 
+                    You can still submit it now as a late submission.
+                  </span>
+                </div>
+                <Dialog open={showPreviousWeekDialog} onOpenChange={setShowPreviousWeekDialog}>
+                  <DialogTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="ml-4 border-orange-500 text-orange-700 hover:bg-orange-50 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-900/20"
+                      data-testid="button-submit-late-checkin"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Submit Late Check-in
+                    </Button>
+                  </DialogTrigger>
+                </Dialog>
+              </div>
             </AlertDescription>
           </Alert>
         )}
@@ -662,6 +715,130 @@ export default function Checkins() {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Late Check-in Dialog for Previous Week */}
+        <Dialog open={showPreviousWeekDialog} onOpenChange={setShowPreviousWeekDialog}>
+          <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center space-x-2">
+                <Clock className="w-5 h-5 text-orange-600" />
+                <span>Submit Late Check-in</span>
+              </DialogTitle>
+              <DialogDescription>
+                <div className="space-y-2">
+                  <p>Week ending {format(getCheckinWeekFriday(previousWeekStart), 'MMMM d, yyyy')}</p>
+                  <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
+                    Late Submission
+                  </Badge>
+                </div>
+              </DialogDescription>
+            </DialogHeader>
+            
+            {questionsLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            ) : (
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit((data) => {
+                  createCheckinMutation.mutate({
+                    ...data,
+                    weekStartDate: previousWeekStart.toISOString()
+                  });
+                })} className="space-y-6">
+                  {/* Overall Mood Rating */}
+                  <FormField
+                    control={form.control}
+                    name="overallMood"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>How were you feeling that week? (1-5 scale)</FormLabel>
+                        <FormControl>
+                          <div className="flex items-center space-x-4">
+                            <RatingStars
+                              rating={field.value}
+                              onRatingChange={field.onChange}
+                              size="lg"
+                            />
+                            {field.value > 0 && (
+                              <Badge variant={field.value >= 4 ? "default" : field.value >= 3 ? "secondary" : "destructive"}>
+                                {field.value >= 4 ? "Great" : field.value >= 3 ? "Good" : "Needs Support"}
+                              </Badge>
+                            )}
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Question Responses */}
+                  {activeQuestions.length > 0 ? (
+                    <div className="space-y-4">
+                      <div className="text-sm text-muted-foreground mb-2">
+                        <span className="text-red-500">*</span> All questions are required
+                      </div>
+                      {activeQuestions.map((question, index) => (
+                        <FormField
+                          key={question.id}
+                          control={form.control}
+                          name={`responses.${question.id}`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>
+                                {question.text} <span className="text-red-500">*</span>
+                              </FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  placeholder="Share your thoughts..."
+                                  rows={3}
+                                  data-testid={`dialog-late-textarea-question-${index}`}
+                                  {...field}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                      <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-500" />
+                      <p className="text-sm text-red-600 dark:text-red-400 font-medium">
+                        Check-ins cannot be submitted without questions.
+                      </p>
+                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                        Please contact your administrator to set up check-in questions.
+                      </p>
+                    </div>
+                  )}
+
+                <DialogFooter>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setShowPreviousWeekDialog(false)}
+                      data-testid="button-cancel-late-dialog"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={createCheckinMutation.isPending || activeQuestions.length === 0}
+                      data-testid="checkin-late-submit"
+                      className="bg-orange-600 hover:bg-orange-700"
+                    >
+                      {createCheckinMutation.isPending ? "Submitting Late Check-in..." : "Submit Late Check-in"}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Create/Edit Check-in Dialog */}
         <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>

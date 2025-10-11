@@ -171,6 +171,8 @@ export interface IStorage {
   getCheckinsByUser(organizationId: string, userId: string): Promise<Checkin[]>;
   getCheckinsByManager(organizationId: string, managerId: string): Promise<Checkin[]>;
   getCurrentWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined>;
+  getPreviousWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined>;
+  getCheckinForWeek(organizationId: string, userId: string, weekStart: Date): Promise<Checkin | undefined>;
   getRecentCheckins(organizationId: string, limit?: number): Promise<Checkin[]>;
 
   // Questions
@@ -1514,6 +1516,56 @@ export class DatabaseStorage implements IStorage {
         eq(checkins.organizationId, organizationId),
         gte(checkins.weekOf, startOfWeek)
       ))
+      .limit(1);
+    
+    return checkin || undefined;
+  }
+
+  async getPreviousWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined> {
+    // Get the organization for timezone settings
+    const organization = await this.getOrganization(organizationId);
+    
+    // Get current and previous week starts
+    const currentWeekStart = getWeekStartCentral(new Date(), organization);
+    const previousWeekStart = new Date(currentWeekStart);
+    previousWeekStart.setDate(previousWeekStart.getDate() - 7);
+    
+    // Find check-in for the previous week
+    const [checkin] = await db
+      .select()
+      .from(checkins)
+      .where(and(
+        eq(checkins.userId, userId),
+        eq(checkins.organizationId, organizationId),
+        gte(checkins.weekOf, previousWeekStart),
+        lt(checkins.weekOf, currentWeekStart)
+      ))
+      .orderBy(desc(checkins.createdAt))
+      .limit(1);
+    
+    return checkin || undefined;
+  }
+
+  async getCheckinForWeek(organizationId: string, userId: string, weekStart: Date): Promise<Checkin | undefined> {
+    // Get the organization for timezone settings
+    const organization = await this.getOrganization(organizationId);
+    
+    // Normalize the week start to Monday at 00:00:00 in the organization's timezone
+    const normalizedWeekStart = getWeekStartCentral(weekStart, organization);
+    const weekEnd = new Date(normalizedWeekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    
+    // Find check-in for the specified week
+    const [checkin] = await db
+      .select()
+      .from(checkins)
+      .where(and(
+        eq(checkins.userId, userId),
+        eq(checkins.organizationId, organizationId),
+        gte(checkins.weekOf, normalizedWeekStart),
+        lt(checkins.weekOf, weekEnd)
+      ))
+      .orderBy(desc(checkins.createdAt))
       .limit(1);
     
     return checkin || undefined;

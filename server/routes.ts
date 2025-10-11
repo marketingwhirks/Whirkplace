@@ -4443,11 +4443,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Add userId from current user and set weekOf if not provided
+      // Get organization for timezone settings
+      const organization = await storage.getOrganization(req.orgId);
+      
+      // Determine the week for the check-in
+      let weekOf: Date;
+      if (req.body.weekStartDate) {
+        // If weekStartDate is provided, use it (for late submissions)
+        const providedDate = new Date(req.body.weekStartDate);
+        
+        // Validate that it's not in the future
+        const currentWeekStart = getWeekStartCentral(new Date(), organization);
+        if (providedDate > currentWeekStart) {
+          return res.status(400).json({
+            message: "Cannot submit check-ins for future weeks"
+          });
+        }
+        
+        // Validate that it's not more than 1 week in the past
+        const previousWeekStart = new Date(currentWeekStart);
+        previousWeekStart.setDate(previousWeekStart.getDate() - 7);
+        const twoWeeksAgo = new Date(previousWeekStart);
+        twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 7);
+        
+        if (providedDate < twoWeeksAgo) {
+          return res.status(400).json({
+            message: "Can only submit check-ins for the current week or the immediately previous week"
+          });
+        }
+        
+        // Normalize the week start
+        weekOf = getWeekStartCentral(providedDate, organization);
+      } else {
+        // Default to current week
+        weekOf = getWeekStartCentral(new Date(), organization);
+      }
+      
+      // Check if a check-in already exists for this week
+      const existingCheckin = await storage.getCheckinForWeek(
+        req.orgId,
+        req.currentUser!.id,
+        weekOf
+      );
+      
+      if (existingCheckin) {
+        return res.status(400).json({
+          message: "A check-in already exists for this week. Please update the existing check-in instead.",
+          existingCheckinId: existingCheckin.id
+        });
+      }
+      
+      // Add userId from current user and set weekOf
       const bodyWithUserId = {
         ...req.body,
         userId: req.currentUser!.id,
-        weekOf: req.body.weekOf || new Date(),
+        weekOf: weekOf,
         overallMood: req.body.overallMood || req.body.moodRating || 5
       };
       
@@ -4523,6 +4573,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Invalid check-in data",
         details: error instanceof Error ? error.message : "Unknown validation error"
       });
+    }
+  });
+
+  app.get("/api/users/:id/current-checkin", requireAuth(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Verify user is accessing their own check-in or is admin/manager
+      if (req.currentUser!.id !== id && req.currentUser!.role !== 'admin') {
+        const user = await storage.getUser(req.orgId, id);
+        if (!user || user.managerId !== req.currentUser!.id) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+      
+      const checkin = await storage.getCurrentWeekCheckin(req.orgId, id);
+      
+      if (!checkin) {
+        return res.status(404).json({ message: "No check-in found for current week" });
+      }
+      
+      res.json(checkin);
+    } catch (error) {
+      console.error("Error fetching current week check-in:", error);
+      res.status(500).json({ message: "Failed to fetch check-in" });
+    }
+  });
+
+  app.get("/api/users/:id/previous-checkin", requireAuth(), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Verify user is accessing their own check-in or is admin/manager
+      if (req.currentUser!.id !== id && req.currentUser!.role !== 'admin') {
+        const user = await storage.getUser(req.orgId, id);
+        if (!user || user.managerId !== req.currentUser!.id) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+      
+      const checkin = await storage.getPreviousWeekCheckin(req.orgId, id);
+      
+      if (!checkin) {
+        return res.status(404).json({ message: "No check-in found for previous week" });
+      }
+      
+      res.json(checkin);
+    } catch (error) {
+      console.error("Error fetching previous week check-in:", error);
+      res.status(500).json({ message: "Failed to fetch check-in" });
     }
   });
 

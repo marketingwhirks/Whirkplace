@@ -206,6 +206,11 @@ export default function Dashboard() {
     queryKey: ["/api/users", currentUser.id, "current-checkin"],
   });
 
+  // Get previous week check-in to check for missed submissions
+  const { data: previousCheckin } = useQuery<Checkin | null>({
+    queryKey: ["/api/users", currentUser.id, "previous-checkin"],
+  });
+
   // Fetch team goals for dashboard
   const { data: teamGoals = [], isLoading: goalsLoading } = useQuery<TeamGoal[]>({
     queryKey: ["/api/team-goals/dashboard"]
@@ -369,6 +374,38 @@ export default function Dashboard() {
             autoStart={true}
             delay={1000}
           />
+        )}
+        
+        {/* Late Check-in Notification */}
+        {!previousCheckin && questions.length > 0 && (
+          <Card className="border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-900/20">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Clock className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                  <div>
+                    <p className="font-medium text-orange-900 dark:text-orange-300">
+                      Previous Week Check-in Missing
+                    </p>
+                    <p className="text-sm text-orange-700 dark:text-orange-400">
+                      You can still submit your check-in for last week
+                    </p>
+                  </div>
+                </div>
+                <Link to="/checkins">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    className="border-orange-500 text-orange-700 hover:bg-orange-100 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-900/40"
+                    data-testid="button-late-checkin-dashboard"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Submit Late Check-in
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         )}
         
         {/* Stats Overview */}

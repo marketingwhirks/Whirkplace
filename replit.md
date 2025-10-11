@@ -19,13 +19,13 @@ The frontend uses React 18 with TypeScript, Tailwind CSS, and shadcn/ui componen
 - **Multi-Tenant Architecture**: Supports multiple organizations with data isolation using `organization_id` in all tables, dynamic company values, and secure API routes.
 - **Authentication**: Multi-provider system including Slack OAuth, Microsoft 365 SSO, and a developer-friendly backdoor authentication. Features secure session management and account ownership transfer capabilities.
 - **Feature Specifications**:
-    - **Check-ins**: Weekly wellness surveys with customizable questions, self-review capability for users without managers, and integration with question bank.
+    - **Check-ins**: Weekly wellness surveys with customizable questions, self-review capability for users without managers, integration with question bank, and late submission support for previous week's check-ins with clear visual indicators.
     - **Wins**: Peer-to-peer recognition system with private/public visibility, integration with company values, and rich Slack notifications.
     - **Questions**: Customizable question bank with pre-built categories, auto-seeding for super admins, and role-based UI.
-    - **Slack Integration**: Enhanced onboarding with secure password setup links, configurable wins channel, and welcome DMs for new users.
+    - **Slack Integration**: Enhanced onboarding with secure password setup links, configurable wins channel, welcome DMs with app links, and 8 slash commands (/checkin, /wins, /shoutout, /goals, /mystatus, /teamstatus, /vacation, /help).
 
 ### System Design Choices
-The application adopts a multi-tenant architecture to support multiple organizations with data isolation. A storage abstraction layer in the backend allows for flexible database implementations. Secure authentication mechanisms, including OAuth and SSO, are central to the system. Account ownership and role-based access control (Super admin > Account owner > Regular admin > Manager > Member) ensure robust management.
+The application adopts a multi-tenant architecture to support multiple organizations with data isolation. A storage abstraction layer in the backend allows for flexible database implementations. Secure authentication mechanisms, including OAuth and SSO, are central to the system. Account ownership and role-based access control (Super admin > Account owner > Regular admin > Manager > Member) ensure robust management. Check-in weeks are calculated using Monday as the week start, ensuring consistent weekly cycles across the organization.
 
 ## External Dependencies
 
