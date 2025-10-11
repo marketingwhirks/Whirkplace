@@ -10,7 +10,7 @@ import RatingStars from "@/components/checkin/rating-stars";
 import WinCard from "@/components/wins/win-card";
 import TeamMemberCard from "@/components/team/team-member-card";
 import CheckinDetail from "@/components/checkin/checkin-detail";
-import { Heart, Sparkles, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer, TrendingUp, Gift, ArrowRight, Users } from "lucide-react";
+import { Heart, Sparkles, ClipboardCheck, Trophy, HelpCircle, Plus, Bell, UserCog, Target, Timer, TrendingUp, Gift, ArrowRight, Users, CheckCircle2, Clock, AlertCircle, CalendarDays, Eye, Edit3 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
@@ -1077,54 +1077,205 @@ export default function Dashboard() {
           </Card>
 
           {/* Check-in Interface */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Weekly Check-in</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                How are you feeling this week?
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Overall Mood Rating */}
-              <div>
-                <Label className="text-sm font-medium text-foreground mb-3 block">
-                  Overall Mood
-                </Label>
-                <RatingStars
-                  rating={checkinData.overallMood}
-                  onRatingChange={handleRatingChange}
-                  size="lg"
-                />
-              </div>
+          <Card className="relative overflow-hidden border-2 border-primary/20">
+            {/* Status Badge - Floating in corner */}
+            <div className="absolute top-4 right-4 z-10">
+              {currentCheckin ? (
+                <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 px-3 py-1" data-testid="badge-checkin-status-completed">
+                  <CheckCircle2 className="w-4 h-4 mr-1" />
+                  Submitted
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="border-orange-500 text-orange-600 dark:border-orange-400 dark:text-orange-400 px-3 py-1" data-testid="badge-checkin-status-pending">
+                  <AlertCircle className="w-4 h-4 mr-1" />
+                  Pending
+                </Badge>
+              )}
+            </div>
 
-              {/* Questions */}
-              <div className="space-y-4">
-                {questions.map((question) => (
-                  <div key={question.id}>
-                    <Label className="text-sm font-medium text-foreground mb-2 block">
-                      {question.text}
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="w-5 h-5 text-primary" />
+                <CardTitle>Weekly Check-in</CardTitle>
+              </div>
+              
+              {currentCheckin ? (
+                // Submitted state header
+                <div className="space-y-3 mt-3">
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                    <CheckCircle2 className="w-5 h-5" />
+                    <p className="text-sm font-medium">
+                      Great job! Your weekly check-in has been submitted.
+                    </p>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Submitted</p>
+                      <p className="text-sm font-medium flex items-center gap-1">
+                        <CalendarDays className="w-3 h-3" />
+                        {formatDistanceToNow(new Date(currentCheckin.createdAt), { addSuffix: true })}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground">Review Status</p>
+                      <div className="flex items-center gap-1">
+                        {currentCheckin.reviewStatus === "pending" ? (
+                          <>
+                            <Clock className="w-3 h-3 text-yellow-600" />
+                            <Badge variant="secondary" className="text-xs px-2 py-0">
+                              Pending Review
+                            </Badge>
+                          </>
+                        ) : currentCheckin.reviewStatus === "reviewed" ? (
+                          <>
+                            <CheckCircle2 className="w-3 h-3 text-green-600" />
+                            <Badge className="text-xs px-2 py-0 bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                              Reviewed
+                            </Badge>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                // Pending state header
+                <div className="space-y-2 mt-3">
+                  <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                    <AlertCircle className="w-5 h-5" />
+                    <p className="text-sm font-medium">
+                      Your weekly check-in is due. Take a moment to share how you're feeling.
+                    </p>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Regular check-ins help us understand team health and provide better support.
+                  </p>
+                </div>
+              )}
+            </CardHeader>
+            
+            <CardContent className="space-y-6">
+              {currentCheckin ? (
+                // Submitted state content
+                <div className="space-y-4">
+                  {/* Display submitted mood */}
+                  <div className="p-4 bg-muted rounded-lg">
+                    <Label className="text-sm font-medium text-muted-foreground mb-2 block">
+                      Your Mood This Week
                     </Label>
-                    <Textarea
-                      placeholder="Share your thoughts..."
-                      value={checkinData.responses[question.id] || ""}
-                      onChange={(e) => handleResponseChange(question.id, e.target.value)}
-                      className="resize-none"
-                      rows={3}
-                      data-testid={`textarea-question-${question.id}`}
+                    <div className="flex items-center gap-3">
+                      <RatingStars rating={currentCheckin.overallMood} readonly size="lg" />
+                      <Badge variant={currentCheckin.overallMood >= 4 ? "default" : currentCheckin.overallMood >= 3 ? "secondary" : "destructive"}>
+                        {currentCheckin.overallMood}/5
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Display submitted responses (preview) */}
+                  <div className="p-4 bg-muted rounded-lg space-y-3">
+                    <Label className="text-sm font-medium text-muted-foreground block">
+                      Your Responses
+                    </Label>
+                    {questions.slice(0, 1).map((question) => {
+                      const responses = currentCheckin.responses as Record<string, string>;
+                      const answer = responses[question.id];
+                      if (!answer) return null;
+                      
+                      return (
+                        <div key={question.id} className="space-y-1">
+                          <p className="text-xs text-muted-foreground">{question.text}</p>
+                          <p className="text-sm text-foreground pl-2 border-l-2 border-primary/20 line-clamp-2">
+                            {answer}
+                          </p>
+                        </div>
+                      );
+                    })}
+                    {questions.length > 1 && (
+                      <p className="text-xs text-muted-foreground italic">
+                        +{questions.length - 1} more responses
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Action buttons for submitted state */}
+                  <div className="flex gap-3">
+                    <Button 
+                      variant="default" 
+                      className="flex-1"
+                      onClick={() => setSelectedCheckin({ ...currentCheckin, user: currentUser })}
+                      data-testid="button-view-my-checkin"
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      View My Check-in
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => {
+                        // Pre-fill the form with existing data for editing
+                        setCheckinData({
+                          overallMood: currentCheckin.overallMood,
+                          responses: currentCheckin.responses as Record<string, string>,
+                        });
+                      }}
+                      data-testid="button-edit-checkin"
+                    >
+                      <Edit3 className="w-4 h-4 mr-2" />
+                      Edit Check-in
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                // Pending state content - Show the form
+                <>
+                  {/* Overall Mood Rating */}
+                  <div>
+                    <Label className="text-sm font-medium text-foreground mb-3 block">
+                      Overall Mood
+                    </Label>
+                    <RatingStars
+                      rating={checkinData.overallMood}
+                      onRatingChange={handleRatingChange}
+                      size="lg"
                     />
                   </div>
-                ))}
-              </div>
 
-              {/* Submit Button */}
-              <div className="flex justify-end space-x-3">
-                <Button variant="secondary" data-testid="button-save-draft">
-                  Save Draft
-                </Button>
-                <Button onClick={handleSubmitCheckin} data-testid="button-submit-checkin">
-                  Submit Check-in
-                </Button>
-              </div>
+                  {/* Questions */}
+                  <div className="space-y-4">
+                    {questions.map((question) => (
+                      <div key={question.id}>
+                        <Label className="text-sm font-medium text-foreground mb-2 block">
+                          {question.text}
+                        </Label>
+                        <Textarea
+                          placeholder="Share your thoughts..."
+                          value={checkinData.responses[question.id] || ""}
+                          onChange={(e) => handleResponseChange(question.id, e.target.value)}
+                          className="resize-none"
+                          rows={3}
+                          data-testid={`textarea-question-${question.id}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Submit Button */}
+                  <div className="flex justify-end space-x-3">
+                    <Button variant="secondary" data-testid="button-save-draft">
+                      Save Draft
+                    </Button>
+                    <Button 
+                      onClick={handleSubmitCheckin} 
+                      className="bg-primary hover:bg-primary/90"
+                      data-testid="button-submit-checkin"
+                    >
+                      <ClipboardCheck className="w-4 h-4 mr-2" />
+                      Submit Check-in
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
