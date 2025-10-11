@@ -25,7 +25,7 @@ The frontend uses React 18 with TypeScript, Tailwind CSS, and shadcn/ui componen
     - **Slack Integration**: Enhanced onboarding with secure password setup links, configurable wins channel, welcome DMs with app links, and 8 slash commands (/checkin, /wins, /shoutout, /goals, /mystatus, /teamstatus, /vacation, /help).
 
 ### System Design Choices
-The application adopts a multi-tenant architecture to support multiple organizations with data isolation. A storage abstraction layer in the backend allows for flexible database implementations. Secure authentication mechanisms, including OAuth and SSO, are central to the system. Account ownership and role-based access control (Super admin > Account owner > Regular admin > Manager > Member) ensure robust management. Check-in weeks are calculated using Monday as the week start, ensuring consistent weekly cycles across the organization.
+The application adopts a multi-tenant architecture to support multiple organizations with data isolation. A storage abstraction layer in the backend allows for flexible database implementations. Secure authentication mechanisms, including OAuth and SSO, are central to the system. Account ownership and role-based access control (Super admin > Account owner > Regular admin > Manager > Member) ensure robust management. Check-in weeks are calculated using Monday as the week start, ensuring consistent weekly cycles across the organization. Super administrators have access to a comprehensive data management tool for fixing production data issues across all organizations, with audit logging and safety features.
 
 ## External Dependencies
 
