@@ -106,6 +106,20 @@ export default function TeamGoals() {
   const [celebrationOpen, setCelebrationOpen] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<TeamGoal | null>(null);
   const [completedGoal, setCompletedGoal] = useState<TeamGoal | null>(null);
+  
+  // Add error handling wrapper
+  const safeOpenDialog = () => {
+    try {
+      setCreateDialogOpen(true);
+    } catch (error) {
+      console.error("Error opening create dialog:", error);
+      toast({
+        title: "Error",
+        description: "Failed to open create dialog. Please refresh and try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Check for team leader role (case-insensitive to handle "Admin", "admin", "ADMIN", etc.)
   // Also check for super admin status
@@ -306,7 +320,12 @@ export default function TeamGoals() {
   };
 
   const onCreateSubmit = (data: TeamGoalFormData) => {
-    createGoalMutation.mutate(data);
+    // Handle "organization" value as no team (organization-wide)
+    const submissionData = {
+      ...data,
+      teamId: data.teamId === "organization" ? undefined : data.teamId
+    };
+    createGoalMutation.mutate(submissionData);
   };
 
   const onEditSubmit = (data: TeamGoalFormData) => {
@@ -460,7 +479,7 @@ export default function TeamGoals() {
 
         {isTeamLeader && (
           <Button
-            onClick={() => setCreateDialogOpen(true)}
+            onClick={safeOpenDialog}
             data-testid="button-create-goal"
           >
             <Plus className="mr-2 h-4 w-4" />
@@ -692,7 +711,7 @@ export default function TeamGoals() {
                       <FormLabel>Scope</FormLabel>
                       <Select
                         onValueChange={field.onChange}
-                        value={field.value || ""}
+                        value={field.value || "organization"}
                       >
                         <FormControl>
                           <SelectTrigger data-testid="select-goal-scope">
@@ -700,7 +719,7 @@ export default function TeamGoals() {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="">Organization-wide</SelectItem>
+                          <SelectItem value="organization">Organization-wide</SelectItem>
                           {teams.map((team) => (
                             <SelectItem key={team.id} value={team.id}>
                               {team.name}
