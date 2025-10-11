@@ -9836,6 +9836,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const updateSchema = insertOrganizationSchema.partial().pick({
         name: true,
         customValues: true,
+        timezone: true,
       });
       
       const organizationData = updateSchema.parse(req.body);

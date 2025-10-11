@@ -557,7 +557,7 @@ export default function Settings() {
     enabled: !!currentUser?.id,
   });
 
-  // Fetch current organization data for admin users
+  // Fetch current organization data for all users (to display current timezone)
   const { data: currentOrganization, isLoading: orgLoading } = useQuery({
     queryKey: ["/api/organizations", currentUser?.organizationId],
     queryFn: async () => {
@@ -566,7 +566,7 @@ export default function Settings() {
       if (!response.ok) throw new Error('Failed to fetch organization');
       return response.json();
     },
-    enabled: !!currentUser?.organizationId && currentUser?.role === "admin",
+    enabled: !!currentUser?.organizationId,
   });
 
   // Initialize forms with current user data
@@ -624,10 +624,10 @@ export default function Settings() {
 
   const appPreferencesForm = useForm<AppPreferencesForm>({
     resolver: zodResolver(appPreferencesFormSchema),
-    defaultValues: {
+    values: {
       theme: "system",
       language: "en",
-      timezone: "America/New_York",
+      timezone: currentOrganization?.timezone || "America/New_York",
     },
   });
 
@@ -847,12 +847,37 @@ export default function Settings() {
     changePasswordMutation.mutate(data);
   };
 
-  const handleAppPreferencesSubmit = (data: AppPreferencesForm) => {
-    // Placeholder for app preferences update
-    toast({
-      title: "Preferences updated",
-      description: "Your application preferences have been saved.",
-    });
+  const handleAppPreferencesSubmit = async (data: AppPreferencesForm) => {
+    try {
+      // Only admins can update organization-level timezone
+      if (currentUser?.role === "admin" && currentUser?.organizationId) {
+        // Save timezone to organization
+        const response = await apiRequest("PUT", `/api/organizations/${currentUser.organizationId}`, {
+          timezone: data.timezone,
+        });
+        
+        // Invalidate the organization query to refetch with new timezone
+        queryClient.invalidateQueries({ queryKey: ["/api/organizations", currentUser.organizationId] });
+      }
+      
+      // Theme and language preferences are handled locally (future implementation)
+      // localStorage.setItem('theme', data.theme);
+      // localStorage.setItem('language', data.language);
+      
+      toast({
+        title: "Preferences updated",
+        description: currentUser?.role === "admin" 
+          ? "Your application and organization preferences have been saved."
+          : "Your application preferences have been saved.",
+      });
+    } catch (error) {
+      console.error("Failed to update preferences:", error);
+      toast({
+        title: "Update failed",
+        description: "Failed to save preferences. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleLogout = () => {
@@ -2224,7 +2249,11 @@ export default function Settings() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Timezone</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              defaultValue={field.value}
+                              disabled={currentUser?.role !== "admin"}
+                            >
                               <FormControl>
                                 <SelectTrigger data-testid="select-timezone">
                                   <SelectValue placeholder="Select timezone" />
@@ -2235,12 +2264,23 @@ export default function Settings() {
                                 <SelectItem value="America/Chicago">Central Time (CT)</SelectItem>
                                 <SelectItem value="America/Denver">Mountain Time (MT)</SelectItem>
                                 <SelectItem value="America/Los_Angeles">Pacific Time (PT)</SelectItem>
+                                <SelectItem value="America/Phoenix">Arizona Time (AZ)</SelectItem>
+                                <SelectItem value="America/Anchorage">Alaska Time (AK)</SelectItem>
+                                <SelectItem value="Pacific/Honolulu">Hawaii Time (HT)</SelectItem>
                                 <SelectItem value="UTC">UTC</SelectItem>
                                 <SelectItem value="Europe/London">London (GMT)</SelectItem>
+                                <SelectItem value="Europe/Paris">Paris (CET)</SelectItem>
+                                <SelectItem value="Europe/Berlin">Berlin (CET)</SelectItem>
+                                <SelectItem value="Asia/Tokyo">Tokyo (JST)</SelectItem>
+                                <SelectItem value="Asia/Shanghai">Shanghai (CST)</SelectItem>
+                                <SelectItem value="Asia/Kolkata">India (IST)</SelectItem>
+                                <SelectItem value="Australia/Sydney">Sydney (AEDT)</SelectItem>
                               </SelectContent>
                             </Select>
                             <FormDescription>
-                              Your timezone for check-in reminders and deadlines
+                              {currentUser?.role === "admin" 
+                                ? "Organization timezone for check-in reminders and deadlines"
+                                : "Organization timezone (admin only) - affects check-in reminders and deadlines"}
                             </FormDescription>
                             <FormMessage />
                           </FormItem>
