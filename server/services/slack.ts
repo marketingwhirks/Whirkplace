@@ -1575,9 +1575,22 @@ export async function sendPasswordSetupViaSlackDM(
     }
 
     // Get the app URL for navigation links
-    const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://whirkplace.replit.app';
-    const dashboardUrl = `${appUrl}/#/dashboard`;
-    const checkinUrl = `${appUrl}/#/checkins`;
+    // In production, always use https://whirkplace.com
+    // Check multiple indicators of production environment
+    const isProduction = process.env.NODE_ENV === 'production' ||
+                         process.env.FORCE_PRODUCTION === 'true' ||
+                         process.env.REPL_SLUG?.includes('whirkplace') ||
+                         (process.env.REPLIT_URL && process.env.REPLIT_URL.includes('whirkplace.com'));
+    
+    // Use production URL (https://whirkplace.com) in production, otherwise check environment variables
+    const appUrl = isProduction ? 'https://whirkplace.com' : 
+                   (process.env.REPL_URL || process.env.REPLIT_URL || 'https://whirkplace.com');
+    
+    // Ensure the appUrl always has https:// protocol
+    const normalizedAppUrl = appUrl.startsWith('http') ? appUrl : `https://${appUrl}`;
+    
+    const dashboardUrl = `${normalizedAppUrl}/#/dashboard`;
+    const checkinUrl = `${normalizedAppUrl}/#/checkins`;
     
     // Include organization context in the reset URL
     const passwordSetupUrl = `https://whirkplace.com/reset-password?token=${resetToken}&org=${organizationSlug}`;
@@ -1651,7 +1664,7 @@ export async function sendPasswordSetupViaSlackDM(
               text: '🌐 Visit WhirkPlace',
               emoji: true
             },
-            url: appUrl,
+            url: normalizedAppUrl,
             style: 'primary' as const
           },
           {
@@ -1690,7 +1703,7 @@ export async function sendPasswordSetupViaSlackDM(
         type: 'section' as const,
         text: {
           type: 'mrkdwn' as const,
-          text: `• \`/checkin\` - Submit your weekly check-in\n• \`/wins\` - Share a win or celebration\n• \`/shoutout\` - Recognize a teammate\n• \`/goals\` - View or create team goals\n• \`/mystatus\` - View your personal dashboard\n• \`/teamstatus\` - Team overview (managers only)\n• \`/vacation\` - Set or view vacation time\n• \`/help\` - Show all available commands\n\n💡 *Pro tip:* Access the full app at <${appUrl}|whirkplace.replit.app> for more features!`
+          text: `• \`/checkin\` - Submit your weekly check-in\n• \`/wins\` - Share a win or celebration\n• \`/shoutout\` - Recognize a teammate\n• \`/goals\` - View or create team goals\n• \`/mystatus\` - View your personal dashboard\n• \`/teamstatus\` - Team overview (managers only)\n• \`/vacation\` - Set or view vacation time\n• \`/help\` - Show all available commands\n\n💡 *Pro tip:* Access the full app at <${normalizedAppUrl}|WhirkPlace> for more features!`
         }
       },
       {
