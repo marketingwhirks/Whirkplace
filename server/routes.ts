@@ -40,6 +40,7 @@ import { registerAuthRoutes } from "./routes/auth";
 import { resolveRedirectUri } from "./utils/redirect-uri";
 import { sendWelcomeEmail, sendSlackPasswordSetupEmail } from "./services/emailService";
 import { sanitizeUser, sanitizeUsers } from "./utils/sanitizeUser";
+import { getWeekStartCentral } from "@shared/utils/dueDates";
 
 // Initialize Stripe with appropriate keys based on environment
 let stripe: Stripe | null = null;
@@ -6282,10 +6283,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const averageRating = sumRatings / totalCheckins;
       
       // Calculate completion rate for current week (based on relevant users only)
+      const organization = await storage.getOrganization(req.orgId);
+      const weekStart = getWeekStartCentral(new Date(), organization);
       const completedThisWeek = recentCheckins.filter(checkin => {
-        const weekStart = new Date();
-        weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-        weekStart.setHours(0, 0, 0, 0);
         return checkin.weekOf >= weekStart && checkin.isComplete;
       }).length;
       
@@ -6592,9 +6592,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const activeUsers = users.filter(user => user.isActive);
       
       // Find users who haven't completed this week's check-in
-      const currentWeekStart = new Date();
-      currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
-      currentWeekStart.setHours(0, 0, 0, 0);
+      const organization = await storage.getOrganization(req.orgId);
+      const currentWeekStart = getWeekStartCentral(new Date(), organization);
       
       const usersNeedingReminder = [];
       for (const user of activeUsers) {
@@ -6632,9 +6631,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ? recentCheckins.reduce((sum, checkin) => sum + checkin.overallMood, 0) / recentCheckins.length
         : 0;
       
-      const currentWeekStart = new Date();
-      currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
-      currentWeekStart.setHours(0, 0, 0, 0);
+      const organization = await storage.getOrganization(req.orgId);
+      const currentWeekStart = getWeekStartCentral(new Date(), organization);
       
       const completedThisWeek = recentCheckins.filter(checkin => 
         checkin.weekOf >= currentWeekStart && checkin.isComplete

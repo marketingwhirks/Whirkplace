@@ -1498,9 +1498,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCurrentWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined> {
+    // Get the proper week start (Monday) using UTC to avoid timezone issues
     const now = new Date();
-    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
-    startOfWeek.setHours(0, 0, 0, 0);
+    const dayOfWeek = now.getUTCDay();
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday is 0, so it's 6 days from Monday
+    const startOfWeek = new Date(now);
+    startOfWeek.setUTCDate(now.getUTCDate() - daysFromMonday);
+    startOfWeek.setUTCHours(0, 0, 0, 0);
     
     const [checkin] = await db
       .select()
@@ -6185,9 +6189,13 @@ export class MemStorage implements IStorage {
   }
 
   async getCurrentWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined> {
+    // Get the proper week start (Monday) using UTC to avoid timezone issues
     const now = new Date();
-    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
-    startOfWeek.setHours(0, 0, 0, 0);
+    const dayOfWeek = now.getUTCDay();
+    const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday is 0, so it's 6 days from Monday
+    const startOfWeek = new Date(now);
+    startOfWeek.setUTCDate(now.getUTCDate() - daysFromMonday);
+    startOfWeek.setUTCHours(0, 0, 0, 0);
     
     return Array.from(this.checkins.values())
       .find(checkin => 
@@ -6732,7 +6740,10 @@ export class MemStorage implements IStorage {
         d.setHours(0, 0, 0, 0);
         break;
       case 'week':
-        d.setDate(d.getDate() - d.getDay()); // Start of week (Sunday)
+        // Start of week (Monday) - use proper calculation
+        const dayOfWeek = d.getDay();
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday is 0, so it's 6 days from Monday
+        d.setDate(d.getDate() - daysFromMonday);
         d.setHours(0, 0, 0, 0);
         break;
       case 'month':

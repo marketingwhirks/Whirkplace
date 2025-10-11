@@ -3062,9 +3062,9 @@ export async function scheduleWeeklyReminders(organizationId: string, storage: a
     const activeUsers = users.filter((user: any) => user.isActive && user.slackUserId);
     
     // Get current week check-ins to see who hasn't completed theirs
-    const currentWeekStart = new Date();
-    currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay()); // Start of week (Sunday)
-    currentWeekStart.setHours(0, 0, 0, 0);
+    // Get organization for timezone settings (using default since we're in a general reminder context)
+    const organization = await storage.getOrganization(organizationId);
+    const currentWeekStart = getWeekStartCentral(new Date(), organization);
     
     // Get active questions for preview
     const questions = await storage.getActiveQuestions(organizationId);
@@ -3792,9 +3792,8 @@ export async function handleSlackSlashCommand(
           }
           
           // Get current week's check-in
-          const currentWeekStart = new Date();
-          currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
-          currentWeekStart.setHours(0, 0, 0, 0);
+          const organization = await storage.getOrganization(organizationId);
+          const currentWeekStart = getWeekStartCentral(new Date(), organization);
           
           const checkins = await storage.getCheckinsByUser(organizationId, user.id);
           const currentCheckin = checkins.find((c: any) => {
@@ -4205,9 +4204,8 @@ async function handleCheckinModalSubmission(view: any, user: any, organizationId
     }
     
     // Create check-in entry
-    const currentWeekStart = new Date();
-    currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
-    currentWeekStart.setHours(0, 0, 0, 0);
+    const organization = await storage.getOrganization(organizationId);
+    const currentWeekStart = getWeekStartCentral(new Date(), organization);
     
     const checkinData = {
       userId: systemUser.id,
@@ -4740,9 +4738,8 @@ export async function getWeeklyReminderStats(organizationId: string, storage: an
     const slackUsers = activeUsers.filter((user: any) => user.slackUserId);
     
     // Check current week completion
-    const currentWeekStart = new Date();
-    currentWeekStart.setDate(currentWeekStart.getDate() - currentWeekStart.getDay());
-    currentWeekStart.setHours(0, 0, 0, 0);
+    const organization = await storage.getOrganization(organizationId);
+    const currentWeekStart = getWeekStartCentral(new Date(), organization);
     
     let completedCount = 0;
     const pendingUsers: any[] = [];
