@@ -217,10 +217,15 @@ export const organizations = pgTable("organizations", {
   pendingBillingChanges: jsonb("pending_billing_changes"), // JSON field to track pending user changes
   // Organization Settings
   timezone: text("timezone").notNull().default("America/Chicago"),
-  weeklyCheckInSchedule: text("weekly_check_in_schedule").notNull().default("friday"), // monday, tuesday, etc.
-  checkInReminderTime: text("check_in_reminder_time").notNull().default("09:00"), // 24-hour format
-  reviewReminderDay: text("review_reminder_day").notNull().default("monday"), // day for manager review reminders
-  reviewReminderTime: text("review_reminder_time").notNull().default("16:00"), // 24-hour format for manager review reminders
+  // Check-in Schedule Configuration (NEW)
+  checkinDueDay: integer("checkin_due_day").notNull().default(5), // 0=Sunday, 1=Monday, ..., 6=Saturday (default Friday)
+  checkinDueTime: text("checkin_due_time").notNull().default("17:00"), // HH:MM format in 24-hour (default 5 PM)
+  checkinReminderDay: integer("checkin_reminder_day"), // Optional: day to send reminders (null = same as due day)
+  checkinReminderTime: text("checkin_reminder_time").notNull().default("09:00"), // HH:MM format (default 9 AM)
+  // Legacy fields - kept for backward compatibility during migration
+  weeklyCheckInSchedule: text("weekly_check_in_schedule"), // deprecated - use checkinDueDay instead
+  reviewReminderDay: text("review_reminder_day"), // deprecated - use checkinReminderDay instead
+  reviewReminderTime: text("review_reminder_time"), // deprecated - use checkinReminderTime instead
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });

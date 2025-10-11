@@ -190,12 +190,14 @@ app.use((req, res, next) => {
     // Register routes
     const server = await registerRoutes(app);
     
-    // Initialize Slack weekly reminder scheduler (runs every Monday at 9:05 AM)
+    // Initialize reminder scheduler (checks hourly for organizations that need reminders)
     try {
-      const { initializeWeeklyReminderScheduler } = await import("./services/slack");
+      const { initializeReminderScheduler } = await import("./services/reminder-scheduler");
       const { storage } = await import("./storage");
-      initializeWeeklyReminderScheduler(storage);
+      initializeReminderScheduler(storage);
+      console.log("Initializing weekly reminder scheduler for all organizations...");
     } catch (error) {
+      console.error("Failed to initialize reminder scheduler:", error);
       // Don't throw here, as this is not critical for startup
     }
 

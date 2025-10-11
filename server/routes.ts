@@ -9759,6 +9759,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update organization check-in schedule settings
+  app.put("/api/organizations/:id/checkin-schedule", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Create schema for check-in schedule validation
+      const checkinScheduleSchema = z.object({
+        checkinDueDay: z.number().min(0).max(6), // 0=Sunday, 6=Saturday
+        checkinDueTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format"),
+        checkinReminderDay: z.number().min(0).max(6).optional().nullable(),
+        checkinReminderTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format"),
+      });
+      
+      const scheduleData = checkinScheduleSchema.parse(req.body);
+      
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only update your own organization's schedule" });
+      }
+      
+      const updatedOrganization = await storage.updateOrganization(req.params.id, scheduleData);
+      if (!updatedOrganization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      res.json({ 
+        message: "Check-in schedule updated successfully", 
+        checkinDueDay: updatedOrganization.checkinDueDay,
+        checkinDueTime: updatedOrganization.checkinDueTime,
+        checkinReminderDay: updatedOrganization.checkinReminderDay,
+        checkinReminderTime: updatedOrganization.checkinReminderTime
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid schedule data", errors: error.errors });
+      }
+      console.error("PUT /api/organizations/:id/checkin-schedule - Error:", error);
+      res.status(500).json({ message: "Failed to update check-in schedule" });
+    }
+  });
+
   // Integration Management Endpoints
   
   // Get organization integrations data

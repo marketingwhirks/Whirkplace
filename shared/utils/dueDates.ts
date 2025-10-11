@@ -1,67 +1,139 @@
 import { startOfWeek, endOfWeek, setHours, setMinutes, setSeconds, setMilliseconds, addDays, isSaturday, isSunday } from 'date-fns';
 import { fromZonedTime, toZonedTime } from 'date-fns-tz';
+import type { Organization } from '../schema';
 
-// Central Time zone identifier
-const CENTRAL_TIME_ZONE = 'America/Chicago';
+// Central Time zone identifier (default)
+const DEFAULT_TIMEZONE = 'America/Chicago';
+
+// Default check-in configuration
+const DEFAULT_CHECKIN_CONFIG = {
+  checkinDueDay: 5, // Friday
+  checkinDueTime: "17:00", // 5 PM
+  checkinReminderDay: null, // Same as due day
+  checkinReminderTime: "09:00", // 9 AM
+  timezone: DEFAULT_TIMEZONE
+};
 
 /**
- * Calculates the Monday 9am Central Time due date for the week containing the given date.
- * 
- * This function finds the Monday of the week that contains the `weekOf` date and sets
- * the time to 9:00 AM Central Time, properly handling DST transitions. The week is
- * considered to start on Monday.
+ * Parse time string (HH:MM) into hours and minutes
+ */
+function parseTimeString(timeStr: string): { hours: number; minutes: number } {
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return { hours: hours || 0, minutes: minutes || 0 };
+}
+
+/**
+ * Calculates the check-in due date for the week containing the given date,
+ * using the organization's custom schedule settings.
  * 
  * @param weekOf - The date within the week for which to calculate the due date
- * @returns A Date object representing Monday at 9:00 AM Central Time (in UTC)
+ * @param organization - The organization with custom schedule settings (optional)
+ * @returns A Date object representing the due date in the organization's timezone (stored as UTC)
  * 
  * @example
  * ```typescript
- * // For a date in the week of Jan 13-19, 2025 (Monday is Jan 13)
- * const dueDate = getCheckinDueDate(new Date('2025-01-15')); // Wednesday
- * // Returns: Monday, Jan 13, 2025 at 9:00 AM Central Time (stored as UTC)
+ * // For an organization with Friday 5 PM due date
+ * const dueDate = getCheckinDueDate(new Date('2025-01-15'), org);
+ * // Returns: Friday, Jan 17, 2025 at 5:00 PM in org's timezone
  * ```
  */
-export function getCheckinDueDate(weekOf: Date): Date {
-  // First, convert the input date to Central Time to find the correct Monday
-  const centralWeekOf = toZonedTime(weekOf, CENTRAL_TIME_ZONE);
+export function getCheckinDueDate(weekOf: Date, organization?: Partial<Organization>): Date {
+  // Get configuration from organization or use defaults
+  const config = {
+    checkinDueDay: organization?.checkinDueDay ?? DEFAULT_CHECKIN_CONFIG.checkinDueDay,
+    checkinDueTime: organization?.checkinDueTime ?? DEFAULT_CHECKIN_CONFIG.checkinDueTime,
+    timezone: organization?.timezone ?? DEFAULT_TIMEZONE
+  };
   
-  // Get the Monday of the week in Central Time (week starts on Monday = 1)
-  const monday = startOfWeek(centralWeekOf, { weekStartsOn: 1 });
+  // Convert the input date to the organization's timezone
+  const localWeekOf = toZonedTime(weekOf, config.timezone);
   
-  // Set time to 9:00 AM (9:00:00.000) in Central Time
-  const mondayAt9AM = setMilliseconds(
+  // Get the start of the week (Monday) in the organization's timezone
+  const monday = startOfWeek(localWeekOf, { weekStartsOn: 1 });
+  
+  // Add days to get to the configured due day (0=Sunday, 1=Monday, ..., 6=Saturday)
+  // If due day is Sunday (0), it's the last day of the week, so add 6 days from Monday
+  const daysToAdd = config.checkinDueDay === 0 ? 6 : config.checkinDueDay - 1;
+  const dueDay = addDays(monday, daysToAdd);
+  
+  // Parse the due time
+  const { hours, minutes } = parseTimeString(config.checkinDueTime);
+  
+  // Set the time on the due day
+  const dueDateWithTime = setMilliseconds(
     setSeconds(
       setMinutes(
-        setHours(monday, 9),
-        0
+        setHours(dueDay, hours),
+        minutes
       ),
       0
     ),
     0
   );
   
-  // Convert the Central Time date to UTC for storage
-  return fromZonedTime(mondayAt9AM, CENTRAL_TIME_ZONE);
+  // Convert back to UTC for storage
+  return fromZonedTime(dueDateWithTime, config.timezone);
 }
 
 /**
- * Calculates the Monday 9am Central Time review due date for the week containing the given date.
+ * Calculates the check-in reminder date/time for the week containing the given date,
+ * using the organization's custom schedule settings.
  * 
- * This function is identical to `getCheckinDueDate` and exists for semantic clarity.
- * Both check-ins and reviews are due on Monday at 9:00 AM Central Time.
+ * @param weekOf - The date within the week for which to calculate the reminder date
+ * @param organization - The organization with custom schedule settings (optional)
+ * @returns A Date object representing the reminder date/time in the organization's timezone (stored as UTC)
+ */
+export function getCheckinReminderDate(weekOf: Date, organization?: Partial<Organization>): Date {
+  // Get configuration from organization or use defaults
+  const config = {
+    checkinDueDay: organization?.checkinDueDay ?? DEFAULT_CHECKIN_CONFIG.checkinDueDay,
+    checkinReminderDay: organization?.checkinReminderDay,
+    checkinReminderTime: organization?.checkinReminderTime ?? DEFAULT_CHECKIN_CONFIG.checkinReminderTime,
+    timezone: organization?.timezone ?? DEFAULT_TIMEZONE
+  };
+  
+  // If no specific reminder day is set, use the same day as the due day
+  const reminderDay = config.checkinReminderDay ?? config.checkinDueDay;
+  
+  // Convert the input date to the organization's timezone
+  const localWeekOf = toZonedTime(weekOf, config.timezone);
+  
+  // Get the start of the week (Monday) in the organization's timezone
+  const monday = startOfWeek(localWeekOf, { weekStartsOn: 1 });
+  
+  // Add days to get to the reminder day
+  const daysToAdd = reminderDay === 0 ? 6 : reminderDay - 1;
+  const reminderDate = addDays(monday, daysToAdd);
+  
+  // Parse the reminder time
+  const { hours, minutes } = parseTimeString(config.checkinReminderTime);
+  
+  // Set the time on the reminder day
+  const reminderDateWithTime = setMilliseconds(
+    setSeconds(
+      setMinutes(
+        setHours(reminderDate, hours),
+        minutes
+      ),
+      0
+    ),
+    0
+  );
+  
+  // Convert back to UTC for storage
+  return fromZonedTime(reminderDateWithTime, config.timezone);
+}
+
+/**
+ * Calculates the review due date for the week containing the given date.
+ * Reviews are due at the same time as check-ins by default.
  * 
  * @param weekOf - The date within the week for which to calculate the review due date
- * @returns A Date object representing Monday at 9:00 AM Central Time for that week
- * 
- * @example
- * ```typescript
- * // For a date in the week of Jan 13-19, 2025 (Monday is Jan 13)
- * const reviewDueDate = getReviewDueDate(new Date('2025-01-15')); // Wednesday
- * // Returns: Monday, Jan 13, 2025 at 9:00 AM Central Time
- * ```
+ * @param organization - The organization with custom schedule settings (optional)
+ * @returns A Date object representing the review due date
  */
-export function getReviewDueDate(weekOf: Date): Date {
-  return getCheckinDueDate(weekOf);
+export function getReviewDueDate(weekOf: Date, organization?: Partial<Organization>): Date {
+  return getCheckinDueDate(weekOf, organization);
 }
 
 /**
@@ -73,8 +145,8 @@ export function getReviewDueDate(weekOf: Date): Date {
  * 
  * @example
  * ```typescript
- * const dueDate = getCheckinDueDate(new Date('2025-01-15'));
- * const submittedAt = new Date('2025-01-13T08:30:00Z'); // Sunday before due date
+ * const dueDate = getCheckinDueDate(new Date('2025-01-15'), org);
+ * const submittedAt = new Date('2025-01-17T16:30:00Z'); // Friday before 5 PM
  * 
  * const onTime = isSubmittedOnTime(submittedAt, dueDate); // true
  * const notSubmitted = isSubmittedOnTime(null, dueDate); // false
@@ -94,15 +166,6 @@ export function isSubmittedOnTime(submittedAt: Date | null, dueDate: Date): bool
  * @param reviewedAt - The timestamp when the review was completed (null if not reviewed)
  * @param reviewDueDate - The due date for the review
  * @returns true if the review was completed on or before the due date, false otherwise
- * 
- * @example
- * ```typescript
- * const reviewDueDate = getReviewDueDate(new Date('2025-01-15'));
- * const reviewedAt = new Date('2025-01-13T10:00:00Z'); // Monday after due time
- * 
- * const onTime = isReviewedOnTime(reviewedAt, reviewDueDate); // false (after 9am)
- * const notReviewed = isReviewedOnTime(null, reviewDueDate); // false
- * ```
  */
 export function isReviewedOnTime(reviewedAt: Date | null, reviewDueDate: Date): boolean {
   if (!reviewedAt) {
@@ -113,20 +176,22 @@ export function isReviewedOnTime(reviewedAt: Date | null, reviewDueDate: Date): 
 }
 
 /**
- * Utility function to get a human-readable string representation of the due date in Central Time.
+ * Utility function to get a human-readable string representation of the due date.
  * This is useful for displaying due dates to users.
  * 
  * @param weekOf - The date within the week for which to get the due date string
- * @returns A formatted string showing the due date in Central Time
+ * @param organization - The organization with custom schedule settings (optional)
+ * @returns A formatted string showing the due date in the organization's timezone
  * 
  * @example
  * ```typescript
- * const dueDateString = getDueDateString(new Date('2025-01-15'));
- * // Returns: "Monday, January 13, 2025 at 9:00 AM CT"
+ * const dueDateString = getDueDateString(new Date('2025-01-15'), org);
+ * // Returns: "Friday, January 17, 2025 at 5:00 PM CT"
  * ```
  */
-export function getDueDateString(weekOf: Date): string {
-  const dueDate = getCheckinDueDate(weekOf);
+export function getDueDateString(weekOf: Date, organization?: Partial<Organization>): string {
+  const dueDate = getCheckinDueDate(weekOf, organization);
+  const timezone = organization?.timezone ?? DEFAULT_TIMEZONE;
   
   const options: Intl.DateTimeFormatOptions = {
     weekday: 'long',
@@ -135,7 +200,7 @@ export function getDueDateString(weekOf: Date): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: CENTRAL_TIME_ZONE,
+    timeZone: timezone,
     timeZoneName: 'short'
   };
   
@@ -143,30 +208,22 @@ export function getDueDateString(weekOf: Date): string {
 }
 
 /**
- * Calculates the Monday 00:00 Central Time (start of week) for the week containing the given date.
- * 
- * This function finds the Monday of the week that contains the `date` and sets
- * the time to 00:00 AM Central Time, properly handling DST transitions. The week is
- * considered to start on Monday.
+ * Calculates the Monday 00:00 (start of week) for the week containing the given date.
  * 
  * @param date - The date within the week for which to calculate the week start
- * @returns A Date object representing Monday at 00:00 AM Central Time (in UTC)
- * 
- * @example
- * ```typescript
- * // For a date in the week of Jan 13-19, 2025 (Monday is Jan 13)
- * const weekStart = getWeekStartCentral(new Date('2025-01-15')); // Wednesday
- * // Returns: Monday, Jan 13, 2025 at 00:00 AM Central Time (stored as UTC)
- * ```
+ * @param organization - The organization with custom timezone settings (optional)
+ * @returns A Date object representing Monday at 00:00 in the organization's timezone (stored as UTC)
  */
-export function getWeekStartCentral(date: Date): Date {
-  // First, convert the input date to Central Time to find the correct Monday
-  const centralDate = toZonedTime(date, CENTRAL_TIME_ZONE);
+export function getWeekStartCentral(date: Date, organization?: Partial<Organization>): Date {
+  const timezone = organization?.timezone ?? DEFAULT_TIMEZONE;
   
-  // Get the Monday of the week in Central Time (week starts on Monday = 1)
-  const monday = startOfWeek(centralDate, { weekStartsOn: 1 });
+  // Convert the input date to the organization's timezone
+  const localDate = toZonedTime(date, timezone);
   
-  // Set time to 00:00 AM (00:00:00.000) in Central Time
+  // Get the Monday of the week (week starts on Monday = 1)
+  const monday = startOfWeek(localDate, { weekStartsOn: 1 });
+  
+  // Set time to 00:00:00.000
   const mondayAt00AM = setMilliseconds(
     setSeconds(
       setMinutes(
@@ -178,49 +235,37 @@ export function getWeekStartCentral(date: Date): Date {
     0
   );
   
-  // Convert the Central Time date to UTC for storage
-  return fromZonedTime(mondayAt00AM, CENTRAL_TIME_ZONE);
+  // Convert back to UTC for storage
+  return fromZonedTime(mondayAt00AM, timezone);
 }
 
 /**
- * Calculates the Friday 23:59:59.999 Central Time (end of week) for the week containing the given date.
- * 
- * This function determines which Friday is the "week ending" date:
- * - If the date is Monday-Friday: Returns this Friday
- * - If the date is Saturday-Sunday: Returns next Friday
+ * Calculates the Friday 23:59:59.999 (end of week) for the week containing the given date.
  * 
  * @param date - The date within the week for which to calculate the week ending
- * @returns A Date object representing Friday at 23:59:59.999 Central Time (in UTC)
- * 
- * @example
- * ```typescript
- * // For a Wednesday (Jan 15, 2025)
- * const weekEnding = getWeekEndingFriday(new Date('2025-01-15'));
- * // Returns: Friday, Jan 17, 2025 at 23:59:59.999 Central Time
- * 
- * // For a Saturday (Jan 18, 2025)
- * const weekEnding = getWeekEndingFriday(new Date('2025-01-18'));
- * // Returns: Friday, Jan 24, 2025 at 23:59:59.999 Central Time (next week's Friday)
- * ```
+ * @param organization - The organization with custom timezone settings (optional)
+ * @returns A Date object representing Friday at 23:59:59.999 in the organization's timezone (stored as UTC)
  */
-export function getWeekEndingFriday(date: Date): Date {
-  // Convert the input date to Central Time
-  const centralDate = toZonedTime(date, CENTRAL_TIME_ZONE);
+export function getWeekEndingFriday(date: Date, organization?: Partial<Organization>): Date {
+  const timezone = organization?.timezone ?? DEFAULT_TIMEZONE;
+  
+  // Convert the input date to the organization's timezone
+  const localDate = toZonedTime(date, timezone);
   
   let friday: Date;
   
   // If it's Saturday or Sunday, use next week's Friday
-  if (isSaturday(centralDate) || isSunday(centralDate)) {
+  if (isSaturday(localDate) || isSunday(localDate)) {
     // Get next Monday, then add 4 days to get to Friday
-    const nextMonday = startOfWeek(addDays(centralDate, 7), { weekStartsOn: 1 });
+    const nextMonday = startOfWeek(addDays(localDate, 7), { weekStartsOn: 1 });
     friday = addDays(nextMonday, 4);
   } else {
     // It's Monday-Friday, use this week's Friday
-    const monday = startOfWeek(centralDate, { weekStartsOn: 1 });
+    const monday = startOfWeek(localDate, { weekStartsOn: 1 });
     friday = addDays(monday, 4);
   }
   
-  // Set time to 23:59:59.999 in Central Time (end of day)
+  // Set time to 23:59:59.999 (end of day)
   const fridayEndOfDay = setMilliseconds(
     setSeconds(
       setMinutes(
@@ -232,41 +277,38 @@ export function getWeekEndingFriday(date: Date): Date {
     999
   );
   
-  // Convert the Central Time date to UTC for storage
-  return fromZonedTime(fridayEndOfDay, CENTRAL_TIME_ZONE);
+  // Convert back to UTC for storage
+  return fromZonedTime(fridayEndOfDay, timezone);
 }
 
 /**
  * Gets the Friday (week ending) date for display purposes.
- * Returns Friday at 00:00:00 Central Time for consistent date display.
+ * Returns Friday at 00:00:00 for consistent date display.
  * 
  * @param date - The date within the week
- * @returns A Date object representing Friday at 00:00:00 Central Time (in UTC)
- * 
- * @example
- * ```typescript
- * const friday = getCheckinWeekFriday(new Date('2025-01-15'));
- * // Returns: Friday, Jan 17, 2025 at 00:00:00 Central Time
- * ```
+ * @param organization - The organization with custom timezone settings (optional)
+ * @returns A Date object representing Friday at 00:00:00 in the organization's timezone (stored as UTC)
  */
-export function getCheckinWeekFriday(date: Date): Date {
-  // Convert the input date to Central Time
-  const centralDate = toZonedTime(date, CENTRAL_TIME_ZONE);
+export function getCheckinWeekFriday(date: Date, organization?: Partial<Organization>): Date {
+  const timezone = organization?.timezone ?? DEFAULT_TIMEZONE;
+  
+  // Convert the input date to the organization's timezone
+  const localDate = toZonedTime(date, timezone);
   
   let friday: Date;
   
   // If it's Saturday or Sunday, use next week's Friday
-  if (isSaturday(centralDate) || isSunday(centralDate)) {
+  if (isSaturday(localDate) || isSunday(localDate)) {
     // Get next Monday, then add 4 days to get to Friday
-    const nextMonday = startOfWeek(addDays(centralDate, 7), { weekStartsOn: 1 });
+    const nextMonday = startOfWeek(addDays(localDate, 7), { weekStartsOn: 1 });
     friday = addDays(nextMonday, 4);
   } else {
     // It's Monday-Friday, use this week's Friday
-    const monday = startOfWeek(centralDate, { weekStartsOn: 1 });
+    const monday = startOfWeek(localDate, { weekStartsOn: 1 });
     friday = addDays(monday, 4);
   }
   
-  // Set time to 00:00:00.000 in Central Time (start of day for display)
+  // Set time to 00:00:00.000 (start of day for display)
   const fridayStartOfDay = setMilliseconds(
     setSeconds(
       setMinutes(
@@ -278,6 +320,37 @@ export function getCheckinWeekFriday(date: Date): Date {
     0
   );
   
-  // Convert the Central Time date to UTC for storage
-  return fromZonedTime(fridayStartOfDay, CENTRAL_TIME_ZONE);
+  // Convert back to UTC for storage
+  return fromZonedTime(fridayStartOfDay, timezone);
+}
+
+/**
+ * Converts a legacy day name to the new numeric format
+ * @param dayName - Day name like "monday", "tuesday", etc.
+ * @returns Numeric day (0=Sunday, 1=Monday, ..., 6=Saturday)
+ */
+export function convertLegacyDayToNumeric(dayName?: string | null): number {
+  if (!dayName) return DEFAULT_CHECKIN_CONFIG.checkinDueDay;
+  
+  const dayMap: Record<string, number> = {
+    'sunday': 0,
+    'monday': 1,
+    'tuesday': 2,
+    'wednesday': 3,
+    'thursday': 4,
+    'friday': 5,
+    'saturday': 6
+  };
+  
+  return dayMap[dayName.toLowerCase()] ?? DEFAULT_CHECKIN_CONFIG.checkinDueDay;
+}
+
+/**
+ * Gets the day name from a numeric day value
+ * @param dayNum - Numeric day (0=Sunday, 1=Monday, ..., 6=Saturday)
+ * @returns Day name like "Monday", "Tuesday", etc.
+ */
+export function getDayName(dayNum: number): string {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return days[dayNum] || 'Friday';
 }

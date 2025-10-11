@@ -62,6 +62,13 @@ const organizationFormSchema = z.object({
   customValues: z.array(z.string()).min(1, "At least one company value is required"),
 });
 
+const checkinScheduleFormSchema = z.object({
+  checkinDueDay: z.number().min(0).max(6), // 0=Sunday, 6=Saturday
+  checkinDueTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
+  checkinReminderDay: z.number().min(0).max(6).optional().nullable(),
+  checkinReminderTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
+});
+
 const passwordFormSchema = z.object({
   currentPassword: z.string().min(1, "Current password is required"),
   newPassword: z.string().min(8, "New password must be at least 8 characters"),
@@ -80,6 +87,7 @@ const appPreferencesFormSchema = z.object({
 type ProfileForm = z.infer<typeof profileFormSchema>;
 type NotificationForm = z.infer<typeof notificationFormSchema>;
 type OrganizationForm = z.infer<typeof organizationFormSchema>;
+type CheckinScheduleForm = z.infer<typeof checkinScheduleFormSchema>;
 type PasswordForm = z.infer<typeof passwordFormSchema>;
 type AppPreferencesForm = z.infer<typeof appPreferencesFormSchema>;
 
@@ -595,6 +603,16 @@ export default function Settings() {
     },
   });
 
+  const checkinScheduleForm = useForm<CheckinScheduleForm>({
+    resolver: zodResolver(checkinScheduleFormSchema),
+    values: {
+      checkinDueDay: currentOrganization?.checkinDueDay ?? 5, // Default to Friday
+      checkinDueTime: currentOrganization?.checkinDueTime || "17:00", // Default to 5 PM
+      checkinReminderDay: currentOrganization?.checkinReminderDay,
+      checkinReminderTime: currentOrganization?.checkinReminderTime || "09:00", // Default to 9 AM
+    },
+  });
+
   const passwordForm = useForm<PasswordForm>({
     resolver: zodResolver(passwordFormSchema),
     defaultValues: {
@@ -739,6 +757,32 @@ export default function Settings() {
 
   const handleOrganizationSubmit = (data: OrganizationForm) => {
     updateOrganizationMutation.mutate(data);
+  };
+
+  // Check-in schedule update mutation
+  const updateCheckinScheduleMutation = useMutation({
+    mutationFn: async (data: CheckinScheduleForm) => {
+      if (!currentUser?.organizationId) throw new Error("No organization ID");
+      return apiRequest("PUT", `/api/organizations/${currentUser.organizationId}/checkin-schedule`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", currentUser?.organizationId] });
+      toast({
+        title: "Check-in schedule updated",
+        description: "Check-in schedule has been saved successfully.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Update failed",
+        description: "Failed to update check-in schedule. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCheckinScheduleSubmit = (data: CheckinScheduleForm) => {
+    updateCheckinScheduleMutation.mutate(data);
   };
 
   // Company values management functions
@@ -1727,6 +1771,172 @@ export default function Settings() {
                               <>
                                 <Save className="w-4 h-4 mr-2" />
                                 Save Organization Settings
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </form>
+                    </Form>
+                  </CardContent>
+                </Card>
+
+                {/* Check-in Schedule Settings */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      <Clock className="w-5 h-5" />
+                      <span>Check-in Schedule</span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Form {...checkinScheduleForm}>
+                      <form onSubmit={checkinScheduleForm.handleSubmit(handleCheckinScheduleSubmit)} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Due Date Configuration */}
+                          <div className="space-y-4">
+                            <h3 className="text-sm font-semibold">Due Date</h3>
+                            
+                            <FormField
+                              control={checkinScheduleForm.control}
+                              name="checkinDueDay"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Due Day</FormLabel>
+                                  <Select
+                                    onValueChange={(value) => field.onChange(parseInt(value))}
+                                    value={field.value?.toString()}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger data-testid="select-checkin-due-day">
+                                        <SelectValue placeholder="Select a day" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="0">Sunday</SelectItem>
+                                      <SelectItem value="1">Monday</SelectItem>
+                                      <SelectItem value="2">Tuesday</SelectItem>
+                                      <SelectItem value="3">Wednesday</SelectItem>
+                                      <SelectItem value="4">Thursday</SelectItem>
+                                      <SelectItem value="5">Friday</SelectItem>
+                                      <SelectItem value="6">Saturday</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <FormDescription>
+                                    Day of the week when check-ins are due
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={checkinScheduleForm.control}
+                              name="checkinDueTime"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Due Time</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="time"
+                                      placeholder="17:00"
+                                      data-testid="input-checkin-due-time"
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormDescription>
+                                    Time when check-ins are due (24-hour format)
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          {/* Reminder Configuration */}
+                          <div className="space-y-4">
+                            <h3 className="text-sm font-semibold">Reminder Settings</h3>
+                            
+                            <FormField
+                              control={checkinScheduleForm.control}
+                              name="checkinReminderDay"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Reminder Day (Optional)</FormLabel>
+                                  <Select
+                                    onValueChange={(value) => field.onChange(value === "same" ? undefined : parseInt(value))}
+                                    value={field.value === undefined || field.value === null ? "same" : field.value.toString()}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger data-testid="select-checkin-reminder-day">
+                                        <SelectValue placeholder="Same as due day" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="same">Same as due day</SelectItem>
+                                      <SelectItem value="0">Sunday</SelectItem>
+                                      <SelectItem value="1">Monday</SelectItem>
+                                      <SelectItem value="2">Tuesday</SelectItem>
+                                      <SelectItem value="3">Wednesday</SelectItem>
+                                      <SelectItem value="4">Thursday</SelectItem>
+                                      <SelectItem value="5">Friday</SelectItem>
+                                      <SelectItem value="6">Saturday</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <FormDescription>
+                                    Day to send check-in reminders
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={checkinScheduleForm.control}
+                              name="checkinReminderTime"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Reminder Time</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="time"
+                                      placeholder="09:00"
+                                      data-testid="input-checkin-reminder-time"
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormDescription>
+                                    Time to send check-in reminders (24-hour format)
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2 p-4 bg-muted rounded-lg">
+                          <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground">
+                            All times are in {currentOrganization?.timezone || "America/Chicago"} timezone. 
+                            Changes will apply to future check-ins only.
+                          </p>
+                        </div>
+
+                        <div className="flex justify-end">
+                          <Button 
+                            type="submit" 
+                            data-testid="button-save-checkin-schedule"
+                            disabled={updateCheckinScheduleMutation.isPending}
+                          >
+                            {updateCheckinScheduleMutation.isPending ? (
+                              <>
+                                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                Saving...
+                              </>
+                            ) : (
+                              <>
+                                <Save className="w-4 h-4 mr-2" />
+                                Save Schedule Settings
                               </>
                             )}
                           </Button>

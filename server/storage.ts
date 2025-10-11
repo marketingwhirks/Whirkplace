@@ -1380,9 +1380,12 @@ export class DatabaseStorage implements IStorage {
     const isCompleting = insertCheckin.isComplete ?? false;
     const now = new Date();
     
-    // Calculate due dates using utility functions
-    const dueDate = insertCheckin.dueDate ?? getCheckinDueDate(insertCheckin.weekOf);
-    const reviewDueDate = insertCheckin.reviewDueDate ?? getReviewDueDate(insertCheckin.weekOf);
+    // Get organization for custom schedule settings
+    const organization = await this.getOrganization(organizationId);
+    
+    // Calculate due dates using utility functions with organization settings
+    const dueDate = insertCheckin.dueDate ?? getCheckinDueDate(insertCheckin.weekOf, organization);
+    const reviewDueDate = insertCheckin.reviewDueDate ?? getReviewDueDate(insertCheckin.weekOf, organization);
     
     // Calculate if submitted on time (only if being submitted now)
     const submittedAt = isCompleting ? now : null;
@@ -1431,6 +1434,9 @@ export class DatabaseStorage implements IStorage {
     const isBeingCompleted = checkinUpdate.isComplete && !existing.isComplete;
     const now = new Date();
     
+    // Get organization for custom schedule settings  
+    const organization = await this.getOrganization(organizationId);
+    
     // Prepare the update with calculated fields
     const updateData: any = { ...checkinUpdate };
     
@@ -1440,13 +1446,13 @@ export class DatabaseStorage implements IStorage {
       updateData.submittedOnTime = isSubmittedOnTime(now, existing.dueDate);
     }
     
-    // If due dates are being updated, recalculate them using utility functions  
+    // If due dates are being updated, recalculate them using utility functions with organization settings
     if (checkinUpdate.weekOf) {
       if (!checkinUpdate.dueDate) {
-        updateData.dueDate = getCheckinDueDate(checkinUpdate.weekOf);
+        updateData.dueDate = getCheckinDueDate(checkinUpdate.weekOf, organization);
       }
       if (!checkinUpdate.reviewDueDate) {
-        updateData.reviewDueDate = getReviewDueDate(checkinUpdate.weekOf);
+        updateData.reviewDueDate = getReviewDueDate(checkinUpdate.weekOf, organization);
       }
       
       // Recalculate submittedOnTime if checkin was already submitted
