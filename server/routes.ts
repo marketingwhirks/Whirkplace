@@ -13187,6 +13187,235 @@ Return the response as a JSON object with this structure:
     }
   });
 
+  // Super Admin Check-in Management Endpoints
+  // GET /api/super-admin/checkins - List all check-ins across all organizations with filters
+  app.get("/api/super-admin/checkins", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      console.log("📋 Super admin fetching check-ins across organizations");
+      
+      const filters = {
+        organizationId: req.query.organizationId as string | undefined,
+        userId: req.query.userId as string | undefined,
+        startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
+        endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+        status: req.query.status as string | undefined,
+        limit: req.query.limit ? parseInt(req.query.limit as string, 10) : 50,
+        offset: req.query.offset ? parseInt(req.query.offset as string, 10) : 0
+      };
+      
+      const result = await storage.getAllCheckinsAcrossOrgs(filters);
+      
+      // Fetch additional data for context (user names, organization names)
+      const enrichedCheckins = await Promise.all(
+        result.checkins.map(async (checkin) => {
+          const [user, organization] = await Promise.all([
+            storage.getUserGlobal(checkin.userId),
+            storage.getOrganization(checkin.organizationId)
+          ]);
+          
+          return {
+            ...checkin,
+            userName: user?.name || 'Unknown User',
+            userEmail: user?.email || '',
+            organizationName: organization?.name || 'Unknown Organization'
+          };
+        })
+      );
+      
+      res.json({
+        checkins: enrichedCheckins,
+        total: result.total,
+        limit: filters.limit,
+        offset: filters.offset
+      });
+    } catch (error) {
+      console.error("Failed to fetch check-ins across organizations:", error);
+      res.status(500).json({ message: "Failed to fetch check-ins" });
+    }
+  });
+
+  // PATCH /api/super-admin/checkins/:id - Update a check-in's weekStartDate or other fields
+  app.patch("/api/super-admin/checkins/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const checkinId = req.params.id;
+      const { weekStartDate, ...otherUpdates } = req.body;
+      
+      console.log(`📝 Super admin updating check-in ${checkinId}`, {
+        admin: req.currentUser?.email,
+        updates: req.body
+      });
+      
+      let updatedCheckin;
+      
+      // If updating the week start date specifically
+      if (weekStartDate) {
+        const newWeekStart = new Date(weekStartDate);
+        updatedCheckin = await storage.updateCheckinWeek(checkinId, newWeekStart);
+        
+        if (!updatedCheckin) {
+          return res.status(404).json({ message: "Check-in not found" });
+        }
+      }
+      
+      // If there are other updates besides week start date
+      if (Object.keys(otherUpdates).length > 0) {
+        // Get the check-in to find its organization
+        const checkin = updatedCheckin || await storage.getCheckin('', checkinId);
+        if (!checkin) {
+          return res.status(404).json({ message: "Check-in not found" });
+        }
+        
+        // Apply other updates
+        updatedCheckin = await storage.updateCheckin(checkin.organizationId, checkinId, otherUpdates);
+      }
+      
+      // Log the action for audit trail
+      console.log(`✅ Check-in ${checkinId} updated by ${req.currentUser?.email} at ${new Date().toISOString()}`);
+      
+      res.json({
+        message: "Check-in updated successfully",
+        checkin: updatedCheckin
+      });
+    } catch (error) {
+      console.error("Failed to update check-in:", error);
+      res.status(500).json({ message: "Failed to update check-in" });
+    }
+  });
+
+  // DELETE /api/super-admin/checkins/:id - Delete invalid check-ins
+  app.delete("/api/super-admin/checkins/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const checkinId = req.params.id;
+      
+      console.log(`🗑️ Super admin deleting check-in ${checkinId}`, {
+        admin: req.currentUser?.email,
+        timestamp: new Date().toISOString()
+      });
+      
+      const deleted = await storage.deleteCheckinGlobal(checkinId);
+      
+      if (!deleted) {
+        return res.status(404).json({ message: "Check-in not found" });
+      }
+      
+      // Log the action for audit trail
+      console.log(`✅ Check-in ${checkinId} deleted by ${req.currentUser?.email} at ${new Date().toISOString()}`);
+      
+      res.json({
+        message: "Check-in deleted successfully",
+        checkinId
+      });
+    } catch (error) {
+      console.error("Failed to delete check-in:", error);
+      res.status(500).json({ message: "Failed to delete check-in" });
+    }
+  });
+
+  // GET /api/super-admin/data-health - Get data health report showing potential issues
+  app.get("/api/super-admin/data-health", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      console.log("🏥 Super admin requesting data health report");
+      
+      const report = await storage.getDataHealthReport();
+      
+      // Enrich the report with user and organization information
+      const enrichedReport = {
+        ...report,
+        futureCheckins: await Promise.all(
+          report.futureCheckins.map(async (checkin) => {
+            const [user, organization] = await Promise.all([
+              storage.getUserGlobal(checkin.userId),
+              storage.getOrganization(checkin.organizationId)
+            ]);
+            
+            return {
+              ...checkin,
+              userName: user?.name || 'Unknown User',
+              userEmail: user?.email || '',
+              organizationName: organization?.name || 'Unknown Organization'
+            };
+          })
+        ),
+        mismatchedDates: await Promise.all(
+          report.mismatchedDates.map(async (checkin) => {
+            const [user, organization] = await Promise.all([
+              storage.getUserGlobal(checkin.userId),
+              storage.getOrganization(checkin.organizationId)
+            ]);
+            
+            return {
+              ...checkin,
+              userName: user?.name || 'Unknown User',
+              userEmail: user?.email || '',
+              organizationName: organization?.name || 'Unknown Organization'
+            };
+          })
+        ),
+        orphanedCheckins: await Promise.all(
+          report.orphanedCheckins.map(async (checkin) => {
+            const organization = await storage.getOrganization(checkin.organizationId);
+            
+            return {
+              ...checkin,
+              userName: 'Deleted User',
+              userEmail: 'N/A',
+              organizationName: organization?.name || 'Unknown Organization'
+            };
+          })
+        )
+      };
+      
+      console.log(`📊 Data health report generated: ${enrichedReport.totalIssues} issues found`);
+      
+      res.json(enrichedReport);
+    } catch (error) {
+      console.error("Failed to generate data health report:", error);
+      res.status(500).json({ message: "Failed to generate data health report" });
+    }
+  });
+
+  // POST /api/super-admin/checkins/manual - Create a manual check-in for any user/week
+  app.post("/api/super-admin/checkins/manual", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { organizationId, userId, weekStartDate, responses, isComplete } = req.body;
+      
+      if (!organizationId || !userId || !weekStartDate) {
+        return res.status(400).json({ 
+          message: "organizationId, userId, and weekStartDate are required" 
+        });
+      }
+      
+      console.log(`📝 Super admin creating manual check-in`, {
+        admin: req.currentUser?.email,
+        organizationId,
+        userId,
+        weekStartDate
+      });
+      
+      const checkin = await storage.createCheckinManual(
+        organizationId,
+        userId,
+        new Date(weekStartDate),
+        {
+          responses: responses || {},
+          isComplete: isComplete !== undefined ? isComplete : true,
+          submittedAt: isComplete ? new Date() : null
+        }
+      );
+      
+      // Log the action for audit trail
+      console.log(`✅ Manual check-in created by ${req.currentUser?.email} at ${new Date().toISOString()}`);
+      
+      res.json({
+        message: "Check-in created successfully",
+        checkin
+      });
+    } catch (error) {
+      console.error("Failed to create manual check-in:", error);
+      res.status(500).json({ message: "Failed to create manual check-in" });
+    }
+  });
+
   // Admin endpoint to seed question bank (idempotent - safe to run multiple times)
   // Allow managers and admins to seed the question bank
   app.post("/api/admin/seed-question-bank", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {

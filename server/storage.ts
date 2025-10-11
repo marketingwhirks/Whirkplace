@@ -174,6 +174,27 @@ export interface IStorage {
   getPreviousWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined>;
   getCheckinForWeek(organizationId: string, userId: string, weekStart: Date): Promise<Checkin | undefined>;
   getRecentCheckins(organizationId: string, limit?: number): Promise<Checkin[]>;
+  
+  // Super Admin Check-in Management
+  getAllCheckinsAcrossOrgs(filters?: {
+    organizationId?: string;
+    userId?: string;
+    startDate?: Date;
+    endDate?: Date;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ checkins: Checkin[]; total: number }>;
+  updateCheckinWeek(checkinId: string, newWeekStartDate: Date): Promise<Checkin | undefined>;
+  deleteCheckinGlobal(checkinId: string): Promise<boolean>;
+  getDataHealthReport(): Promise<{
+    futureCheckins: Checkin[];
+    mismatchedDates: Checkin[];
+    duplicateCheckins: Array<{ userId: string; weekStart: Date; checkins: Checkin[] }>;
+    orphanedCheckins: Checkin[];
+    totalIssues: number;
+  }>;
+  createCheckinManual(organizationId: string, userId: string, weekStart: Date, checkinData: Partial<InsertCheckin>): Promise<Checkin>;
 
   // Questions
   getQuestion(organizationId: string, id: string): Promise<Question | undefined>;
@@ -1581,6 +1602,299 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(checkins.createdAt))
       .limit(limit);
+  }
+
+  // Super Admin Check-in Management
+  async getAllCheckinsAcrossOrgs(filters?: {
+    organizationId?: string;
+    userId?: string;
+    startDate?: Date;
+    endDate?: Date;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<{ checkins: Checkin[]; total: number }> {
+    try {
+      const conditions: any[] = [];
+      
+      if (filters?.organizationId) {
+        conditions.push(eq(checkins.organizationId, filters.organizationId));
+      }
+      
+      if (filters?.userId) {
+        conditions.push(eq(checkins.userId, filters.userId));
+      }
+      
+      if (filters?.startDate) {
+        conditions.push(gte(checkins.weekOf, filters.startDate));
+      }
+      
+      if (filters?.endDate) {
+        conditions.push(lte(checkins.weekOf, filters.endDate));
+      }
+      
+      if (filters?.status === 'complete') {
+        conditions.push(eq(checkins.isComplete, true));
+      } else if (filters?.status === 'incomplete') {
+        conditions.push(eq(checkins.isComplete, false));
+      }
+      
+      // Get total count
+      const totalResult = await db
+        .select({ count: count() })
+        .from(checkins)
+        .where(conditions.length > 0 ? and(...conditions) : undefined);
+      
+      const total = totalResult[0]?.count || 0;
+      
+      // Get paginated results
+      let query = db
+        .select()
+        .from(checkins)
+        .where(conditions.length > 0 ? and(...conditions) : undefined)
+        .orderBy(desc(checkins.createdAt));
+      
+      if (filters?.limit) {
+        query = query.limit(filters.limit);
+      }
+      
+      if (filters?.offset) {
+        query = query.offset(filters.offset);
+      }
+      
+      const checkinList = await query;
+      
+      return {
+        checkins: checkinList,
+        total: Number(total)
+      };
+    } catch (error) {
+      console.error("Failed to fetch check-ins across orgs:", error);
+      return { checkins: [], total: 0 };
+    }
+  }
+
+  async updateCheckinWeek(checkinId: string, newWeekStartDate: Date): Promise<Checkin | undefined> {
+    try {
+      // First get the existing check-in to get organization ID
+      const [existing] = await db
+        .select()
+        .from(checkins)
+        .where(eq(checkins.id, checkinId));
+      
+      if (!existing) return undefined;
+      
+      // Get organization for custom schedule settings
+      const organization = await this.getOrganization(existing.organizationId);
+      
+      // Calculate new due dates based on the new week
+      const newDueDate = getCheckinDueDate(newWeekStartDate, organization);
+      const newReviewDueDate = getReviewDueDate(newWeekStartDate, organization);
+      
+      // Update the check-in
+      const [updated] = await db
+        .update(checkins)
+        .set({
+          weekOf: newWeekStartDate,
+          dueDate: newDueDate,
+          reviewDueDate: newReviewDueDate,
+          // Recalculate submitted on time if already submitted
+          submittedOnTime: existing.submittedAt ? isSubmittedOnTime(existing.submittedAt, newDueDate) : false,
+          // Recalculate reviewed on time if already reviewed
+          reviewedOnTime: existing.reviewedAt ? isReviewedOnTime(existing.reviewedAt, newReviewDueDate) : false
+        })
+        .where(eq(checkins.id, checkinId))
+        .returning();
+      
+      // Invalidate analytics cache for this organization
+      if (updated) {
+        this.analyticsCache.invalidateForOrganization(existing.organizationId);
+      }
+      
+      return updated || undefined;
+    } catch (error) {
+      console.error("Failed to update check-in week:", error);
+      return undefined;
+    }
+  }
+
+  async deleteCheckinGlobal(checkinId: string): Promise<boolean> {
+    try {
+      // First get the check-in to get organization ID for cache invalidation
+      const [existing] = await db
+        .select()
+        .from(checkins)
+        .where(eq(checkins.id, checkinId));
+      
+      if (!existing) return false;
+      
+      // Delete the check-in
+      await db
+        .delete(checkins)
+        .where(eq(checkins.id, checkinId));
+      
+      // Invalidate analytics cache for this organization
+      this.analyticsCache.invalidateForOrganization(existing.organizationId);
+      
+      return true;
+    } catch (error) {
+      console.error("Failed to delete check-in:", error);
+      return false;
+    }
+  }
+
+  async getDataHealthReport(): Promise<{
+    futureCheckins: Checkin[];
+    mismatchedDates: Checkin[];
+    duplicateCheckins: Array<{ userId: string; weekStart: Date; checkins: Checkin[] }>;
+    orphanedCheckins: Checkin[];
+    totalIssues: number;
+  }> {
+    try {
+      const now = new Date();
+      const oneWeekFromNow = new Date(now);
+      oneWeekFromNow.setDate(oneWeekFromNow.getDate() + 7);
+      
+      // Find check-ins assigned to future weeks
+      const futureCheckins = await db
+        .select()
+        .from(checkins)
+        .where(gte(checkins.weekOf, oneWeekFromNow))
+        .orderBy(desc(checkins.weekOf));
+      
+      // Find check-ins where submitted date is before week start (mismatched)
+      const allCheckins = await db
+        .select()
+        .from(checkins)
+        .where(eq(checkins.isComplete, true));
+      
+      const mismatchedDates = allCheckins.filter(c => {
+        if (!c.submittedAt) return false;
+        return new Date(c.submittedAt) < new Date(c.weekOf);
+      });
+      
+      // Find duplicate check-ins (same user, same week)
+      const duplicateMap = new Map<string, Checkin[]>();
+      allCheckins.forEach(checkin => {
+        const key = `${checkin.userId}_${checkin.weekOf.toISOString()}`;
+        if (!duplicateMap.has(key)) {
+          duplicateMap.set(key, []);
+        }
+        duplicateMap.get(key)!.push(checkin);
+      });
+      
+      const duplicateCheckins: Array<{ userId: string; weekStart: Date; checkins: Checkin[] }> = [];
+      duplicateMap.forEach((checkinList, key) => {
+        if (checkinList.length > 1) {
+          const [userId, weekStart] = key.split('_');
+          duplicateCheckins.push({
+            userId,
+            weekStart: new Date(weekStart),
+            checkins: checkinList
+          });
+        }
+      });
+      
+      // Find orphaned check-ins (user or organization doesn't exist)
+      const orphanedCheckins: Checkin[] = [];
+      for (const checkin of allCheckins) {
+        const [user] = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, checkin.userId))
+          .limit(1);
+        
+        if (!user) {
+          orphanedCheckins.push(checkin);
+        }
+      }
+      
+      const totalIssues = 
+        futureCheckins.length + 
+        mismatchedDates.length + 
+        duplicateCheckins.reduce((sum, d) => sum + d.checkins.length - 1, 0) +
+        orphanedCheckins.length;
+      
+      return {
+        futureCheckins,
+        mismatchedDates,
+        duplicateCheckins,
+        orphanedCheckins,
+        totalIssues
+      };
+    } catch (error) {
+      console.error("Failed to generate data health report:", error);
+      return {
+        futureCheckins: [],
+        mismatchedDates: [],
+        duplicateCheckins: [],
+        orphanedCheckins: [],
+        totalIssues: 0
+      };
+    }
+  }
+
+  async createCheckinManual(
+    organizationId: string, 
+    userId: string, 
+    weekStart: Date, 
+    checkinData: Partial<InsertCheckin>
+  ): Promise<Checkin> {
+    try {
+      // Get organization for custom schedule settings
+      const organization = await this.getOrganization(organizationId);
+      
+      // Normalize the week start
+      const normalizedWeekStart = getWeekStartCentral(weekStart, organization);
+      
+      // Calculate due dates
+      const dueDate = getCheckinDueDate(normalizedWeekStart, organization);
+      const reviewDueDate = getReviewDueDate(normalizedWeekStart, organization);
+      
+      const now = new Date();
+      const isComplete = checkinData.isComplete ?? true;
+      const submittedAt = isComplete ? (checkinData.submittedAt || now) : null;
+      const submittedOnTime = submittedAt ? isSubmittedOnTime(submittedAt, dueDate) : false;
+      
+      // Create the check-in
+      const [checkin] = await db
+        .insert(checkins)
+        .values({
+          ...checkinData,
+          organizationId,
+          userId,
+          weekOf: normalizedWeekStart,
+          responses: checkinData.responses ?? {},
+          isComplete,
+          submittedAt,
+          dueDate,
+          submittedOnTime,
+          reviewDueDate,
+          reviewStatus: checkinData.reviewStatus ?? ReviewStatus.PENDING,
+          reviewedBy: checkinData.reviewedBy ?? null,
+          reviewedAt: checkinData.reviewedAt ?? null,
+          reviewedOnTime: false,
+          reviewComments: checkinData.reviewComments ?? null,
+        })
+        .returning();
+      
+      // Invalidate analytics cache for this organization
+      this.analyticsCache.invalidateForOrganization(organizationId);
+      
+      // Trigger aggregate recomputation
+      AggregationService.getInstance().recomputeUserDayAggregates(
+        organizationId,
+        userId,
+        new Date(checkin.createdAt)
+      ).catch(error => {
+        console.error(`Failed to recompute aggregates after manual checkin creation:`, error);
+      });
+      
+      return checkin;
+    } catch (error) {
+      console.error("Failed to create manual check-in:", error);
+      throw error;
+    }
   }
 
   // Team Goals

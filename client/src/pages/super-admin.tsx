@@ -20,9 +20,14 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { Crown, Settings, DollarSign, Ticket, Users, Building2, Trash2, Edit, Plus, Eye, ShieldAlert, AlertCircle, CheckCircle2, RefreshCw, Key, Info, ChevronDown, CreditCard } from "lucide-react";
-import { format } from "date-fns";
+import { Crown, Settings, DollarSign, Ticket, Users, Building2, Trash2, Edit, Plus, Eye, ShieldAlert, AlertCircle, CheckCircle2, RefreshCw, Key, Info, ChevronDown, CreditCard, Database, AlertTriangle, Calendar, Clock, Activity, FileWarning, CheckCircle, XCircle } from "lucide-react";
+import { format, startOfWeek, parseISO } from "date-fns";
 import type { User as CurrentUser } from "@shared/schema";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 // Types
 interface SuperAdminStats {
@@ -94,6 +99,44 @@ interface PricingUpdateData {
   billingCycle: "monthly" | "annual";
 }
 
+// Data Management Types
+interface CheckinData {
+  id: string;
+  organizationId: string;
+  organizationName?: string;
+  userId: string;
+  userName?: string;
+  userEmail?: string;
+  weekOf: string;
+  isComplete: boolean;
+  submittedAt: string | null;
+  dueDate: string;
+  submittedOnTime: boolean;
+  reviewStatus: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+}
+
+interface DataHealthReport {
+  futureCheckins: CheckinData[];
+  mismatchedDates: CheckinData[];
+  duplicateCheckins: Array<{
+    userId: string;
+    weekStart: string;
+    checkins: CheckinData[];
+  }>;
+  orphanedCheckins: CheckinData[];
+  totalIssues: number;
+}
+
+interface CheckinFilters {
+  organizationId?: string;
+  userId?: string;
+  startDate?: string;
+  endDate?: string;
+  status?: string;
+}
+
 // Form schemas
 const systemSettingSchema = z.object({
   key: z.string().min(1, "Setting key is required"),
@@ -155,6 +198,18 @@ export default function SuperAdminPage() {
   // Pricing management state
   const [selectedOrgForPricing, setSelectedOrgForPricing] = useState<OrganizationPricing | null>(null);
   const [showPricingEditDialog, setShowPricingEditDialog] = useState(false);
+  
+  // Data Management state
+  const [checkinFilters, setCheckinFilters] = useState<CheckinFilters>({});
+  const [selectedCheckinToEdit, setSelectedCheckinToEdit] = useState<CheckinData | null>(null);
+  const [selectedCheckinToDelete, setSelectedCheckinToDelete] = useState<CheckinData | null>(null);
+  const [showEditCheckinDialog, setShowEditCheckinDialog] = useState(false);
+  const [showDeleteCheckinConfirm, setShowDeleteCheckinConfirm] = useState(false);
+  const [showManualCheckinDialog, setShowManualCheckinDialog] = useState(false);
+  const [newWeekDate, setNewWeekDate] = useState<Date | undefined>();
+  const [manualCheckinWeekDate, setManualCheckinWeekDate] = useState<Date | undefined>();
+  const [manualCheckinOrgId, setManualCheckinOrgId] = useState<string>("");
+  const [manualCheckinUserId, setManualCheckinUserId] = useState<string>("");
   
   // Get current user to check super admin status
   const { data: currentUser } = useCurrentUser();
@@ -249,6 +304,33 @@ export default function SuperAdminPage() {
   // Fetch organizations pricing
   const { data: organizationsPricing = [], isLoading: pricingLoading, refetch: refetchPricing } = useQuery<OrganizationPricing[]>({
     queryKey: ["/api/admin/organizations/pricing"],
+    enabled: isSuperAdmin === true,
+  });
+
+  // Data Management Queries
+  const { data: checkinsData, isLoading: checkinsLoading, refetch: refetchCheckins } = useQuery({
+    queryKey: ["/api/super-admin/checkins", checkinFilters],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (checkinFilters.organizationId) params.append("organizationId", checkinFilters.organizationId);
+      if (checkinFilters.userId) params.append("userId", checkinFilters.userId);
+      if (checkinFilters.startDate) params.append("startDate", checkinFilters.startDate);
+      if (checkinFilters.endDate) params.append("endDate", checkinFilters.endDate);
+      if (checkinFilters.status) params.append("status", checkinFilters.status);
+      params.append("limit", "100");
+      
+      const response = await apiRequest("GET", `/api/super-admin/checkins?${params}`);
+      return response.json();
+    },
+    enabled: isSuperAdmin === true,
+  });
+
+  const { data: dataHealthReport, isLoading: healthReportLoading, refetch: refetchHealthReport } = useQuery<DataHealthReport>({
+    queryKey: ["/api/super-admin/data-health"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", "/api/super-admin/data-health");
+      return response.json();
+    },
     enabled: isSuperAdmin === true,
   });
 
@@ -399,6 +481,93 @@ export default function SuperAdminPage() {
     },
   });
   
+  // Data Management Mutations
+  const updateCheckinMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const response = await apiRequest("PATCH", `/api/super-admin/checkins/${id}`, data);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to update check-in");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/checkins"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/data-health"] });
+      toast({ 
+        title: "Check-in updated successfully",
+        description: "The check-in week has been updated."
+      });
+      setShowEditCheckinDialog(false);
+      setSelectedCheckinToEdit(null);
+    },
+    onError: (error: any) => {
+      toast({ 
+        variant: "destructive",
+        title: "Failed to update check-in", 
+        description: error.message || "An error occurred while updating the check-in" 
+      });
+    },
+  });
+
+  const deleteCheckinMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest("DELETE", `/api/super-admin/checkins/${id}`);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to delete check-in");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/checkins"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/data-health"] });
+      toast({ 
+        title: "Check-in deleted successfully",
+        description: "The check-in has been permanently removed."
+      });
+      setShowDeleteCheckinConfirm(false);
+      setSelectedCheckinToDelete(null);
+    },
+    onError: (error: any) => {
+      toast({ 
+        variant: "destructive",
+        title: "Failed to delete check-in", 
+        description: error.message || "An error occurred while deleting the check-in" 
+      });
+    },
+  });
+
+  const createManualCheckinMutation = useMutation({
+    mutationFn: async (data: { organizationId: string; userId: string; weekStartDate: string; responses?: any; isComplete?: boolean }) => {
+      const response = await apiRequest("POST", "/api/super-admin/checkins/manual", data);
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Failed to create check-in");
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/checkins"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/data-health"] });
+      toast({ 
+        title: "Check-in created successfully",
+        description: "The manual check-in has been created."
+      });
+      setShowManualCheckinDialog(false);
+      setManualCheckinOrgId("");
+      setManualCheckinUserId("");
+      setManualCheckinWeekDate(undefined);
+    },
+    onError: (error: any) => {
+      toast({ 
+        variant: "destructive",
+        title: "Failed to create check-in", 
+        description: error.message || "An error occurred while creating the check-in" 
+      });
+    },
+  });
+
   // Update organization pricing mutation
   const updatePricingMutation = useMutation({
     mutationFn: async ({ orgId, pricePerUser, billingCycle }: { orgId: string; pricePerUser: number; billingCycle: "monthly" | "annual" }) => {
@@ -680,9 +849,12 @@ export default function SuperAdminPage() {
 
         {/* Main Content */}
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-7 lg:w-[840px]">
+          <TabsList className="grid w-full grid-cols-8 lg:w-[960px]">
             <TabsTrigger value="dashboard" data-testid="tab-dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="organizations" data-testid="tab-organizations">Organizations</TabsTrigger>
+            <TabsTrigger value="data-management" data-testid="tab-data-management">
+              <span className="text-purple-700 dark:text-purple-400 font-semibold">Data Mgmt</span>
+            </TabsTrigger>
             <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
             <TabsTrigger value="pricing" data-testid="tab-pricing">Pricing</TabsTrigger>
             <TabsTrigger value="discounts" data-testid="tab-discounts">Discounts</TabsTrigger>
@@ -759,6 +931,345 @@ export default function SuperAdminPage() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          {/* Data Management Tab - Super Admin Only */}
+          <TabsContent value="data-management" className="space-y-6">
+            {!isSuperAdmin ? (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Access Denied</AlertTitle>
+                <AlertDescription>
+                  Data Management tools are only available to super administrators.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <>
+                {/* Warning Banner */}
+                <Alert className="border-purple-500 bg-purple-50 dark:bg-purple-950">
+                  <AlertTriangle className="h-4 w-4 text-purple-700 dark:text-purple-400" />
+                  <AlertTitle className="text-purple-900 dark:text-purple-300">Production Data Management</AlertTitle>
+                  <AlertDescription className="text-purple-800 dark:text-purple-400">
+                    These tools directly modify production data across all organizations. All actions are logged for audit purposes. 
+                    Please use with extreme caution.
+                  </AlertDescription>
+                </Alert>
+
+                {/* Data Health Dashboard */}
+                <Card data-testid="data-health-dashboard">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Activity className="h-5 w-5 text-purple-600" />
+                      Data Health Dashboard
+                    </CardTitle>
+                    <CardDescription>
+                      Overview of potential data issues that may need attention
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {healthReportLoading ? (
+                      <div className="space-y-3">
+                        <Skeleton className="h-20 w-full" />
+                        <Skeleton className="h-20 w-full" />
+                        <Skeleton className="h-20 w-full" />
+                      </div>
+                    ) : dataHealthReport ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <Card className={dataHealthReport.futureCheckins.length > 0 ? "border-red-300 bg-red-50 dark:bg-red-950" : ""}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Future Check-ins</p>
+                                <p className="text-2xl font-bold text-red-600 dark:text-red-400">
+                                  {dataHealthReport.futureCheckins.length}
+                                </p>
+                              </div>
+                              <Calendar className="h-8 w-8 text-red-500 opacity-50" />
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card className={dataHealthReport.mismatchedDates.length > 0 ? "border-orange-300 bg-orange-50 dark:bg-orange-950" : ""}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Mismatched Dates</p>
+                                <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                                  {dataHealthReport.mismatchedDates.length}
+                                </p>
+                              </div>
+                              <Clock className="h-8 w-8 text-orange-500 opacity-50" />
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card className={dataHealthReport.duplicateCheckins.length > 0 ? "border-yellow-300 bg-yellow-50 dark:bg-yellow-950" : ""}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Duplicate Check-ins</p>
+                                <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+                                  {dataHealthReport.duplicateCheckins.length}
+                                </p>
+                              </div>
+                              <FileWarning className="h-8 w-8 text-yellow-500 opacity-50" />
+                            </div>
+                          </CardContent>
+                        </Card>
+
+                        <Card className={dataHealthReport.orphanedCheckins.length > 0 ? "border-purple-300 bg-purple-50 dark:bg-purple-950" : ""}>
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Orphaned Check-ins</p>
+                                <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                                  {dataHealthReport.orphanedCheckins.length}
+                                </p>
+                              </div>
+                              <AlertCircle className="h-8 w-8 text-purple-500 opacity-50" />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        No data health report available
+                      </div>
+                    )}
+
+                    {dataHealthReport && dataHealthReport.totalIssues > 0 && (
+                      <div className="mt-4 p-4 bg-purple-100 dark:bg-purple-900 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-purple-900 dark:text-purple-100">
+                              Total Issues Found: {dataHealthReport.totalIssues}
+                            </p>
+                            <p className="text-sm text-purple-700 dark:text-purple-300">
+                              Review and fix these issues to maintain data integrity
+                            </p>
+                          </div>
+                          <Button
+                            onClick={() => refetchHealthReport()}
+                            variant="outline"
+                            size="sm"
+                            className="border-purple-500 text-purple-700 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-purple-800"
+                            data-testid="button-refresh-health"
+                          >
+                            <RefreshCw className="h-4 w-4 mr-2" />
+                            Refresh
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Check-in Manager */}
+                <Card data-testid="checkin-manager">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Database className="h-5 w-5 text-purple-600" />
+                        Check-in Manager
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setShowManualCheckinDialog(true)}
+                          className="border-purple-500 text-purple-700 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-purple-800"
+                          data-testid="button-create-manual-checkin"
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Manual Check-in
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => refetchCheckins()}
+                          data-testid="button-refresh-checkins"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardTitle>
+                    <CardDescription>
+                      Manage and fix check-in data across all organizations
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {/* Filters */}
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                      <div>
+                        <Label htmlFor="filter-org">Organization</Label>
+                        <Select 
+                          value={checkinFilters.organizationId || ""} 
+                          onValueChange={(value) => setCheckinFilters({...checkinFilters, organizationId: value || undefined})}
+                        >
+                          <SelectTrigger id="filter-org" data-testid="select-filter-org">
+                            <SelectValue placeholder="All organizations" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">All organizations</SelectItem>
+                            {organizations?.map((org: any) => (
+                              <SelectItem key={org.id} value={org.id}>
+                                {org.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="filter-status">Status</Label>
+                        <Select
+                          value={checkinFilters.status || ""}
+                          onValueChange={(value) => setCheckinFilters({...checkinFilters, status: value || undefined})}
+                        >
+                          <SelectTrigger id="filter-status" data-testid="select-filter-status">
+                            <SelectValue placeholder="All statuses" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">All statuses</SelectItem>
+                            <SelectItem value="complete">Complete</SelectItem>
+                            <SelectItem value="incomplete">Incomplete</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="filter-start-date">Start Date</Label>
+                        <Input
+                          id="filter-start-date"
+                          type="date"
+                          value={checkinFilters.startDate || ""}
+                          onChange={(e) => setCheckinFilters({...checkinFilters, startDate: e.target.value || undefined})}
+                          data-testid="input-filter-start-date"
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="filter-end-date">End Date</Label>
+                        <Input
+                          id="filter-end-date"
+                          type="date"
+                          value={checkinFilters.endDate || ""}
+                          onChange={(e) => setCheckinFilters({...checkinFilters, endDate: e.target.value || undefined})}
+                          data-testid="input-filter-end-date"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Check-ins Table */}
+                    {checkinsLoading ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-12 w-full" />
+                        <Skeleton className="h-12 w-full" />
+                        <Skeleton className="h-12 w-full" />
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>User</TableHead>
+                              <TableHead>Organization</TableHead>
+                              <TableHead>Week Start</TableHead>
+                              <TableHead>Submitted</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead>On Time</TableHead>
+                              <TableHead className="text-center">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {checkinsData?.checkins?.map((checkin: CheckinData) => (
+                              <TableRow key={checkin.id} data-testid={`checkin-row-${checkin.id}`}>
+                                <TableCell>
+                                  <div>
+                                    <p className="font-medium">{checkin.userName || "Unknown"}</p>
+                                    <p className="text-xs text-gray-500">{checkin.userEmail}</p>
+                                  </div>
+                                </TableCell>
+                                <TableCell>{checkin.organizationName || "Unknown"}</TableCell>
+                                <TableCell>{format(parseISO(checkin.weekOf), "MMM d, yyyy")}</TableCell>
+                                <TableCell>
+                                  {checkin.submittedAt 
+                                    ? format(parseISO(checkin.submittedAt), "MMM d, yyyy")
+                                    : "-"}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant={checkin.isComplete ? "default" : "secondary"}>
+                                    {checkin.isComplete ? "Complete" : "Incomplete"}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  {checkin.isComplete && (
+                                    checkin.submittedOnTime ? (
+                                      <CheckCircle className="h-5 w-5 text-green-500" />
+                                    ) : (
+                                      <XCircle className="h-5 w-5 text-red-500" />
+                                    )
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center justify-center gap-2">
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => {
+                                            setSelectedCheckinToEdit(checkin);
+                                            setNewWeekDate(startOfWeek(parseISO(checkin.weekOf), { weekStartsOn: 1 }));
+                                            setShowEditCheckinDialog(true);
+                                          }}
+                                          data-testid={`button-edit-checkin-${checkin.id}`}
+                                        >
+                                          <Edit className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Edit check-in week</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => {
+                                            setSelectedCheckinToDelete(checkin);
+                                            setShowDeleteCheckinConfirm(true);
+                                          }}
+                                          className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950 dark:hover:text-red-300"
+                                          data-testid={`button-delete-checkin-${checkin.id}`}
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent>
+                                        <p>Delete check-in</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+
+                        {(!checkinsData?.checkins || checkinsData.checkins.length === 0) && (
+                          <div className="text-center py-8 text-gray-500">
+                            No check-ins found matching the filters
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </TabsContent>
 
           {/* Organizations Tab */}
@@ -1191,6 +1702,280 @@ export default function SuperAdminPage() {
           </TabsContent>
         </Tabs>
         
+        {/* Edit Check-in Dialog */}
+        <Dialog open={showEditCheckinDialog} onOpenChange={setShowEditCheckinDialog}>
+          <DialogContent data-testid="dialog-edit-checkin">
+            <DialogHeader>
+              <DialogTitle>Edit Check-in Week</DialogTitle>
+              <DialogDescription>
+                Change the week assignment for this check-in. This will automatically recalculate due dates.
+              </DialogDescription>
+            </DialogHeader>
+            
+            {selectedCheckinToEdit && (
+              <div className="space-y-4">
+                <Alert className="border-orange-300">
+                  <AlertTriangle className="h-4 w-4 text-orange-600" />
+                  <AlertDescription>
+                    <strong>Warning:</strong> You are modifying production data for user {selectedCheckinToEdit.userName} 
+                    in organization {selectedCheckinToEdit.organizationName}.
+                  </AlertDescription>
+                </Alert>
+
+                <div className="space-y-2">
+                  <Label>Current Week</Label>
+                  <p className="text-sm text-gray-600">
+                    {format(parseISO(selectedCheckinToEdit.weekOf), "MMMM d, yyyy")}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>New Week Start Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-left font-normal"
+                        data-testid="button-new-week-date"
+                      >
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {newWeekDate ? format(newWeekDate, "PPP") : <span>Select new week...</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={newWeekDate}
+                        onSelect={setNewWeekDate}
+                        initialFocus
+                        disabled={(date) => date > new Date()}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setShowEditCheckinDialog(false);
+                      setSelectedCheckinToEdit(null);
+                      setNewWeekDate(undefined);
+                    }}
+                    data-testid="button-cancel-edit"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (newWeekDate && selectedCheckinToEdit) {
+                        updateCheckinMutation.mutate({
+                          id: selectedCheckinToEdit.id,
+                          data: { weekStartDate: newWeekDate.toISOString() }
+                        });
+                      }
+                    }}
+                    disabled={!newWeekDate || updateCheckinMutation.isPending}
+                    className="bg-purple-600 hover:bg-purple-700 text-white"
+                    data-testid="button-confirm-edit"
+                  >
+                    {updateCheckinMutation.isPending ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      "Update Week"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Check-in Confirmation Dialog */}
+        <AlertDialog open={showDeleteCheckinConfirm} onOpenChange={setShowDeleteCheckinConfirm}>
+          <AlertDialogContent data-testid="dialog-delete-checkin">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete this check-in from the production database.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            
+            {selectedCheckinToDelete && (
+              <Alert className="border-red-300 bg-red-50 dark:bg-red-950">
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+                <AlertDescription className="text-red-800 dark:text-red-200">
+                  You are about to delete the check-in for <strong>{selectedCheckinToDelete.userName}</strong> 
+                  {" "}from <strong>{selectedCheckinToDelete.organizationName}</strong>
+                  {" "}for the week of <strong>{format(parseISO(selectedCheckinToDelete.weekOf), "MMM d, yyyy")}</strong>.
+                  This action cannot be undone.
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() => {
+                  setShowDeleteCheckinConfirm(false);
+                  setSelectedCheckinToDelete(null);
+                }}
+                data-testid="button-cancel-delete"
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (selectedCheckinToDelete) {
+                    deleteCheckinMutation.mutate(selectedCheckinToDelete.id);
+                  }
+                }}
+                className="bg-red-600 hover:bg-red-700"
+                disabled={deleteCheckinMutation.isPending}
+                data-testid="button-confirm-delete"
+              >
+                {deleteCheckinMutation.isPending ? "Deleting..." : "Delete Check-in"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Manual Check-in Creation Dialog */}
+        <Dialog open={showManualCheckinDialog} onOpenChange={setShowManualCheckinDialog}>
+          <DialogContent data-testid="dialog-manual-checkin" className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Create Manual Check-in</DialogTitle>
+              <DialogDescription>
+                Create a check-in for any user and week. Use this for data recovery or manual entry.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4">
+              <Alert className="border-purple-300">
+                <Info className="h-4 w-4 text-purple-600" />
+                <AlertDescription>
+                  This will create a new check-in entry in the production database. 
+                  Make sure the user doesn't already have a check-in for this week.
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-2">
+                <Label htmlFor="manual-org">Organization</Label>
+                <Select
+                  value={manualCheckinOrgId}
+                  onValueChange={setManualCheckinOrgId}
+                >
+                  <SelectTrigger id="manual-org" data-testid="select-manual-org">
+                    <SelectValue placeholder="Select organization" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {organizations?.map((org: any) => (
+                      <SelectItem key={org.id} value={org.id}>
+                        {org.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="manual-user">User</Label>
+                <Select
+                  value={manualCheckinUserId}
+                  onValueChange={setManualCheckinUserId}
+                  disabled={!manualCheckinOrgId}
+                >
+                  <SelectTrigger id="manual-user" data-testid="select-manual-user">
+                    <SelectValue placeholder="Select user" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {users
+                      ?.filter((user: any) => user.organizationId === manualCheckinOrgId)
+                      .map((user: any) => (
+                        <SelectItem key={user.id} value={user.id}>
+                          {user.name || user.email}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Week Start Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal"
+                      data-testid="button-manual-week-date"
+                    >
+                      <Calendar className="mr-2 h-4 w-4" />
+                      {manualCheckinWeekDate 
+                        ? format(manualCheckinWeekDate, "PPP") 
+                        : <span>Select week...</span>}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={manualCheckinWeekDate}
+                      onSelect={setManualCheckinWeekDate}
+                      initialFocus
+                      disabled={(date) => date > new Date()}
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowManualCheckinDialog(false);
+                    setManualCheckinOrgId("");
+                    setManualCheckinUserId("");
+                    setManualCheckinWeekDate(undefined);
+                  }}
+                  data-testid="button-cancel-manual"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (manualCheckinOrgId && manualCheckinUserId && manualCheckinWeekDate) {
+                      createManualCheckinMutation.mutate({
+                        organizationId: manualCheckinOrgId,
+                        userId: manualCheckinUserId,
+                        weekStartDate: startOfWeek(manualCheckinWeekDate, { weekStartsOn: 1 }).toISOString(),
+                        isComplete: true
+                      });
+                    }
+                  }}
+                  disabled={
+                    !manualCheckinOrgId || 
+                    !manualCheckinUserId || 
+                    !manualCheckinWeekDate || 
+                    createManualCheckinMutation.isPending
+                  }
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                  data-testid="button-confirm-manual"
+                >
+                  {createManualCheckinMutation.isPending ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    "Create Check-in"
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* Delete Organization Confirmation Dialog */}
         <AlertDialog open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
           <AlertDialogContent>
