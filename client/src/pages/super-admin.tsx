@@ -1610,6 +1610,15 @@ export default function SuperAdminPage() {
           
           {/* Organization Pricing Tab */}
           <TabsContent value="org-pricing" className="space-y-6">
+            {!isSuperAdmin ? (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Access Denied</AlertTitle>
+                <AlertDescription>
+                  Organization pricing management is only available to super administrators.
+                </AlertDescription>
+              </Alert>
+            ) : (
             <Card data-testid="card-org-pricing-management">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -1699,6 +1708,7 @@ export default function SuperAdminPage() {
                 </div>
               </CardContent>
             </Card>
+            )}
           </TabsContent>
         </Tabs>
         
