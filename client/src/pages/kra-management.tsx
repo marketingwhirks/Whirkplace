@@ -117,10 +117,8 @@ function CreateTemplateDialog({ trigger }: { trigger: React.ReactNode }) {
 
   const createTemplateMutation = useMutation({
     mutationFn: async (data: z.infer<typeof templateFormSchema>) => {
-      return apiRequest("/api/kra-templates", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      const response = await apiRequest("POST", "/api/kra-templates", data);
+      return await response.json();
     },
     onSuccess: () => {
       toast({
@@ -142,10 +140,8 @@ function CreateTemplateDialog({ trigger }: { trigger: React.ReactNode }) {
 
   const generateKrasMutation = useMutation({
     mutationFn: async (data: { role: string; department: string; company?: string }) => {
-      return apiRequest("/api/ai/generate-kras", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      const response = await apiRequest("POST", "/api/ai/generate-kras", data);
+      return await response.json();
     },
     onSuccess: (response: any) => {
       const suggestions = response.suggestions || [];
