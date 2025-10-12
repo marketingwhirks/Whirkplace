@@ -9456,7 +9456,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/kra-templates", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       // Validate request body using Zod schema
-      const validationSchema = insertKraTemplateSchema.omit({ organizationId: true }).extend({
+      const validationSchema = insertKraTemplateSchema.omit({ organizationId: true, createdBy: true }).extend({
         name: z.string().min(1).max(200),
         description: z.string().max(1000).optional(),
         goals: z.array(z.any()).default([]),
