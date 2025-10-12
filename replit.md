@@ -27,6 +27,30 @@ The frontend uses React 18 with TypeScript, Tailwind CSS, and shadcn/ui componen
 ### System Design Choices
 The application adopts a multi-tenant architecture to support multiple organizations with data isolation. A storage abstraction layer in the backend allows for flexible database implementations. Secure authentication mechanisms, including OAuth and SSO, are central to the system. Account ownership and role-based access control (Super admin > Account owner > Regular admin > Manager > Member) ensure robust management. Check-in weeks are calculated using Monday as the week start, ensuring consistent weekly cycles across the organization. Super administrators have access to a comprehensive data management tool for fixing production data issues across all organizations, with audit logging and safety features.
 
+## Critical Deployment Issue (October 12, 2025)
+**Problem**: All API-dependent features work in development but fail in production after publishing. This affects:
+- One-on-one meeting scheduling
+- KRA management (manual and AI generation)  
+- Microsoft integrations
+- AI integrations
+- Organization pricing updates
+
+**Root Cause**: The production deployment appears to only serve static frontend files without the backend Express server, despite correct configuration in `.replit`:
+```
+[deployment]
+deploymentTarget = "autoscale"
+build = ["sh", "-c", "npm run build"]
+run = ["npm", "run", "start"]
+```
+
+**Troubleshooting Steps**:
+1. Check deployment logs in Replit dashboard for errors during build/start
+2. Verify that `dist/index.js` is created during build (confirmed working locally)
+3. Check network tab in browser for 404/CORS errors on `/api/*` routes
+4. Ensure deployment is set to "Server" type, not "Static" in Replit settings
+
+**Temporary Workaround**: Continue using development environment (`npm run dev`) until production deployment is resolved.
+
 ## External Dependencies
 
 ### Database
