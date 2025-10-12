@@ -56,6 +56,76 @@ if (stripeSecretKey) {
   console.warn('⚠️ Stripe keys not configured');
 }
 
+// Helper function to generate recurring meetings
+function generateRecurringMeetings(baseData: any, seriesId: string): any[] {
+  const meetings: any[] = [];
+  const startDate = new Date(baseData.scheduledAt);
+  const maxOccurrences = baseData.recurrenceEndCount || 52; // Default to 52 occurrences if no end count specified
+  const endDate = baseData.recurrenceEndDate ? new Date(baseData.recurrenceEndDate) : null;
+  
+  // Calculate interval in days based on recurrence pattern
+  let intervalDays = 7; // Default to weekly
+  switch (baseData.recurrencePattern) {
+    case 'weekly':
+      intervalDays = 7 * (baseData.recurrenceInterval || 1);
+      break;
+    case 'biweekly':
+      intervalDays = 14 * (baseData.recurrenceInterval || 1);
+      break;
+    case 'monthly':
+      intervalDays = 30 * (baseData.recurrenceInterval || 1); // Approximate month
+      break;
+    case 'quarterly':
+      intervalDays = 90 * (baseData.recurrenceInterval || 1); // Approximate quarter
+      break;
+  }
+  
+  // Generate meetings
+  let currentDate = new Date(startDate);
+  let occurrenceCount = 0;
+  
+  while (occurrenceCount < maxOccurrences) {
+    // Check if we've passed the end date
+    if (endDate && currentDate > endDate) {
+      break;
+    }
+    
+    // Create meeting object for this occurrence
+    const meetingData = {
+      participantOneId: baseData.participantOneId,
+      participantTwoId: baseData.participantTwoId,
+      scheduledAt: new Date(currentDate),
+      duration: baseData.duration,
+      agenda: baseData.agenda,
+      notes: baseData.notes,
+      location: baseData.location,
+      isOnlineMeeting: baseData.isOnlineMeeting,
+      status: baseData.status || "scheduled",
+      isRecurring: true,
+      recurrenceSeriesId: seriesId,
+      recurrencePattern: baseData.recurrencePattern,
+      recurrenceInterval: baseData.recurrenceInterval,
+      isRecurrenceTemplate: occurrenceCount === 0 // First one is the template
+    };
+    
+    meetings.push(meetingData);
+    
+    // Calculate next occurrence
+    if (baseData.recurrencePattern === 'monthly') {
+      // For monthly, add months properly
+      currentDate = new Date(currentDate);
+      currentDate.setMonth(currentDate.getMonth() + (baseData.recurrenceInterval || 1));
+    } else {
+      // For other patterns, add days
+      currentDate = new Date(currentDate.getTime() + intervalDays * 24 * 60 * 60 * 1000);
+    }
+    
+    occurrenceCount++;
+  }
+  
+  return meetings;
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   // Azure domain verification file - must be served at root
   app.get("/MS89526594.txt", (req, res) => {
@@ -8674,20 +8744,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         scheduledAt: z.coerce.date(),
         duration: z.number().min(15).max(240).default(30),
         status: z.enum(["scheduled", "completed", "cancelled", "rescheduled"]).default("scheduled"),
-        // Recurring meeting fields
+        // Recurring meeting fields - make them truly optional (accept undefined/null/missing)
         isRecurring: z.boolean().default(false),
-        recurrencePattern: z.enum(["weekly", "biweekly", "monthly", "quarterly"]).optional(),
-        recurrenceInterval: z.number().min(1).max(12).default(1).optional(),
-        recurrenceEndDate: z.coerce.date().optional(),
-        recurrenceEndCount: z.number().min(1).max(52).optional()
+        recurrencePattern: z.enum(["weekly", "biweekly", "monthly", "quarterly"]).nullable().optional(),
+        recurrenceInterval: z.number().min(1).max(12).nullable().optional(),
+        recurrenceEndDate: z.coerce.date().nullable().optional(),
+        recurrenceEndCount: z.number().min(1).max(52).nullable().optional()
       }).refine((data) => {
         // If recurring, must have pattern and either end date or count
         if (data.isRecurring) {
-          return data.recurrencePattern && (data.recurrenceEndDate || data.recurrenceEndCount);
+          return data.recurrencePattern && data.recurrenceInterval && (data.recurrenceEndDate || data.recurrenceEndCount);
         }
         return true;
       }, {
-        message: "Recurring meetings must have a recurrence pattern and either an end date or occurrence count"
+        message: "Recurring meetings must have a recurrence pattern, interval, and either an end date or occurrence count"
       });
       
       const validatedData = validationSchema.parse(req.body);

@@ -99,13 +99,13 @@ const scheduleMeetingSchema = z.object({
     z.number().min(1).max(52).optional()
   )
 }).refine((data) => {
-  // If recurring, must have pattern and either end date or count
+  // If recurring, must have pattern, interval, and either end date or count
   if (data.isRecurring) {
-    return data.recurrencePattern && (data.recurrenceEndDate || data.recurrenceEndCount);
+    return data.recurrencePattern && data.recurrenceInterval && (data.recurrenceEndDate || data.recurrenceEndCount);
   }
   return true;
 }, {
-  message: "Recurring meetings must have a recurrence pattern and either an end date or occurrence count",
+  message: "Recurring meetings must have a recurrence pattern, interval, and either an end date or occurrence count",
   path: ["isRecurring"]
 });
 
@@ -622,7 +622,7 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
       }
       
       // Create meeting data with current user as one participant
-      const meetingData = {
+      const meetingData: any = {
         participantOneId: currentUser.id, // Current user (usually manager)
         participantTwoId: data.participantId, // Selected participant
         scheduledAt: data.scheduledAt,
@@ -633,13 +633,20 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
         isOnlineMeeting: data.isOnlineMeeting,
         syncWithOutlook: data.syncWithOutlook,
         status: "scheduled",
-        // Recurring meeting fields
-        isRecurring: data.isRecurring,
-        recurrencePattern: data.isRecurring ? data.recurrencePattern : null,
-        recurrenceInterval: data.isRecurring ? data.recurrenceInterval : null,
-        recurrenceEndDate: data.isRecurring && data.recurrenceEndDate ? data.recurrenceEndDate : null,
-        recurrenceEndCount: data.isRecurring && data.recurrenceEndCount ? data.recurrenceEndCount : null
+        isRecurring: data.isRecurring
       };
+
+      // Only include recurring fields when isRecurring is true
+      if (data.isRecurring) {
+        meetingData.recurrencePattern = data.recurrencePattern;
+        meetingData.recurrenceInterval = data.recurrenceInterval;
+        if (data.recurrenceEndDate) {
+          meetingData.recurrenceEndDate = data.recurrenceEndDate;
+        }
+        if (data.recurrenceEndCount) {
+          meetingData.recurrenceEndCount = data.recurrenceEndCount;
+        }
+      }
 
       // Create the one-on-one meeting first
       const response = await apiRequest("POST", "/api/one-on-ones", meetingData);
