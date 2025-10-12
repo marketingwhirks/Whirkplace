@@ -262,6 +262,8 @@ export const users = pgTable("users", {
   // Personal review reminder preferences (for managers and admins)
   personalReviewReminderDay: text("personal_review_reminder_day"), // Override org default for personal review reminders
   personalReviewReminderTime: text("personal_review_reminder_time"), // Override org default for personal review time
+  // Permission to view check-ins across all teams (granted by admins only)
+  canViewAllTeams: boolean("can_view_all_teams").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
   isSuperAdmin: boolean("is_super_admin").notNull().default(false),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),

@@ -38,7 +38,8 @@ import {
   Download,
   FileText,
   AlertTriangle,
-  Key
+  Key,
+  Eye
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -161,6 +162,29 @@ export default function Admin() {
         variant: "destructive",
         title: "Failed to send password setup",
         description: error.message || "Failed to send password setup via Slack DM",
+      });
+    },
+  });
+
+  // Toggle canViewAllTeams permission mutation
+  const toggleViewAllTeamsMutation = useMutation({
+    mutationFn: async ({ userId, canViewAllTeams }: { userId: string; canViewAllTeams: boolean }) => {
+      const response = await apiRequest("PATCH", `/api/users/${userId}/view-all-teams`, { canViewAllTeams });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Permission Updated",
+        description: data.message || "Successfully updated cross-team view permission",
+      });
+      // Refetch users to update the UI
+      refetchUsers();
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to update permission",
+        description: error.message || "Failed to update cross-team view permission",
       });
     },
   });
@@ -1034,6 +1058,26 @@ export default function Admin() {
                       >
                         Assign Team
                       </Button>
+                      {/* Toggle cross-team view permission */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={user.canViewAllTeams ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => toggleViewAllTeamsMutation.mutate({ userId: user.id, canViewAllTeams: !user.canViewAllTeams })}
+                            disabled={toggleViewAllTeamsMutation.isPending}
+                            data-testid={`button-toggle-view-all-teams-${user.id}`}
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            {user.canViewAllTeams ? "Has Cross-Team View" : "Team Only"}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{user.canViewAllTeams 
+                            ? "User can view check-ins across all teams (respecting hierarchy). Click to revoke." 
+                            : "User can only view own team. Click to grant cross-team view permission."}</p>
+                        </TooltipContent>
+                      </Tooltip>
                       {/* Show button for users with Slack connection to send password setup via Slack DM */}
                       {user.slackUserId && (
                         <Tooltip>

@@ -3813,6 +3813,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Toggle canViewAllTeams permission (Admin only)
+  app.patch("/api/users/:id/view-all-teams", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const targetUserId = req.params.id;
+      const { canViewAllTeams } = req.body;
+      
+      if (typeof canViewAllTeams !== 'boolean') {
+        return res.status(400).json({ 
+          message: "canViewAllTeams must be a boolean value" 
+        });
+      }
+      
+      // Update only the canViewAllTeams field
+      const user = await storage.updateUser(req.orgId, targetUserId, { canViewAllTeams });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      console.log(`Admin ${req.currentUser!.name} set canViewAllTeams=${canViewAllTeams} for user ${user.name}`);
+      
+      res.json({
+        message: `Successfully ${canViewAllTeams ? 'granted' : 'revoked'} cross-team view permission`,
+        user: sanitizeUser(user)
+      });
+    } catch (error) {
+      console.error("Failed to update canViewAllTeams permission:", error);
+      res.status(500).json({ message: "Failed to update permission" });
+    }
+  });
+
   app.get("/api/users/:id/reports", requireAuth(), async (req, res) => {
     try {
       const currentUser = req.currentUser!;
@@ -4133,16 +4163,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Check-ins
+  // Check-ins with hierarchical visibility controls
   app.get("/api/checkins", requireAuth(), async (req, res) => {
     try {
       const { userId, managerId, limit } = req.query;
       const currentUser = req.currentUser!;
-      let checkins;
       
-      // Apply authorization based on user role
-      if (currentUser.role === "admin") {
-        // Admins can see all check-ins in their organization
+      // Get full user data including canViewAllTeams permission
+      const fullUser = await storage.getUser(req.orgId, currentUser.id);
+      if (!fullUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      let checkins;
+      let authorizedUserIds: Set<string>;
+      
+      // Apply hierarchical visibility rules
+      if (fullUser.isSuperAdmin) {
+        // Super admins see everything across all organizations
         if (userId) {
           checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
         } else if (managerId) {
@@ -4150,46 +4188,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
         }
-      } else if (currentUser.role === "manager") {
-        // Managers can see check-ins from their direct reports and team members
-        const directReports = await storage.getUsersByManager(req.orgId, currentUser.id, true);
-        const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, currentUser.id, true);
+      } else if (fullUser.isAccountOwner) {
+        // Account owners see everything in their organization
+        if (userId) {
+          checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
+        } else if (managerId) {
+          checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
+        } else {
+          checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
+        }
+      } else if (fullUser.role === "admin") {
+        // Admins see all check-ins in their organization by default
+        if (userId) {
+          checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
+        } else if (managerId) {
+          checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
+        } else {
+          checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
+        }
+      } else if (fullUser.canViewAllTeams) {
+        // Users with canViewAllTeams permission - see all teams but respect hierarchy
+        const allUsers = await storage.getAllUsers(req.orgId, true);
         
-        // Include the manager's own ID and combine with authorized users
-        const authorizedUserIds = new Set([
-          currentUser.id,
-          ...directReports.map(u => u.id),
-          ...teamMembers.map(u => u.id)
+        // Build hierarchy map to identify relationships
+        const userMap = new Map(allUsers.map(u => [u.id, u]));
+        
+        // Helper to check if user is below current user in hierarchy
+        const isBelow = (targetUserId: string, viewerId: string): boolean => {
+          const targetUser = userMap.get(targetUserId);
+          if (!targetUser) return false;
+          
+          // Direct report
+          if (targetUser.managerId === viewerId) return true;
+          
+          // Indirect report (recursive check)
+          if (targetUser.managerId) {
+            return isBelow(targetUser.managerId, viewerId);
+          }
+          
+          return false;
+        };
+        
+        // Users can see: their own + all users below them in hierarchy
+        authorizedUserIds = new Set([fullUser.id]);
+        
+        for (const user of allUsers) {
+          if (isBelow(user.id, fullUser.id)) {
+            authorizedUserIds.add(user.id);
+          }
+        }
+        
+        if (userId) {
+          if (!authorizedUserIds.has(userId as string)) {
+            return res.status(403).json({ message: "Access denied to this user's check-ins" });
+          }
+          checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
+        } else {
+          const allCheckins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : 100);
+          checkins = allCheckins.filter(c => authorizedUserIds.has(c.userId));
+        }
+      } else if (fullUser.role === "manager") {
+        // Managers see only their direct reports' check-ins
+        const directReports = await storage.getUsersByManager(req.orgId, fullUser.id, true);
+        
+        // Include the manager's own check-ins
+        authorizedUserIds = new Set([
+          fullUser.id,
+          ...directReports.map(u => u.id)
         ]);
         
         if (userId) {
-          // Verify the requested userId is authorized
           if (!authorizedUserIds.has(userId as string)) {
-            return res.status(403).json({ 
-              message: "Access denied. You can only view check-ins for yourself or your team members." 
-            });
+            return res.status(403).json({ message: "Access denied to this user's check-ins" });
           }
           checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
-        } else if (managerId) {
-          // For managerId query, verify it's the current user (only managers can query by their own ID)
-          if (managerId !== currentUser.id) {
-            return res.status(403).json({ 
-              message: "Access denied. You can only query check-ins by your own manager ID." 
-            });
-          }
-          checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
         } else {
-          // Default: get recent check-ins but filter to authorized users only
-          const allRecentCheckins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
-          checkins = allRecentCheckins.filter(checkin => authorizedUserIds.has(checkin.userId));
+          const allCheckins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : 100);
+          checkins = allCheckins.filter(c => authorizedUserIds.has(c.userId));
         }
       } else {
-        // Members can only see their own check-ins
-        // Ignore any userId or managerId parameters - members can only see their own data
-        checkins = await storage.getCheckinsByUser(req.orgId, currentUser.id);
-        if (limit) {
-          checkins = checkins.slice(0, parseInt(limit as string));
+        // Regular users can only see their own check-ins
+        if (userId && userId !== fullUser.id) {
+          return res.status(403).json({ message: "Access denied to other users' check-ins" });
         }
+        checkins = await storage.getCheckinsByUser(req.orgId, fullUser.id);
       }
       
       res.json(checkins);
