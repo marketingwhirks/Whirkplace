@@ -642,7 +642,8 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
       };
 
       // Create the one-on-one meeting first
-      const createdMeeting = await apiRequest("POST", "/api/one-on-ones", meetingData);
+      const response = await apiRequest("POST", "/api/one-on-ones", meetingData);
+      const createdMeeting = await response.json();
 
       // If Outlook sync is enabled and calendar is connected, create calendar event
       if (data.syncWithOutlook && calendarStatus?.connected && participant) {
@@ -667,14 +668,16 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
           };
 
           // Create calendar event
-          const calendarEvent = await apiRequest("POST", "/api/calendar/events", calendarEventData);
+          const calendarResponse = await apiRequest("POST", "/api/calendar/events", calendarEventData);
+          const calendarEvent = await calendarResponse.json();
           
           // Update meeting with calendar event details
           if (calendarEvent?.id) {
-            await apiRequest("PUT", `/api/one-on-ones/${createdMeeting.id}`, {
+            const updateResponse = await apiRequest("PUT", `/api/one-on-ones/${createdMeeting.id}`, {
               outlookEventId: calendarEvent.id,
               meetingUrl: calendarEvent.meetingUrl || null
             });
+            await updateResponse.json(); // Parse the response even if we don't use it
           }
         } catch (calendarError) {
           console.warn("Failed to create calendar event:", calendarError);
