@@ -554,6 +554,10 @@ export class DatabaseStorage implements IStorage {
     if (organizationUpdate.stripePriceId !== undefined) updateData.stripePriceId = organizationUpdate.stripePriceId;
     if (organizationUpdate.trialEndsAt !== undefined) updateData.trialEndsAt = organizationUpdate.trialEndsAt;
     
+    // Billing fields
+    if (organizationUpdate.billingPricePerUser !== undefined) updateData.billingPricePerUser = organizationUpdate.billingPricePerUser;
+    if (organizationUpdate.billingUserCount !== undefined) updateData.billingUserCount = organizationUpdate.billingUserCount;
+    
     // Settings fields
     if (organizationUpdate.timezone !== undefined) updateData.timezone = organizationUpdate.timezone;
     if (organizationUpdate.weeklyCheckInSchedule !== undefined) updateData.weeklyCheckInSchedule = organizationUpdate.weeklyCheckInSchedule;
