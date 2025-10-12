@@ -175,7 +175,7 @@ export default function LandingPage() {
           </Badge>
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6" data-testid="text-hero-title">
             Build Stronger Teams with
-            <span className="text-primary block">Whirkplace <span className="text-3xl md:text-5xl font-normal">by Whirks</span></span>
+            <span className="text-primary block">Whirkplace</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto" data-testid="text-hero-description">
             The comprehensive team management and wellness platform that helps organizations track team health, conduct regular check-ins, and foster positive workplace culture.
