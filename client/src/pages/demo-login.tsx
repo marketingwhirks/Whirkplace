@@ -245,7 +245,7 @@ export default function DemoLoginPage() {
             <div className="space-y-2">
               <h1 className="text-3xl font-bold">Demo Login</h1>
               <p className="text-muted-foreground">
-                Choose a demo account to explore Whirkplace with different permission levels
+                Choose a demo account to explore Whirkplace by Whirks with different permission levels
               </p>
             </div>
 

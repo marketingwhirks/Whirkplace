@@ -50,7 +50,7 @@ function Router() {
     <div className="flex h-screen overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header title="Whirkplace" description="Team Culture Platform" />
+        <Header title="Whirkplace by Whirks" description="Team Culture Platform" />
         <main className="flex-1 overflow-auto">
           <Switch>
             <Route path="/" component={Dashboard} />

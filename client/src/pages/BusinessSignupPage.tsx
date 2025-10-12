@@ -211,7 +211,7 @@ export default function BusinessSignupPage() {
     onSuccess: (data) => {
       setCurrentStep("complete");
       toast({
-        title: "Welcome to Whirkplace!",
+        title: "Welcome to Whirkplace by Whirks!",
         description: "Your organization has been set up successfully.",
       });
 

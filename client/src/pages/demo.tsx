@@ -71,7 +71,7 @@ export default function DemoPage() {
           </Badge>
           
           <h1 className="text-5xl md:text-6xl font-bold text-foreground">
-            Experience <span className="text-primary">Whirkplace</span>
+            Experience <span className="text-primary">Whirkplace by Whirks</span>
           </h1>
           
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
@@ -139,7 +139,7 @@ export default function DemoPage() {
               <div>
                 <h2 className="text-2xl font-bold mb-4">Proven Results</h2>
                 <p className="text-muted-foreground mb-6">
-                  Organizations using Whirkplace see immediate improvements in team health and productivity.
+                  Organizations using Whirkplace by Whirks see immediate improvements in team health and productivity.
                 </p>
                 <div className="space-y-3">
                   {benefits.map((benefit, index) => (
@@ -182,7 +182,7 @@ export default function DemoPage() {
           <CardContent className="p-12 text-center">
             <h2 className="text-3xl font-bold mb-4">Ready to Transform Your Team?</h2>
             <p className="text-lg mb-8 opacity-90 max-w-2xl mx-auto">
-              See how Whirkplace can help you build a stronger, more connected team culture.
+              See how Whirkplace by Whirks can help you build a stronger, more connected team culture.
               Try our demo with full access to all features.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -206,7 +206,7 @@ export default function DemoPage() {
       {/* Footer */}
       <div className="container mx-auto px-4 py-8 text-center text-muted-foreground">
         <p className="text-sm">
-          © 2025 Whirkplace. All rights reserved. | 
+          © 2025 Whirkplace by Whirks. All rights reserved. | 
           <Link href="/login" className="ml-1 hover:text-primary underline">Sign In</Link> | 
           <Link href="/signup" className="ml-1 hover:text-primary underline">Sign Up</Link>
         </p>

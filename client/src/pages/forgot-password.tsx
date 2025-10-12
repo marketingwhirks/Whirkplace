@@ -88,7 +88,7 @@ export default function ForgotPasswordPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="bg-muted/50 p-4 rounded-lg text-sm text-muted-foreground space-y-2">
-              <p>• Check your inbox for an email from Whirkplace</p>
+              <p>• Check your inbox for an email from Whirkplace by Whirks</p>
               <p>• Click the reset link in the email</p>
               <p>• Create a new secure password</p>
               <p>• The link will expire in 1 hour</p>
@@ -143,7 +143,7 @@ export default function ForgotPasswordPage() {
                 data-testid="reset-email-input"
               />
               <p className="text-sm text-muted-foreground mt-2">
-                Enter the email address associated with your Whirkplace account
+                Enter the email address associated with your Whirkplace by Whirks account
               </p>
             </div>
             
