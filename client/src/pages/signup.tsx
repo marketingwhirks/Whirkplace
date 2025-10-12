@@ -82,7 +82,7 @@ export default function SignupPage() {
       }
       
       toast({
-        title: "Welcome to Whirkplace by Whirks!",
+        title: <>Welcome to Whirkplace <span className="text-base">by Whirks</span>!</>,
         description: "Your organization has been created successfully.",
       });
       
@@ -130,7 +130,7 @@ export default function SignupPage() {
           </div>
           <h1 className="text-3xl font-bold mb-2">Create Your Organization</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Start your team wellness journey with Whirkplace by Whirks
+            Start your team wellness journey with Whirkplace <span className="text-sm">by Whirks</span>
           </p>
         </div>
 

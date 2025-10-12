@@ -399,7 +399,7 @@ export default function LoginPage() {
             <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{backgroundColor: '#1b365d'}}>
               <Heart className="w-6 h-6 fill-accent stroke-accent" strokeWidth="2" />
             </div>
-            <h1 className="text-3xl font-bold text-[#1b365d] dark:text-white">Whirkplace by Whirks</h1>
+            <h1 className="text-3xl font-bold text-[#1b365d] dark:text-white">Whirkplace <span className="text-2xl font-normal">by Whirks</span></h1>
           </div>
           <p className="text-muted-foreground">
             Welcome to your team culture platform
@@ -411,8 +411,8 @@ export default function LoginPage() {
           <CardHeader className="text-center">
             <CardTitle>
               {isSignUpMode ? 'Create Your Account' : 
-               loginStep === 'organization' ? 'Welcome to Whirkplace by Whirks' : 
-               orgContext?.name ? `Sign In to ${orgContext.name}` : 'Sign In to Whirkplace by Whirks'}
+               loginStep === 'organization' ? <>Welcome to Whirkplace <span className="text-base font-normal">by Whirks</span></> : 
+               orgContext?.name ? `Sign In to ${orgContext.name}` : <>Sign In to Whirkplace <span className="text-base font-normal">by Whirks</span></>}
             </CardTitle>
             <CardDescription>
               {isSignUpMode ? 'Get started with your team culture platform' : 
@@ -526,7 +526,7 @@ export default function LoginPage() {
                     </div>
                     <div className="text-center text-sm text-muted-foreground">
                       <span>
-                        New to Whirkplace by Whirks?{' '}
+                        <>New to Whirkplace <span className="text-xs">by Whirks</span>?{' '}</>
                         <button 
                           type="button"
                           onClick={() => setLocation('/signup')}
@@ -710,7 +710,7 @@ export default function LoginPage() {
                       </button>
                     )}
                     <div>
-                      <span>New to Whirkplace by Whirks? </span>
+                      <span>New to Whirkplace <span className="text-xs">by Whirks</span>? </span>
                       <Link href="/signup" className="underline hover:no-underline text-primary">
                         Create an account
                       </Link>
