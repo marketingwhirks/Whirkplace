@@ -580,8 +580,8 @@ export async function sendInteractiveCheckinModal(userId: string, triggerId: str
               type: 'plain_text' as const,
               text: '📝 Complete in App'
             },
-            url: checkinUrl,
-            style: 'secondary' as const
+            url: checkinUrl
+            // Removed invalid 'secondary' style - using default
           }
         ]
       }
@@ -1460,8 +1460,8 @@ export async function sendWelcomeMessage(userId: string, userName: string, chann
             type: 'plain_text' as const,
             text: '📊 Dashboard'
           },
-          url: dashboardUrl,
-          style: 'secondary' as const
+          url: dashboardUrl
+          // Removed invalid 'secondary' style - using default
         },
         {
           type: 'button' as const,
@@ -1469,8 +1469,8 @@ export async function sendWelcomeMessage(userId: string, userName: string, chann
             type: 'plain_text' as const,
             text: '✅ Check-ins'
           },
-          url: checkinUrl,
-          style: 'secondary' as const
+          url: checkinUrl
+          // Removed invalid 'secondary' style - using default
         },
         {
           type: 'button' as const,
@@ -1478,8 +1478,8 @@ export async function sendWelcomeMessage(userId: string, userName: string, chann
             type: 'plain_text' as const,
             text: '🏆 Wins'
           },
-          url: winsUrl,
-          style: 'secondary' as const
+          url: winsUrl
+          // Removed invalid 'secondary' style - using default
         }
       ]
     },
@@ -1667,8 +1667,8 @@ export async function sendPasswordSetupViaSlackDM(
               text: '🔑 Set Up Password',
               emoji: true
             },
-            url: passwordSetupUrl,
-            style: 'secondary' as const
+            url: passwordSetupUrl
+            // Removed invalid 'secondary' style - using default
           }
         ]
       },
@@ -1702,8 +1702,8 @@ export async function sendPasswordSetupViaSlackDM(
               text: '📊 Dashboard',
               emoji: true
             },
-            url: dashboardUrl,
-            style: 'secondary' as const
+            url: dashboardUrl
+            // Removed invalid 'secondary' style - using default
           },
           {
             type: 'button' as const,
@@ -1712,8 +1712,8 @@ export async function sendPasswordSetupViaSlackDM(
               text: '✅ Check-ins',
               emoji: true
             },
-            url: checkinUrl,
-            style: 'secondary' as const
+            url: checkinUrl
+            // Removed invalid 'secondary' style - using default
           }
         ]
       },
