@@ -952,7 +952,24 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
                     <FormControl>
                       <Switch
                         checked={field.value}
-                        onCheckedChange={field.onChange}
+                        onCheckedChange={(checked) => {
+                          field.onChange(checked);
+                          // Set default values when toggling recurring on
+                          if (checked) {
+                            // Set default recurrence pattern to weekly if not already set
+                            if (!form.getValues("recurrencePattern")) {
+                              form.setValue("recurrencePattern", "weekly");
+                            }
+                            // Set default interval to 1 if not already set
+                            if (!form.getValues("recurrenceInterval")) {
+                              form.setValue("recurrenceInterval", 1);
+                            }
+                            // Set default end count to 4 meetings if neither end date nor count is set
+                            if (!form.getValues("recurrenceEndDate") && !form.getValues("recurrenceEndCount")) {
+                              form.setValue("recurrenceEndCount", 4);
+                            }
+                          }
+                        }}
                         data-testid="switch-recurring"
                       />
                     </FormControl>
