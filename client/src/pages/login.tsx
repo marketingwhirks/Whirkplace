@@ -411,8 +411,8 @@ export default function LoginPage() {
           <CardHeader className="text-center">
             <CardTitle>
               {isSignUpMode ? 'Create Your Account' : 
-               loginStep === 'organization' ? <>Welcome to Whirkplace <span className="text-base font-normal">by Whirks</span></> : 
-               orgContext?.name ? `Sign In to ${orgContext.name}` : <>Sign In to Whirkplace <span className="text-base font-normal">by Whirks</span></>}
+               loginStep === 'organization' ? 'Welcome to Whirkplace' : 
+               orgContext?.name ? `Sign In to ${orgContext.name}` : 'Sign In to Whirkplace'}
             </CardTitle>
             <CardDescription>
               {isSignUpMode ? 'Get started with your team culture platform' : 
