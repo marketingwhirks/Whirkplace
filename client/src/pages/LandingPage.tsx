@@ -170,7 +170,7 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="py-20 px-4">
         <div className="container mx-auto text-center">
-          <Badge variant="secondary" className="mb-6" data-testid="badge-hero">
+          <Badge variant="secondary" className="mb-6 text-sm px-4 py-2" data-testid="badge-hero">
             Transform Your Team Culture
           </Badge>
           <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-6" data-testid="text-hero-title">
