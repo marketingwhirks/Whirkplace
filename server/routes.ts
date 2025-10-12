@@ -4197,15 +4197,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } else {
           checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
         }
-      } else if (fullUser.role === "admin") {
-        // Admins see all check-ins in their organization by default
-        if (userId) {
-          checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
-        } else if (managerId) {
-          checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
-        } else {
-          checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
-        }
       } else if (fullUser.canViewAllTeams) {
         // Users with canViewAllTeams permission - see all teams but respect hierarchy
         const allUsers = await storage.getAllUsers(req.orgId, true);
@@ -4247,8 +4238,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const allCheckins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : 100);
           checkins = allCheckins.filter(c => authorizedUserIds.has(c.userId));
         }
-      } else if (fullUser.role === "manager") {
-        // Managers see only their direct reports' check-ins
+      } else if (fullUser.role === "manager" || fullUser.role === "admin") {
+        // Managers and admins see only their direct reports' check-ins
         const directReports = await storage.getUsersByManager(req.orgId, fullUser.id, true);
         
         // Include the manager's own check-ins
@@ -4291,11 +4282,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userWithManager = await storage.getUser(req.orgId, user.id);
       const needsSelfReview = userWithManager && !userWithManager.managerId;
       
-      if (user.role === "admin") {
-        // Admins can see all pending check-ins
-        checkins = await storage.getPendingCheckins(req.orgId);
-      } else if (user.role === "manager" || user.role === "team_lead") {
-        // Managers can review their reports' check-ins
+      if (user.role === "admin" || user.role === "manager" || user.role === "team_lead") {
+        // Admins, managers and team_leads can review their reports' check-ins
         // Pass includeOwnIfNoManager=true to include their own if they have no manager
         checkins = await storage.getPendingCheckins(req.orgId, user.id, true);
       } else if (needsSelfReview) {
@@ -4347,8 +4335,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = req.currentUser!;
       let checkins = await storage.getCheckinsByReviewStatus(req.orgId, status);
       
-      // Filter by team if not admin
-      if (user.role !== "admin") {
+      // Get full user data to check special permissions
+      const fullUser = await storage.getUser(req.orgId, user.id);
+      if (!fullUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Filter by hierarchy unless super admin or account owner
+      if (!fullUser.isSuperAdmin && !fullUser.isAccountOwner) {
         // Get users under this person's authority (direct reports + team members, include inactive for historical data)
         const directReports = await storage.getUsersByManager(req.orgId, user.id, true);
         const teamMembers = await storage.getUsersByTeamLeadership(req.orgId, user.id, true);
@@ -4479,14 +4473,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Check-in not found" });
       }
       
-      // Apply authorization: verify user can view this specific check-in
-      if (currentUser.role === "admin") {
-        // Admins can view any check-in in their organization
+      // Get full user data to check special permissions
+      const fullUser = await storage.getUser(req.orgId, currentUser.id);
+      if (!fullUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Super admins and account owners can see all check-ins
+      if (fullUser.isSuperAdmin || fullUser.isAccountOwner) {
         res.json(checkin);
         return;
       }
       
-      // For non-admins: check if they have authorization to view this check-in
+      // Apply authorization: verify user can view this specific check-in
+      // Check if they have authorization to view this check-in
       if (checkin.userId === currentUser.id) {
         // User can always view their own check-in
         res.json(checkin);
