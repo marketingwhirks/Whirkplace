@@ -728,10 +728,17 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
     user.id
   );
 
+  // Clone the trigger element and add onClick handler
+  const triggerWithHandler = trigger ? (
+    <div onClick={() => setOpen(true)} style={{ display: 'inline-block' }}>
+      {trigger}
+    </div>
+  ) : null;
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        {trigger}
+        {triggerWithHandler}
       </DialogTrigger>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -862,7 +869,7 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
             />
 
             {/* Microsoft Calendar Integration */}
-            {calendarStatus?.connected && (
+            {calendarStatus?.connected ? (
               <FormField
                 control={form.control}
                 name="syncWithOutlook"
@@ -877,17 +884,39 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
                       </FormDescription>
                     </div>
                     <FormControl>
-                      <input
-                        type="checkbox"
+                      <Switch
                         checked={field.value}
-                        onChange={field.onChange}
-                        className="data-[state=checked]:bg-primary"
+                        onCheckedChange={field.onChange}
                         data-testid="checkbox-sync-outlook"
                       />
                     </FormControl>
                   </FormItem>
                 )}
               />
+            ) : (
+              <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-3">
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-yellow-800">
+                      Outlook Calendar Not Connected
+                    </p>
+                    <p className="text-xs text-yellow-700 mt-1">
+                      Connect your Microsoft account to sync meetings with Outlook.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => window.location.href = '/settings'}
+                      data-testid="button-connect-outlook"
+                    >
+                      Connect Outlook in Settings
+                    </Button>
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* Recurring Meeting Options */}
