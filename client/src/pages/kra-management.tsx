@@ -6,6 +6,7 @@ import {
   MoreVertical, Trash2, CheckSquare, XSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import Header from "@/components/layout/header";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
