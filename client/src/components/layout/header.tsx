@@ -5,7 +5,7 @@ import NotificationsDropdown from "./notifications-dropdown";
 import OrganizationSwitcher from "./organization-switcher";
 
 interface HeaderProps {
-  title: string;
+  title: React.ReactNode;
   description?: string;
 }
 
