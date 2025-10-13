@@ -18,6 +18,7 @@ import Wins from "@/pages/wins";
 import ShoutoutsPage from "@/pages/shoutouts";
 import TeamGoals from "@/pages/team-goals";
 import Questions from "@/pages/questions";
+import TeamQuestionManagementPage from "@/pages/team-questions";
 import Reviews from "@/pages/reviews";
 import LeadershipDashboard from "@/pages/leadership-dashboard";
 import Analytics from "@/pages/analytics";
@@ -63,6 +64,7 @@ function Router() {
             <Route path="/shoutouts" component={ShoutoutsPage} />
             <Route path="/team-goals" component={TeamGoals} />
             <Route path="/questions" component={Questions} />
+            <Route path="/teams/:teamId/questions" component={TeamQuestionManagementPage} />
             <Route path="/reviews" component={Reviews} />
             <Route path="/leadership-dashboard" component={LeadershipDashboard} />
             <Route path="/analytics" component={Analytics} />

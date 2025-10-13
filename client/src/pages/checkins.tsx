@@ -100,9 +100,9 @@ export default function Checkins() {
   // Get previous week start (Monday)
   const previousWeekStart = addWeeks(currentWeekStart, -1);
 
-  // Fetch active questions
+  // Fetch active questions (with team-specific questions if applicable)
   const { data: questions = [], isLoading: questionsLoading } = useQuery<Question[]>({
-    queryKey: ["/api/questions"],
+    queryKey: ["/api/questions?forCheckin=true"],
   });
 
   // Fetch user's check-ins

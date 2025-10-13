@@ -376,12 +376,34 @@ export const questions = pgTable("questions", {
   categoryId: varchar("category_id"), // Link to category
   bankQuestionId: varchar("bank_question_id"), // If this came from the question bank
   assignedToUserId: varchar("assigned_to_user_id"), // Assign to specific user (null = all)
+  teamId: varchar("team_id"), // If set, question is only for this team (null = organization-wide)
   isFromBank: boolean("is_from_bank").notNull().default(false), // Track if from bank
   isActive: boolean("is_active").notNull().default(true),
   order: integer("order").notNull().default(0),
   addToBank: boolean("add_to_bank").notNull().default(false), // Flag to contribute to bank
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
+
+// Team Question Settings - Control which org questions apply to teams
+export const teamQuestionSettings = pgTable("team_question_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  teamId: varchar("team_id").notNull(),
+  organizationId: varchar("organization_id").notNull(),
+  questionId: varchar("question_id").notNull(), // Organization-wide question ID
+  isDisabled: boolean("is_disabled").notNull().default(false), // If true, this org question won't appear for this team
+  disabledBy: varchar("disabled_by"), // User who disabled this question
+  disabledAt: timestamp("disabled_at"), // When it was disabled
+  reason: text("reason"), // Optional reason for disabling
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Unique constraint: one setting per question per team
+  teamQuestionUnique: unique("team_question_settings_unique").on(table.teamId, table.questionId),
+  // Index for efficient team lookups
+  teamIdx: index("team_question_settings_team_idx").on(table.teamId),
+  // Index for question lookups
+  questionIdx: index("team_question_settings_question_idx").on(table.questionId),
+}));
 
 export const wins = pgTable("wins", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1027,6 +1049,16 @@ export type QuestionBank = typeof questionBank.$inferSelect;
 
 export type InsertQuestion = z.infer<typeof insertQuestionSchema>;
 export type Question = typeof questions.$inferSelect;
+
+// Team Question Settings schemas and types
+export const insertTeamQuestionSettingSchema = createInsertSchema(teamQuestionSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  disabledAt: true,
+});
+export type InsertTeamQuestionSetting = z.infer<typeof insertTeamQuestionSettingSchema>;
+export type TeamQuestionSetting = typeof teamQuestionSettings.$inferSelect;
 
 export type InsertWin = z.infer<typeof insertWinSchema>;
 export type Win = typeof wins.$inferSelect;

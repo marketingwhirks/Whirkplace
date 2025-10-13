@@ -4588,7 +4588,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/checkins", requireAuth(), async (req, res) => {
     try {
       // First, check if active questions exist
-      const questions = await storage.getActiveQuestions(req.orgId);
+      // Get questions based on user's team (includes team-specific and org-wide questions)
+      const questions = req.currentUser?.teamId 
+        ? await storage.getActiveQuestionsForTeam(req.orgId, req.currentUser.teamId)
+        : await storage.getActiveQuestions(req.orgId);
+        
       if (questions.length === 0) {
         return res.status(400).json({ 
           message: "Check-ins cannot be submitted without active questions. Please contact your administrator." 
@@ -5262,7 +5266,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Questions
   app.get("/api/questions", requireAuth(), async (req, res) => {
     try {
-      const questions = await storage.getActiveQuestions(req.orgId);
+      // Check if this is for check-in purposes and user has a team
+      const forCheckin = req.query.forCheckin === 'true';
+      const userTeamId = req.currentUser?.teamId;
+      
+      // If fetching for check-in and user has a team, get team-specific questions
+      const questions = (forCheckin && userTeamId)
+        ? await storage.getActiveQuestionsForTeam(req.orgId, userTeamId)
+        : await storage.getActiveQuestions(req.orgId);
+        
       res.json(questions);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch questions" });
@@ -5340,6 +5352,176 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete question" });
+    }
+  });
+  
+  // Team Question Management
+  app.get("/api/teams/:teamId/questions", requireAuth(), async (req, res) => {
+    try {
+      const { teamId } = req.params;
+      
+      // Verify the team exists and user has access
+      const team = await storage.getTeam(req.orgId, teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      // Only managers and admins can view/manage team questions
+      const user = req.currentUser!;
+      if (user.role !== 'admin' && !(user.role === 'manager' && (user.teamId === teamId || team.leaderId === user.id))) {
+        return res.status(403).json({ message: "Insufficient permissions to manage team questions" });
+      }
+      
+      // Get all questions for the team (including org-wide and team-specific)
+      const questions = await storage.getActiveQuestionsForTeam(req.orgId, teamId);
+      res.json(questions);
+    } catch (error) {
+      console.error("Failed to fetch team questions:", error);
+      res.status(500).json({ message: "Failed to fetch team questions" });
+    }
+  });
+  
+  app.get("/api/teams/:teamId/question-settings", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { teamId } = req.params;
+      
+      // Verify the team exists and user has access
+      const team = await storage.getTeam(req.orgId, teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      // Check manager permissions for team
+      const user = req.currentUser!;
+      if (user.role !== 'admin' && !(user.role === 'manager' && (user.teamId === teamId || team.leaderId === user.id))) {
+        return res.status(403).json({ message: "You can only manage questions for your own team" });
+      }
+      
+      const settings = await storage.getTeamQuestionSettings(req.orgId, teamId);
+      res.json(settings);
+    } catch (error) {
+      console.error("Failed to fetch team question settings:", error);
+      res.status(500).json({ message: "Failed to fetch team question settings" });
+    }
+  });
+  
+  app.post("/api/teams/:teamId/questions", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { teamId } = req.params;
+      
+      // Verify the team exists and user has access
+      const team = await storage.getTeam(req.orgId, teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      // Check manager permissions for team
+      const user = req.currentUser!;
+      if (user.role !== 'admin' && !(user.role === 'manager' && (user.teamId === teamId || team.leaderId === user.id))) {
+        return res.status(403).json({ message: "You can only add questions for your own team" });
+      }
+      
+      // Schema for team question
+      const teamQuestionSchema = z.object({
+        text: z.string().min(5, "Question must be at least 5 characters"),
+        order: z.number().min(0, "Order must be 0 or greater").default(0)
+      });
+      const questionData = teamQuestionSchema.parse(req.body);
+      
+      // Create team-specific question
+      const question = await storage.createQuestion(req.orgId, {
+        ...questionData,
+        teamId: teamId,
+        createdBy: user.id,
+        isActive: true,
+        isFromBank: false
+      });
+      
+      res.status(201).json(question);
+    } catch (error) {
+      console.error("Failed to create team question:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid question data",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to create team question" });
+    }
+  });
+  
+  app.put("/api/teams/:teamId/question-settings/:questionId", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { teamId, questionId } = req.params;
+      
+      // Verify the team exists and user has access
+      const team = await storage.getTeam(req.orgId, teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      // Check manager permissions for team
+      const user = req.currentUser!;
+      if (user.role !== 'admin' && !(user.role === 'manager' && (user.teamId === teamId || team.leaderId === user.id))) {
+        return res.status(403).json({ message: "You can only manage questions for your own team" });
+      }
+      
+      // Schema for team question setting
+      const settingSchema = z.object({
+        isDisabled: z.boolean(),
+        reason: z.string().optional()
+      });
+      const settingData = settingSchema.parse(req.body);
+      
+      // Update or create team question setting
+      const setting = await storage.updateTeamQuestionSetting(req.orgId, {
+        teamId,
+        questionId,
+        organizationId: req.orgId,
+        isDisabled: settingData.isDisabled,
+        disabledBy: settingData.isDisabled ? user.id : null,
+        reason: settingData.reason || null
+      });
+      
+      res.json(setting);
+    } catch (error) {
+      console.error("Failed to update team question setting:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid setting data",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to update team question setting" });
+    }
+  });
+  
+  app.delete("/api/teams/:teamId/question-settings/:questionId", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { teamId, questionId } = req.params;
+      
+      // Verify the team exists and user has access
+      const team = await storage.getTeam(req.orgId, teamId);
+      if (!team) {
+        return res.status(404).json({ message: "Team not found" });
+      }
+      
+      // Check manager permissions for team
+      const user = req.currentUser!;
+      if (user.role !== 'admin' && !(user.role === 'manager' && (user.teamId === teamId || team.leaderId === user.id))) {
+        return res.status(403).json({ message: "You can only manage questions for your own team" });
+      }
+      
+      // Delete team question setting (re-enables the org question for this team)
+      const deleted = await storage.deleteTeamQuestionSetting(req.orgId, teamId, questionId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Setting not found" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete team question setting:", error);
+      res.status(500).json({ message: "Failed to delete team question setting" });
     }
   });
   

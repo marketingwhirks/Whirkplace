@@ -3,6 +3,7 @@ import {
   type Team, type InsertTeam, type TeamHierarchy,
   type Checkin, type InsertCheckin,
   type Question, type InsertQuestion,
+  type TeamQuestionSetting, type InsertTeamQuestionSetting,
   type QuestionCategory, type InsertQuestionCategory,
   type QuestionBank, type InsertQuestionBank,
   type Win, type InsertWin,
@@ -37,7 +38,7 @@ import {
   type UserIdentity, type InsertUserIdentity,
   type UserTour, type InsertUserTour,
   type PasswordResetToken, type InsertPasswordResetToken,
-  users, teams, checkins, questions, questionCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
+  users, teams, checkins, questions, teamQuestionSettings, questionCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
   organizationAuthProviders, userIdentities, userTours, teamGoals, passwordResetTokens,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
@@ -202,6 +203,12 @@ export interface IStorage {
   updateQuestion(organizationId: string, id: string, question: Partial<InsertQuestion>): Promise<Question | undefined>;
   deleteQuestion(organizationId: string, id: string): Promise<boolean>;
   getActiveQuestions(organizationId: string): Promise<Question[]>;
+  getActiveQuestionsForTeam(organizationId: string, teamId: string): Promise<Question[]>;
+  
+  // Team Question Settings
+  getTeamQuestionSettings(organizationId: string, teamId: string): Promise<TeamQuestionSetting[]>;
+  updateTeamQuestionSetting(organizationId: string, setting: InsertTeamQuestionSetting): Promise<TeamQuestionSetting>;
+  deleteTeamQuestionSetting(organizationId: string, teamId: string, questionId: string): Promise<boolean>;
   
   // Question Categories
   getQuestionCategories(): Promise<QuestionCategory[]>;
@@ -2293,6 +2300,104 @@ export class DatabaseStorage implements IStorage {
         eq(questions.organizationId, organizationId)
       ))
       .orderBy(questions.order);
+  }
+  
+  async getActiveQuestionsForTeam(organizationId: string, teamId: string): Promise<Question[]> {
+    // Get team-specific questions and organization-wide questions
+    // Then filter out any organization questions that are disabled for this team
+    
+    // First, get all active questions for the organization (both org-wide and team-specific)
+    const allQuestions = await db
+      .select()
+      .from(questions)
+      .where(and(
+        eq(questions.isActive, true),
+        eq(questions.organizationId, organizationId),
+        or(
+          isNull(questions.teamId), // Organization-wide questions
+          eq(questions.teamId, teamId) // Team-specific questions
+        )
+      ))
+      .orderBy(questions.order);
+    
+    // Get disabled questions for this team
+    const disabledSettings = await db
+      .select()
+      .from(teamQuestionSettings)
+      .where(and(
+        eq(teamQuestionSettings.teamId, teamId),
+        eq(teamQuestionSettings.organizationId, organizationId),
+        eq(teamQuestionSettings.isDisabled, true)
+      ));
+    
+    const disabledQuestionIds = new Set(disabledSettings.map(s => s.questionId));
+    
+    // Filter out disabled questions
+    return allQuestions.filter(q => !disabledQuestionIds.has(q.id));
+  }
+  
+  // Team Question Settings
+  async getTeamQuestionSettings(organizationId: string, teamId: string): Promise<TeamQuestionSetting[]> {
+    return await db
+      .select()
+      .from(teamQuestionSettings)
+      .where(and(
+        eq(teamQuestionSettings.teamId, teamId),
+        eq(teamQuestionSettings.organizationId, organizationId)
+      ));
+  }
+  
+  async updateTeamQuestionSetting(organizationId: string, setting: InsertTeamQuestionSetting): Promise<TeamQuestionSetting> {
+    // Use upsert logic - insert if not exists, update if exists
+    const existing = await db
+      .select()
+      .from(teamQuestionSettings)
+      .where(and(
+        eq(teamQuestionSettings.teamId, setting.teamId),
+        eq(teamQuestionSettings.questionId, setting.questionId),
+        eq(teamQuestionSettings.organizationId, organizationId)
+      ))
+      .limit(1);
+    
+    if (existing.length > 0) {
+      // Update existing setting
+      const [updated] = await db
+        .update(teamQuestionSettings)
+        .set({
+          ...setting,
+          updatedAt: new Date(),
+          disabledAt: setting.isDisabled ? new Date() : null,
+        })
+        .where(and(
+          eq(teamQuestionSettings.teamId, setting.teamId),
+          eq(teamQuestionSettings.questionId, setting.questionId),
+          eq(teamQuestionSettings.organizationId, organizationId)
+        ))
+        .returning();
+      return updated;
+    } else {
+      // Create new setting
+      const [created] = await db
+        .insert(teamQuestionSettings)
+        .values({
+          ...setting,
+          organizationId,
+          disabledAt: setting.isDisabled ? new Date() : null,
+        })
+        .returning();
+      return created;
+    }
+  }
+  
+  async deleteTeamQuestionSetting(organizationId: string, teamId: string, questionId: string): Promise<boolean> {
+    const result = await db
+      .delete(teamQuestionSettings)
+      .where(and(
+        eq(teamQuestionSettings.teamId, teamId),
+        eq(teamQuestionSettings.questionId, questionId),
+        eq(teamQuestionSettings.organizationId, organizationId)
+      ));
+    return (result.rowCount ?? 0) > 0;
   }
   
   // Question Categories
