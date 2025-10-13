@@ -9772,6 +9772,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Industry-based KRA template endpoints for onboarding
+  app.get("/api/kra-templates/industry/:industry", async (req, res) => {
+    try {
+      const { industry } = req.params;
+      
+      // Get global templates for this industry
+      const templates = await storage.getGlobalTemplatesByIndustry(industry);
+      
+      // Group templates by category/department
+      const grouped: Record<string, typeof templates> = {};
+      for (const template of templates) {
+        const category = template.category || 'general';
+        if (!grouped[category]) {
+          grouped[category] = [];
+        }
+        grouped[category].push(template);
+      }
+      
+      res.json({
+        industry,
+        templateCount: templates.length,
+        categories: Object.keys(grouped),
+        templates: grouped
+      });
+    } catch (error) {
+      console.error("GET /api/kra-templates/industry/:industry - Error:", error);
+      res.status(500).json({ message: "Failed to fetch industry templates" });
+    }
+  });
+
+  // Copy templates to organization during onboarding
+  app.post("/api/kra-templates/import", requireAuth(), requireRole(['admin', 'owner']), async (req, res) => {
+    try {
+      const importSchema = z.object({
+        templateIds: z.array(z.string()).min(1, "At least one template must be selected"),
+      });
+      
+      const { templateIds } = importSchema.parse(req.body);
+      
+      // Copy templates to the organization
+      const copiedTemplates = await storage.copyTemplatesToOrganization(
+        req.orgId,
+        templateIds,
+        req.userId
+      );
+      
+      res.json({
+        message: `Successfully imported ${copiedTemplates.length} templates`,
+        templates: copiedTemplates
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: error.errors 
+        });
+      }
+      console.error("POST /api/kra-templates/import - Error:", error);
+      res.status(500).json({ message: "Failed to import templates" });
+    }
+  });
+
+  // Generate AI-powered KRA template
+  app.post("/api/kra-templates/generate", requireAuth(), requireRole(['admin', 'owner']), async (req, res) => {
+    try {
+      const generateSchema = z.object({
+        jobTitle: z.string().min(1, "Job title is required"),
+        industry: z.string().min(1, "Industry is required"),
+        department: z.string().optional(),
+        reportsTo: z.string().optional(),
+      });
+      
+      const { jobTitle, industry, department, reportsTo } = generateSchema.parse(req.body);
+      
+      // Import question generator service (already has AI generation capabilities)
+      const { generateKRATemplate } = await import('./services/questionGenerator');
+      
+      // Generate template using AI
+      const generatedGoals = await generateKRATemplate(jobTitle, industry, department, reportsTo);
+      
+      // Create the template in the database
+      const template = await storage.createKraTemplate(req.orgId, {
+        name: jobTitle,
+        description: `AI-generated KRA template for ${jobTitle} in ${industry}`,
+        goals: generatedGoals,
+        category: department || 'general',
+        jobTitle,
+        industries: [industry],
+        isGlobal: false,
+        isActive: true,
+        createdBy: req.userId
+      });
+      
+      res.json({
+        message: "Successfully generated KRA template",
+        template
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: error.errors 
+        });
+      }
+      console.error("POST /api/kra-templates/generate - Error:", error);
+      res.status(500).json({ message: "Failed to generate KRA template" });
+    }
+  });
+
   // Create KRA assignment(s)
   app.post("/api/kra-assignments", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
     try {

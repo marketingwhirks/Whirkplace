@@ -15,9 +15,10 @@ import { useToast } from '@/hooks/use-toast';
 import { 
   Building, CreditCard, Users, Heart, UserPlus, Settings, 
   Check, ChevronRight, Loader2, AlertCircle, Slack, Mail, Download,
-  Search, X, UserCheck, Building2
+  Search, X, UserCheck, Building2, Award
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { KRATemplateSelection } from '@/components/business/KRATemplateSelection';
 import type { Organization } from '@shared/schema';
 
 interface OnboardingStatus {
@@ -26,6 +27,7 @@ interface OnboardingStatus {
   completedSteps: {
     workspace: boolean;
     billing: boolean;
+    kra_templates: boolean;
     values: boolean;
     members: boolean;
     settings: boolean;
@@ -70,6 +72,7 @@ interface Step {
 const ALL_STEPS: Step[] = [
   { id: 'workspace', title: 'Workspace', icon: Building, description: 'Confirm your workspace details' },
   { id: 'billing', title: 'Billing', icon: CreditCard, description: 'Choose monthly or annual billing' },
+  { id: 'kra_templates', title: 'KRA Templates', icon: Award, description: 'Select job role templates for your industry' },
   { id: 'values', title: 'Values', icon: Heart, description: 'Define your company values' },
   { id: 'members', title: 'Team', icon: UserPlus, description: 'Import or invite team members' },
   { id: 'settings', title: 'Settings', icon: Settings, description: 'Configure check-in schedules' },
@@ -449,13 +452,14 @@ export function OnboardingPage() {
   const [location, setLocation] = useLocation();
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [formData, setFormData] = useState<{workspace: {name: string; industry: string; customIndustry?: string}; billing: Record<string, any>; roles: Record<string, any>; values: string[]; members: any[]; settings: Record<string, any>}>({
+  const [formData, setFormData] = useState<{workspace: {name: string; industry: string; customIndustry?: string}; billing: Record<string, any>; roles: Record<string, any>; values: string[]; members: any[]; settings: Record<string, any>; selectedTemplateIds?: string[]}>({
     workspace: { name: '', industry: '' },
     billing: {},
     roles: {},
     values: [],
     members: [],
-    settings: {}
+    settings: {},
+    selectedTemplateIds: []
   });
 
   // Get org slug from query parameters
@@ -837,6 +841,27 @@ export function OnboardingPage() {
               </Button>
             </div>
           </div>
+        );
+
+      case 'kra_templates':
+        const industry = formData.workspace.industry || 'general';
+        return (
+          <KRATemplateSelection
+            industry={industry === 'other' ? formData.workspace.customIndustry || 'general' : industry}
+            organizationId={currentUser?.organizationId || ''}
+            onComplete={(selectedTemplateIds) => {
+              // Save selected templates
+              setFormData({
+                ...formData,
+                selectedTemplateIds
+              });
+              handleNext();
+            }}
+            onSkip={() => {
+              // Skip template selection
+              handleNext();
+            }}
+          />
         );
 
       case 'values':

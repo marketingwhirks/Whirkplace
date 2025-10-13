@@ -358,6 +358,10 @@ export interface IStorage {
   getAllKraTemplates(organizationId: string, activeOnly?: boolean): Promise<KraTemplate[]>;
   getKraTemplatesByCategory(organizationId: string, category: string): Promise<KraTemplate[]>;
   setKraTemplateActive(organizationId: string, id: string, active: boolean): Promise<KraTemplate | undefined>;
+  // Industry-based template operations
+  getGlobalTemplatesByIndustry(industry: string): Promise<KraTemplate[]>;
+  copyTemplatesToOrganization(organizationId: string, templateIds: string[], createdBy: string): Promise<KraTemplate[]>;
+  getTemplatesByMultipleIds(templateIds: string[]): Promise<KraTemplate[]>;
 
   // User KRAs
   getUserKra(organizationId: string, id: string): Promise<UserKra | undefined>;
@@ -4605,6 +4609,69 @@ export class DatabaseStorage implements IStorage {
       return updated;
     } catch (error) {
       console.error("Failed to set KRA template active status:", error);
+      throw error;
+    }
+  }
+
+  // Industry-based template operations
+  async getGlobalTemplatesByIndustry(industry: string): Promise<KraTemplate[]> {
+    try {
+      return await db
+        .select()
+        .from(kraTemplates)
+        .where(and(
+          eq(kraTemplates.isGlobal, true),
+          eq(kraTemplates.isActive, true),
+          sql`${industry} = ANY(${kraTemplates.industries})`
+        ))
+        .orderBy(kraTemplates.category, kraTemplates.name);
+    } catch (error) {
+      console.error("Failed to fetch global templates by industry:", error);
+      throw error;
+    }
+  }
+
+  async copyTemplatesToOrganization(organizationId: string, templateIds: string[], createdBy: string): Promise<KraTemplate[]> {
+    try {
+      const copiedTemplates = [];
+      
+      // Fetch the templates to copy
+      const templatesToCopy = await this.getTemplatesByMultipleIds(templateIds);
+      
+      for (const template of templatesToCopy) {
+        // Create a copy of the template for the organization
+        const copiedTemplate = await this.createKraTemplate(organizationId, {
+          name: template.name,
+          description: template.description,
+          goals: template.goals,
+          category: template.category,
+          jobTitle: template.jobTitle,
+          industries: template.industries,
+          isGlobal: false, // Organization-specific copy
+          isActive: true,
+          createdBy
+        });
+        copiedTemplates.push(copiedTemplate);
+      }
+      
+      return copiedTemplates;
+    } catch (error) {
+      console.error("Failed to copy templates to organization:", error);
+      throw error;
+    }
+  }
+
+  async getTemplatesByMultipleIds(templateIds: string[]): Promise<KraTemplate[]> {
+    try {
+      if (templateIds.length === 0) return [];
+      
+      return await db
+        .select()
+        .from(kraTemplates)
+        .where(inArray(kraTemplates.id, templateIds))
+        .orderBy(kraTemplates.name);
+    } catch (error) {
+      console.error("Failed to fetch templates by IDs:", error);
       throw error;
     }
   }

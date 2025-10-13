@@ -1232,12 +1232,16 @@ export const kraTemplates = pgTable("kra_templates", {
   description: text("description"),
   goals: jsonb("goals").notNull().default([]), // Array of goal templates
   category: text("category").notNull().default("general"), // sales, engineering, marketing, etc.
+  jobTitle: text("job_title"), // Specific job title (e.g., "Software Engineer", "Tax Manager")
+  industries: text("industries").array().notNull().default([]), // Array of applicable industries
+  isGlobal: boolean("is_global").notNull().default(false), // Available as template for all orgs
   isActive: boolean("is_active").notNull().default(true),
   createdBy: varchar("created_by").notNull(),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 }, (table) => ({
   orgCategoryIdx: index("kra_templates_org_category_idx").on(table.organizationId, table.category),
   activeIdx: index("kra_templates_active_idx").on(table.isActive),
+  globalIdx: index("kra_templates_global_idx").on(table.isGlobal),
 }));
 
 // User KRAs (assigned to specific users)

@@ -127,3 +127,117 @@ Provide a brief analysis and 2-3 specific improvement suggestions.`;
 }
 
 export const questionGenerator = new QuestionGenerator();
+
+// KRA Template Generation
+export async function generateKRATemplate(
+  jobTitle: string, 
+  industry: string, 
+  department?: string, 
+  reportsTo?: string
+): Promise<any[]> {
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn("OpenAI API key not configured - returning default template");
+    // Return a basic template as fallback
+    return [
+      {
+        title: "Primary Responsibilities",
+        description: `Core responsibilities for ${jobTitle} role`,
+        target: "Meet all primary job requirements",
+        metric: "Performance rating of 3.5 or higher"
+      },
+      {
+        title: "Quality Standards",
+        description: "Maintain high quality standards in all deliverables",
+        target: "Zero critical defects",
+        metric: "Quality score of 95% or higher"
+      },
+      {
+        title: "Professional Development",
+        description: "Continuous learning and skill improvement",
+        target: "Complete required training",
+        metric: "At least 2 professional development activities per quarter"
+      }
+    ];
+  }
+
+  const prompt = `Generate comprehensive Key Result Areas (KRAs) for the following position:
+
+Job Title: ${jobTitle}
+Industry: ${industry}
+${department ? `Department: ${department}` : ''}
+${reportsTo ? `Reports To: ${reportsTo}` : ''}
+
+Create 4-6 specific, measurable KRAs that are relevant to this role in the ${industry} industry.
+Each KRA should be clear, achievable, and aligned with typical responsibilities for this position.
+
+Respond with JSON in this exact format:
+{
+  "kras": [
+    {
+      "title": "KRA title (brief, 3-5 words)",
+      "description": "Detailed description of what this KRA encompasses (1-2 sentences)",
+      "target": "Specific target or goal to achieve",
+      "metric": "How this will be measured (specific metric or KPI)"
+    }
+  ]
+}
+
+Make the KRAs specific to the ${industry} industry context and appropriate for a ${jobTitle} role.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-5",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert HR consultant specializing in performance management and KRA development. 
+          You have deep knowledge of industry-specific requirements and best practices for ${industry}.
+          Create practical, measurable KRAs that align with real-world expectations for this role.`
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.7,
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || '{"kras": []}');
+    
+    if (!result.kras || !Array.isArray(result.kras)) {
+      throw new Error("Invalid response format from AI");
+    }
+
+    return result.kras;
+  } catch (error) {
+    console.error("KRA template generation error:", error);
+    // Return a basic template as fallback
+    return [
+      {
+        title: "Primary Responsibilities",
+        description: `Core responsibilities for ${jobTitle} role in ${industry}`,
+        target: "Meet all primary job requirements",
+        metric: "Performance rating of 3.5 or higher"
+      },
+      {
+        title: "Quality Standards",
+        description: "Maintain high quality standards in all deliverables",
+        target: "Zero critical defects",
+        metric: "Quality score of 95% or higher"
+      },
+      {
+        title: "Team Collaboration",
+        description: "Work effectively with team members and stakeholders",
+        target: "Positive feedback from team",
+        metric: "Team satisfaction score of 4 or higher"
+      },
+      {
+        title: "Professional Development",
+        description: "Continuous learning and skill improvement",
+        target: "Complete required training",
+        metric: "At least 2 professional development activities per quarter"
+      }
+    ];
+  }
+}
