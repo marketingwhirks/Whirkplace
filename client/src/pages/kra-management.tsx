@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Target, Plus, Search, Filter, Settings, Users, CheckCircle, 
-  Circle, ChevronDown, Calendar, User, BarChart3, Edit2, X, Brain, Sparkles
+  Circle, ChevronDown, Calendar, User, BarChart3, Edit2, X, Brain, Sparkles,
+  MoreVertical, Trash2, CheckSquare, XSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -437,16 +438,352 @@ function CreateTemplateDialog({ trigger }: { trigger: React.ReactNode }) {
   );
 }
 
-function AssignKraDialog({ trigger }: { trigger: React.ReactNode }) {
+function EditTemplateDialog({ template, open, onClose }: { template: KraTemplateWithMeta; open: boolean; onClose: () => void }) {
+  const { toast } = useToast();
+  
+  const form = useForm<z.infer<typeof templateFormSchema>>({
+    resolver: zodResolver(templateFormSchema),
+    defaultValues: {
+      name: template.name,
+      description: template.description || "",
+      category: template.category || "general",
+      goals: (template.goals as any[]) || [{ title: "", description: "", target: "", metric: "" }],
+    },
+  });
+
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "goals",
+  });
+
+  const updateTemplateMutation = useMutation({
+    mutationFn: async (data: z.infer<typeof templateFormSchema>) => {
+      const response = await apiRequest("PATCH", `/api/kra-templates/${template.id}`, data);
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "KRA template updated successfully!",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/kra-templates"] });
+      onClose();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update KRA template",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const onSubmit = (data: z.infer<typeof templateFormSchema>) => {
+    updateTemplateMutation.mutate(data);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit KRA Template</DialogTitle>
+          <DialogDescription>
+            Update the template details and goals.
+          </DialogDescription>
+        </DialogHeader>
+        
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Template Name */}
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Template Name</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="e.g., Sales Executive KRAs"
+                      data-testid="input-edit-template-name"
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Description */}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Description</FormLabel>
+                  <FormControl>
+                    <Textarea 
+                      placeholder="Describe what this KRA template is for..."
+                      className="min-h-[80px]"
+                      data-testid="textarea-edit-template-description"
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Category */}
+            <FormField
+              control={form.control}
+              name="category"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Category</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-edit-template-category">
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="general">General</SelectItem>
+                      <SelectItem value="sales">Sales</SelectItem>
+                      <SelectItem value="engineering">Engineering</SelectItem>
+                      <SelectItem value="marketing">Marketing</SelectItem>
+                      <SelectItem value="hr">Human Resources</SelectItem>
+                      <SelectItem value="finance">Finance</SelectItem>
+                      <SelectItem value="operations">Operations</SelectItem>
+                      <SelectItem value="customer_success">Customer Success</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* Goals Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-medium">Key Result Areas</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => append({ title: "", description: "", target: "", metric: "" })}
+                  data-testid="button-add-goal"
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Add Goal
+                </Button>
+              </div>
+              
+              <div className="space-y-3">
+                {fields.map((field, index) => (
+                  <div key={field.id} className="border rounded-lg p-4 space-y-3 relative">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => remove(index)}
+                      className="absolute top-2 right-2"
+                      data-testid={`button-remove-goal-${index}`}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                    
+                    <FormField
+                      control={form.control}
+                      name={`goals.${index}.title`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Goal Title</FormLabel>
+                          <FormControl>
+                            <Input 
+                              placeholder="e.g., Achieve monthly sales target"
+                              data-testid={`input-edit-goal-title-${index}`}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name={`goals.${index}.description`}
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Description (Optional)</FormLabel>
+                          <FormControl>
+                            <Textarea 
+                              placeholder="Provide more details about this goal..."
+                              className="min-h-[60px]"
+                              data-testid={`textarea-edit-goal-description-${index}`}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <FormField
+                        control={form.control}
+                        name={`goals.${index}.target`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Target (Optional)</FormLabel>
+                            <FormControl>
+                              <Input 
+                                placeholder="e.g., $100,000"
+                                data-testid={`input-edit-goal-target-${index}`}
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      
+                      <FormField
+                        control={form.control}
+                        name={`goals.${index}.metric`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Metric (Optional)</FormLabel>
+                            <FormControl>
+                              <Input 
+                                placeholder="e.g., Revenue, Units"
+                                data-testid={`input-edit-goal-metric-${index}`}
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onClose}
+                data-testid="button-cancel-edit-template"
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={updateTemplateMutation.isPending}
+                data-testid="button-submit-edit-template"
+              >
+                {updateTemplateMutation.isPending ? "Updating..." : "Update Template"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AssignKraDialog({ trigger, template }: { trigger: React.ReactNode; template?: KraTemplateWithMeta }) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
   
-  const handleAssign = () => {
-    toast({
-      title: "Coming Soon",
-      description: "KRA assignment interface will be available soon!",
-    });
-    setOpen(false);
+  // Fetch active templates if not passed as prop
+  const { data: templates = [], isLoading: templatesLoading } = useQuery<KraTemplateWithMeta[]>({
+    queryKey: ["/api/kra-templates", { active: true }],
+    enabled: open && !template,
+  });
+  
+  // Fetch assignable users
+  const { data: users = [], isLoading: usersLoading } = useQuery<UserType[]>({
+    queryKey: ["/api/users/assignable"],
+    enabled: open,
+  });
+  
+  const form = useForm({
+    defaultValues: {
+      templateId: template?.id || "",
+      userIds: [] as string[],
+      startDate: format(new Date(), 'yyyy-MM-dd'),
+      endDate: "",
+      reviewDate: "",
+    },
+  });
+  
+  // Update templateId when template prop changes
+  useEffect(() => {
+    if (template?.id) {
+      form.setValue("templateId", template.id);
+    }
+  }, [template, form]);
+  
+  const selectedTemplate = template || templates.find(t => t.id === form.watch("templateId"));
+  const selectedUserIds = form.watch("userIds");
+  
+  const assignKraMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", "/api/kra-assignments", {
+        templateId: data.templateId,
+        userIds: data.userIds,
+        startDate: data.startDate,
+        endDate: data.endDate || undefined,
+        reviewDate: data.reviewDate || undefined,
+        name: selectedTemplate?.name || "New KRA",
+        description: selectedTemplate?.description || "",
+        goals: selectedTemplate?.goals || [],
+      });
+      return await response.json();
+    },
+    onSuccess: (response) => {
+      toast({
+        title: "Success",
+        description: response.message || "KRA assigned successfully!",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/user-kras"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kra-templates"] });
+      setOpen(false);
+      form.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to assign KRA",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const onSubmit = (data: any) => {
+    if (data.userIds.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please select at least one user",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (!template && !data.templateId) {
+      toast({
+        title: "Error",
+        description: "Please select a template",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    assignKraMutation.mutate(data);
   };
 
   return (
@@ -454,28 +791,200 @@ function AssignKraDialog({ trigger }: { trigger: React.ReactNode }) {
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Assign KRA to Team Member</DialogTitle>
+          <DialogTitle>Assign KRA to Team Members</DialogTitle>
           <DialogDescription>
-            Select a template and assign it to a team member with specific goals and deadlines.
+            {template 
+              ? `Assign "${template.name}" to team members with specific dates.`
+              : "Select a template and assign it to team members with specific dates."}
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="text-center py-8">
-            <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">
-              Assignment interface coming soon...
-            </p>
-            <Button 
-              className="mt-4" 
-              onClick={handleAssign}
-              data-testid="button-assign-kra-placeholder"
-            >
-              Assign KRA
-            </Button>
+        
+        {(templatesLoading || usersLoading) ? (
+          <div className="space-y-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-20 w-full" />
           </div>
-        </div>
+        ) : (
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              {/* Template Selection - only show if no template prop */}
+              {!template && (
+                <FormField
+                  control={form.control}
+                  name="templateId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Select Template</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <SelectTrigger data-testid="select-template">
+                          <SelectValue placeholder="Choose a template..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {templates.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.name} ({t.category})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
+              
+              {/* User Selection (Multi-select) */}
+              <FormField
+                control={form.control}
+                name="userIds"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Select Team Members</FormLabel>
+                    <div className="border rounded-md p-2 max-h-32 overflow-y-auto">
+                      {users.map((user) => (
+                        <div key={user.id} className="flex items-center space-x-2 py-1">
+                          <input
+                            type="checkbox"
+                            id={`user-${user.id}`}
+                            value={user.id}
+                            checked={field.value.includes(user.id)}
+                            onChange={(e) => {
+                              const userId = e.target.value;
+                              if (e.target.checked) {
+                                field.onChange([...field.value, userId]);
+                              } else {
+                                field.onChange(field.value.filter((id: string) => id !== userId));
+                              }
+                            }}
+                            className="rounded border-gray-300"
+                            data-testid={`checkbox-user-${user.id}`}
+                          />
+                          <label 
+                            htmlFor={`user-${user.id}`} 
+                            className="text-sm flex-1 cursor-pointer"
+                          >
+                            {user.name} {user.email && `(${user.email})`}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                    {selectedUserIds.length > 0 && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {selectedUserIds.length} user(s) selected
+                      </p>
+                    )}
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              {/* Date Fields */}
+              <div className="grid grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="startDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Start Date</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="date" 
+                          data-testid="input-start-date"
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
+                  name="endDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>End Date (Optional)</FormLabel>
+                      <FormControl>
+                        <Input 
+                          type="date" 
+                          data-testid="input-end-date"
+                          {...field} 
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+              
+              <FormField
+                control={form.control}
+                name="reviewDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Review Date (Optional)</FormLabel>
+                    <FormControl>
+                      <Input 
+                        type="date" 
+                        data-testid="input-review-date"
+                        {...field} 
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              
+              {/* Goals Preview */}
+              {selectedTemplate && selectedTemplate.goals && (
+                <div className="border rounded-lg p-4 bg-muted/50">
+                  <Label className="text-sm font-medium mb-2 block">Goals to be Assigned</Label>
+                  <div className="space-y-2">
+                    {(selectedTemplate.goals as any[]).map((goal, index) => (
+                      <div key={index} className="flex items-start gap-2">
+                        <CheckCircle className="w-4 h-4 text-green-500 mt-0.5" />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium">{goal.title}</p>
+                          {goal.description && (
+                            <p className="text-xs text-muted-foreground">{goal.description}</p>
+                          )}
+                          {(goal.target || goal.metric) && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {goal.target && `Target: ${goal.target}`}
+                              {goal.target && goal.metric && " • "}
+                              {goal.metric && `Metric: ${goal.metric}`}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              <DialogFooter>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => setOpen(false)}
+                  data-testid="button-cancel-assign"
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={assignKraMutation.isPending}
+                  data-testid="button-submit-assign"
+                >
+                  {assignKraMutation.isPending ? "Assigning..." : "Assign KRA"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -484,79 +993,203 @@ function AssignKraDialog({ trigger }: { trigger: React.ReactNode }) {
 function TemplateCard({ template }: { template: KraTemplateWithMeta }) {
   const { data: currentUser } = useViewAsRole();
   const canManage = currentUser?.role === 'admin' || currentUser?.role === 'manager';
+  const { toast } = useToast();
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  
+  // Delete template mutation
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("DELETE", `/api/kra-templates/${template.id}`);
+      if (!response.ok) {
+        throw new Error("Failed to delete template");
+      }
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Template deleted successfully!",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/kra-templates"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete template",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Toggle active status mutation
+  const toggleActiveMutation = useMutation({
+    mutationFn: async (active: boolean) => {
+      const response = await apiRequest("PATCH", `/api/kra-templates/${template.id}/approve`, {
+        active
+      });
+      return await response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: template.isActive ? "Template deactivated" : "Template activated",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/kra-templates"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update template status",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const handleDelete = () => {
+    if (window.confirm(`Are you sure you want to delete "${template.name}"? This action cannot be undone.`)) {
+      deleteTemplateMutation.mutate();
+    }
+  };
+  
+  const handleToggleActive = () => {
+    toggleActiveMutation.mutate(!template.isActive);
+  };
 
   return (
-    <Card className="hover:shadow-md transition-shadow" data-testid={`card-template-${template.id}`}>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Target className="w-4 h-4" />
-              {template.name}
-            </CardTitle>
-            <CardDescription>
-              {template.description || "No description provided"}
-            </CardDescription>
+    <>
+      <Card className="hover:shadow-md transition-shadow" data-testid={`card-template-${template.id}`}>
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Target className="w-4 h-4" />
+                {template.name}
+              </CardTitle>
+              <CardDescription>
+                {template.description || "No description provided"}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant={template.isActive ? "default" : "secondary"}>
+                {template.isActive ? "Active" : "Inactive"}
+              </Badge>
+              <Badge variant="outline">
+                {template.category || "General"}
+              </Badge>
+              
+              {canManage && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-8 w-8 p-0"
+                      data-testid={`button-menu-${template.id}`}
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => setEditDialogOpen(true)}
+                      data-testid={`menu-edit-${template.id}`}
+                    >
+                      <Edit2 className="w-4 h-4 mr-2" />
+                      Edit Template
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem
+                      onClick={handleToggleActive}
+                      disabled={toggleActiveMutation.isPending}
+                      data-testid={`menu-toggle-active-${template.id}`}
+                    >
+                      {template.isActive ? (
+                        <>
+                          <XSquare className="w-4 h-4 mr-2" />
+                          Deactivate
+                        </>
+                      ) : (
+                        <>
+                          <CheckSquare className="w-4 h-4 mr-2" />
+                          Activate
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                    
+                    <DropdownMenuItem
+                      onClick={handleDelete}
+                      disabled={deleteTemplateMutation.isPending}
+                      className="text-destructive"
+                      data-testid={`menu-delete-${template.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant={template.isActive ? "default" : "secondary"}>
-              {template.isActive ? "Active" : "Inactive"}
-            </Badge>
-            <Badge variant="outline">
-              {template.category || "General"}
-            </Badge>
-          </div>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="pt-0">
-        <div className="space-y-3">
-          {template.goals && Array.isArray(template.goals) && template.goals.length > 0 && (
-            <div>
-              <p className="text-sm font-medium mb-2">Goals ({template.goals.length}):</p>
-              <div className="space-y-1">
-                {template.goals.slice(0, 2).map((goal: any, index: number) => (
-                  <div key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
-                    <Circle className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                    <span className="line-clamp-1">{String(goal.title || goal)}</span>
-                  </div>
-                ))}
-                {template.goals.length > 2 && (
-                  <p className="text-xs text-muted-foreground ml-5">
-                    +{template.goals.length - 2} more goals
-                  </p>
+        </CardHeader>
+        
+        <CardContent className="pt-0">
+          <div className="space-y-3">
+            {template.goals && Array.isArray(template.goals) && template.goals.length > 0 && (
+              <div>
+                <p className="text-sm font-medium mb-2">Goals ({template.goals.length}):</p>
+                <div className="space-y-1">
+                  {template.goals.slice(0, 2).map((goal: any, index: number) => (
+                    <div key={index} className="flex items-start gap-2 text-sm text-muted-foreground">
+                      <Circle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                      <span className="line-clamp-1">{String(goal.title || goal)}</span>
+                    </div>
+                  ))}
+                  {template.goals.length > 2 && (
+                    <p className="text-xs text-muted-foreground ml-5">
+                      +{template.goals.length - 2} more goals
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  Assignments: {template.assignmentCount || 0}
+                </span>
+              </div>
+              
+              <div className="flex gap-2">
+                {canManage && (
+                  <AssignKraDialog 
+                    template={template}
+                    trigger={
+                      <Button variant="outline" size="sm" data-testid={`button-assign-${template.id}`}>
+                        <Users className="w-3 h-3 mr-1" />
+                        Assign
+                      </Button>
+                    }
+                  />
                 )}
+                <Button variant="outline" size="sm" data-testid={`button-view-template-${template.id}`}>
+                  View Details
+                </Button>
               </div>
             </div>
-          )}
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Users className="w-3 h-3" />
-                Assignments: {template.assignmentCount || 0}
-              </span>
-            </div>
-            
-            <div className="flex gap-2">
-              {canManage && (
-                <AssignKraDialog 
-                  trigger={
-                    <Button variant="outline" size="sm" data-testid={`button-assign-${template.id}`}>
-                      <Users className="w-3 h-3 mr-1" />
-                      Assign
-                    </Button>
-                  }
-                />
-              )}
-              <Button variant="outline" size="sm" data-testid={`button-view-template-${template.id}`}>
-                View Details
-              </Button>
-            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+      
+      {/* Edit Template Dialog */}
+      {editDialogOpen && (
+        <EditTemplateDialog 
+          template={template}
+          open={editDialogOpen}
+          onClose={() => setEditDialogOpen(false)}
+        />
+      )}
+    </>
   );
 }
 

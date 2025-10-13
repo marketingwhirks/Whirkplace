@@ -350,6 +350,7 @@ export interface IStorage {
   deleteKraTemplate(organizationId: string, id: string): Promise<boolean>;
   getAllKraTemplates(organizationId: string, activeOnly?: boolean): Promise<KraTemplate[]>;
   getKraTemplatesByCategory(organizationId: string, category: string): Promise<KraTemplate[]>;
+  setKraTemplateActive(organizationId: string, id: string, active: boolean): Promise<KraTemplate | undefined>;
 
   // User KRAs
   getUserKra(organizationId: string, id: string): Promise<UserKra | undefined>;
@@ -359,6 +360,7 @@ export interface IStorage {
   getUserKrasByUser(organizationId: string, userId: string, statusFilter?: string): Promise<UserKra[]>;
   getUserKrasByAssigner(organizationId: string, assignerId: string): Promise<UserKra[]>;
   getActiveUserKras(organizationId: string): Promise<UserKra[]>;
+  getUsersForKraAssignment(organizationId: string): Promise<User[]>;
 
   // Action Items
   getActionItem(organizationId: string, id: string): Promise<ActionItem | undefined>;
@@ -4484,6 +4486,24 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async setKraTemplateActive(organizationId: string, id: string, active: boolean): Promise<KraTemplate | undefined> {
+    try {
+      const [updated] = await db
+        .update(kraTemplates)
+        .set({ isActive: active })
+        .where(and(
+          eq(kraTemplates.id, id),
+          eq(kraTemplates.organizationId, organizationId)
+        ))
+        .returning();
+      
+      return updated;
+    } catch (error) {
+      console.error("Failed to set KRA template active status:", error);
+      throw error;
+    }
+  }
+
   // User KRAs
   async getUserKra(organizationId: string, id: string): Promise<UserKra | undefined> {
     try {
@@ -4577,6 +4597,23 @@ export class DatabaseStorage implements IStorage {
         .orderBy(desc(userKras.lastUpdated));
     } catch (error) {
       console.error("Failed to fetch active user KRAs:", error);
+      throw error;
+    }
+  }
+
+  async getUsersForKraAssignment(organizationId: string): Promise<User[]> {
+    try {
+      // Get all active users in the organization who can be assigned KRAs
+      return await db
+        .select()
+        .from(users)
+        .where(and(
+          eq(users.organizationId, organizationId),
+          eq(users.isActive, true)
+        ))
+        .orderBy(users.name);
+    } catch (error) {
+      console.error("Failed to fetch users for KRA assignment:", error);
       throw error;
     }
   }

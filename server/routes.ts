@@ -9525,6 +9525,122 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Additional KRA Template endpoints for partial updates and approval
+  app.patch("/api/kra-templates/:id", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const updateSchema = insertKraTemplateSchema.omit({ organizationId: true, createdBy: true }).partial();
+      
+      const validatedData = updateSchema.parse(req.body);
+      
+      const updated = await storage.updateKraTemplate(req.orgId, req.params.id, validatedData);
+      if (!updated) {
+        return res.status(404).json({ message: "KRA template not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: error.errors 
+        });
+      }
+      console.error("PATCH /api/kra-templates/:id - Error:", error);
+      res.status(500).json({ message: "Failed to update KRA template" });
+    }
+  });
+
+  // Toggle KRA template active status
+  app.patch("/api/kra-templates/:id/approve", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { active } = req.body;
+      
+      if (typeof active !== 'boolean') {
+        return res.status(400).json({ message: "Active status must be a boolean" });
+      }
+      
+      const updated = await storage.setKraTemplateActive(req.orgId, req.params.id, active);
+      if (!updated) {
+        return res.status(404).json({ message: "KRA template not found" });
+      }
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("PATCH /api/kra-templates/:id/approve - Error:", error);
+      res.status(500).json({ message: "Failed to update KRA template approval status" });
+    }
+  });
+
+  // Create KRA assignment(s)
+  app.post("/api/kra-assignments", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const assignmentSchema = z.object({
+        templateId: z.string().optional(),
+        userIds: z.array(z.string()).min(1, "At least one user must be selected"),
+        startDate: z.string().transform(str => new Date(str)),
+        endDate: z.string().transform(str => new Date(str)).optional(),
+        reviewDate: z.string().transform(str => new Date(str)).optional(),
+        goals: z.array(z.object({
+          title: z.string(),
+          description: z.string().optional(),
+          target: z.string().optional(),
+          metric: z.string().optional(),
+        })).min(1, "At least one goal is required"),
+        name: z.string().min(1, "Name is required"),
+        description: z.string().optional()
+      });
+      
+      const validatedData = assignmentSchema.parse(req.body);
+      const assignedBy = req.user.id;
+      
+      // Create assignments for each user
+      const assignments = [];
+      for (const userId of validatedData.userIds) {
+        const kraData: InsertUserKra = {
+          organizationId: req.orgId,
+          userId,
+          templateId: validatedData.templateId,
+          name: validatedData.name,
+          description: validatedData.description,
+          goals: validatedData.goals,
+          assignedBy,
+          startDate: validatedData.startDate,
+          endDate: validatedData.endDate,
+          status: "active",
+          progress: 0
+        };
+        
+        const created = await storage.createUserKra(req.orgId, kraData);
+        assignments.push(created);
+      }
+      
+      res.json({
+        message: `Successfully created ${assignments.length} KRA assignment(s)`,
+        assignments
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: error.errors 
+        });
+      }
+      console.error("POST /api/kra-assignments - Error:", error);
+      res.status(500).json({ message: "Failed to create KRA assignments" });
+    }
+  });
+
+  // Get users available for KRA assignment
+  app.get("/api/users/assignable", requireAuth(), requireFeatureAccess('kra_management'), async (req, res) => {
+    try {
+      const users = await storage.getUsersForKraAssignment(req.orgId);
+      res.json(users);
+    } catch (error) {
+      console.error("GET /api/users/assignable - Error:", error);
+      res.status(500).json({ message: "Failed to fetch assignable users" });
+    }
+  });
+
   // User KRAs endpoints
   app.get("/api/user-kras", requireAuth(), requireFeatureAccess('kra_management'), async (req, res) => {
     try {
