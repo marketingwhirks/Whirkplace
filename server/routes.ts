@@ -12932,7 +12932,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI KRA Generation endpoint
   app.post("/api/ai/generate-kras", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
     try {
-      const { role, department, company } = req.body;
+      const { role, department, company, saveAsTemplate = false, teamIds = [] } = req.body;
       
       // Validate input
       if (!role || !department) {
@@ -12947,29 +12947,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const organization = await storage.getOrganization(req.orgId);
       const organizationContext = organization ? `at ${organization.name}` : "";
 
-      const prompt = `Generate 3-5 comprehensive Key Result Areas (KRAs) for a ${role} role in the ${department} department ${organizationContext}.
+      // Enhanced prompt with your organization's KRA format
+      const currentQuarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}`;
+      const currentYear = new Date().getFullYear();
+      
+      const prompt = `Generate 3-5 strategic Key Result Areas (KRAs) for a ${role} role in the ${department} department ${organizationContext}.
 
-For each KRA, provide:
-- title: A clear, specific title for the KRA
-- description: A detailed description of what this KRA entails and why it's important
-- target: A specific, measurable target or goal (e.g., "$100K ARR", "95% customer satisfaction", "20% reduction in costs")
-- metric: How success will be measured (e.g., "Monthly Revenue", "Customer Survey Scores", "Operational Efficiency")
+CRITICAL: Follow this EXACT KRA format used by our organization:
 
-Focus on outcomes that are:
-- Specific and measurable
-- Aligned with business objectives
-- Achievable but challenging
-- Relevant to the role and department
-- Time-bound where appropriate
+Each KRA must have:
+1. **Title**: Start with an action verb (Drive, Implement, Optimize, Lead, Enhance, Transform, etc.)
+2. **Description**: 2-3 sentences connecting the KRA to strategic business outcomes
+3. **Success Metrics**: 3-5 SMART metrics that are quantifiable and time-bound
 
-Return the response as a JSON object with this structure:
+Example of our KRA format:
+Title: "Drive Revenue Growth Through Strategic Account Management"
+Description: "Focus on expanding existing enterprise accounts and acquiring new strategic clients to achieve quarterly revenue targets. This directly impacts the company's growth trajectory and market position."
+Success Metrics:
+- Increase quarterly revenue from $2M to $2.5M (25% growth)
+- Acquire 5 new enterprise accounts with minimum $50K annual value
+- Achieve 90% retention rate for strategic accounts
+- Complete 15 strategic account reviews with documented growth plans
+- Upsell existing accounts by average of 30%
+
+Based on role level, emphasize:
+- Junior/Mid roles: Operational excellence, skill development, process improvement
+- Senior/Lead roles: Strategic initiatives, innovation, cross-functional leadership
+- Manager roles: Team performance, business growth, organizational development
+
+Return as JSON:
 {
   "suggestions": [
     {
-      "title": "KRA Title",
-      "description": "Detailed description of the KRA",
-      "target": "Specific measurable target",
-      "metric": "How success is measured"
+      "title": "Action-verb based title",
+      "description": "Strategic description linking to business impact",
+      "target": "${currentQuarter} ${currentYear}",
+      "metric": "Primary success metric",
+      "metrics": ["Specific metric 1 with numbers", "Specific metric 2 with targets", "Specific metric 3 with deadlines"],
+      "category": "performance|development|operational|strategic",
+      "roleLevel": "junior|mid|senior|lead|manager"
     }
   ]
 }`;
@@ -12979,7 +12995,16 @@ Return the response as a JSON object with this structure:
         messages: [
           {
             role: "system",
-            content: "You are an expert in performance management and Key Result Areas (KRAs). You help create comprehensive, measurable KRAs that drive business outcomes."
+            content: `You are an expert in performance management and Key Result Areas (KRAs) with deep knowledge of our organization's specific KRA format. 
+            
+You specialize in creating strategic, action-oriented KRAs that:
+- Always start with powerful action verbs
+- Connect directly to business impact
+- Include 3-5 quantifiable metrics with baselines and targets
+- Are achievable within a quarterly timeframe
+- Align with role level and department objectives
+
+You understand that KRAs are not just tasks but strategic outcomes that drive organizational success.`
           },
           {
             role: "user",
@@ -12994,6 +13019,33 @@ Return the response as a JSON object with this structure:
       // Validate the response structure
       if (!result.suggestions || !Array.isArray(result.suggestions)) {
         throw new Error("Invalid AI response format");
+      }
+
+      // If saveAsTemplate is true, save the generated KRAs as templates
+      if (saveAsTemplate && result.suggestions.length > 0) {
+        try {
+          for (const suggestion of result.suggestions) {
+            await storage.createKraTemplate(req.orgId, {
+              name: suggestion.title,
+              description: suggestion.description,
+              kraTitle: suggestion.title,
+              kraDescription: suggestion.description,
+              metrics: suggestion.metrics || [suggestion.metric],
+              targetQuarter: suggestion.target?.split(' ')[0] || currentQuarter,
+              targetYear: parseInt(suggestion.target?.split(' ')[1]) || currentYear,
+              teamIds: teamIds,
+              departmentId: department,
+              roleLevel: suggestion.roleLevel || 'mid',
+              category: suggestion.category || 'performance',
+              isActive: true,
+              isAIGenerated: true,
+              createdBy: req.currentUser!.id
+            });
+          }
+        } catch (error) {
+          console.error("Failed to save KRA templates:", error);
+          // Don't fail the request, just log the error
+        }
       }
 
       res.json(result);
