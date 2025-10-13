@@ -8998,10 +8998,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.error("POST /api/one-on-ones - Validation error:", error.errors);
         return res.status(400).json({ message: "Invalid request data", errors: error.errors });
       }
       console.error("POST /api/one-on-ones - Error:", error);
-      res.status(500).json({ message: "Failed to create one-on-one" });
+      
+      // Provide more detailed error information
+      const errorMessage = error instanceof Error ? error.message : "Failed to create one-on-one";
+      const isDevelopment = process.env.NODE_ENV !== 'production';
+      
+      if (isDevelopment) {
+        // In development, expose the actual error for debugging
+        res.status(500).json({ 
+          message: `Failed to create one-on-one: ${errorMessage}`,
+          error: error instanceof Error ? {
+            message: error.message,
+            stack: error.stack,
+            name: error.name
+          } : error
+        });
+      } else {
+        // In production, use generic message for security
+        res.status(500).json({ message: "Failed to create one-on-one" });
+      }
     }
   });
 
