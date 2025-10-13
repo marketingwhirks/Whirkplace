@@ -913,10 +913,12 @@ export default function Settings() {
   // Add vacation mutation
   const addVacationMutation = useMutation({
     mutationFn: async (data: { weekOf: Date; note?: string }) => {
+      console.log('Mutation data:', data);
       const weekStart = startOfWeek(data.weekOf, { weekStartsOn: 1 });
+      console.log('Week start:', weekStart, 'ISO:', weekStart.toISOString());
       return apiRequest("POST", "/api/vacations", {
         weekOf: weekStart.toISOString(),
-        note: data.note,
+        note: data.note || undefined,
       });
     },
     onSuccess: () => {
@@ -961,10 +963,19 @@ export default function Settings() {
   });
   
   const handleAddVacation = () => {
-    if (!selectedVacationDate) return;
+    if (!selectedVacationDate) {
+      console.error('No date selected');
+      toast({
+        title: "Please select a date",
+        description: "You must select a week for your vacation.",
+        variant: "destructive",
+      });
+      return;
+    }
+    console.log('Adding vacation for date:', selectedVacationDate);
     addVacationMutation.mutate({
       weekOf: selectedVacationDate,
-      note: vacationNote,
+      note: vacationNote || undefined,
     });
   };
   
@@ -1181,15 +1192,22 @@ export default function Settings() {
                             Add Vacation
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-auto p-4" align="end">
+                        <PopoverContent className="w-auto p-4" align="end" onInteractOutside={(e) => e.preventDefault()}>
                           <div className="space-y-4">
                             <div>
                               <p className="text-sm font-medium mb-2">Select a week</p>
                               <CalendarComponent
                                 mode="single"
                                 selected={selectedVacationDate}
-                                onSelect={setSelectedVacationDate}
-                                disabled={(date) => date < new Date()}
+                                onSelect={(date) => {
+                                  console.log('Date selected:', date);
+                                  setSelectedVacationDate(date);
+                                }}
+                                disabled={(date) => {
+                                  const today = new Date();
+                                  today.setHours(0, 0, 0, 0);
+                                  return date < today;
+                                }}
                                 initialFocus
                               />
                             </div>
