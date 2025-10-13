@@ -137,9 +137,14 @@ export function KraTemplatesManager() {
   // Import default templates
   const importTemplateMutation = useMutation({
     mutationFn: async (organization: "all" | "patrick" | "whirks") => {
-      const response = await apiRequest("POST", "/api/kra-templates/import-defaults", { 
-        organization 
-      });
+      // Use simpler endpoint for "all" to ensure reliability in production
+      const endpoint = organization === "all" 
+        ? "/api/kra-templates/import-all" 
+        : "/api/kra-templates/import-defaults";
+      
+      const body = organization === "all" ? {} : { organization };
+      
+      const response = await apiRequest("POST", endpoint, body);
       return await response.json();
     },
     onSuccess: (data) => {

@@ -9819,47 +9819,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Import default KRA templates
-  app.post("/api/kra-templates/import-defaults", requireAuth(), requireRole(['admin']), async (req, res) => {
+  // Import all templates endpoint - simplified version for production reliability
+  app.post("/api/kra-templates/import-all", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
-      const { organization } = req.body; // "all", "patrick", or "whirks"
+      console.log(`🚀 KRA Import All - Starting import for orgId: "${req.orgId}"`);
       
-      // Map frontend values to proper organization names
-      const organizationMapping: Record<string, "Patrick Accounting" | "Whirks" | "all"> = {
-        "patrick": "Patrick Accounting",
-        "whirks": "Whirks",
-        "all": "all"
-      };
+      // Import default templates directly
+      const { DEFAULT_KRA_TEMPLATES, convertToDbFormat } = await import('@shared/defaultKraTemplates');
       
-      const mappedOrganization = organizationMapping[organization] || "all";
-      console.log(`KRA Import: Received organization="${organization}", mapped to="${mappedOrganization}"`);
-      
-      // Import default templates
-      const { DEFAULT_KRA_TEMPLATES, getTemplatesByOrganization, convertToDbFormat } = await import('@shared/defaultKraTemplates');
-      
-      const templatesToImport = getTemplatesByOrganization(mappedOrganization as "Patrick Accounting" | "Whirks" | "all");
-      console.log(`KRA Import: Found ${templatesToImport.length} templates to import for "${mappedOrganization}"`);
-      
-      // Debug: Log first template details to understand what we're working with
-      if (templatesToImport.length > 0) {
-        console.log(`First template details:`, {
-          name: templatesToImport[0].name,
-          organization: templatesToImport[0].organization,
-          category: templatesToImport[0].category
-        });
-      }
+      console.log(`📊 Total templates available: ${DEFAULT_KRA_TEMPLATES.length}`);
       
       let importedCount = 0;
       let skippedCount = 0;
       const errors: string[] = [];
       
       // Import each template
-      for (const template of templatesToImport) {
+      for (const template of DEFAULT_KRA_TEMPLATES) {
         try {
           // Check if template already exists
           const existingTemplates = await storage.getKraTemplatesByName(req.orgId, template.name);
           if (existingTemplates && existingTemplates.length > 0) {
-            console.log(`Skipping existing template: ${template.name}`);
             skippedCount++;
             continue;
           }
@@ -9876,6 +9855,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
           errors.push(`Failed to import ${template.name}`);
         }
       }
+      
+      console.log(`🎉 KRA Import All Complete: Imported ${importedCount}, Skipped ${skippedCount}, Total ${DEFAULT_KRA_TEMPLATES.length}`);
+      
+      res.json({
+        message: `Successfully imported ${importedCount} templates`,
+        imported: importedCount,
+        skipped: skippedCount,
+        total: DEFAULT_KRA_TEMPLATES.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } catch (error) {
+      console.error("POST /api/kra-templates/import-all - Error:", error);
+      res.status(500).json({ message: "Failed to import templates", error: error instanceof Error ? error.message : "Unknown error" });
+    }
+  });
+  
+  // Import default KRA templates
+  app.post("/api/kra-templates/import-defaults", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { organization } = req.body; // "all", "patrick", or "whirks"
+      
+      console.log(`🚀 KRA Import Started - Raw input: "${organization}", orgId: "${req.orgId}", userId: "${req.userId}"`);
+      
+      // Map frontend values to proper organization names
+      const organizationMapping: Record<string, "Patrick Accounting" | "Whirks" | "all"> = {
+        "patrick": "Patrick Accounting",
+        "whirks": "Whirks",
+        "all": "all"
+      };
+      
+      const mappedOrganization = organizationMapping[organization] || "all";
+      console.log(`📝 KRA Import: Mapped "${organization}" to "${mappedOrganization}"`);
+      
+      // Import default templates
+      const { DEFAULT_KRA_TEMPLATES, getTemplatesByOrganization, convertToDbFormat } = await import('@shared/defaultKraTemplates');
+      
+      // Log total available templates
+      console.log(`📊 Total templates available: ${DEFAULT_KRA_TEMPLATES.length}`);
+      
+      const templatesToImport = getTemplatesByOrganization(mappedOrganization as "Patrick Accounting" | "Whirks" | "all");
+      console.log(`✅ KRA Import: Found ${templatesToImport.length} templates to import for "${mappedOrganization}"`);
+      
+      // If no templates found, log more details
+      if (templatesToImport.length === 0) {
+        console.error(`❌ No templates found for organization: "${mappedOrganization}"`);
+        console.error(`Available organization values in templates:`, 
+          [...new Set(DEFAULT_KRA_TEMPLATES.map(t => t.organization))]);
+        return res.status(400).json({
+          message: `No templates found for organization: ${mappedOrganization}`,
+          imported: 0,
+          skipped: 0,
+          total: 0,
+          debug: {
+            requestedOrg: organization,
+            mappedOrg: mappedOrganization,
+            availableOrgs: [...new Set(DEFAULT_KRA_TEMPLATES.map(t => t.organization))]
+          }
+        });
+      }
+      
+      // Debug: Log first template details to understand what we're working with
+      if (templatesToImport.length > 0) {
+        console.log(`🔍 First template details:`, {
+          name: templatesToImport[0].name,
+          organization: templatesToImport[0].organization,
+          category: templatesToImport[0].category
+        });
+      }
+      
+      let importedCount = 0;
+      let skippedCount = 0;
+      const errors: string[] = [];
+      
+      // Import each template
+      for (const template of templatesToImport) {
+        try {
+          // Check if template already exists
+          const existingTemplates = await storage.getKraTemplatesByName(req.orgId, template.name);
+          if (existingTemplates && existingTemplates.length > 0) {
+            console.log(`⏭️ Skipping existing template: ${template.name}`);
+            skippedCount++;
+            continue;
+          }
+          
+          // Convert and create template
+          const dbTemplate = convertToDbFormat(template, req.orgId);
+          await storage.createKraTemplate(req.orgId, {
+            ...dbTemplate,
+            organizationId: req.orgId
+          });
+          importedCount++;
+        } catch (err) {
+          console.error(`Failed to import template ${template.name}:`, err);
+          errors.push(`Failed to import ${template.name}`);
+        }
+      }
+      
+      console.log(`🎉 KRA Import Complete: Imported ${importedCount}, Skipped ${skippedCount}, Total ${templatesToImport.length}`);
       
       res.json({
         message: `Import completed successfully`,
