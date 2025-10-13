@@ -9824,10 +9824,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { organization } = req.body; // "all", "patrick", or "whirks"
       
+      // Map frontend values to proper organization names
+      const organizationMapping: Record<string, string> = {
+        "patrick": "Patrick Accounting",
+        "whirks": "Whirks",
+        "all": "all"
+      };
+      
+      const mappedOrganization = organizationMapping[organization] || "all";
+      console.log(`KRA Import: Received organization="${organization}", mapped to="${mappedOrganization}"`);
+      
       // Import default templates
       const { DEFAULT_KRA_TEMPLATES, getTemplatesByOrganization, convertToDbFormat } = await import('@shared/defaultKraTemplates');
       
-      const templatesToImport = getTemplatesByOrganization(organization || "all");
+      const templatesToImport = getTemplatesByOrganization(mappedOrganization);
+      console.log(`KRA Import: Found ${templatesToImport.length} templates to import for "${mappedOrganization}"`);
       let importedCount = 0;
       let skippedCount = 0;
       const errors: string[] = [];
