@@ -358,6 +358,8 @@ export interface IStorage {
   getAllKraTemplates(organizationId: string, activeOnly?: boolean): Promise<KraTemplate[]>;
   getKraTemplatesByCategory(organizationId: string, category: string): Promise<KraTemplate[]>;
   setKraTemplateActive(organizationId: string, id: string, active: boolean): Promise<KraTemplate | undefined>;
+  getKraTemplateCount(organizationId: string): Promise<number>;
+  getKraTemplatesByName(organizationId: string, name: string): Promise<KraTemplate[]>;
   // Industry-based template operations
   getGlobalTemplatesByIndustry(industry: string): Promise<KraTemplate[]>;
   copyTemplatesToOrganization(organizationId: string, templateIds: string[], createdBy: string): Promise<KraTemplate[]>;
@@ -4786,6 +4788,35 @@ export class DatabaseStorage implements IStorage {
         .orderBy(users.name);
     } catch (error) {
       console.error("Failed to fetch users for KRA assignment:", error);
+      throw error;
+    }
+  }
+
+  async getKraTemplateCount(organizationId: string): Promise<number> {
+    try {
+      const [result] = await db
+        .select({ count: sql<number>`count(*)::integer` })
+        .from(kraTemplates)
+        .where(eq(kraTemplates.organizationId, organizationId));
+      return result?.count || 0;
+    } catch (error) {
+      console.error("Failed to get KRA template count:", error);
+      throw error;
+    }
+  }
+
+  async getKraTemplatesByName(organizationId: string, name: string): Promise<KraTemplate[]> {
+    try {
+      return await db
+        .select()
+        .from(kraTemplates)
+        .where(and(
+          eq(kraTemplates.organizationId, organizationId),
+          eq(kraTemplates.name, name)
+        ))
+        .orderBy(kraTemplates.name);
+    } catch (error) {
+      console.error("Failed to fetch KRA templates by name:", error);
       throw error;
     }
   }

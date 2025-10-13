@@ -9802,6 +9802,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get KRA template statistics
+  app.get("/api/kra-templates/stats", requireAuth(), requireFeatureAccess('kra_management'), async (req, res) => {
+    try {
+      const templateCount = await storage.getKraTemplateCount(req.orgId);
+      const globalCount = 28; // Total number of default templates available
+      
+      res.json({
+        organizationTemplates: templateCount,
+        availableTemplates: globalCount,
+        imported: templateCount > 0
+      });
+    } catch (error) {
+      console.error("GET /api/kra-templates/stats - Error:", error);
+      res.status(500).json({ message: "Failed to fetch template statistics" });
+    }
+  });
+
+  // Import default KRA templates
+  app.post("/api/kra-templates/import-defaults", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { organization } = req.body; // "all", "patrick", or "whirks"
+      
+      // Import default templates
+      const { DEFAULT_KRA_TEMPLATES, getTemplatesByOrganization, convertToDbFormat } = await import('@shared/defaultKraTemplates');
+      
+      const templatesToImport = getTemplatesByOrganization(organization || "all");
+      let importedCount = 0;
+      let skippedCount = 0;
+      const errors: string[] = [];
+      
+      // Import each template
+      for (const template of templatesToImport) {
+        try {
+          // Check if template already exists
+          const existingTemplates = await storage.getKraTemplatesByName(req.orgId, template.name);
+          if (existingTemplates && existingTemplates.length > 0) {
+            skippedCount++;
+            continue;
+          }
+          
+          // Convert and create template
+          const dbTemplate = convertToDbFormat(template, req.orgId);
+          await storage.createKraTemplate(req.orgId, {
+            ...dbTemplate,
+            organizationId: req.orgId
+          });
+          importedCount++;
+        } catch (err) {
+          console.error(`Failed to import template ${template.name}:`, err);
+          errors.push(`Failed to import ${template.name}`);
+        }
+      }
+      
+      res.json({
+        message: `Import completed successfully`,
+        imported: importedCount,
+        skipped: skippedCount,
+        total: templatesToImport.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } catch (error) {
+      console.error("POST /api/kra-templates/import-defaults - Error:", error);
+      res.status(500).json({ message: "Failed to import default templates" });
+    }
+  });
+
   // Copy templates to organization during onboarding
   app.post("/api/kra-templates/import", requireAuth(), requireRole(['admin', 'owner']), async (req, res) => {
     try {

@@ -709,11 +709,21 @@ function AssignKraDialog({ trigger, template }: { trigger: React.ReactNode; temp
   // Extract templates array from response, default to empty array
   const templates = templatesResponse?.templates || [];
   
-  // Fetch assignable users
-  const { data: users = [], isLoading: usersLoading } = useQuery<UserType[]>({
+  // Fetch assignable users - use regular users endpoint as fallback
+  const { data: assignableUsers, isLoading: assignableLoading, error: assignableError } = useQuery<UserType[]>({
     queryKey: ["/api/users/assignable"],
     enabled: open,
   });
+  
+  // Fallback to regular users endpoint if assignable endpoint fails or returns empty
+  const { data: allUsers = [], isLoading: allUsersLoading } = useQuery<UserType[]>({
+    queryKey: ["/api/users"],
+    enabled: open && (!assignableUsers || assignableUsers.length === 0 || assignableError),
+  });
+  
+  // Use assignable users if available, otherwise use all users
+  const users = (assignableUsers && assignableUsers.length > 0) ? assignableUsers : allUsers;
+  const usersLoading = assignableLoading || allUsersLoading;
   
   const form = useForm({
     defaultValues: {
