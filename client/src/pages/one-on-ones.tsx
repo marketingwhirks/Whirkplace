@@ -646,6 +646,12 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
         if (data.recurrenceEndCount) {
           meetingData.recurrenceEndCount = data.recurrenceEndCount;
         }
+      } else {
+        // Don't send recurring fields if not recurring
+        delete meetingData.recurrencePattern;
+        delete meetingData.recurrenceInterval;
+        delete meetingData.recurrenceEndDate;
+        delete meetingData.recurrenceEndCount;
       }
 
       // Create the one-on-one meeting first

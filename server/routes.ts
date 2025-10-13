@@ -8746,10 +8746,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: z.enum(["scheduled", "completed", "cancelled", "rescheduled"]).default("scheduled"),
         // Recurring meeting fields - make them truly optional (accept undefined/null/missing)
         isRecurring: z.boolean().default(false),
-        recurrencePattern: z.enum(["weekly", "biweekly", "monthly", "quarterly"]).nullable().optional(),
-        recurrenceInterval: z.number().min(1).max(12).nullable().optional(),
-        recurrenceEndDate: z.coerce.date().nullable().optional(),
-        recurrenceEndCount: z.number().min(1).max(52).nullable().optional()
+        recurrencePattern: z.enum(["weekly", "biweekly", "monthly", "quarterly"]).nullable().optional().or(z.undefined()),
+        recurrenceInterval: z.number().min(1).max(12).nullable().optional().or(z.undefined()),
+        recurrenceEndDate: z.union([z.coerce.date(), z.null(), z.undefined()]).optional(),
+        recurrenceEndCount: z.union([z.number().min(1).max(52), z.null(), z.undefined()]).optional()
       }).refine((data) => {
         // If recurring, must have pattern and either end date or count
         if (data.isRecurring) {
