@@ -10,6 +10,9 @@ declare module 'express-session' {
     organizationSlug?: string;
     oauthState?: string;
     returnTo?: string;
+    microsoftAuthState?: string;
+    microsoftRedirectUri?: string;
+    authOrgId?: string;
   }
 }
 
@@ -43,15 +46,16 @@ export function createDynamicSessionMiddleware() {
     store: sessionStore,
     secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true, // Important for OAuth flows
     name: 'connect.sid',
     proxy: true,
     cookie: {
       secure: true,
       httpOnly: true,
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      sameSite: 'none' as const,
-      path: '/'
+      sameSite: 'lax' as const, // Changed from 'none' to 'lax' for better OAuth compatibility
+      path: '/',
+      domain: undefined // Let the browser handle the domain
     }
   });
 
@@ -60,7 +64,7 @@ export function createDynamicSessionMiddleware() {
     store: sessionStore,
     secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true, // Important for OAuth flows
     name: 'connect.sid',
     proxy: true,
     cookie: {
@@ -68,7 +72,8 @@ export function createDynamicSessionMiddleware() {
       httpOnly: true,
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       sameSite: 'lax' as const,
-      path: '/'
+      path: '/',
+      domain: undefined // Let the browser handle the domain
     }
   });
 
