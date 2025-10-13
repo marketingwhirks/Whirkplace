@@ -12951,39 +12951,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const currentQuarter = `Q${Math.ceil((new Date().getMonth() + 1) / 3)}`;
       const currentYear = new Date().getFullYear();
       
-      const prompt = `Generate 3-5 strategic Key Result Areas (KRAs) for a ${role} role in the ${department} department ${organizationContext}.
+      const prompt = `Generate 3-5 Key Result Areas (KRAs) for a ${role} role in the ${department} department ${organizationContext}.
 
-CRITICAL: Follow this EXACT KRA format used by our organization:
+CRITICAL: Follow Patrick Accounting's EXACT KRA format:
 
-Each KRA must have:
-1. **Title**: Start with an action verb (Drive, Implement, Optimize, Lead, Enhance, Transform, etc.)
-2. **Description**: 2-3 sentences connecting the KRA to strategic business outcomes
-3. **Success Metrics**: 3-5 SMART metrics that are quantifiable and time-bound
+Structure each KRA as:
+"Key Result Area #[number] - [Action-Oriented Title]"
 
-Example of our KRA format:
-Title: "Drive Revenue Growth Through Strategic Account Management"
-Description: "Focus on expanding existing enterprise accounts and acquiring new strategic clients to achieve quarterly revenue targets. This directly impacts the company's growth trajectory and market position."
+Each KRA must:
+1. Start with "Key Result Area #" followed by a hyphen and action-oriented title
+2. Have a core mission summary statement
+3. Include 3-5 specific, measurable bullet points with metrics
+4. Use action verbs at the beginning of each bullet (Ensure, Maintain, Complete, Process, etc.)
+5. Include quantifiable metrics: percentages (90%, 100%), dollar amounts ($31,250), timeframes (within 24 hours, by the 10th of each month)
+
+Example from Patrick Accounting:
+Title: "Key Result Area #1 - Give our clients the opportunity to thrive"
+Description: "Maintain, implement, train, and monitor the firm's processes with clients to ensure efficiency and the accuracy of our work."
 Success Metrics:
-- Increase quarterly revenue from $2M to $2.5M (25% growth)
-- Acquire 5 new enterprise accounts with minimum $50K annual value
-- Achieve 90% retention rate for strategic accounts
-- Complete 15 strategic account reviews with documented growth plans
-- Upsell existing accounts by average of 30%
+- Communicate timely with insight, empathy, and clarity (100% within 24 hours)
+- Maintain a thorough understanding of all products and services offered
+- Provide 85% of M2C2 monthly
+- Deliver 95% of financials with insight each month no later than the 25th
+- Achieve effective rate of $200 per hour
 
-Based on role level, emphasize:
-- Junior/Mid roles: Operational excellence, skill development, process improvement
-- Senior/Lead roles: Strategic initiatives, innovation, cross-functional leadership
-- Manager roles: Team performance, business growth, organizational development
+Another Example:
+Title: "Key Result Area #2 - Meet Sales Goals"
+Description: "Drive revenue and increase profitability by generating new deals and forming new client relationships."
+Success Metrics:
+- Close $31,250 in annual recurring revenue each month
+- Schedule 4-6 discovery meetings each week and hold 4 of them
+- Profile 20 new accounts every day
+- Maintain a clean organized CRM with 100% accuracy
+- Complete all required paperwork within 48 hours
+
+Based on role:
+- Staff/Specialist: Focus on operational excellence, accuracy, timeliness
+- Senior/Lead: Add team development, process improvement, strategic initiatives
+- Manager: Emphasize team performance, client relationships, business growth
+- Director: Strategic planning, department leadership, cross-functional collaboration
 
 Return as JSON:
 {
   "suggestions": [
     {
-      "title": "Action-verb based title",
-      "description": "Strategic description linking to business impact",
+      "title": "Key Result Area #X - Action-Oriented Title",
+      "description": "Core mission statement for this KRA",
       "target": "${currentQuarter} ${currentYear}",
-      "metric": "Primary success metric",
-      "metrics": ["Specific metric 1 with numbers", "Specific metric 2 with targets", "Specific metric 3 with deadlines"],
+      "metric": "Primary quantifiable metric",
+      "metrics": [
+        "Specific action with metric (e.g., Process all invoices within 24 hours)",
+        "Measurable outcome (e.g., Achieve 95% client satisfaction score)",
+        "Quantified target (e.g., Close $31,250 in ARR monthly)",
+        "Time-bound deliverable (e.g., Complete reports by 10th of each month)",
+        "Percentage-based goal (e.g., Maintain 90% retention rate)"
+      ],
       "category": "performance|development|operational|strategic",
       "roleLevel": "junior|mid|senior|lead|manager"
     }
@@ -12995,16 +13017,21 @@ Return as JSON:
         messages: [
           {
             role: "system",
-            content: `You are an expert in performance management and Key Result Areas (KRAs) with deep knowledge of our organization's specific KRA format. 
-            
-You specialize in creating strategic, action-oriented KRAs that:
-- Always start with powerful action verbs
-- Connect directly to business impact
-- Include 3-5 quantifiable metrics with baselines and targets
-- Are achievable within a quarterly timeframe
-- Align with role level and department objectives
+            content: `You are an expert in performance management and Key Result Areas (KRAs) following Patrick Accounting's proven KRA framework.
 
-You understand that KRAs are not just tasks but strategic outcomes that drive organizational success.`
+You create KRAs that follow this EXACT structure:
+- Title: "Key Result Area #[number] - [Action-Oriented Focus]"
+- Description: Core mission statement that defines what success looks like
+- Metrics: Specific, measurable actions with clear quantifiable targets
+
+Your KRAs always:
+- Start each bullet with action verbs (Ensure, Maintain, Process, Complete, Deliver, Achieve, etc.)
+- Include specific metrics: percentages (85%, 95%, 100%), dollar amounts ($31,250), timeframes (within 24 hours, by the 10th of each month)
+- Focus on outcomes that directly impact clients, team, or business performance
+- Are achievable yet challenging within the specified timeframe
+- Align with the role's level of responsibility and department objectives
+
+You understand that KRAs are accountability tools that clearly define what success looks like with no ambiguity.`
           },
           {
             role: "user",
