@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { format } from "date-fns";
-import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw, Calendar, CalendarOff, Clock, UserCheck, UserPlus, AlertTriangle, Compass, RotateCcw, Play, Target } from "lucide-react";
+import { User, Settings as SettingsIcon, Shield, Bell, Building, Save, Eye, EyeOff, LogOut, Trash2, Check, X, Slack, Monitor, Sun, Moon, Globe, Plus, Edit3, RefreshCw, Calendar, CalendarOff, Clock, UserCheck, UserPlus, AlertTriangle, Compass, RotateCcw, Play, Target, HelpCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +28,7 @@ import { useManagedTour } from "@/contexts/TourProvider";
 import { TourManagementCard } from "@/components/TourManagementCard";
 import { useTours, useResetTour } from "@/hooks/useTours";
 import { KraTemplatesManager } from "@/components/admin/KraTemplatesManager";
+import { QuestionsManager } from "@/components/admin/QuestionsManager";
 
 import type { User as UserType, Team, Vacation } from "@shared/schema";
 import { DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
@@ -1028,6 +1029,10 @@ export default function Settings() {
                     <Target className="w-4 h-4" />
                     <span>KRA Templates</span>
                   </TabsTrigger>
+                  <TabsTrigger value="questions" data-testid="tab-questions" className="flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4" />
+                    <span>Question Bank</span>
+                  </TabsTrigger>
                 </>
               )}
               <TabsTrigger value="security" data-testid="tab-security" className="flex items-center gap-2">
@@ -2017,6 +2022,13 @@ export default function Settings() {
             {currentUser?.role === "admin" && (
               <TabsContent value="kra-templates" className="space-y-6">
                 <KraTemplatesManager />
+              </TabsContent>
+            )}
+
+            {/* Questions Bank Management (Admin Only) */}
+            {currentUser?.role === "admin" && (
+              <TabsContent value="questions" className="space-y-6">
+                <QuestionsManager />
               </TabsContent>
             )}
 

@@ -9958,6 +9958,200 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ========== QUESTION BANK MANAGEMENT ENDPOINTS ==========
+  
+  // Get question statistics
+  app.get("/api/questions/stats", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Get existing questions and categories from database
+      const categories = await storage.getQuestionCategories(req.orgId);
+      const questions = await storage.getAllQuestionBankItems(req.orgId);
+      
+      // Get counts by category
+      const categoryStats = new Map<string, number>();
+      for (const category of categories) {
+        categoryStats.set(category.id, 0);
+      }
+      for (const question of questions) {
+        if (categoryStats.has(question.categoryId)) {
+          categoryStats.set(question.categoryId, categoryStats.get(question.categoryId)! + 1);
+        }
+      }
+
+      // Convert to array format for response
+      const categoryCounts = Array.from(categoryStats.entries()).map(([categoryId, count]) => {
+        const category = categories.find(c => c.id === categoryId);
+        return {
+          categoryId,
+          categoryName: category?.name || categoryId,
+          count
+        };
+      });
+
+      res.json({
+        totalCategories: categories.length,
+        totalQuestions: questions.length,
+        categoryCounts,
+        defaultCategoriesAvailable: 6,
+        defaultQuestionsAvailable: 30
+      });
+    } catch (error) {
+      console.error("GET /api/questions/stats - Error:", error);
+      res.status(500).json({ message: "Failed to fetch question statistics" });
+    }
+  });
+
+  // Seed/restore default questions
+  app.post("/api/questions/seed-defaults", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Import default questions and categories
+      const { defaultQuestions, defaultQuestionCategories } = await import('@shared/defaultQuestions');
+      
+      let categoriesCreated = 0;
+      let questionsCreated = 0;
+      let categoriesSkipped = 0;
+      let questionsSkipped = 0;
+      const errors: string[] = [];
+
+      // Get existing categories and questions
+      const existingCategories = await storage.getQuestionCategories(req.orgId);
+      const existingQuestions = await storage.getAllQuestionBankItems(req.orgId);
+      
+      // Create a set of existing category IDs and question texts for quick lookup
+      const existingCategoryIds = new Set(existingCategories.map(c => c.id));
+      const existingQuestionTexts = new Set(existingQuestions.map(q => q.text));
+
+      // Seed categories first
+      for (const category of defaultQuestionCategories) {
+        try {
+          if (existingCategoryIds.has(category.id)) {
+            categoriesSkipped++;
+            continue;
+          }
+
+          await storage.createQuestionCategory(req.orgId, {
+            ...category,
+            organizationId: req.orgId
+          });
+          categoriesCreated++;
+        } catch (err) {
+          console.error(`Failed to create category ${category.name}:`, err);
+          errors.push(`Failed to create category: ${category.name}`);
+        }
+      }
+
+      // Seed questions
+      for (const question of defaultQuestions) {
+        try {
+          // Skip if question already exists (check by text)
+          if (existingQuestionTexts.has(question.text)) {
+            questionsSkipped++;
+            continue;
+          }
+
+          await storage.createQuestionBankItem(req.orgId, {
+            text: question.text,
+            categoryId: question.categoryId,
+            description: question.description,
+            tags: question.tags,
+            isSystem: question.isSystem,
+            isApproved: question.isApproved,
+            organizationId: req.orgId
+          });
+          questionsCreated++;
+        } catch (err) {
+          console.error(`Failed to create question: ${question.text}:`, err);
+          errors.push(`Failed to create question: ${question.text.substring(0, 50)}...`);
+        }
+      }
+
+      res.json({
+        message: "Question bank restoration completed successfully",
+        categoriesCreated,
+        questionsCreated,
+        categoriesSkipped,
+        questionsSkipped,
+        totalCategories: defaultQuestionCategories.length,
+        totalQuestions: defaultQuestions.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } catch (error) {
+      console.error("POST /api/questions/seed-defaults - Error:", error);
+      res.status(500).json({ message: "Failed to seed default questions" });
+    }
+  });
+
+  // Get all question bank items (for admin view)
+  app.get("/api/questions/bank", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { categoryId, search } = req.query;
+      
+      // Get all questions
+      let questions = await storage.getAllQuestionBankItems(req.orgId);
+      
+      // Filter by category if provided
+      if (categoryId && typeof categoryId === 'string') {
+        questions = questions.filter(q => q.categoryId === categoryId);
+      }
+      
+      // Filter by search term if provided
+      if (search && typeof search === 'string') {
+        const searchLower = search.toLowerCase();
+        questions = questions.filter(q => 
+          q.text.toLowerCase().includes(searchLower) ||
+          q.description?.toLowerCase().includes(searchLower) ||
+          q.tags?.some(tag => tag.toLowerCase().includes(searchLower))
+        );
+      }
+      
+      // Get categories for additional info
+      const categories = await storage.getQuestionCategories(req.orgId);
+      const categoryMap = new Map(categories.map(c => [c.id, c]));
+      
+      // Enhance questions with category info
+      const enhancedQuestions = questions.map(q => ({
+        ...q,
+        categoryName: categoryMap.get(q.categoryId)?.name,
+        categoryIcon: categoryMap.get(q.categoryId)?.icon,
+        categoryColor: categoryMap.get(q.categoryId)?.color
+      }));
+
+      res.json({
+        questions: enhancedQuestions,
+        total: enhancedQuestions.length
+      });
+    } catch (error) {
+      console.error("GET /api/questions/bank - Error:", error);
+      res.status(500).json({ message: "Failed to fetch question bank" });
+    }
+  });
+
+  // Toggle question active status
+  app.patch("/api/questions/bank/:id/toggle", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Get current question
+      const question = await storage.getQuestionBankItem(req.orgId, id);
+      if (!question) {
+        return res.status(404).json({ message: "Question not found" });
+      }
+      
+      // Toggle active status
+      const updatedQuestion = await storage.updateQuestionBankItem(req.orgId, id, {
+        isActive: !question.isActive
+      });
+      
+      res.json({
+        message: `Question ${updatedQuestion.isActive ? 'activated' : 'deactivated'} successfully`,
+        question: updatedQuestion
+      });
+    } catch (error) {
+      console.error("PATCH /api/questions/bank/:id/toggle - Error:", error);
+      res.status(500).json({ message: "Failed to toggle question status" });
+    }
+  });
+
   // Create KRA assignment(s)
   app.post("/api/kra-assignments", requireAuth(), requireFeatureAccess('kra_management'), requireRole(['admin', 'manager']), async (req, res) => {
     try {
