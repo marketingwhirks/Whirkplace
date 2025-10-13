@@ -701,10 +701,13 @@ function AssignKraDialog({ trigger, template }: { trigger: React.ReactNode; temp
   const { toast } = useToast();
   
   // Fetch active templates if not passed as prop
-  const { data: templates = [], isLoading: templatesLoading } = useQuery<KraTemplateWithMeta[]>({
+  const { data: templatesResponse, isLoading: templatesLoading } = useQuery<KraTemplatesResponse>({
     queryKey: ["/api/kra-templates", { active: true }],
     enabled: open && !template,
   });
+  
+  // Extract templates array from response, default to empty array
+  const templates = templatesResponse?.templates || [];
   
   // Fetch assignable users
   const { data: users = [], isLoading: usersLoading } = useQuery<UserType[]>({
@@ -824,11 +827,17 @@ function AssignKraDialog({ trigger, template }: { trigger: React.ReactNode; temp
                           <SelectValue placeholder="Choose a template..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {templates.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              {t.name} ({t.category})
+                          {templates && templates.length > 0 ? (
+                            templates.map((t) => (
+                              <SelectItem key={t.id} value={t.id}>
+                                {t.name} ({t.category})
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="" disabled>
+                              No templates available
                             </SelectItem>
-                          ))}
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -845,7 +854,7 @@ function AssignKraDialog({ trigger, template }: { trigger: React.ReactNode; temp
                   <FormItem>
                     <FormLabel>Select Team Members</FormLabel>
                     <div className="border rounded-md p-2 max-h-32 overflow-y-auto">
-                      {users.map((user) => (
+                      {users && users.length > 0 ? users.map((user) => (
                         <div key={user.id} className="flex items-center space-x-2 py-1">
                           <input
                             type="checkbox"
@@ -870,7 +879,9 @@ function AssignKraDialog({ trigger, template }: { trigger: React.ReactNode; temp
                             {user.name} {user.email && `(${user.email})`}
                           </label>
                         </div>
-                      ))}
+                      )) : (
+                        <p className="text-sm text-muted-foreground py-2">No users available</p>
+                      )}
                     </div>
                     {selectedUserIds.length > 0 && (
                       <p className="text-sm text-muted-foreground mt-1">
