@@ -9825,7 +9825,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { organization } = req.body; // "all", "patrick", or "whirks"
       
       // Map frontend values to proper organization names
-      const organizationMapping: Record<string, string> = {
+      const organizationMapping: Record<string, "Patrick Accounting" | "Whirks" | "all"> = {
         "patrick": "Patrick Accounting",
         "whirks": "Whirks",
         "all": "all"
@@ -9837,8 +9837,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Import default templates
       const { DEFAULT_KRA_TEMPLATES, getTemplatesByOrganization, convertToDbFormat } = await import('@shared/defaultKraTemplates');
       
-      const templatesToImport = getTemplatesByOrganization(mappedOrganization);
+      const templatesToImport = getTemplatesByOrganization(mappedOrganization as "Patrick Accounting" | "Whirks" | "all");
       console.log(`KRA Import: Found ${templatesToImport.length} templates to import for "${mappedOrganization}"`);
+      
+      // Debug: Log first template details to understand what we're working with
+      if (templatesToImport.length > 0) {
+        console.log(`First template details:`, {
+          name: templatesToImport[0].name,
+          organization: templatesToImport[0].organization,
+          category: templatesToImport[0].category
+        });
+      }
+      
       let importedCount = 0;
       let skippedCount = 0;
       const errors: string[] = [];
@@ -9849,6 +9859,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Check if template already exists
           const existingTemplates = await storage.getKraTemplatesByName(req.orgId, template.name);
           if (existingTemplates && existingTemplates.length > 0) {
+            console.log(`Skipping existing template: ${template.name}`);
             skippedCount++;
             continue;
           }

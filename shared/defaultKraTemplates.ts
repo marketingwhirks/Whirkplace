@@ -767,6 +767,94 @@ export const DEFAULT_KRA_TEMPLATES: DefaultKraTemplate[] = [
     industries: ["all"],
     roleLevel: "lead"
   },
+  {
+    name: "Office Manager",
+    organization: "Patrick Accounting",
+    jobTitle: "Office Manager",
+    department: "Operations",
+    category: "operations",
+    description: "Manages day-to-day office operations, oversees administrative staff, and ensures efficient workplace environment.",
+    goals: [
+      {
+        id: "office-mgr-1",
+        title: "Office Operations Management",
+        description: "Ensure smooth daily operations of the office",
+        target: "98% operational efficiency",
+        metric: "Operational efficiency score",
+        weight: 35
+      },
+      {
+        id: "office-mgr-2",
+        title: "Administrative Team Leadership",
+        description: "Lead and coordinate administrative staff",
+        target: "Team productivity increase of 15%",
+        metric: "Team productivity metrics",
+        weight: 25
+      },
+      {
+        id: "office-mgr-3",
+        title: "Facilities Management",
+        description: "Manage office facilities and vendor relationships",
+        target: "Stay within facilities budget",
+        metric: "Budget adherence",
+        weight: 20
+      },
+      {
+        id: "office-mgr-4",
+        title: "Process Improvement",
+        description: "Implement office process improvements",
+        target: "2 process improvements per quarter",
+        metric: "Process efficiency gains",
+        weight: 20
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "manager"
+  },
+  {
+    name: "HR Generalist",
+    organization: "Patrick Accounting",
+    jobTitle: "HR Generalist",
+    department: "HR",
+    category: "hr",
+    description: "Handles day-to-day HR operations, employee relations, and supports HR initiatives across the firm.",
+    goals: [
+      {
+        id: "hr-gen-1",
+        title: "Employee Relations",
+        description: "Manage employee relations and resolve workplace issues",
+        target: "95% issue resolution rate",
+        metric: "Resolution effectiveness",
+        weight: 30
+      },
+      {
+        id: "hr-gen-2",
+        title: "Recruitment Support",
+        description: "Support recruitment and onboarding processes",
+        target: "Fill positions within 45 days",
+        metric: "Time to fill",
+        weight: 30
+      },
+      {
+        id: "hr-gen-3",
+        title: "HR Administration",
+        description: "Manage HR documentation and compliance",
+        target: "100% compliance with HR policies",
+        metric: "Compliance rate",
+        weight: 25
+      },
+      {
+        id: "hr-gen-4",
+        title: "Employee Development",
+        description: "Support employee training and development programs",
+        target: "80% employee participation in training",
+        metric: "Training participation rate",
+        weight: 15
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "mid"
+  },
   
   // Whirks Templates (9 templates)
   {
