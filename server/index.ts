@@ -108,7 +108,8 @@ app.use("/api", (req, res, next) => {
       req.path.startsWith("/business/signup") || 
       req.path.startsWith("/business/plans") ||
       req.path.startsWith("/business/select-plan") ||
-      req.path.startsWith("/test/kra/")) {  // Skip auth for KRA test endpoints
+      req.path.startsWith("/test/kra/") ||
+      req.path === "/emergency-fix-production") {  // Skip auth for emergency database fix
     return next();
   }
   
@@ -137,7 +138,8 @@ app.use("/api", (req, res, next) => {
       req.path.startsWith("/business/plans") ||
       req.path.startsWith("/business/select-plan") ||
       req.path.startsWith("/partners/applications") ||
-      req.path.startsWith("/test/kra/")) {  // Skip org resolution for KRA test endpoints
+      req.path.startsWith("/test/kra/") ||
+      req.path === "/emergency-fix-production") {  // Skip org resolution for emergency fix
     return next();
   }
   

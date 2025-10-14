@@ -179,12 +179,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // EMERGENCY: Database fix endpoint - NO AUTH REQUIRED (REMOVE AFTER FIXING)
+  // COMPREHENSIVE DATABASE SYNC ENDPOINT - Ensures production matches development schema
   app.get("/api/emergency-fix-production", async (req, res) => {
     try {
-      console.log("🚨 EMERGENCY: Database fix attempt at", new Date().toISOString());
+      console.log("🚨 COMPREHENSIVE DATABASE SYNC: Starting at", new Date().toISOString());
       
-      // Only allow from localhost or specific IP for security
+      // Log request source for security
       const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
       console.log("Request from IP:", clientIp);
       
@@ -192,12 +192,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { db } = await import('./db');
       const { sql } = await import('drizzle-orm');
       
-      const results: any[] = [];
+      // Track results
+      const results: { [table: string]: any[] } = {};
+      const errors: { [table: string]: any[] } = {};
+      const summary = {
+        tablesChecked: 0,
+        tablesCreated: 0,
+        columnsAdded: 0,
+        columnsExisting: 0,
+        columnsErrored: 0,
+        indexesCreated: 0
+      };
       
       // Test database connectivity first
       try {
         const testResult = await db.execute(sql`SELECT 1 as test`);
-        results.push({ test: "Database connection OK", data: testResult.rows });
+        console.log("✅ Database connection OK");
       } catch (dbError: any) {
         console.error("Database connection failed:", dbError);
         return res.status(500).json({ 
@@ -205,121 +215,857 @@ export async function registerRoutes(app: Express): Promise<Server> {
           message: dbError.message 
         });
       }
-      
-      // FIX 1: Organizations table - missing Slack token columns
-      console.log("Fixing organizations table...");
-      const orgColumns = [
-        { name: 'slack_access_token', type: 'TEXT' },
-        { name: 'slack_refresh_token', type: 'TEXT' },
-        { name: 'slack_token_expires_at', type: 'TIMESTAMP' },
-        { name: 'slack_connection_status', type: "TEXT DEFAULT 'not_connected'" }
-      ];
-      
-      for (const col of orgColumns) {
+
+      // Helper function to check if table exists
+      const tableExists = async (tableName: string): Promise<boolean> => {
+        const result = await db.execute(sql`
+          SELECT EXISTS (
+            SELECT FROM information_schema.tables 
+            WHERE table_name = ${tableName}
+          )
+        `);
+        return result.rows[0]?.exists === true;
+      };
+
+      // Helper function to check if column exists
+      const columnExists = async (tableName: string, columnName: string): Promise<boolean> => {
+        const result = await db.execute(sql`
+          SELECT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = ${tableName} AND column_name = ${columnName}
+          )
+        `);
+        return result.rows[0]?.exists === true;
+      };
+
+      // Helper function to add column
+      const addColumn = async (tableName: string, columnName: string, columnDef: string): Promise<string> => {
         try {
-          // Check if column exists
-          const checkResult = await db.execute(sql`
-            SELECT column_name 
+          const exists = await columnExists(tableName, columnName);
+          if (!exists) {
+            await db.execute(sql.raw(`ALTER TABLE ${tableName} ADD COLUMN IF NOT EXISTS ${columnName} ${columnDef}`));
+            summary.columnsAdded++;
+            return "ADDED";
+          } else {
+            summary.columnsExisting++;
+            return "EXISTS";
+          }
+        } catch (error: any) {
+          if (error.message.includes('already exists')) {
+            summary.columnsExisting++;
+            return "EXISTS";
+          }
+          summary.columnsErrored++;
+          throw error;
+        }
+      };
+
+      // Define all tables and their columns
+      const tableDefinitions = {
+        // Core organizational tables
+        partner_firms: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'name', def: 'TEXT NOT NULL' },
+            { name: 'slug', def: 'TEXT NOT NULL UNIQUE' },
+            { name: 'branding_config', def: 'JSONB' },
+            { name: 'plan', def: "TEXT NOT NULL DEFAULT 'partner'" },
+            { name: 'is_active', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'home_organization_id', def: 'VARCHAR' },
+            { name: 'wholesale_rate', def: 'INTEGER NOT NULL DEFAULT 70' },
+            { name: 'stripe_account_id', def: 'TEXT' },
+            { name: 'billing_email', def: 'TEXT' },
+            { name: 'enable_cobranding', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'max_client_organizations', def: 'INTEGER NOT NULL DEFAULT -1' },
+            { name: 'custom_domain', def: 'TEXT' }
+          ]
+        },
+        organizations: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'name', def: 'TEXT NOT NULL' },
+            { name: 'slug', def: 'TEXT NOT NULL UNIQUE' },
+            { name: 'industry', def: 'TEXT' },
+            { name: 'custom_values', def: "TEXT[] NOT NULL DEFAULT ARRAY['own it', 'challenge it', 'team first', 'empathy for others', 'passion for our purpose']" },
+            { name: 'plan', def: "TEXT NOT NULL DEFAULT 'standard'" },
+            { name: 'discount_code', def: 'TEXT' },
+            { name: 'discount_percentage', def: 'INTEGER' },
+            { name: 'partner_firm_id', def: 'VARCHAR' },
+            // Slack Integration fields
+            { name: 'slack_client_id', def: 'TEXT' },
+            { name: 'slack_client_secret', def: 'TEXT' },
+            { name: 'slack_workspace_id', def: 'TEXT' },
+            { name: 'slack_channel_id', def: 'TEXT' },
+            { name: 'slack_wins_channel_id', def: 'TEXT' },
+            { name: 'slack_bot_token', def: 'TEXT' },
+            { name: 'slack_access_token', def: 'TEXT' },
+            { name: 'slack_refresh_token', def: 'TEXT' },
+            { name: 'slack_token_expires_at', def: 'TIMESTAMP' },
+            { name: 'slack_signing_secret', def: 'TEXT' },
+            { name: 'enable_slack_integration', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'slack_connection_status', def: "TEXT DEFAULT 'not_configured'" },
+            { name: 'slack_last_connected', def: 'TIMESTAMP' },
+            // Microsoft Integration fields
+            { name: 'microsoft_client_id', def: 'TEXT' },
+            { name: 'microsoft_client_secret', def: 'TEXT' },
+            { name: 'microsoft_tenant_id', def: 'TEXT' },
+            { name: 'microsoft_teams_webhook_url', def: 'TEXT' },
+            { name: 'enable_microsoft_auth', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'enable_teams_integration', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'microsoft_connection_status', def: "TEXT DEFAULT 'not_configured'" },
+            { name: 'microsoft_last_connected', def: 'TIMESTAMP' },
+            // Theme Configuration
+            { name: 'theme_config', def: 'JSONB' },
+            { name: 'enable_custom_theme', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            // Onboarding Status
+            { name: 'onboarding_status', def: "TEXT NOT NULL DEFAULT 'not_started'" },
+            { name: 'onboarding_current_step', def: 'TEXT' },
+            { name: 'onboarding_completed_at', def: 'TIMESTAMP' },
+            { name: 'onboarding_workspace_completed', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'onboarding_billing_completed', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'onboarding_roles_completed', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'onboarding_values_completed', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'onboarding_members_completed', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'onboarding_settings_completed', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            // Stripe Billing
+            { name: 'stripe_customer_id', def: 'TEXT' },
+            { name: 'stripe_subscription_id', def: 'TEXT' },
+            { name: 'stripe_subscription_status', def: 'TEXT' },
+            { name: 'stripe_price_id', def: 'TEXT' },
+            { name: 'trial_ends_at', def: 'TIMESTAMP' },
+            // User-Based Billing
+            { name: 'billing_user_count', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'billing_price_per_user', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'billing_period_start', def: 'TIMESTAMP' },
+            { name: 'billing_period_end', def: 'TIMESTAMP' },
+            { name: 'pending_billing_changes', def: 'JSONB' },
+            // Organization Settings
+            { name: 'timezone', def: "TEXT NOT NULL DEFAULT 'America/Chicago'" },
+            { name: 'checkin_due_day', def: 'INTEGER NOT NULL DEFAULT 5' },
+            { name: 'checkin_due_time', def: "TEXT NOT NULL DEFAULT '17:00'" },
+            { name: 'checkin_reminder_day', def: 'INTEGER' },
+            { name: 'checkin_reminder_time', def: "TEXT NOT NULL DEFAULT '09:00'" },
+            // Legacy fields
+            { name: 'weekly_check_in_schedule', def: 'TEXT' },
+            { name: 'review_reminder_day', def: 'TEXT' },
+            { name: 'review_reminder_time', def: 'TEXT' },
+            { name: 'is_active', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        users: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'username', def: 'TEXT NOT NULL' },
+            { name: 'password', def: 'TEXT NOT NULL' },
+            { name: 'name', def: 'TEXT NOT NULL' },
+            { name: 'email', def: 'TEXT NOT NULL' },
+            { name: 'role', def: "TEXT NOT NULL DEFAULT 'member'" },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'team_id', def: 'VARCHAR' },
+            { name: 'manager_id', def: 'VARCHAR' },
+            { name: 'avatar', def: 'TEXT' },
+            { name: 'is_account_owner', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            // Slack integration fields
+            { name: 'slack_user_id', def: 'TEXT' },
+            { name: 'slack_username', def: 'TEXT' },
+            { name: 'slack_display_name', def: 'TEXT' },
+            { name: 'slack_email', def: 'TEXT' },
+            { name: 'slack_avatar', def: 'TEXT' },
+            { name: 'slack_workspace_id', def: 'TEXT' },
+            // Microsoft integration fields
+            { name: 'microsoft_user_id', def: 'TEXT' },
+            { name: 'microsoft_user_principal_name', def: 'TEXT' },
+            { name: 'microsoft_display_name', def: 'TEXT' },
+            { name: 'microsoft_email', def: 'TEXT' },
+            { name: 'microsoft_avatar', def: 'TEXT' },
+            { name: 'microsoft_tenant_id', def: 'TEXT' },
+            { name: 'microsoft_access_token', def: 'TEXT' },
+            { name: 'microsoft_refresh_token', def: 'TEXT' },
+            { name: 'auth_provider', def: "TEXT NOT NULL DEFAULT 'local'" },
+            // Personal preferences
+            { name: 'personal_review_reminder_day', def: 'TEXT' },
+            { name: 'personal_review_reminder_time', def: 'TEXT' },
+            { name: 'can_view_all_teams', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'is_active', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'is_super_admin', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        teams: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'name', def: 'TEXT NOT NULL' },
+            { name: 'description', def: 'TEXT' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'leader_id', def: 'VARCHAR' },
+            { name: 'parent_team_id', def: 'VARCHAR' },
+            { name: 'team_type', def: "TEXT NOT NULL DEFAULT 'team'" },
+            { name: 'depth', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'path', def: 'TEXT' },
+            { name: 'is_active', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        checkins: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'week_of', def: 'TIMESTAMP NOT NULL' },
+            { name: 'overall_mood', def: 'INTEGER NOT NULL' },
+            { name: 'responses', def: 'JSONB NOT NULL DEFAULT \'{}\'::jsonb' },
+            { name: 'response_emojis', def: 'JSONB NOT NULL DEFAULT \'{}\'::jsonb' },
+            { name: 'response_flags', def: 'JSONB NOT NULL DEFAULT \'{}\'::jsonb' },
+            { name: 'winning_next_week', def: 'TEXT' },
+            { name: 'is_complete', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'submitted_at', def: 'TIMESTAMP' },
+            { name: 'due_date', def: 'TIMESTAMP NOT NULL' },
+            { name: 'submitted_on_time', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'review_status', def: "TEXT NOT NULL DEFAULT 'pending'" },
+            { name: 'reviewed_by', def: 'VARCHAR' },
+            { name: 'reviewed_at', def: 'TIMESTAMP' },
+            { name: 'review_due_date', def: 'TIMESTAMP NOT NULL' },
+            { name: 'reviewed_on_time', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'review_comments', def: 'TEXT' },
+            { name: 'response_comments', def: 'JSONB NOT NULL DEFAULT \'{}\'::jsonb' },
+            { name: 'add_to_one_on_one', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'flag_for_follow_up', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        question_categories: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'name', def: 'TEXT NOT NULL' },
+            { name: 'description', def: 'TEXT' },
+            { name: 'icon', def: 'TEXT' },
+            { name: 'order', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'is_default', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        question_bank: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'text', def: 'TEXT NOT NULL' },
+            { name: 'category_id', def: 'VARCHAR NOT NULL' },
+            { name: 'description', def: 'TEXT' },
+            { name: 'tags', def: "TEXT[] NOT NULL DEFAULT '{}'" },
+            { name: 'usage_count', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'is_system', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'contributed_by', def: 'VARCHAR' },
+            { name: 'contributed_by_org', def: 'VARCHAR' },
+            { name: 'is_approved', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        questions: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'text', def: 'TEXT NOT NULL' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'created_by', def: 'VARCHAR NOT NULL' },
+            { name: 'category_id', def: 'VARCHAR' },
+            { name: 'bank_question_id', def: 'VARCHAR' },
+            { name: 'assigned_to_user_id', def: 'VARCHAR' },
+            { name: 'team_id', def: 'VARCHAR' },
+            { name: 'is_from_bank', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'is_active', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'order', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'add_to_bank', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        team_question_settings: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'team_id', def: 'VARCHAR NOT NULL' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'question_id', def: 'VARCHAR NOT NULL' },
+            { name: 'is_disabled', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'disabled_by', def: 'VARCHAR' },
+            { name: 'disabled_at', def: 'TIMESTAMP' },
+            { name: 'reason', def: 'TEXT' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        wins: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'title', def: 'TEXT NOT NULL' },
+            { name: 'description', def: 'TEXT NOT NULL' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'nominated_by', def: 'VARCHAR' },
+            { name: 'is_public', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'slack_message_id', def: 'TEXT' },
+            { name: 'values', def: "TEXT[] NOT NULL DEFAULT '{}'" },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        comments: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'checkin_id', def: 'VARCHAR NOT NULL' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'content', def: 'TEXT NOT NULL' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        shoutouts: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'from_user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'to_user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'message', def: 'TEXT NOT NULL' },
+            { name: 'values', def: "TEXT[] NOT NULL DEFAULT '{}'" },
+            { name: 'is_public', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'slack_message_id', def: 'TEXT' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        vacations: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'start_date', def: 'DATE NOT NULL' },
+            { name: 'end_date', def: 'DATE NOT NULL' },
+            { name: 'reason', def: 'TEXT' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        notifications: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'type', def: 'TEXT NOT NULL' },
+            { name: 'title', def: 'TEXT NOT NULL' },
+            { name: 'message', def: 'TEXT NOT NULL' },
+            { name: 'data', def: "JSONB NOT NULL DEFAULT '{}'" },
+            { name: 'read', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'read_at', def: 'TIMESTAMP' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        tours: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'tour_id', def: 'VARCHAR NOT NULL' },
+            { name: 'status', def: "TEXT NOT NULL DEFAULT 'not_started'" },
+            { name: 'current_step', def: 'INTEGER DEFAULT 0' },
+            { name: 'completed_steps', def: "TEXT[] DEFAULT '{}'" },
+            { name: 'started_at', def: 'TIMESTAMP' },
+            { name: 'completed_at', def: 'TIMESTAMP' },
+            { name: 'skipped_at', def: 'TIMESTAMP' },
+            { name: 'last_interaction', def: 'TIMESTAMP' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        team_goals: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'team_id', def: 'VARCHAR' },
+            { name: 'title', def: 'TEXT NOT NULL' },
+            { name: 'description', def: 'TEXT' },
+            { name: 'target_value', def: 'INTEGER NOT NULL' },
+            { name: 'current_value', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'goal_type', def: 'TEXT NOT NULL' },
+            { name: 'metric', def: 'TEXT NOT NULL' },
+            { name: 'prize', def: 'TEXT' },
+            { name: 'start_date', def: 'TIMESTAMP NOT NULL' },
+            { name: 'end_date', def: 'TIMESTAMP NOT NULL' },
+            { name: 'status', def: "TEXT NOT NULL DEFAULT 'active'" },
+            { name: 'completed_at', def: 'TIMESTAMP' },
+            { name: 'created_by', def: 'VARCHAR NOT NULL' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        // Analytics and metrics tables
+        pulse_metrics_daily: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'metric_date', def: 'DATE NOT NULL' },
+            { name: 'total_checkins', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'average_mood', def: 'NUMERIC(3,2)' },
+            { name: 'mood_1_count', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'mood_2_count', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'mood_3_count', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'mood_4_count', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'mood_5_count', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'unique_users', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'team_breakdown', def: "JSONB NOT NULL DEFAULT '{}'" },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        shoutout_metrics_daily: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'metric_date', def: 'DATE NOT NULL' },
+            { name: 'total_shoutouts', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'public_shoutouts', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'private_shoutouts', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'unique_senders', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'unique_receivers', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'value_counts', def: "JSONB NOT NULL DEFAULT '{}'" },
+            { name: 'top_senders', def: "JSONB NOT NULL DEFAULT '[]'" },
+            { name: 'top_receivers', def: "JSONB NOT NULL DEFAULT '[]'" },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        compliance_metrics_daily: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'metric_date', def: 'DATE NOT NULL' },
+            { name: 'total_due', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'on_time_submissions', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'late_submissions', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'missing_submissions', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'on_time_reviews', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'late_reviews', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'pending_reviews', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'team_breakdown', def: "JSONB NOT NULL DEFAULT '{}'" },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        aggregation_watermarks: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'aggregation_type', def: 'TEXT NOT NULL' },
+            { name: 'last_processed_date', def: 'DATE NOT NULL' },
+            { name: 'last_processed_id', def: 'VARCHAR' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        // Billing tables
+        billing_events: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'event_type', def: 'TEXT NOT NULL' },
+            { name: 'description', def: 'TEXT' },
+            { name: 'user_count', def: 'INTEGER' },
+            { name: 'price_per_user', def: 'INTEGER' },
+            { name: 'total_amount', def: 'INTEGER' },
+            { name: 'stripe_event_id', def: 'TEXT' },
+            { name: 'metadata', def: "JSONB NOT NULL DEFAULT '{}'" },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        // Auth provider tables
+        organization_auth_providers: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'provider', def: 'TEXT NOT NULL' },
+            { name: 'provider_org_id', def: 'TEXT' },
+            { name: 'provider_org_name', def: 'TEXT' },
+            { name: 'config', def: "JSONB NOT NULL DEFAULT '{}'" },
+            { name: 'enabled', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        user_identities: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'provider', def: 'TEXT NOT NULL' },
+            { name: 'provider_user_id', def: 'TEXT NOT NULL' },
+            { name: 'provider_email', def: 'TEXT' },
+            { name: 'profile', def: "JSONB NOT NULL DEFAULT '{}'" },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        password_reset_tokens: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'token', def: 'TEXT NOT NULL UNIQUE' },
+            { name: 'expires_at', def: 'TIMESTAMP NOT NULL' },
+            { name: 'used', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        // Dashboard configuration tables
+        dashboard_configs: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'user_id', def: 'VARCHAR' },
+            { name: 'role', def: 'TEXT' },
+            { name: 'is_default', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'layout', def: "JSONB NOT NULL DEFAULT '[]'" },
+            { name: 'theme', def: "JSONB DEFAULT '{}'" },
+            { name: 'created_by', def: 'VARCHAR NOT NULL' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        dashboard_widget_templates: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'name', def: 'TEXT NOT NULL' },
+            { name: 'description', def: 'TEXT' },
+            { name: 'category', def: 'TEXT NOT NULL' },
+            { name: 'component', def: 'TEXT NOT NULL' },
+            { name: 'default_config', def: "JSONB NOT NULL DEFAULT '{}'" },
+            { name: 'min_width', def: 'INTEGER DEFAULT 1' },
+            { name: 'min_height', def: 'INTEGER DEFAULT 1' },
+            { name: 'max_width', def: 'INTEGER' },
+            { name: 'max_height', def: 'INTEGER' },
+            { name: 'required_features', def: "TEXT[] DEFAULT '{}'" },
+            { name: 'required_role', def: 'TEXT' },
+            { name: 'is_active', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        dashboard_widget_configs: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'dashboard_id', def: 'VARCHAR NOT NULL' },
+            { name: 'template_id', def: 'VARCHAR NOT NULL' },
+            { name: 'position', def: 'JSONB NOT NULL' },
+            { name: 'size', def: 'JSONB NOT NULL' },
+            { name: 'config', def: "JSONB NOT NULL DEFAULT '{}'" },
+            { name: 'is_visible', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        // One-on-One and KRA tables
+        one_on_ones: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'participant_one_id', def: 'VARCHAR NOT NULL' },
+            { name: 'participant_two_id', def: 'VARCHAR NOT NULL' },
+            { name: 'scheduled_at', def: 'TIMESTAMP NOT NULL' },
+            { name: 'status', def: "TEXT NOT NULL DEFAULT 'scheduled'" },
+            { name: 'agenda', def: 'TEXT' },
+            { name: 'notes', def: 'TEXT' },
+            { name: 'action_items', def: "JSONB NOT NULL DEFAULT '[]'" },
+            { name: 'kra_ids', def: "TEXT[] DEFAULT '{}'" },
+            { name: 'duration', def: 'INTEGER DEFAULT 30' },
+            { name: 'location', def: 'TEXT' },
+            { name: 'is_recurring', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'recurrence_series_id', def: 'VARCHAR' },
+            { name: 'recurrence_pattern', def: 'TEXT' },
+            { name: 'recurrence_interval', def: 'INTEGER DEFAULT 1' },
+            { name: 'recurrence_end_date', def: 'TIMESTAMP' },
+            { name: 'recurrence_end_count', def: 'INTEGER' },
+            { name: 'is_recurrence_template', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'outlook_event_id', def: 'TEXT' },
+            { name: 'meeting_url', def: 'TEXT' },
+            { name: 'is_online_meeting', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'sync_with_outlook', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        kra_templates: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'name', def: 'TEXT NOT NULL' },
+            { name: 'description', def: 'TEXT' },
+            { name: 'goals', def: "JSONB NOT NULL DEFAULT '[]'" },
+            { name: 'category', def: "TEXT NOT NULL DEFAULT 'general'" },
+            { name: 'job_title', def: 'TEXT' },
+            { name: 'industries', def: "TEXT[] NOT NULL DEFAULT '{}'" },
+            { name: 'is_global', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'is_active', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'created_by', def: 'VARCHAR NOT NULL' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        user_kras: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'template_id', def: 'VARCHAR' },
+            { name: 'name', def: 'TEXT NOT NULL' },
+            { name: 'description', def: 'TEXT' },
+            { name: 'goals', def: "JSONB NOT NULL DEFAULT '[]'" },
+            { name: 'assigned_by', def: 'VARCHAR NOT NULL' },
+            { name: 'start_date', def: 'TIMESTAMP NOT NULL' },
+            { name: 'end_date', def: 'TIMESTAMP' },
+            { name: 'status', def: "TEXT NOT NULL DEFAULT 'active'" },
+            { name: 'progress', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'last_updated', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        action_items: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'meeting_id', def: 'VARCHAR' },
+            { name: 'one_on_one_id', def: 'VARCHAR' },
+            { name: 'description', def: 'TEXT NOT NULL' },
+            { name: 'assigned_to', def: 'VARCHAR NOT NULL' },
+            { name: 'assigned_by', def: 'VARCHAR NOT NULL' },
+            { name: 'due_date', def: 'TIMESTAMP' },
+            { name: 'status', def: "TEXT NOT NULL DEFAULT 'open'" },
+            { name: 'notes', def: 'TEXT' },
+            { name: 'carry_forward', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'completed_at', def: 'TIMESTAMP' }
+          ]
+        },
+        kra_ratings: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'kra_id', def: 'VARCHAR NOT NULL' },
+            { name: 'one_on_one_id', def: 'VARCHAR' },
+            { name: 'rater_id', def: 'VARCHAR NOT NULL' },
+            { name: 'rater_role', def: 'TEXT NOT NULL' },
+            { name: 'rating', def: 'INTEGER NOT NULL' },
+            { name: 'note', def: 'TEXT' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        kra_history: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'kra_id', def: 'VARCHAR NOT NULL' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'change_type', def: 'TEXT NOT NULL' },
+            { name: 'old_value', def: 'JSONB' },
+            { name: 'new_value', def: 'JSONB' },
+            { name: 'reason', def: 'TEXT' },
+            { name: 'changed_by_id', def: 'VARCHAR NOT NULL' },
+            { name: 'changed_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        // Support and other tables
+        bug_reports: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'user_id', def: 'VARCHAR NOT NULL' },
+            { name: 'title', def: 'TEXT NOT NULL' },
+            { name: 'description', def: 'TEXT NOT NULL' },
+            { name: 'category', def: "TEXT NOT NULL DEFAULT 'bug'" },
+            { name: 'severity', def: "TEXT NOT NULL DEFAULT 'medium'" },
+            { name: 'page_path', def: 'TEXT' },
+            { name: 'metadata', def: "JSONB DEFAULT '{}'" },
+            { name: 'status', def: "TEXT NOT NULL DEFAULT 'open'" },
+            { name: 'resolution_note', def: 'TEXT' },
+            { name: 'assigned_to', def: 'VARCHAR' },
+            { name: 'screenshot_url', def: 'TEXT' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'resolved_at', def: 'TIMESTAMP' }
+          ]
+        },
+        business_plans: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'name', def: 'TEXT NOT NULL' },
+            { name: 'display_name', def: 'TEXT NOT NULL' },
+            { name: 'description', def: 'TEXT' },
+            { name: 'price', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'billing_period', def: "TEXT NOT NULL DEFAULT 'monthly'" },
+            { name: 'features', def: "TEXT[] NOT NULL DEFAULT '{}'" },
+            { name: 'max_users', def: 'INTEGER' },
+            { name: 'max_teams', def: 'INTEGER' },
+            { name: 'has_slack_integration', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'has_microsoft_integration', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'has_advanced_analytics', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'has_api_access', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'priority', def: 'INTEGER NOT NULL DEFAULT 0' },
+            { name: 'is_active', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        organization_onboarding: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'step', def: "TEXT NOT NULL DEFAULT 'signup'" },
+            { name: 'is_completed', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+            { name: 'completed_steps', def: "TEXT[] NOT NULL DEFAULT '{}'" },
+            { name: 'current_step_data', def: 'JSONB' },
+            { name: 'started_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'completed_at', def: 'TIMESTAMP' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        user_invitations: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'organization_id', def: 'VARCHAR NOT NULL' },
+            { name: 'email', def: 'TEXT NOT NULL' },
+            { name: 'name', def: 'TEXT' },
+            { name: 'role', def: "TEXT NOT NULL DEFAULT 'member'" },
+            { name: 'team_id', def: 'VARCHAR' },
+            { name: 'invited_by', def: 'VARCHAR NOT NULL' },
+            { name: 'status', def: "TEXT NOT NULL DEFAULT 'pending'" },
+            { name: 'token', def: 'TEXT NOT NULL UNIQUE' },
+            { name: 'expires_at', def: 'TIMESTAMP NOT NULL' },
+            { name: 'accepted_at', def: 'TIMESTAMP' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        },
+        partner_applications: {
+          columns: [
+            { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+            { name: 'company_name', def: 'TEXT NOT NULL' },
+            { name: 'contact_name', def: 'TEXT NOT NULL' },
+            { name: 'contact_email', def: 'TEXT NOT NULL' },
+            { name: 'contact_phone', def: 'TEXT' },
+            { name: 'company_size', def: 'TEXT' },
+            { name: 'industry', def: 'TEXT' },
+            { name: 'expected_clients', def: 'TEXT' },
+            { name: 'use_case', def: 'TEXT' },
+            { name: 'additional_info', def: 'TEXT' },
+            { name: 'status', def: "TEXT NOT NULL DEFAULT 'pending'" },
+            { name: 'reviewed_by', def: 'VARCHAR' },
+            { name: 'reviewed_at', def: 'TIMESTAMP' },
+            { name: 'notes', def: 'TEXT' },
+            { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+            { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+          ]
+        }
+      };
+
+      // Process each table
+      console.log("🔍 Starting comprehensive database synchronization...\n");
+      
+      for (const [tableName, tableConfig] of Object.entries(tableDefinitions)) {
+        summary.tablesChecked++;
+        results[tableName] = [];
+        errors[tableName] = [];
+
+        console.log(`📊 Processing table: ${tableName}`);
+        
+        try {
+          // Check if table exists
+          const exists = await tableExists(tableName);
+          
+          if (!exists) {
+            console.log(`   ⚠️  Table '${tableName}' does not exist - Creating...`);
+            try {
+              // Create table with primary key column only first
+              const primaryCol = tableConfig.columns.find(c => c.def.includes('PRIMARY KEY'));
+              if (primaryCol) {
+                await db.execute(sql.raw(`CREATE TABLE IF NOT EXISTS ${tableName} (${primaryCol.name} ${primaryCol.def})`));
+                summary.tablesCreated++;
+                results[tableName].push({ action: "TABLE_CREATED", status: "SUCCESS" });
+                console.log(`   ✅ Table '${tableName}' created successfully`);
+              }
+            } catch (createError: any) {
+              errors[tableName].push({ action: "TABLE_CREATE", error: createError.message });
+              console.error(`   ❌ Failed to create table '${tableName}':`, createError.message);
+              continue;
+            }
+          }
+          
+          // Process each column
+          for (const column of tableConfig.columns) {
+            // Skip primary key if we just created it
+            if (!exists && column.def.includes('PRIMARY KEY')) {
+              continue;
+            }
+            
+            try {
+              const status = await addColumn(tableName, column.name, column.def);
+              results[tableName].push({ column: column.name, status });
+              
+              if (status === "ADDED") {
+                console.log(`   ✅ Added column: ${column.name}`);
+              }
+            } catch (colError: any) {
+              errors[tableName].push({ column: column.name, error: colError.message });
+              console.error(`   ❌ Error with column '${column.name}':`, colError.message);
+            }
+          }
+          
+        } catch (tableError: any) {
+          errors[tableName].push({ action: "TABLE_CHECK", error: tableError.message });
+          console.error(`   ❌ Error processing table '${tableName}':`, tableError.message);
+        }
+        
+        console.log(`   📋 Table '${tableName}' processing complete\n`);
+      }
+
+      // Generate final verification report
+      console.log("🔍 Generating verification report...\n");
+      
+      const verificationReport: any = {};
+      
+      for (const tableName of Object.keys(tableDefinitions)) {
+        try {
+          const columnResult = await db.execute(sql`
+            SELECT column_name, data_type, is_nullable, column_default
             FROM information_schema.columns 
-            WHERE table_name = 'organizations' 
-            AND column_name = ${col.name}
+            WHERE table_name = ${tableName}
+            ORDER BY ordinal_position
           `);
           
-          if (checkResult.rows.length === 0) {
-            // Column doesn't exist, add it
-            await db.execute(sql.raw(`ALTER TABLE organizations ADD COLUMN ${col.name} ${col.type}`));
-            results.push({ table: 'organizations', column: col.name, status: "ADDED" });
-          } else {
-            results.push({ table: 'organizations', column: col.name, status: "EXISTS" });
-          }
-        } catch (colError: any) {
-          console.error(`Error with column ${col.name}:`, colError);
-          results.push({ table: 'organizations', column: col.name, status: "ERROR", error: colError.message });
+          verificationReport[tableName] = {
+            exists: columnResult.rows.length > 0,
+            columnCount: columnResult.rows.length,
+            columns: columnResult.rows
+          };
+        } catch (verifyError: any) {
+          verificationReport[tableName] = {
+            exists: false,
+            error: verifyError.message
+          };
         }
       }
+
+      // Log summary
+      console.log("\n📊 SYNCHRONIZATION SUMMARY:");
+      console.log(`   Tables Checked: ${summary.tablesChecked}`);
+      console.log(`   Tables Created: ${summary.tablesCreated}`);
+      console.log(`   Columns Added: ${summary.columnsAdded}`);
+      console.log(`   Columns Existing: ${summary.columnsExisting}`);
+      console.log(`   Columns Errored: ${summary.columnsErrored}`);
       
-      // FIX 2: Check-ins table - ensure all required columns exist
-      console.log("Checking checkins table...");
-      const checkinColumns = [
-        { name: 'submitted_at', type: 'TIMESTAMP' },
-        { name: 'submitted_on_time', type: 'BOOLEAN DEFAULT FALSE' },
-        { name: 'review_status', type: "VARCHAR DEFAULT 'PENDING'" },
-        { name: 'reviewed_by', type: 'VARCHAR' },
-        { name: 'reviewed_at', type: 'TIMESTAMP' },
-        { name: 'reviewed_on_time', type: 'BOOLEAN DEFAULT FALSE' },
-        { name: 'review_comments', type: 'TEXT' },
-        { name: 'response_comments', type: 'JSON' },
-        { name: 'add_to_one_on_one', type: 'BOOLEAN DEFAULT FALSE' },
-        { name: 'flag_for_follow_up', type: 'BOOLEAN DEFAULT FALSE' }
-      ];
-      
-      for (const col of checkinColumns) {
-        try {
-          // Check if column exists
-          const checkResult = await db.execute(sql`
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'checkins' 
-            AND column_name = ${col.name}
-          `);
-          
-          if (checkResult.rows.length === 0) {
-            // Column doesn't exist, add it
-            await db.execute(sql.raw(`ALTER TABLE checkins ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}`));
-            results.push({ table: 'checkins', column: col.name, status: "ADDED" });
-          } else {
-            results.push({ table: 'checkins', column: col.name, status: "EXISTS" });
-          }
-        } catch (colError: any) {
-          // Ignore "already exists" errors
-          if (colError.message.includes('already exists')) {
-            results.push({ table: 'checkins', column: col.name, status: "EXISTS" });
-          } else {
-            console.error(`Error with checkins column ${col.name}:`, colError);
-            results.push({ table: 'checkins', column: col.name, status: "ERROR", error: colError.message });
-          }
-        }
-      }
-      
-      // Verify final state for organizations
-      const verifyOrgResult = await db.execute(sql`
-        SELECT column_name, data_type 
-        FROM information_schema.columns 
-        WHERE table_name = 'organizations' 
-        AND column_name IN ('slack_access_token', 'slack_refresh_token', 'slack_token_expires_at', 'slack_connection_status')
-        ORDER BY column_name
-      `);
-      
-      // Verify final state for checkins
-      const verifyCheckinsResult = await db.execute(sql`
-        SELECT column_name, data_type 
-        FROM information_schema.columns 
-        WHERE table_name = 'checkins' 
-        AND column_name IN ('submitted_at', 'submitted_on_time', 'review_status', 'reviewed_by', 
-                            'reviewed_at', 'reviewed_on_time', 'review_comments', 'response_comments',
-                            'add_to_one_on_one', 'flag_for_follow_up')
-        ORDER BY column_name
-      `);
-      
-      console.log("✅ Database fix completed. Results:", results);
-      console.log("📋 Final org columns:", verifyOrgResult.rows);
-      console.log("📋 Final checkin columns:", verifyCheckinsResult.rows);
+      const hasErrors = Object.values(errors).some(e => e.length > 0);
       
       res.json({
-        success: true,
-        message: "Database fix attempted - both organizations and checkins tables",
+        success: !hasErrors,
+        message: "Comprehensive database synchronization completed",
+        summary,
         results,
-        finalOrganizationColumns: verifyOrgResult.rows,
-        finalCheckinsColumns: verifyCheckinsResult.rows,
+        errors: Object.keys(errors).reduce((acc, key) => {
+          if (errors[key].length > 0) acc[key] = errors[key];
+          return acc;
+        }, {} as any),
+        verificationReport,
         timestamp: new Date().toISOString(),
-        note: "Please test login and check-in submission after this fix"
+        note: hasErrors 
+          ? "Some errors occurred during synchronization. Review the errors section." 
+          : "All tables and columns successfully synchronized!"
       });
       
     } catch (error) {
-      console.error("❌ Emergency fix failed:", error);
+      console.error("❌ Database synchronization failed:", error);
       res.status(500).json({ 
         success: false,
-        error: "Emergency fix failed",
+        error: "Database synchronization failed",
         message: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString()
       });
