@@ -436,10 +436,10 @@ function ToursManagement() {
           {/* Auto-start Preference */}
           <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/30">
             <div className="space-y-0.5">
-              <FormLabel>Auto-start new feature tours</FormLabel>
-              <FormDescription>
+              <div className="text-sm font-medium leading-none">Auto-start new feature tours</div>
+              <div className="text-sm text-muted-foreground">
                 Automatically show guided tours when new features are added
-              </FormDescription>
+              </div>
             </div>
             <Switch
               checked={autoStartTours}
