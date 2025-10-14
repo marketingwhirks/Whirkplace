@@ -428,7 +428,8 @@ export default function Admin() {
       });
     },
     onSuccess: () => {
-      refetchVacations();
+      queryClient.invalidateQueries({ queryKey: ["/api/vacations", { userId: selectedUserForVacation?.id }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vacations"] });
       setSelectedVacationDate(undefined);
       setVacationNote("");
       setVacationDatePopoverOpen(false);
@@ -453,7 +454,8 @@ export default function Admin() {
       return apiRequest("DELETE", `/api/admin/vacations/${userId}/${weekStart.toISOString()}`);
     },
     onSuccess: () => {
-      refetchVacations();
+      queryClient.invalidateQueries({ queryKey: ["/api/vacations", { userId: selectedUserForVacation?.id }] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vacations"] });
       toast({
         title: "Vacation removed",
         description: "Team member's vacation week has been removed.",
