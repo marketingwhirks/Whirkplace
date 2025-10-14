@@ -135,7 +135,7 @@ function MeetingDetailDialog({
   // Fetch comprehensive agenda (KRAs, check-ins, action items)
   const { data: agenda, isLoading: agendaLoading, refetch: refetchAgenda } = useQuery<{
     kras?: any[];
-    recentCheckins?: any[];
+    flaggedCheckins?: any[];
     actionItems?: any[];
   }>({
     queryKey: [`/api/one-on-ones/${meeting.id}/agenda`],
