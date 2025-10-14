@@ -8801,7 +8801,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all upcoming meetings in the organization, then filter by access permissions
       const allUpcomingMeetings = await storage.getAllUpcomingOneOnOnes(req.orgId);
       
-      // Filter meetings based on user's access permissions
+      // Filter meetings based on user's access permissions and populate participant data
       const accessibleMeetings = [];
       for (const meeting of allUpcomingMeetings) {
         const hasAccess = await canAccessOneOnOne(
@@ -8812,7 +8812,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           meeting
         );
         if (hasAccess) {
-          accessibleMeetings.push(meeting);
+          // Populate participant data
+          const participantUser = meeting.participantTwoId === req.currentUser!.id 
+            ? await storage.getUser(req.orgId, meeting.participantOneId)
+            : await storage.getUser(req.orgId, meeting.participantTwoId);
+          
+          const managerUser = meeting.participantOneId === req.currentUser!.id
+            ? await storage.getUser(req.orgId, meeting.participantOneId)
+            : meeting.participantTwoId === req.currentUser!.id
+              ? await storage.getUser(req.orgId, meeting.participantOneId)
+              : null;
+          
+          accessibleMeetings.push({
+            ...meeting,
+            participant: participantUser ? sanitizeUser(participantUser) : null,
+            manager: managerUser ? sanitizeUser(managerUser) : null
+          });
         }
       }
       
@@ -8857,7 +8872,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all past meetings in the organization, then filter by access permissions  
       const allPastMeetings = await storage.getAllPastOneOnOnes(req.orgId);
       
-      // Filter meetings based on user's access permissions
+      // Filter meetings based on user's access permissions and populate participant data
       const accessibleMeetings = [];
       for (const meeting of allPastMeetings) {
         const hasAccess = await canAccessOneOnOne(
@@ -8868,7 +8883,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           meeting
         );
         if (hasAccess) {
-          accessibleMeetings.push(meeting);
+          // Populate participant data
+          const participantUser = meeting.participantTwoId === req.currentUser!.id 
+            ? await storage.getUser(req.orgId, meeting.participantOneId)
+            : await storage.getUser(req.orgId, meeting.participantTwoId);
+          
+          const managerUser = meeting.participantOneId === req.currentUser!.id
+            ? await storage.getUser(req.orgId, meeting.participantOneId)
+            : meeting.participantTwoId === req.currentUser!.id
+              ? await storage.getUser(req.orgId, meeting.participantOneId)
+              : null;
+          
+          accessibleMeetings.push({
+            ...meeting,
+            participant: participantUser ? sanitizeUser(participantUser) : null,
+            manager: managerUser ? sanitizeUser(managerUser) : null
+          });
         }
       }
       
@@ -8883,7 +8913,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           page,
           limit,
           total: accessibleMeetings.length,
-          totalPages: Math.ceil(accessibleMeetings.length / limit)
+          totalPages: Math.ceil(accessibleMeetings.length / limit),
+          hasMore: endIndex < accessibleMeetings.length
         }
       });
     } catch (error) {
@@ -9390,10 +9421,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sinceDate = lastMeeting.length > 1 ? lastMeeting[1].scheduledAt : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
       
       const checkins = await storage.getCheckinsByUser(req.orgId, targetUserId);
-      const flaggedCheckins = checkins.filter(checkin => 
-        checkin.flaggedForOneOnOne && 
-        checkin.createdAt >= sinceDate
-      );
+      // Filter for flagged check-ins (using both legacy fields)
+      const flaggedCheckins = checkins.filter(checkin => {
+        const checkCreatedAt = typeof checkin.createdAt === 'string' 
+          ? new Date(checkin.createdAt) 
+          : checkin.createdAt;
+        return (checkin.flagForFollowUp || checkin.addToOneOnOne) && 
+               checkCreatedAt >= sinceDate;
+      });
       
       // Get action items for this meeting (including carried forward)
       const actionItems = await storage.getActionItemsByOneOnOne(req.orgId, meetingId);

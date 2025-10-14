@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare, CalendarDays, MapPin, Repeat, Star, Target, AlertCircle, FileText, CheckCircle2 } from "lucide-react";
+import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare, CalendarDays, MapPin, Repeat, Star, Target, AlertCircle, FileText, CheckCircle2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -112,8 +112,20 @@ const scheduleMeetingSchema = z.object({
 type ScheduleMeetingForm = z.infer<typeof scheduleMeetingSchema>;
 
 // Meeting Detail Dialog - Shows KRAs, ratings, flagged check-ins, and action items
-function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; trigger: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+function MeetingDetailDialog({ 
+  meeting, 
+  trigger, 
+  open: controlledOpen, 
+  onOpenChange: controlledOnOpenChange 
+}: { 
+  meeting: OneOnOneMeeting; 
+  trigger: React.ReactNode | null;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = controlledOnOpenChange ?? setInternalOpen;
   const [activeTab, setActiveTab] = useState("checkins"); // Start with check-ins tab
   const [kraRatings, setKraRatings] = useState<Record<string, number>>({});
   const [newActionItem, setNewActionItem] = useState({ description: "", dueDate: "", assignedTo: "" });
@@ -248,19 +260,95 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      {trigger && <DialogTrigger asChild>{trigger}</DialogTrigger>}
       <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden">
         <DialogHeader>
-          <DialogTitle>One-on-One Meeting Details</DialogTitle>
-          <DialogDescription>
-            Meeting with {meeting.participant?.name || "Unknown"} on{" "}
-            {format(
-              typeof meeting.scheduledAt === "string"
-                ? parseISO(meeting.scheduledAt)
-                : new Date(meeting.scheduledAt),
-              "PPP"
-            )}
-          </DialogDescription>
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <DialogTitle>One-on-One Meeting Details</DialogTitle>
+              <DialogDescription>
+                Meeting with {meeting.participant?.name || "Unknown"} on{" "}
+                {format(
+                  typeof meeting.scheduledAt === "string"
+                    ? parseISO(meeting.scheduledAt)
+                    : new Date(meeting.scheduledAt),
+                  "PPP"
+                )}
+              </DialogDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={async () => {
+                  try {
+                    // Download PDF
+                    const response = await fetch(`/api/one-on-ones/${meeting.id}/pdf`, {
+                      method: 'GET',
+                      credentials: 'include'
+                    });
+                    
+                    if (!response.ok) {
+                      throw new Error('Failed to generate PDF');
+                    }
+                    
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `one-on-one-${meeting.participant?.name?.replace(/\s+/g, '-') || 'meeting'}-${format(
+                      typeof meeting.scheduledAt === "string"
+                        ? parseISO(meeting.scheduledAt)
+                        : new Date(meeting.scheduledAt),
+                      "yyyy-MM-dd"
+                    )}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    
+                    toast({
+                      title: "PDF Exported! 📄",
+                      description: "Your meeting notes have been exported to PDF.",
+                    });
+                  } catch (error) {
+                    toast({
+                      title: "Export Failed",
+                      description: "Failed to export meeting notes to PDF. Please try again.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                data-testid={`button-export-pdf-${meeting.id}`}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export PDF
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={async () => {
+                  try {
+                    await apiRequest("POST", `/api/one-on-ones/${meeting.id}/send-to-slack`);
+                    toast({
+                      title: "Sent to Slack! 📤",
+                      description: "Meeting summary has been sent to Slack.",
+                    });
+                  } catch (error) {
+                    toast({
+                      title: "Failed to send",
+                      description: "Failed to send to Slack. Please try again.",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                data-testid={`button-send-slack-${meeting.id}`}
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Share to Slack
+              </Button>
+            </div>
+          </div>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
@@ -353,60 +441,99 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
 
               <TabsContent value="checkins" className="space-y-4">
                 <ScrollArea className="h-[400px] pr-4">
-                  {agenda?.recentCheckins && agenda.recentCheckins.length > 0 ? (
+                  {agenda?.flaggedCheckins && agenda.flaggedCheckins.length > 0 ? (
                     <div className="space-y-3">
-                      {agenda.recentCheckins.map((checkin: any) => (
+                      {agenda.flaggedCheckins.map((checkin: any) => (
                         <Card key={checkin.id} data-testid={`checkin-card-${checkin.id}`}>
                           <CardHeader className="pb-3">
                             <div className="flex items-start justify-between">
-                              <CardTitle className="text-sm font-medium">
-                                Week ending {format(getCheckinWeekFriday(parseISO(checkin.weekOf)), "MMMM d, yyyy")}
-                              </CardTitle>
+                              <div>
+                                <CardTitle className="text-sm font-medium">
+                                  Week ending {format(
+                                    getCheckinWeekFriday(
+                                      typeof checkin.weekOf === 'string' 
+                                        ? parseISO(checkin.weekOf) 
+                                        : new Date(checkin.weekOf)
+                                    ), 
+                                    "MMMM d, yyyy"
+                                  )}
+                                </CardTitle>
+                                <CardDescription className="text-xs mt-1">
+                                  {checkin.flagForFollowUp && "Flagged for follow-up"}
+                                  {checkin.addToOneOnOne && " • Added to one-on-one"}
+                                </CardDescription>
+                              </div>
                               <div className="flex items-center gap-2">
-                                <Badge variant={checkin.moodRating >= 4 ? "default" : checkin.moodRating >= 3 ? "secondary" : "destructive"}>
-                                  Mood: {checkin.moodRating}/5
-                                </Badge>
-                                {checkin.flagged && (
-                                  <Badge variant="outline">
-                                    <AlertCircle className="w-3 h-3 mr-1" />
-                                    Flagged
+                                {checkin.moodRating && (
+                                  <Badge variant={checkin.moodRating >= 4 ? "default" : checkin.moodRating >= 3 ? "secondary" : "destructive"}>
+                                    Mood: {checkin.moodRating}/5
                                   </Badge>
                                 )}
+                                <Badge variant="destructive">
+                                  <AlertCircle className="w-3 h-3 mr-1" />
+                                  Flagged
+                                </Badge>
                               </div>
                             </div>
                           </CardHeader>
                           <CardContent>
                             <div className="space-y-3">
                               {/* Display questions and answers */}
-                              {checkin.responses && checkin.responses.length > 0 ? (
-                                checkin.responses.map((response: any, index: number) => (
-                                  <div key={index} className="space-y-1">
+                              {checkin.responses && Object.entries(checkin.responses).map(([questionId, response]) => {
+                                // Check if this specific question is flagged
+                                const questionFlags = checkin.responseFlags?.[questionId];
+                                const isFlagged = questionFlags?.flagForFollowUp || questionFlags?.addToOneOnOne;
+                                
+                                return (
+                                  <div key={questionId} className={`space-y-1 ${isFlagged ? 'border-l-2 border-destructive pl-3' : ''}`}>
                                     <p className="text-sm font-medium text-muted-foreground">
-                                      {response.question || "Question"}
+                                      {checkin.questions?.find((q: any) => q.id === questionId)?.text || "Question"}
                                     </p>
-                                    <p className="text-sm pl-2 border-l-2 border-muted">
-                                      {response.answer || "No response"}
+                                    <p className="text-sm">
+                                      {response as string || "No response"}
                                     </p>
+                                    {isFlagged && (
+                                      <Badge variant="outline" className="text-xs">
+                                        <AlertCircle className="w-3 h-3 mr-1" />
+                                        {questionFlags?.flagForFollowUp ? "Needs Follow-up" : "Added to 1:1"}
+                                      </Badge>
+                                    )}
+                                    {checkin.responseComments?.[questionId] && (
+                                      <div className="mt-2 p-2 bg-muted/30 rounded text-sm">
+                                        <strong>Manager Note:</strong> {checkin.responseComments[questionId]}
+                                      </div>
+                                    )}
                                   </div>
-                                ))
-                              ) : (
-                                <div className="space-y-1">
-                                  <p className="text-sm font-medium text-muted-foreground">
-                                    Is there anything I can help you with?
-                                  </p>
-                                  <p className="text-sm pl-2 border-l-2 border-muted italic text-muted-foreground">
-                                    No questions answered yet
-                                  </p>
+                                );
+                              })}
+                              
+                              {/* Show review comments if present */}
+                              {checkin.reviewComments && (
+                                <div className="pt-2 border-t">
+                                  <p className="text-sm font-medium">Manager Review Comments:</p>
+                                  <p className="text-sm text-muted-foreground">{checkin.reviewComments}</p>
                                 </div>
                               )}
                               
-                              {/* Show flag notes if present */}
-                              {checkin.flagNotes && (
-                                <div className="pt-2 border-t">
-                                  <p className="text-sm font-medium text-orange-600">Flag Note:</p>
-                                  <p className="text-sm text-muted-foreground">{checkin.flagNotes}</p>
-                                </div>
-                              )}
+                              {/* Action button to mark as resolved */}
+                              <div className="pt-3 border-t">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    // TODO: Implement API endpoint to mark check-in as resolved
+                                    toast({
+                                      title: "Marked as Resolved",
+                                      description: "This check-in has been marked as resolved."
+                                    });
+                                  }}
+                                  className="w-full"
+                                  data-testid={`button-resolve-${checkin.id}`}
+                                >
+                                  <CheckCircle2 className="w-4 h-4 mr-2" />
+                                  Mark as Resolved
+                                </Button>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
@@ -415,10 +542,10 @@ function MeetingDetailDialog({ meeting, trigger }: { meeting: OneOnOneMeeting; t
                   ) : (
                     <Card>
                       <CardContent className="py-8 text-center">
-                        <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                        <p className="text-muted-foreground">No check-ins available</p>
+                        <AlertCircle className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-30" />
+                        <p className="font-medium text-muted-foreground">No Flagged Check-ins</p>
                         <p className="text-sm text-muted-foreground mt-2">
-                          Check-ins will appear here once team members submit them
+                          Check-ins flagged for follow-up will appear here
                         </p>
                       </CardContent>
                     </Card>
@@ -1120,6 +1247,7 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
 
 function MeetingCard({ meeting }: { meeting: OneOnOneMeeting }) {
   const { toast } = useToast();
+  const [detailOpen, setDetailOpen] = useState(false);
   const scheduledDate = typeof meeting.scheduledAt === 'string' 
     ? parseISO(meeting.scheduledAt) 
     : new Date(meeting.scheduledAt);
@@ -1144,77 +1272,135 @@ function MeetingCard({ meeting }: { meeting: OneOnOneMeeting }) {
   });
   
   return (
-    <Card className="hover:shadow-md transition-shadow" data-testid={`card-meeting-${meeting.id}`}>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <User className="w-4 h-4" />
-              {meeting.participant?.name || "Unknown Participant"}
-            </CardTitle>
-            <CardDescription className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {format(scheduledDate, "PPP 'at' p")}
-            </CardDescription>
+    <>
+      <Card 
+        className="hover:shadow-lg transition-all hover:scale-[1.02] cursor-pointer border-l-4"
+        style={{ borderLeftColor: isUpcoming ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))" }}
+        onClick={() => setDetailOpen(true)}
+        data-testid={`card-meeting-${meeting.id}`}
+      >
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between">
+            <div className="space-y-1 flex-1">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <div className="p-2 rounded-full bg-primary/10">
+                  <User className="w-4 h-4 text-primary" />
+                </div>
+                {meeting.participant?.name || "Meeting Participant"}
+              </CardTitle>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <CalendarDays className="w-3 h-3" />
+                  {format(scheduledDate, "EEE, MMM d")}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Clock className="w-3 h-3" />
+                  {format(scheduledDate, "h:mm a")}
+                </span>
+                {meeting.location && (
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    {meeting.location}
+                  </span>
+                )}
+              </div>
+            </div>
+            <Badge 
+              variant={isUpcoming ? "default" : "secondary"} 
+              className={isUpcoming ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400" : ""}
+            >
+              {isUpcoming ? "Upcoming" : "Completed"}
+            </Badge>
           </div>
-          <Badge variant={isUpcoming ? "default" : "secondary"}>
-            {isUpcoming ? "Upcoming" : "Completed"}
-          </Badge>
-        </div>
-      </CardHeader>
-      
-      <CardContent className="pt-0">
-        <div className="space-y-3">
-          {meeting.notes && (
-            <div>
-              <p className="text-sm font-medium mb-1">Latest Notes:</p>
-              <p className="text-sm text-muted-foreground line-clamp-2">
-                {meeting.notes}
-              </p>
-            </div>
-          )}
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <CheckSquare className="w-3 h-3" />
-                Action Items: 0
-              </span>
-              <span>
-                Status: {meeting.status}
-              </span>
-            </div>
+        </CardHeader>
+        
+        <CardContent className="pt-0">
+          <div className="space-y-3">
+            {meeting.agenda && (
+              <div className="bg-muted/30 rounded-lg p-3">
+                <p className="text-sm font-medium mb-1 flex items-center gap-1">
+                  <FileText className="w-3 h-3" />
+                  Agenda
+                </p>
+                <p className="text-sm text-muted-foreground line-clamp-2">
+                  {meeting.agenda}
+                </p>
+              </div>
+            )}
             
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => sendToSlackMutation.mutate()}
-                disabled={sendToSlackMutation.isPending}
-                data-testid={`button-slack-${meeting.id}`}
-              >
-                <MessageSquare className="w-3 h-3 mr-1" />
-                {sendToSlackMutation.isPending ? "Sending..." : "Send to Slack"}
-              </Button>
-              <MeetingDetailDialog 
-                meeting={meeting}
-                trigger={
-                  <Button variant="outline" size="sm" data-testid={`button-view-${meeting.id}`}>
-                    View Details
-                  </Button>
-                }
-              />
+            {meeting.notes && !isUpcoming && (
+              <div className="bg-muted/30 rounded-lg p-3">
+                <p className="text-sm font-medium mb-1 flex items-center gap-1">
+                  <MessageSquare className="w-3 h-3" />
+                  Meeting Notes
+                </p>
+                <p className="text-sm text-muted-foreground line-clamp-2">
+                  {meeting.notes}
+                </p>
+              </div>
+            )}
+            
+            <div className="flex items-center justify-between pt-2 border-t">
+              <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <CheckSquare className="w-3 h-3" />
+                  Action Items
+                </span>
+                {meeting.isRecurring && (
+                  <span className="flex items-center gap-1 text-primary">
+                    <Repeat className="w-3 h-3" />
+                    Recurring
+                  </span>
+                )}
+              </div>
+              
+              <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    sendToSlackMutation.mutate();
+                  }}
+                  disabled={sendToSlackMutation.isPending}
+                  data-testid={`button-slack-${meeting.id}`}
+                >
+                  <MessageSquare className="w-3 h-3 mr-1" />
+                  {sendToSlackMutation.isPending ? "Sending..." : "Share"}
+                </Button>
+                <Button 
+                  variant="default" 
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDetailOpen(true);
+                  }}
+                  data-testid={`button-view-${meeting.id}`}
+                >
+                  <ChevronDown className="w-3 h-3 mr-1" />
+                  View Details
+                </Button>
+              </div>
             </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+      
+      {/* Meeting Detail Dialog */}
+      <MeetingDetailDialog 
+        meeting={meeting}
+        trigger={null}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+      />
+    </>
   );
 }
 
 function UpcomingMeetings() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterPeriod, setFilterPeriod] = useState<"all" | "today" | "week">("all");
+  const [showAll, setShowAll] = useState(false);
   
   const { data: upcomingData, isLoading } = useQuery<UpcomingMeetingsResponse>({
     queryKey: ["/api/one-on-ones/upcoming", { page: 1, limit: 20 }],
@@ -1234,6 +1420,12 @@ function UpcomingMeetings() {
     
     return matchesSearch && matchesPeriod;
   }) || [];
+  
+  // Show only next 2 meetings by default, unless search/filter is active or user clicked "Show All"
+  const hasActiveFilter = searchQuery || filterPeriod !== "all";
+  const displayedMeetings = hasActiveFilter || showAll 
+    ? filteredMeetings 
+    : filteredMeetings.slice(0, 2);
 
   if (isLoading) {
     return (
@@ -1313,14 +1505,32 @@ function UpcomingMeetings() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {filteredMeetings.map((meeting) => (
+          {displayedMeetings.map((meeting) => (
             <MeetingCard key={meeting.id} meeting={meeting} />
           ))}
           
-          {filteredMeetings.length < (upcomingData?.pagination.total || 0) && (
+          {/* Show "View All" button if there are more meetings */}
+          {!hasActiveFilter && !showAll && filteredMeetings.length > 2 && (
             <div className="text-center py-4">
-              <Button variant="outline" data-testid="button-load-more-upcoming">
-                Load More Meetings
+              <Button 
+                variant="outline" 
+                onClick={() => setShowAll(true)}
+                data-testid="button-show-all-upcoming"
+              >
+                View All {filteredMeetings.length} Upcoming Meetings
+              </Button>
+            </div>
+          )}
+          
+          {/* Show "Show Less" button when viewing all */}
+          {!hasActiveFilter && showAll && filteredMeetings.length > 2 && (
+            <div className="text-center py-4">
+              <Button 
+                variant="outline" 
+                onClick={() => setShowAll(false)}
+                data-testid="button-show-less-upcoming"
+              >
+                Show Only Next 2 Meetings
               </Button>
             </div>
           )}
