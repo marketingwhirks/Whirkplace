@@ -791,22 +791,22 @@ export function IntegrationsDashboard() {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="authentication" data-testid="tab-authentication">
-            <Key className="w-4 h-4 mr-2" />
-            Authentication
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-1">
+          <TabsTrigger value="authentication" data-testid="tab-authentication" className="flex items-center justify-center px-2 py-2">
+            <Key className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+            <span className="text-xs sm:text-sm">Authentication</span>
           </TabsTrigger>
-          <TabsTrigger value="slack" data-testid="tab-slack">
-            <Slack className="w-4 h-4 mr-2" />
-            Slack Workspace
+          <TabsTrigger value="slack" data-testid="tab-slack" className="flex items-center justify-center px-2 py-2">
+            <Slack className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+            <span className="text-xs sm:text-sm">Slack</span>
           </TabsTrigger>
-          <TabsTrigger value="microsoft" data-testid="tab-microsoft">
-            <Building className="w-4 h-4 mr-2" />
-            Microsoft 365
+          <TabsTrigger value="microsoft" data-testid="tab-microsoft" className="flex items-center justify-center px-2 py-2">
+            <Building className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+            <span className="text-xs sm:text-sm">Microsoft</span>
           </TabsTrigger>
-          <TabsTrigger value="calendar" data-testid="tab-calendar">
-            <Calendar className="w-4 h-4 mr-2" />
-            Calendar
+          <TabsTrigger value="calendar" data-testid="tab-calendar" className="flex items-center justify-center px-2 py-2">
+            <Calendar className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+            <span className="text-xs sm:text-sm">Calendar</span>
           </TabsTrigger>
         </TabsList>
 
@@ -929,7 +929,7 @@ export function IntegrationsDashboard() {
                         </div>
                         <div>
                           <Label className="text-sm font-medium">Bot Token Scopes (add these):</Label>
-                          <div className="grid grid-cols-2 gap-2 mt-1">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                             {slackBotScopes.map((scope) => (
                               <div key={scope} className="flex items-center gap-2">
                                 <code className="bg-muted px-2 py-1 rounded text-xs">{scope}</code>
@@ -1352,7 +1352,7 @@ export function IntegrationsDashboard() {
                       <div className="ml-8 space-y-3">
                         <div>
                           <Label className="text-sm font-medium">Microsoft Graph Permissions:</Label>
-                          <div className="grid grid-cols-2 gap-2 mt-1">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                             {microsoftPermissions.map((permission) => (
                               <div key={permission} className="flex items-center gap-2">
                                 <code className="bg-muted px-2 py-1 rounded text-xs">{permission}</code>
