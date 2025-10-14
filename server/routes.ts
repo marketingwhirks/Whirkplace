@@ -14794,6 +14794,12 @@ You understand that KRAs are accountability tools that clearly define what succe
   registerMicrosoftTeamsRoutes(app);
   registerMicrosoftAuthRoutes(app);
   registerMicrosoftCalendarRoutes(app);
+  
+  // Register test KRA import routes (for testing only)
+  if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_TEST_ENDPOINTS === 'true') {
+    const { registerTestKraImportRoutes } = await import('./test-kra-imports');
+    registerTestKraImportRoutes(app);
+  }
 
   const httpServer = createServer(app);
   return httpServer;
