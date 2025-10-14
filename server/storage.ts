@@ -118,6 +118,15 @@ export interface IStorage {
   createOrganization(organization: InsertOrganization): Promise<Organization>;
   updateOrganization(id: string, organization: Partial<InsertOrganization>): Promise<Organization | undefined>;
   
+  // Slack Token Management
+  updateOrganizationSlackTokens(organizationId: string, tokens: {
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: Date;
+  }): Promise<Organization | undefined>;
+  getOrganizationsWithExpiringSlackTokens(hoursBeforeExpiry: number): Promise<Organization[]>;
+  markSlackConnectionStatus(organizationId: string, status: 'connected' | 'error', errorMessage?: string): Promise<void>;
+  
   // Super Admin Methods - Cross-organization access
   getAllUsersGlobal(includeInactive?: boolean): Promise<User[]>;
   getUserGlobal(userId: string): Promise<User | undefined>;
@@ -585,6 +594,9 @@ export class DatabaseStorage implements IStorage {
     if (organizationUpdate.enableSlackIntegration !== undefined) updateData.enableSlackIntegration = organizationUpdate.enableSlackIntegration;
     if (organizationUpdate.slackConnectionStatus !== undefined) updateData.slackConnectionStatus = organizationUpdate.slackConnectionStatus;
     if (organizationUpdate.slackLastConnected !== undefined) updateData.slackLastConnected = organizationUpdate.slackLastConnected;
+    if (organizationUpdate.slackAccessToken !== undefined) updateData.slackAccessToken = organizationUpdate.slackAccessToken;
+    if (organizationUpdate.slackRefreshToken !== undefined) updateData.slackRefreshToken = organizationUpdate.slackRefreshToken;
+    if (organizationUpdate.slackTokenExpiresAt !== undefined) updateData.slackTokenExpiresAt = organizationUpdate.slackTokenExpiresAt;
 
     try {
       const [updatedOrganization] = await db
@@ -597,6 +609,76 @@ export class DatabaseStorage implements IStorage {
     } catch (error) {
       console.error("Failed to update organization:", error);
       return undefined;
+    }
+  }
+
+  // Slack Token Management Methods
+  async updateOrganizationSlackTokens(organizationId: string, tokens: { 
+    accessToken: string; 
+    refreshToken: string; 
+    expiresAt: Date; 
+  }): Promise<Organization | undefined> {
+    try {
+      const [updatedOrganization] = await db
+        .update(organizations)
+        .set({
+          slackAccessToken: tokens.accessToken,
+          slackRefreshToken: tokens.refreshToken,
+          slackTokenExpiresAt: tokens.expiresAt,
+          slackConnectionStatus: 'connected',
+          slackLastConnected: new Date()
+        })
+        .where(eq(organizations.id, organizationId))
+        .returning();
+      
+      return updatedOrganization || undefined;
+    } catch (error) {
+      console.error("Failed to update Slack tokens:", error);
+      return undefined;
+    }
+  }
+
+  async getOrganizationsWithExpiringSlackTokens(hoursBeforeExpiry: number): Promise<Organization[]> {
+    try {
+      const expiryThreshold = new Date();
+      expiryThreshold.setHours(expiryThreshold.getHours() + hoursBeforeExpiry);
+      
+      return await db
+        .select()
+        .from(organizations)
+        .where(
+          and(
+            eq(organizations.enableSlackIntegration, true),
+            eq(organizations.slackConnectionStatus, 'connected'),
+            lte(organizations.slackTokenExpiresAt, expiryThreshold),
+            // Ensure we have a refresh token to use
+            sql`${organizations.slackRefreshToken} IS NOT NULL`
+          )
+        );
+    } catch (error) {
+      console.error("Failed to get organizations with expiring Slack tokens:", error);
+      return [];
+    }
+  }
+
+  async markSlackConnectionStatus(organizationId: string, status: 'connected' | 'error', errorMessage?: string): Promise<void> {
+    try {
+      const updateData: any = {
+        slackConnectionStatus: status
+      };
+      
+      if (status === 'error' && errorMessage) {
+        console.error(`Slack connection error for org ${organizationId}: ${errorMessage}`);
+      } else if (status === 'connected') {
+        updateData.slackLastConnected = new Date();
+      }
+      
+      await db
+        .update(organizations)
+        .set(updateData)
+        .where(eq(organizations.id, organizationId));
+    } catch (error) {
+      console.error("Failed to mark Slack connection status:", error);
     }
   }
 

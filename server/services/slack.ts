@@ -6,6 +6,7 @@ import type { Request } from 'express';
 import { resolveRedirectUri } from '../utils/redirect-uri';
 import { billingService } from './billing';
 import { getWeekStartCentral, getCheckinDueDate } from '@shared/utils/dueDates';
+import { storage } from '../storage';
 
 if (!process.env.SLACK_BOT_TOKEN) {
   console.warn("SLACK_BOT_TOKEN environment variable not set. Slack integration will be disabled.");
@@ -436,18 +437,220 @@ export async function getSlackUserInfo(accessToken: string, userId: string): Pro
 }
 
 /**
+ * Refresh Slack OAuth access token using refresh token
+ * @param organizationId - The organization ID to refresh tokens for
+ * @returns The new access token, or null if refresh failed
+ */
+export async function refreshSlackToken(organizationId: string): Promise<string | null> {
+  try {
+    // Get the organization with current tokens
+    const organization = await storage.getOrganization(organizationId);
+    if (!organization) {
+      console.error(`Organization ${organizationId} not found`);
+      return null;
+    }
+
+    if (!organization.slackRefreshToken) {
+      console.error(`No refresh token found for organization ${organizationId}`);
+      await storage.markSlackConnectionStatus(organizationId, 'error', 'No refresh token available');
+      return null;
+    }
+
+    const clientId = process.env.SLACK_CLIENT_ID;
+    const clientSecret = process.env.SLACK_CLIENT_SECRET;
+    
+    if (!clientId || !clientSecret) {
+      console.error('Slack OAuth credentials not configured');
+      return null;
+    }
+
+    console.log(`🔄 Refreshing Slack token for organization ${organizationId}`);
+
+    // Call Slack's OAuth v2 token refresh endpoint
+    const params = new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: organization.slackRefreshToken
+    });
+
+    const response = await fetch('https://slack.com/api/oauth.v2.access', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: params.toString()
+    });
+
+    const data = await response.json();
+
+    if (!data.ok) {
+      console.error(`Failed to refresh Slack token for org ${organizationId}:`, data.error);
+      
+      // Mark connection as errored if refresh fails
+      await storage.markSlackConnectionStatus(organizationId, 'error', data.error);
+      
+      // Handle specific errors
+      if (data.error === 'invalid_refresh_token' || data.error === 'token_revoked') {
+        console.error(`Refresh token invalid or revoked for org ${organizationId}`);
+      }
+      
+      return null;
+    }
+
+    // Slack OAuth tokens expire in 12 hours (43200 seconds)
+    const expiresAt = new Date();
+    expiresAt.setSeconds(expiresAt.getSeconds() + (data.expires_in || 43200));
+
+    // IMPORTANT: Slack refresh tokens are single-use! 
+    // We MUST save the new refresh token returned in the response
+    await storage.updateOrganizationSlackTokens(organizationId, {
+      accessToken: data.access_token,
+      refreshToken: data.refresh_token, // New refresh token!
+      expiresAt: expiresAt
+    });
+
+    console.log(`✅ Successfully refreshed Slack token for organization ${organizationId}`);
+    console.log(`   New token expires at: ${expiresAt.toISOString()}`);
+
+    return data.access_token;
+  } catch (error) {
+    console.error(`Error refreshing Slack token for org ${organizationId}:`, error);
+    await storage.markSlackConnectionStatus(organizationId, 'error', 'Token refresh failed');
+    return null;
+  }
+}
+
+/**
+ * Get valid Slack access token, refreshing if necessary
+ * @param organizationId - The organization ID
+ * @returns Valid access token or null if unavailable
+ */
+export async function getValidSlackToken(organizationId: string): Promise<string | null> {
+  try {
+    const organization = await storage.getOrganization(organizationId);
+    if (!organization) {
+      console.error(`Organization ${organizationId} not found`);
+      return null;
+    }
+
+    // First check if we have OAuth tokens (new system)
+    if (organization.slackAccessToken && organization.slackTokenExpiresAt) {
+      const now = new Date();
+      const expiresAt = new Date(organization.slackTokenExpiresAt);
+      
+      // Check if token expires within 2 hours (proactive refresh)
+      const twoHoursFromNow = new Date();
+      twoHoursFromNow.setHours(twoHoursFromNow.getHours() + 2);
+      
+      if (expiresAt > twoHoursFromNow) {
+        // Token is still valid for more than 2 hours
+        return organization.slackAccessToken;
+      }
+      
+      // Token expires soon or has expired, refresh it
+      console.log(`🔄 Token for org ${organizationId} expires soon (${expiresAt.toISOString()}), refreshing...`);
+      const newToken = await refreshSlackToken(organizationId);
+      
+      if (newToken) {
+        return newToken;
+      }
+      
+      // Refresh failed, fall back to bot token if available
+      console.warn(`Token refresh failed for org ${organizationId}, falling back to bot token`);
+    }
+
+    // Fall back to legacy bot token if available (backward compatibility)
+    if (organization.slackBotToken) {
+      console.log(`Using legacy bot token for org ${organizationId}`);
+      return organization.slackBotToken;
+    }
+
+    // No tokens available
+    console.error(`No Slack tokens available for organization ${organizationId}`);
+    return null;
+  } catch (error) {
+    console.error(`Error getting valid Slack token for org ${organizationId}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Background job to refresh expiring Slack tokens
+ * Runs every 6 hours to proactively refresh tokens before they expire
+ */
+export function startSlackTokenRefreshJob(): void {
+  // Run every 6 hours
+  cron.schedule('0 */6 * * *', async () => {
+    console.log('🔄 Starting scheduled Slack token refresh job');
+    
+    try {
+      // Get organizations with tokens expiring within 6 hours
+      const organizations = await storage.getOrganizationsWithExpiringSlackTokens(6);
+      
+      if (organizations.length === 0) {
+        console.log('No organizations with expiring Slack tokens found');
+        return;
+      }
+      
+      console.log(`Found ${organizations.length} organizations with expiring Slack tokens`);
+      
+      for (const org of organizations) {
+        try {
+          console.log(`Refreshing token for organization ${org.id} (${org.name})`);
+          const newToken = await refreshSlackToken(org.id);
+          
+          if (newToken) {
+            console.log(`✅ Successfully refreshed token for ${org.name}`);
+          } else {
+            console.error(`❌ Failed to refresh token for ${org.name}`);
+          }
+          
+          // Add a small delay between refreshes to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (error) {
+          console.error(`Error refreshing token for org ${org.id}:`, error);
+        }
+      }
+      
+      console.log('✅ Slack token refresh job completed');
+    } catch (error) {
+      console.error('Error in Slack token refresh job:', error);
+    }
+  });
+  
+  console.log('✅ Slack token refresh job scheduled to run every 6 hours');
+}
+
+/**
  * Sends a structured message to a Slack channel using the Slack Web API
  */
 export async function sendSlackMessage(
-  message: ChatPostMessageArguments
+  message: ChatPostMessageArguments,
+  organizationId?: string
 ): Promise<string | undefined> {
-  if (!slack) {
+  // Try to get organization-specific token first
+  let slackClient: WebClient | null = slack;
+  
+  if (organizationId) {
+    try {
+      const token = await getValidSlackToken(organizationId);
+      if (token) {
+        slackClient = new WebClient(token);
+        console.log(`Using organization-specific token for org ${organizationId}`);
+      }
+    } catch (error) {
+      console.warn(`Failed to get org token for ${organizationId}, falling back to bot token:`, error);
+    }
+  }
+  
+  if (!slackClient) {
     console.warn("Slack not configured. Message not sent:", JSON.stringify(message));
     return undefined;
   }
 
   try {
-    const response = await slack.chat.postMessage(message);
+    const response = await slackClient.chat.postMessage(message);
     return response.ts;
   } catch (error) {
     console.error('Error sending Slack message:', error);
@@ -708,7 +911,27 @@ export async function sendPersonalizedCheckinReminder(
   });
 
   try {
-    const dmResult = await slack.conversations.open({
+    // Get organization-specific token if organizationId is provided
+    let slackClient: WebClient | null = slack;
+    
+    if (organizationId) {
+      try {
+        const token = await getValidSlackToken(organizationId);
+        if (token) {
+          slackClient = new WebClient(token);
+          console.log(`Using organization-specific token for reminder to ${userName}`);
+        }
+      } catch (error) {
+        console.warn(`Failed to get org token, using bot token:`, error);
+      }
+    }
+    
+    if (!slackClient) {
+      console.warn("Slack not configured for personalized reminder");
+      return;
+    }
+    
+    const dmResult = await slackClient.conversations.open({
       users: userId
     });
 
@@ -717,7 +940,7 @@ export async function sendPersonalizedCheckinReminder(
         channel: dmResult.channel.id,
         blocks: reminderBlocks,
         text: `Check-in reminder for ${userName}`
-      });
+      }, organizationId);
 
       console.log(`Personalized check-in reminder sent to ${userName} (${userId})`);
     }
@@ -880,13 +1103,9 @@ export async function sendPrivateWinNotification(
   recipientSlackId: string,
   recipientName: string,
   senderName: string,
-  nominatedBy?: string
+  nominatedBy?: string,
+  organizationId?: string
 ) {
-  if (!slack) {
-    console.log("Slack client not configured, skipping private win notification");
-    return;
-  }
-
   if (!recipientSlackId) {
     console.log(`No Slack ID for recipient ${recipientName}, skipping DM`);
     return;
@@ -895,8 +1114,28 @@ export async function sendPrivateWinNotification(
   const sender = nominatedBy || senderName;
   
   try {
+    // Get organization-specific token if available
+    let slackClient: WebClient | null = slack;
+    
+    if (organizationId) {
+      try {
+        const token = await getValidSlackToken(organizationId);
+        if (token) {
+          slackClient = new WebClient(token);
+          console.log(`Using organization-specific token for private win notification`);
+        }
+      } catch (error) {
+        console.warn(`Failed to get org token, using bot token:`, error);
+      }
+    }
+    
+    if (!slackClient) {
+      console.log("Slack client not configured, skipping private win notification");
+      return;
+    }
+    
     // Open a DM channel with the recipient
-    const dmResult = await slack.conversations.open({
+    const dmResult = await slackClient.conversations.open({
       users: recipientSlackId
     });
 
@@ -932,7 +1171,7 @@ export async function sendPrivateWinNotification(
         }
       ],
       text: `You've been recognized by ${sender}: ${winTitle}`
-    });
+    }, organizationId);
 
     console.log(`✅ Private win notification sent to ${recipientName} (${recipientSlackId})`);
     return messageId;

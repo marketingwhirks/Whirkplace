@@ -202,6 +202,16 @@ app.use((req, res, next) => {
       console.error("Failed to initialize reminder scheduler:", error);
       // Don't throw here, as this is not critical for startup
     }
+    
+    // Initialize Slack token refresh job (runs every 6 hours to refresh expiring tokens)
+    try {
+      const { startSlackTokenRefreshJob } = await import("./services/slack");
+      startSlackTokenRefreshJob();
+      console.log("✅ Slack token refresh job initialized - will run every 6 hours");
+    } catch (error) {
+      console.error("Failed to initialize Slack token refresh job:", error);
+      // Don't throw here, as this is not critical for startup
+    }
 
     // Global error handler
     console.log('🛡️  Setting up global error handler...');

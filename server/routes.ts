@@ -1112,11 +1112,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             // CRITICAL: Update the actual organization the user belongs to
             // Ensure we await the update properly before proceeding
+            
+            // Calculate token expiration (OIDC tokens typically expire in 12 hours)
+            // Note: OIDC doesn't provide expires_in, so we default to 12 hours for Slack
+            const expiresIn = tokenResponse.expires_in || 43200; // Default to 12 hours
+            const tokenExpiresAt = new Date();
+            tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + expiresIn);
+            
+            console.log(`🔐 Storing OAuth tokens for organization ${actualOrganizationId}`);
+            console.log(`   Access token: ${tokenResponse.access_token ? '✅ Present' : '❌ Missing'}`);
+            console.log(`   Refresh token: ${tokenResponse.refresh_token ? '✅ Present' : '❌ Missing (OIDC flow may not provide refresh tokens)'}`);
+            console.log(`   Token expires at: ${tokenExpiresAt.toISOString()}`);
+            
             const updateResult = await storage.updateOrganization(actualOrganizationId, {
               slackConnectionStatus: 'connected',
               slackLastConnected: new Date(),
               slackWorkspaceId: workspaceId,
-              enableSlackIntegration: true
+              enableSlackIntegration: true,
+              // Store OAuth tokens for API access and refresh
+              slackAccessToken: tokenResponse.access_token || null,
+              slackRefreshToken: tokenResponse.refresh_token || null, // May not be provided in OIDC flow
+              slackTokenExpiresAt: tokenResponse.access_token ? tokenExpiresAt : null
             });
             
             if (updateResult) {
