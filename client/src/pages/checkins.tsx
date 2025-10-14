@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow, startOfWeek, addWeeks, isSameWeek, format } from "date-fns";
-import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle, Smile, Flag, UserPlus, CheckCheck } from "lucide-react";
+import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle, Smile, Flag, UserPlus, CheckCheck, Plane } from "lucide-react";
 import { getCheckinWeekFriday } from "@shared/utils/dueDates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,8 +27,10 @@ import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
 
-import type { Checkin, Question, User, InsertCheckin } from "@shared/schema";
+import type { Checkin, Question, User, InsertCheckin, Vacation } from "@shared/schema";
 
 // Common emoji options for quick selection
 const COMMON_EMOJIS = ["😊", "😟", "🎯", "💪", "🤔", "😌", "😤", "🚀", "❤️", "✅"];
@@ -87,6 +89,9 @@ export default function Checkins() {
   const [checkinToReview, setCheckinToReview] = useState<Checkin | null>(null);
   const [showPreviousWeekDialog, setShowPreviousWeekDialog] = useState(false);
   const [isSubmittingLate, setIsSubmittingLate] = useState(false);
+  const [showVacationDialog, setShowVacationDialog] = useState(false);
+  const [selectedVacationWeek, setSelectedVacationWeek] = useState<Date | null>(null);
+  const [vacationNote, setVacationNote] = useState("");
   
   // Tour management
   const tourManager = useManagedTour(TOUR_IDS.CHECKINS_GUIDE);
@@ -128,6 +133,26 @@ export default function Checkins() {
     enabled: !!currentUser?.id,
   });
 
+  // Fetch user's vacations
+  const { data: vacations = [], refetch: refetchVacations } = useQuery<Vacation[]>({
+    queryKey: ["/api/vacations"],
+    enabled: !!currentUser,
+  });
+
+  // Check if current week is marked as vacation
+  const currentWeekVacation = useMemo(() => {
+    return vacations.find(v => 
+      isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 1 })
+    );
+  }, [vacations, currentWeekStart]);
+
+  // Check if previous week was marked as vacation
+  const previousWeekVacation = useMemo(() => {
+    return vacations.find(v => 
+      isSameWeek(new Date(v.weekOf), previousWeekStart, { weekStartsOn: 1 })
+    );
+  }, [vacations, previousWeekStart]);
+
   // Filter for only active questions
   const activeQuestions = questions.filter(q => q.isActive);
   
@@ -163,6 +188,62 @@ export default function Checkins() {
   const historicalCheckins = sortedCheckins.filter(checkin => 
     !isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 1 })
   );
+
+  // Vacation management mutations
+  const markVacationMutation = useMutation({
+    mutationFn: async ({ weekOf, note }: { weekOf: Date, note?: string }) => {
+      const response = await apiRequest("POST", "/api/vacations", {
+        weekOf: weekOf.toISOString(),
+        note: note || undefined,
+      });
+      return await response.json();
+    },
+    onSuccess: () => {
+      refetchVacations();
+      queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser?.id, "current-checkin"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser?.id, "previous-checkin"] });
+      toast({
+        title: "Vacation marked",
+        description: "This week has been marked as vacation.",
+      });
+      setShowVacationDialog(false);
+      setVacationNote("");
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to mark vacation",
+        description: "There was an error marking your vacation. Please try again.",
+      });
+    },
+  });
+
+  const unmarkVacationMutation = useMutation({
+    mutationFn: async (weekOf: Date) => {
+      const response = await apiRequest("DELETE", `/api/vacations/${weekOf.toISOString()}`);
+      if (!response.ok && response.status !== 204) {
+        throw new Error("Failed to unmark vacation");
+      }
+    },
+    onSuccess: () => {
+      refetchVacations();
+      queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser?.id, "current-checkin"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser?.id, "previous-checkin"] });
+      toast({
+        title: "Vacation removed",
+        description: "This week is no longer marked as vacation.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to remove vacation",
+        description: "There was an error removing your vacation. Please try again.",
+      });
+    },
+  });
 
   // Create/Update check-in mutation
   const createCheckinMutation = useMutation({
@@ -308,9 +389,170 @@ export default function Checkins() {
             </AlertDescription>
           </Alert>
         )}
+
+        {/* Vacation Management Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Plane className="w-5 h-5" />
+              Vacation Management
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Current Week Vacation Status */}
+              <div className="flex items-center justify-between p-4 rounded-lg border">
+                <div>
+                  <p className="font-medium">Current Week</p>
+                  <p className="text-sm text-muted-foreground">
+                    Week ending {format(getCheckinWeekFriday(currentWeekStart), 'MMMM d, yyyy')}
+                  </p>
+                  {currentWeekVacation && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Badge variant="secondary" className="gap-1">
+                        <Plane className="w-3 h-3" />
+                        On Vacation
+                      </Badge>
+                      {currentWeekVacation.note && (
+                        <span className="text-sm text-muted-foreground">{currentWeekVacation.note}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {currentWeekVacation ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => unmarkVacationMutation.mutate(currentWeekStart)}
+                      disabled={unmarkVacationMutation.isPending}
+                      data-testid="button-unmark-current-vacation"
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      Remove Vacation
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedVacationWeek(currentWeekStart);
+                        setShowVacationDialog(true);
+                      }}
+                      disabled={!!currentWeekCheckin}
+                      data-testid="button-mark-current-vacation"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Mark as Vacation
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Previous Week Vacation Status (if no check-in submitted) */}
+              {!previousCheckin && (
+                <div className="flex items-center justify-between p-4 rounded-lg border">
+                  <div>
+                    <p className="font-medium">Previous Week</p>
+                    <p className="text-sm text-muted-foreground">
+                      Week ending {format(getCheckinWeekFriday(previousWeekStart), 'MMMM d, yyyy')}
+                    </p>
+                    {previousWeekVacation && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <Badge variant="secondary" className="gap-1">
+                          <Plane className="w-3 h-3" />
+                          Was on Vacation
+                        </Badge>
+                        {previousWeekVacation.note && (
+                          <span className="text-sm text-muted-foreground">{previousWeekVacation.note}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    {previousWeekVacation ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => unmarkVacationMutation.mutate(previousWeekStart)}
+                        disabled={unmarkVacationMutation.isPending}
+                        data-testid="button-unmark-previous-vacation"
+                      >
+                        <XCircle className="w-4 h-4 mr-2" />
+                        Remove Vacation
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedVacationWeek(previousWeekStart);
+                          setShowVacationDialog(true);
+                        }}
+                        data-testid="button-mark-previous-vacation"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Mark as Vacation
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Upcoming Weeks - Allow marking future vacations */}
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-3">Plan Future Vacations</p>
+                <div className="space-y-2">
+                  {[1, 2, 3, 4].map(weeksAhead => {
+                    const futureWeek = addWeeks(currentWeekStart, weeksAhead);
+                    const futureVacation = vacations.find(v => 
+                      isSameWeek(new Date(v.weekOf), futureWeek, { weekStartsOn: 1 })
+                    );
+                    return (
+                      <div key={weeksAhead} className="flex items-center justify-between py-2">
+                        <div className="text-sm">
+                          Week ending {format(getCheckinWeekFriday(futureWeek), 'MMM d')}
+                          {futureVacation && (
+                            <Badge variant="secondary" className="ml-2 gap-1">
+                              <Plane className="w-3 h-3" />
+                              Vacation Planned
+                            </Badge>
+                          )}
+                        </div>
+                        {futureVacation ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => unmarkVacationMutation.mutate(futureWeek)}
+                            disabled={unmarkVacationMutation.isPending}
+                            data-testid={`button-unmark-future-vacation-${weeksAhead}`}
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedVacationWeek(futureWeek);
+                              setShowVacationDialog(true);
+                            }}
+                            data-testid={`button-mark-future-vacation-${weeksAhead}`}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
         
-        {/* Late Check-in Alert - Show if previous week's check-in is missing */}
-        {!previousCheckin && activeQuestions.length > 0 && (
+        {/* Late Check-in Alert - Show if previous week's check-in is missing and NOT on vacation */}
+        {!previousCheckin && !previousWeekVacation && activeQuestions.length > 0 && (
           <Alert className="bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800">
             <Clock className="h-4 w-4 text-orange-600 dark:text-orange-400" />
             <AlertDescription>
@@ -351,15 +593,32 @@ export default function Checkins() {
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
                   Week ending {format(getCheckinWeekFriday(new Date()), 'MMMM d, yyyy')}
+                  {currentWeekVacation && (
+                    <Badge variant="secondary" className="ml-2 gap-1">
+                      <Plane className="w-3 h-3" />
+                      On Vacation
+                    </Badge>
+                  )}
                 </p>
               </div>
               <Badge className={currentStatus.color} data-testid="badge-current-status">
-                {currentStatus.label}
+                {currentWeekVacation ? "On Vacation" : currentStatus.label}
               </Badge>
             </div>
           </CardHeader>
           <CardContent>
-            {!currentWeekCheckin ? (
+            {currentWeekVacation ? (
+              <div className="text-center py-8">
+                <Plane className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="text-lg font-medium mb-2">You're on vacation this week</h3>
+                <p className="text-muted-foreground mb-4">
+                  No check-in is required while you're on vacation. Enjoy your time off!
+                </p>
+                {currentWeekVacation.note && (
+                  <p className="text-sm text-muted-foreground italic">"{currentWeekVacation.note}"</p>
+                )}
+              </div>
+            ) : !currentWeekCheckin ? (
               <div className="text-center py-8">
                 <ClipboardCheck className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                 <h3 className="text-lg font-medium mb-2">Ready to check in?</h3>
@@ -1001,6 +1260,63 @@ export default function Checkins() {
           }}
           disabled={false}
         />
+
+        {/* Vacation Dialog */}
+        <Dialog open={showVacationDialog} onOpenChange={setShowVacationDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Plane className="w-5 h-5" />
+                Mark Vacation Week
+              </DialogTitle>
+              <DialogDescription>
+                Mark the week ending {selectedVacationWeek && format(getCheckinWeekFriday(selectedVacationWeek), 'MMMM d, yyyy')} as vacation
+              </DialogDescription>
+            </DialogHeader>
+            
+            <div className="space-y-4 py-4">
+              <div>
+                <Label htmlFor="vacation-note">Note (optional)</Label>
+                <Textarea
+                  id="vacation-note"
+                  placeholder="e.g., Family vacation, PTO, etc."
+                  value={vacationNote}
+                  onChange={(e) => setVacationNote(e.target.value)}
+                  rows={3}
+                  data-testid="textarea-vacation-note"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowVacationDialog(false);
+                  setVacationNote("");
+                }}
+                data-testid="button-cancel-vacation"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (selectedVacationWeek) {
+                    markVacationMutation.mutate({
+                      weekOf: selectedVacationWeek,
+                      note: vacationNote || undefined,
+                    });
+                  }
+                }}
+                disabled={!selectedVacationWeek || markVacationMutation.isPending}
+                data-testid="button-confirm-vacation"
+              >
+                <Plane className="w-4 h-4 mr-2" />
+                {markVacationMutation.isPending ? "Marking..." : "Mark as Vacation"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     </>
   );
