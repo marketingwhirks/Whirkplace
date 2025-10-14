@@ -228,14 +228,46 @@ export function KraTemplatesManager() {
             Manage and import Key Result Area templates for your organization
           </p>
         </div>
-        <Button 
-          onClick={() => setShowImportDialog(true)}
-          className="flex items-center gap-2"
-          data-testid="button-import-templates"
-        >
-          <Upload className="w-4 h-4" />
-          Import Default Templates
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            onClick={() => setShowImportDialog(true)}
+            className="flex items-center gap-2"
+            data-testid="button-import-templates"
+          >
+            <Upload className="w-4 h-4" />
+            Import Default Templates
+          </Button>
+          
+          {/* Emergency fallback if normal import fails */}
+          {templates.length === 0 && (
+            <Button
+              variant="outline"
+              onClick={async () => {
+                try {
+                  const response = await apiRequest("POST", "/api/kra-templates/import-fallback", {});
+                  const data = await response.json();
+                  toast({
+                    title: "Success",
+                    description: `Imported ${data.imported} essential templates`,
+                  });
+                  queryClient.invalidateQueries({ queryKey: ["/api/kra-templates"] });
+                  refetch();
+                } catch (error) {
+                  toast({
+                    title: "Import Failed",
+                    description: "Could not import fallback templates",
+                    variant: "destructive",
+                  });
+                }
+              }}
+              className="flex items-center gap-2"
+              data-testid="button-import-fallback"
+            >
+              <AlertCircle className="w-4 h-4" />
+              Quick Start (3 Templates)
+            </Button>
+          )}
+        </div>
       </div>
       
       {/* Statistics */}

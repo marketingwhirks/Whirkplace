@@ -9819,19 +9819,149 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Fallback import endpoint - uses hardcoded templates for guaranteed success
+  app.post("/api/kra-templates/import-fallback", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      console.log(`🚨 KRA Import Fallback - Using hardcoded templates for orgId: "${req.orgId}"`);
+      
+      // Import fallback templates
+      const { FALLBACK_TEMPLATES, convertFallbackTemplate } = await import('./kraTemplatesFallback');
+      
+      let importedCount = 0;
+      let skippedCount = 0;
+      const errors: string[] = [];
+      
+      for (const template of FALLBACK_TEMPLATES) {
+        try {
+          // Check if template already exists
+          const existingTemplates = await storage.getKraTemplatesByName(req.orgId, template.name);
+          if (existingTemplates && existingTemplates.length > 0) {
+            skippedCount++;
+            continue;
+          }
+          
+          // Convert and create template
+          const dbTemplate = convertFallbackTemplate(template, req.orgId);
+          await storage.createKraTemplate(req.orgId, dbTemplate);
+          importedCount++;
+        } catch (err) {
+          console.error(`Failed to import fallback template ${template.name}:`, err);
+          errors.push(`Failed to import ${template.name}`);
+        }
+      }
+      
+      console.log(`✅ Fallback Import Complete: Imported ${importedCount}, Skipped ${skippedCount}`);
+      
+      res.json({
+        message: `Imported ${importedCount} fallback templates`,
+        imported: importedCount,
+        skipped: skippedCount,
+        total: FALLBACK_TEMPLATES.length,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } catch (error) {
+      console.error("POST /api/kra-templates/import-fallback - Error:", error);
+      res.status(500).json({ 
+        message: "Failed to import fallback templates", 
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+  
+  // Diagnostic endpoint for debugging template issues
+  app.get("/api/kra-templates/diagnostic", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      console.log(`🔍 KRA Diagnostic - Running diagnostic for orgId: "${req.orgId}"`);
+      
+      // Import templates to check what's available
+      const templates = await import('@shared/defaultKraTemplates');
+      const DEFAULT_KRA_TEMPLATES = templates.DEFAULT_KRA_TEMPLATES || [];
+      
+      // Get existing templates count
+      const existingCount = await storage.getKraTemplateCount(req.orgId);
+      
+      // Get template organizations
+      const templateOrgs = [...new Set(DEFAULT_KRA_TEMPLATES.map(t => t.organization))];
+      
+      // Get sample template
+      const sampleTemplate = DEFAULT_KRA_TEMPLATES[0] ? {
+        name: DEFAULT_KRA_TEMPLATES[0].name,
+        organization: DEFAULT_KRA_TEMPLATES[0].organization,
+        hasGoals: DEFAULT_KRA_TEMPLATES[0].goals ? DEFAULT_KRA_TEMPLATES[0].goals.length : 0
+      } : null;
+      
+      const diagnostic = {
+        orgId: req.orgId,
+        templatesAvailable: DEFAULT_KRA_TEMPLATES.length,
+        existingTemplates: existingCount,
+        templateOrganizations: templateOrgs,
+        sampleTemplate: sampleTemplate,
+        importModuleLoaded: !!templates,
+        hasDefaultTemplates: !!templates.DEFAULT_KRA_TEMPLATES,
+        hasConvertFunction: !!templates.convertToDbFormat,
+        hasGetTemplatesFunction: !!templates.getTemplatesByOrganization
+      };
+      
+      console.log(`📊 Diagnostic Results:`, diagnostic);
+      
+      res.json(diagnostic);
+    } catch (error) {
+      console.error("GET /api/kra-templates/diagnostic - Error:", error);
+      res.status(500).json({ 
+        message: "Diagnostic failed", 
+        error: error instanceof Error ? error.message : "Unknown error",
+        stack: error instanceof Error ? error.stack : undefined
+      });
+    }
+  });
+  
   // Import all templates endpoint - simplified version for production reliability
   app.post("/api/kra-templates/import-all", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
       console.log(`🚀 KRA Import All - Starting import for orgId: "${req.orgId}"`);
       
-      // Import default templates directly
-      const { DEFAULT_KRA_TEMPLATES, convertToDbFormat } = await import('@shared/defaultKraTemplates');
+      // Import default templates module
+      const templateModule = await import('@shared/defaultKraTemplates');
+      
+      // Try multiple ways to access templates for production compatibility
+      const DEFAULT_KRA_TEMPLATES = 
+        templateModule.DEFAULT_KRA_TEMPLATES || 
+        templateModule.default?.DEFAULT_KRA_TEMPLATES ||
+        [];
+      
+      const convertToDbFormat = 
+        templateModule.convertToDbFormat || 
+        templateModule.default?.convertToDbFormat ||
+        null;
+      
+      if (!DEFAULT_KRA_TEMPLATES || DEFAULT_KRA_TEMPLATES.length === 0) {
+        console.error(`❌ No templates found in module. Module keys: ${Object.keys(templateModule).join(', ')}`);
+        return res.status(500).json({ 
+          message: "No templates found in module",
+          imported: 0,
+          skipped: 0,
+          total: 0,
+          moduleKeys: Object.keys(templateModule)
+        });
+      }
+      
+      if (!convertToDbFormat) {
+        console.error(`❌ convertToDbFormat function not found in module`);
+        return res.status(500).json({ 
+          message: "Template conversion function not found",
+          imported: 0,
+          skipped: 0,
+          total: 0
+        });
+      }
       
       console.log(`📊 Total templates available: ${DEFAULT_KRA_TEMPLATES.length}`);
       
       let importedCount = 0;
       let skippedCount = 0;
       const errors: string[] = [];
+      const importedNames: string[] = [];
+      const skippedNames: string[] = [];
       
       // Import each template
       for (const template of DEFAULT_KRA_TEMPLATES) {
@@ -9840,6 +9970,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const existingTemplates = await storage.getKraTemplatesByName(req.orgId, template.name);
           if (existingTemplates && existingTemplates.length > 0) {
             skippedCount++;
+            skippedNames.push(template.name);
             continue;
           }
           
@@ -9850,24 +9981,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
             organizationId: req.orgId
           });
           importedCount++;
+          importedNames.push(template.name);
         } catch (err) {
           console.error(`Failed to import template ${template.name}:`, err);
-          errors.push(`Failed to import ${template.name}`);
+          errors.push(`Failed to import ${template.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
       }
       
       console.log(`🎉 KRA Import All Complete: Imported ${importedCount}, Skipped ${skippedCount}, Total ${DEFAULT_KRA_TEMPLATES.length}`);
+      if (importedCount > 0) {
+        console.log(`✅ Imported templates: ${importedNames.join(', ')}`);
+      }
+      if (skippedCount > 0) {
+        console.log(`⏭️ Skipped templates: ${skippedNames.join(', ')}`);
+      }
       
       res.json({
         message: `Successfully imported ${importedCount} templates`,
         imported: importedCount,
         skipped: skippedCount,
         total: DEFAULT_KRA_TEMPLATES.length,
+        importedNames: importedCount > 0 ? importedNames : undefined,
+        skippedNames: skippedCount > 0 ? skippedNames : undefined,
         errors: errors.length > 0 ? errors : undefined
       });
     } catch (error) {
-      console.error("POST /api/kra-templates/import-all - Error:", error);
-      res.status(500).json({ message: "Failed to import templates", error: error instanceof Error ? error.message : "Unknown error" });
+      console.error("POST /api/kra-templates/import-all - Full Error:", error);
+      console.error("Error Stack:", error instanceof Error ? error.stack : 'No stack');
+      res.status(500).json({ 
+        message: "Failed to import templates", 
+        error: error instanceof Error ? error.message : "Unknown error",
+        details: error instanceof Error ? error.stack : undefined
+      });
     }
   });
   
