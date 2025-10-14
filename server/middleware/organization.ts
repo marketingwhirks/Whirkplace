@@ -108,8 +108,24 @@ export function resolveOrganization() {
       next();
       
     } catch (error) {
+      console.error("Failed to resolve organization context:", error);
+      console.error("Error details:", {
+        hasUser: !!req.currentUser,
+        userId: req.currentUser?.id,
+        userEmail: req.currentUser?.email,
+        sessionOrgId: req.session?.organizationId,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        errorStack: error instanceof Error ? error.stack : undefined
+      });
+      
+      // Return more specific error message based on the error
+      const errorMessage = error instanceof Error && error.message.includes('column') 
+        ? "Database schema mismatch - please contact support"
+        : "Failed to resolve organization context";
+      
       return res.status(500).json({ 
-        message: "Failed to resolve organization context" 
+        message: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? (error instanceof Error ? error.message : "Unknown error") : undefined
       });
     }
   };
