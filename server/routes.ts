@@ -9381,8 +9381,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const targetUserId = req.currentUser!.id === meeting.participantOneId ? meeting.participantTwoId : meeting.participantOneId;
       const isSupervisor = req.currentUser!.id === meeting.participantOneId;
       
-      // Get user's active KRAs
-      const kras = await storage.getUserKrasByUser(req.orgId, targetUserId, "active");
+      // Get KRAs - either specific ones linked to this meeting or all active KRAs for the user
+      let kras;
+      if (meeting.kraIds && meeting.kraIds.length > 0) {
+        // Get specific KRAs linked to this meeting
+        const kraPromises = meeting.kraIds.map(kraId => storage.getUserKra(req.orgId, kraId));
+        const krasResults = await Promise.all(kraPromises);
+        kras = krasResults.filter((kra): kra is NonNullable<typeof kra> => kra !== undefined);
+      } else {
+        // Fall back to all active KRAs for the user
+        kras = await storage.getUserKrasByUser(req.orgId, targetUserId, "active");
+      }
       
       // Get latest supervisor ratings for these KRAs
       const kraIds = kras.map(kra => kra.id);
