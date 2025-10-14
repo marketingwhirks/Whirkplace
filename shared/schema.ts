@@ -1199,6 +1199,7 @@ export const oneOnOnes = pgTable("one_on_ones", {
   agenda: text("agenda"),
   notes: text("notes"),
   actionItems: jsonb("action_items").notNull().default([]), // Array of action items
+  kraIds: text("kra_ids").array().default([]), // Array of KRA IDs associated with this meeting
   duration: integer("duration").default(30), // Duration in minutes
   location: text("location"), // Meeting location or "virtual"
   // Recurring Meeting Support
