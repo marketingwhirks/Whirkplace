@@ -179,6 +179,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // EMERGENCY: Database fix endpoint - NO AUTH REQUIRED (REMOVE AFTER FIXING)
+  app.get("/api/emergency-fix-production", async (req, res) => {
+    try {
+      console.log("🚨 EMERGENCY: Database fix attempt at", new Date().toISOString());
+      
+      // Only allow from localhost or specific IP for security
+      const clientIp = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+      console.log("Request from IP:", clientIp);
+      
+      // Import db directly to ensure fresh connection
+      const { db } = await import('./db');
+      const { sql } = await import('drizzle-orm');
+      
+      const results: any[] = [];
+      
+      // Test database connectivity first
+      try {
+        const testResult = await db.execute(sql`SELECT 1 as test`);
+        results.push({ test: "Database connection OK", data: testResult.rows });
+      } catch (dbError: any) {
+        console.error("Database connection failed:", dbError);
+        return res.status(500).json({ 
+          error: "Database connection failed", 
+          message: dbError.message 
+        });
+      }
+      
+      // Try to add missing columns one by one
+      const columns = [
+        { name: 'slack_access_token', type: 'TEXT' },
+        { name: 'slack_refresh_token', type: 'TEXT' },
+        { name: 'slack_token_expires_at', type: 'TIMESTAMP' },
+        { name: 'slack_connection_status', type: "TEXT DEFAULT 'not_connected'" }
+      ];
+      
+      for (const col of columns) {
+        try {
+          // Check if column exists
+          const checkResult = await db.execute(sql`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'organizations' 
+            AND column_name = ${col.name}
+          `);
+          
+          if (checkResult.rows.length === 0) {
+            // Column doesn't exist, add it
+            await db.execute(sql.raw(`ALTER TABLE organizations ADD COLUMN ${col.name} ${col.type}`));
+            results.push({ column: col.name, status: "ADDED" });
+          } else {
+            results.push({ column: col.name, status: "EXISTS" });
+          }
+        } catch (colError: any) {
+          console.error(`Error with column ${col.name}:`, colError);
+          results.push({ column: col.name, status: "ERROR", error: colError.message });
+        }
+      }
+      
+      // Verify final state
+      const verifyResult = await db.execute(sql`
+        SELECT column_name, data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'organizations' 
+        AND column_name IN ('slack_access_token', 'slack_refresh_token', 'slack_token_expires_at', 'slack_connection_status')
+        ORDER BY column_name
+      `);
+      
+      console.log("✅ Database fix completed. Results:", results);
+      console.log("📋 Final columns:", verifyResult.rows);
+      
+      res.json({
+        success: true,
+        message: "Database fix attempted",
+        results,
+        finalColumns: verifyResult.rows,
+        timestamp: new Date().toISOString()
+      });
+      
+    } catch (error) {
+      console.error("❌ Emergency fix failed:", error);
+      res.status(500).json({ 
+        success: false,
+        error: "Emergency fix failed",
+        message: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
   // Local authentication login using centralized AuthService
   app.post("/auth/local/login", requireOrganization(), async (req, res) => {
     try {
