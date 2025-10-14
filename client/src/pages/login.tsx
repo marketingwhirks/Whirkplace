@@ -302,8 +302,12 @@ export default function LoginPage() {
           await new Promise(resolve => setTimeout(resolve, 200));
         }
         
-        // Redirect to dashboard - authentication state is now properly set
-        setLocation("/dashboard");
+        // Redirect based on user role - super admins go to organization selection
+        if (data.user?.isSuperAdmin) {
+          setLocation("/select-organization");
+        } else {
+          setLocation("/dashboard");
+        }
       } else {
         const error = await response.json();
         toast({ 
