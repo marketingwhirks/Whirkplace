@@ -9846,20 +9846,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Create template directly without any organization lookup
           const dbTemplate = {
-            id: crypto.randomUUID(),
             organizationId: req.orgId,
             name: templateName,
-            description: template.description,
-            goals: JSON.stringify(template.goals),
-            category: template.category,
-            department: template.department,
-            jobTitle: template.jobTitle,
-            industries: template.industries?.join(',') || '',
+            description: template.description || '',
+            goals: template.goals || [], // Pass as array, not stringified
+            category: template.category || 'general',
+            department: template.department || '',
+            jobTitle: template.jobTitle || '',
+            industries: template.industries || [], // Pass as array, not joined string
             isGlobal: false,
             isActive: true,
-            createdBy: req.userId || 'system',
-            createdAt: new Date(),
-            updatedAt: new Date()
+            createdBy: req.userId || 'system'
           };
           
           await storage.createKraTemplate(req.orgId, dbTemplate);
@@ -9989,27 +9986,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Create the template with the current organization's ID
           const dbTemplate = {
-            id: crypto.randomUUID(),
             organizationId: req.orgId,
             name: templateName,
-            description: template.description,
-            goals: JSON.stringify(template.goals),
-            category: template.category,
-            department: template.department,
-            jobTitle: template.jobTitle,
-            industries: template.industries?.join(',') || '',
+            description: template.description || '',
+            goals: template.goals || [], // Pass as array, not stringified
+            category: template.category || 'general',
+            jobTitle: template.jobTitle || '',
+            industries: template.industries || [], // Pass as array, not joined string
             isGlobal: false,
             isActive: true,
-            createdBy: req.userId || 'system',
-            createdAt: new Date(),
-            updatedAt: new Date()
+            createdBy: req.userId || 'system'
           };
           
           await storage.createKraTemplate(req.orgId, dbTemplate);
           importedCount++;
           importedNames.push(templateName);
+          console.log(`✅ Successfully imported: ${templateName}`);
         } catch (err) {
-          console.error(`Failed to import template ${template.name}:`, err);
+          console.error(`❌ Failed to import template ${template.name}:`, err);
+          console.error(`Template data:`, JSON.stringify(dbTemplate, null, 2));
+          console.error(`Error details:`, err instanceof Error ? err.stack : err);
           errors.push(`Failed to import ${template.name}: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
       }
@@ -10085,20 +10081,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Create template for current organization
           const dbTemplate = {
-            id: crypto.randomUUID(),
             organizationId: req.orgId,
             name: templateName,
-            description: template.description,
-            goals: JSON.stringify(template.goals),
-            category: template.category,
-            department: template.department,
-            jobTitle: template.jobTitle,
-            industries: template.industries?.join(',') || '',
+            description: template.description || '',
+            goals: template.goals || [], // Pass as array, not stringified
+            category: template.category || 'general',
+            jobTitle: template.jobTitle || '',
+            industries: template.industries || [], // Pass as array, not joined string
             isGlobal: false,
             isActive: true,
-            createdBy: req.userId || 'system',
-            createdAt: new Date(),
-            updatedAt: new Date()
+            createdBy: req.userId || 'system'
           };
           
           await storage.createKraTemplate(req.orgId, dbTemplate);

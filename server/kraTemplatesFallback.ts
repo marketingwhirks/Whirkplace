@@ -199,21 +199,4 @@ export const FALLBACK_TEMPLATES = [
   }
 ];
 
-export function convertFallbackTemplate(template: any, organizationId: string): any {
-  return {
-    id: crypto.randomUUID(),
-    organizationId,
-    name: template.name,
-    description: template.description,
-    goals: template.goals,
-    category: template.category,
-    department: template.department,
-    jobTitle: template.jobTitle,
-    industries: template.industries,
-    isGlobal: false, // Organization-specific when imported
-    isActive: true,
-    createdBy: null,
-    createdAt: new Date(),
-    updatedAt: new Date()
-  };
-}
+// Function removed - template conversion now done inline in routes.ts
