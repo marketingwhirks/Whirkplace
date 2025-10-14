@@ -347,6 +347,7 @@ export interface IStorage {
   getOneOnOnesByParticipants(organizationId: string, participantOneId: string, participantTwoId: string): Promise<OneOnOne[]>;
   getAllUpcomingOneOnOnes(organizationId: string): Promise<OneOnOne[]>;
   getUpcomingOneOnOnes(organizationId: string, userId: string): Promise<OneOnOne[]>;
+  getUpcomingOneOnOnesBetween(organizationId: string, participantOneId: string, participantTwoId: string): Promise<OneOnOne[]>;
   getAllPastOneOnOnes(organizationId: string): Promise<OneOnOne[]>;
   getPastOneOnOnes(organizationId: string, userId: string, limit?: number): Promise<OneOnOne[]>;
 
@@ -4470,6 +4471,34 @@ export class DatabaseStorage implements IStorage {
         .orderBy(oneOnOnes.scheduledAt);
     } catch (error) {
       console.error("Failed to fetch upcoming one-on-ones:", error);
+      throw error;
+    }
+  }
+
+  async getUpcomingOneOnOnesBetween(organizationId: string, participantOneId: string, participantTwoId: string): Promise<OneOnOne[]> {
+    try {
+      const now = new Date();
+      return await db
+        .select()
+        .from(oneOnOnes)
+        .where(and(
+          eq(oneOnOnes.organizationId, organizationId),
+          or(
+            and(
+              eq(oneOnOnes.participantOneId, participantOneId),
+              eq(oneOnOnes.participantTwoId, participantTwoId)
+            ),
+            and(
+              eq(oneOnOnes.participantOneId, participantTwoId),
+              eq(oneOnOnes.participantTwoId, participantOneId)
+            )
+          ),
+          gte(oneOnOnes.scheduledAt, now),
+          eq(oneOnOnes.status, "scheduled")
+        ))
+        .orderBy(oneOnOnes.scheduledAt);
+    } catch (error) {
+      console.error("Failed to fetch upcoming one-on-ones between participants:", error);
       throw error;
     }
   }

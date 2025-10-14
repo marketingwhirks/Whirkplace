@@ -10470,6 +10470,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         const created = await storage.createUserKra(req.orgId, kraData);
         assignments.push(created);
+        
+        // Add KRA to upcoming one-on-ones between manager and assignee
+        try {
+          const upcomingOneOnOnes = await storage.getUpcomingOneOnOnesBetween(
+            req.orgId,
+            assignedBy, // manager
+            userId // team member
+          );
+          
+          // Add the KRA to each upcoming one-on-one
+          for (const meeting of upcomingOneOnOnes) {
+            const currentKraIds = meeting.kraIds || [];
+            if (!currentKraIds.includes(created.id)) {
+              await storage.updateOneOnOne(req.orgId, meeting.id, {
+                kraIds: [...currentKraIds, created.id]
+              });
+            }
+          }
+        } catch (error) {
+          console.log(`Note: Could not add KRA to one-on-ones: ${error.message}`);
+          // Don't fail the KRA assignment if one-on-one update fails
+        }
       }
       
       res.json({
