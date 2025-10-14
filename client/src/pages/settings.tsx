@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -1010,48 +1011,105 @@ export default function Settings() {
     <main className="flex-1 overflow-auto p-4 md:p-6">
         <div className="max-w-4xl mx-auto space-y-6">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="w-full flex flex-wrap justify-start gap-2" data-testid="tabs-settings">
-              <TabsTrigger value="profile" data-testid="tab-profile" className="flex items-center gap-2">
-                <User className="w-4 h-4" />
-                <span>Profile</span>
-              </TabsTrigger>
-              <TabsTrigger value="notifications" data-testid="tab-notifications" className="flex items-center gap-2">
-                <Bell className="w-4 h-4" />
-                <span>Notifications</span>
-              </TabsTrigger>
-              {currentUser?.role === "admin" && (
-                <>
-                  <TabsTrigger value="organization" data-testid="tab-organization" className="flex items-center gap-2">
-                    <Building className="w-4 h-4" />
-                    <span>Organization</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="kra-templates" data-testid="tab-kra-templates" className="flex items-center gap-2">
-                    <Target className="w-4 h-4" />
-                    <span>KRA Templates</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="questions" data-testid="tab-questions" className="flex items-center gap-2">
-                    <HelpCircle className="w-4 h-4" />
-                    <span>Question Bank</span>
-                  </TabsTrigger>
-                </>
-              )}
-              <TabsTrigger value="security" data-testid="tab-security" className="flex items-center gap-2">
-                <Shield className="w-4 h-4" />
-                <span>Security</span>
-              </TabsTrigger>
-              <TabsTrigger value="preferences" data-testid="tab-preferences" className="flex items-center gap-2">
-                <SettingsIcon className="w-4 h-4" />
-                <span>Preferences</span>
-              </TabsTrigger>
-              <TabsTrigger value="integrations" data-testid="tab-integrations" className="flex items-center gap-2">
-                <Globe className="w-4 h-4" />
-                <span>Integrations</span>
-              </TabsTrigger>
-              <TabsTrigger value="tours" data-testid="tab-tours" className="flex items-center gap-2">
-                <Compass className="w-4 h-4" />
-                <span>Tours</span>
-              </TabsTrigger>
-            </TabsList>
+            <TooltipProvider>
+              <div className="w-full overflow-x-auto pb-2">
+                <TabsList className="inline-flex h-auto min-w-full md:flex-wrap" data-testid="tabs-settings">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger value="profile" data-testid="tab-profile" className="flex items-center gap-1 md:gap-2 px-2 md:px-3 whitespace-nowrap">
+                        <User className="w-4 h-4" />
+                        <span className="hidden sm:inline">Profile</span>
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent className="sm:hidden">Profile</TooltipContent>
+                  </Tooltip>
+                  
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger value="notifications" data-testid="tab-notifications" className="flex items-center gap-1 md:gap-2 px-2 md:px-3 whitespace-nowrap">
+                        <Bell className="w-4 h-4" />
+                        <span className="hidden sm:inline">Notifications</span>
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent className="sm:hidden">Notifications</TooltipContent>
+                  </Tooltip>
+                  
+                  {currentUser?.role === "admin" && (
+                    <>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <TabsTrigger value="organization" data-testid="tab-organization" className="flex items-center gap-1 md:gap-2 px-2 md:px-3 whitespace-nowrap">
+                            <Building className="w-4 h-4" />
+                            <span className="hidden sm:inline">Organization</span>
+                          </TabsTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent className="sm:hidden">Organization</TooltipContent>
+                      </Tooltip>
+                      
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <TabsTrigger value="kra-templates" data-testid="tab-kra-templates" className="flex items-center gap-1 md:gap-2 px-2 md:px-3 whitespace-nowrap">
+                            <Target className="w-4 h-4" />
+                            <span className="hidden sm:inline">KRA Templates</span>
+                          </TabsTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent className="sm:hidden">KRA Templates</TooltipContent>
+                      </Tooltip>
+                      
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <TabsTrigger value="questions" data-testid="tab-questions" className="flex items-center gap-1 md:gap-2 px-2 md:px-3 whitespace-nowrap">
+                            <HelpCircle className="w-4 h-4" />
+                            <span className="hidden sm:inline">Question Bank</span>
+                          </TabsTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent className="sm:hidden">Question Bank</TooltipContent>
+                      </Tooltip>
+                    </>
+                  )}
+                  
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger value="security" data-testid="tab-security" className="flex items-center gap-1 md:gap-2 px-2 md:px-3 whitespace-nowrap">
+                        <Shield className="w-4 h-4" />
+                        <span className="hidden sm:inline">Security</span>
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent className="sm:hidden">Security</TooltipContent>
+                  </Tooltip>
+                  
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger value="preferences" data-testid="tab-preferences" className="flex items-center gap-1 md:gap-2 px-2 md:px-3 whitespace-nowrap">
+                        <SettingsIcon className="w-4 h-4" />
+                        <span className="hidden sm:inline">Preferences</span>
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent className="sm:hidden">Preferences</TooltipContent>
+                  </Tooltip>
+                  
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger value="integrations" data-testid="tab-integrations" className="flex items-center gap-1 md:gap-2 px-2 md:px-3 whitespace-nowrap">
+                        <Globe className="w-4 h-4" />
+                        <span className="hidden sm:inline">Integrations</span>
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent className="sm:hidden">Integrations</TooltipContent>
+                  </Tooltip>
+                  
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger value="tours" data-testid="tab-tours" className="flex items-center gap-1 md:gap-2 px-2 md:px-3 whitespace-nowrap">
+                        <Compass className="w-4 h-4" />
+                        <span className="hidden sm:inline">Tours</span>
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent className="sm:hidden">Tours</TooltipContent>
+                  </Tooltip>
+                </TabsList>
+              </div>
+            </TooltipProvider>
 
             {/* Profile Settings */}
             <TabsContent value="profile" className="space-y-6">
