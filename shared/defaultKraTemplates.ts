@@ -1252,6 +1252,447 @@ export const DEFAULT_KRA_TEMPLATES: DefaultKraTemplate[] = [
     ],
     industries: ["all"],
     roleLevel: "lead"
+  },
+  // Additional Accounting Firm Templates - Primary Target Market
+  {
+    name: "Tax Senior",
+    organization: "Patrick Accounting",
+    jobTitle: "Tax Senior",
+    department: "Tax",
+    category: "finance",
+    description: "Leads tax preparation and planning for complex client accounts, mentors junior staff, and ensures compliance with tax regulations.",
+    goals: [
+      {
+        id: "tax-senior-1",
+        title: "Tax Return Preparation & Review",
+        description: "Prepare and review complex tax returns for individuals, corporations, and partnerships",
+        target: "Complete 120 returns per tax season with 98% accuracy",
+        metric: "Number of returns completed and accuracy rate",
+        weight: 35
+      },
+      {
+        id: "tax-senior-2",
+        title: "Tax Planning & Advisory",
+        description: "Provide proactive tax planning strategies to minimize client tax liabilities",
+        target: "Identify $500K+ in tax savings opportunities annually",
+        metric: "Tax savings identified and implemented",
+        weight: 30
+      },
+      {
+        id: "tax-senior-3",
+        title: "Staff Development & Training",
+        description: "Mentor and develop junior tax staff on complex tax issues",
+        target: "Train 3 junior staff members quarterly on advanced topics",
+        metric: "Training sessions conducted and staff competency improvements",
+        weight: 20
+      },
+      {
+        id: "tax-senior-4",
+        title: "Regulatory Compliance",
+        description: "Stay current with tax law changes and ensure firm compliance",
+        target: "100% compliance with filing deadlines and regulations",
+        metric: "Compliance rate and regulatory updates implemented",
+        weight: 15
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "senior"
+  },
+  {
+    name: "Bookkeeping Manager",
+    organization: "Patrick Accounting",
+    jobTitle: "Bookkeeping Manager",
+    department: "Bookkeeping",
+    category: "finance",
+    description: "Manages bookkeeping services for multiple clients, oversees bookkeeping team, and ensures accurate financial record maintenance.",
+    goals: [
+      {
+        id: "bookkeeping-mgr-1",
+        title: "Client Portfolio Management",
+        description: "Manage bookkeeping services for portfolio of 25-30 clients",
+        target: "Maintain 95% client retention with timely deliverables",
+        metric: "Client retention rate and on-time delivery",
+        weight: 35
+      },
+      {
+        id: "bookkeeping-mgr-2",
+        title: "Financial Accuracy & Reconciliation",
+        description: "Ensure accurate recording and reconciliation of all client transactions",
+        target: "Achieve 99.5% accuracy in monthly reconciliations",
+        metric: "Reconciliation accuracy and error rates",
+        weight: 30
+      },
+      {
+        id: "bookkeeping-mgr-3",
+        title: "Team Leadership",
+        description: "Lead and develop team of bookkeeping specialists",
+        target: "Manage team of 5-7 bookkeepers with 90% satisfaction score",
+        metric: "Team performance and satisfaction metrics",
+        weight: 20
+      },
+      {
+        id: "bookkeeping-mgr-4",
+        title: "Process Improvement",
+        description: "Implement efficient bookkeeping processes and technology solutions",
+        target: "Reduce processing time by 25% through automation",
+        metric: "Process efficiency gains and automation adoption",
+        weight: 15
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "manager"
+  },
+  {
+    name: "Audit Senior",
+    organization: "Patrick Accounting",
+    jobTitle: "Audit Senior",
+    department: "Audit",
+    category: "finance",
+    description: "Leads audit engagements, performs risk assessments, and ensures compliance with auditing standards.",
+    goals: [
+      {
+        id: "audit-senior-1",
+        title: "Audit Engagement Leadership",
+        description: "Lead multiple audit engagements from planning to completion",
+        target: "Complete 8-10 audit engagements annually within budget",
+        metric: "Engagements completed on time and within budget",
+        weight: 35
+      },
+      {
+        id: "audit-senior-2",
+        title: "Risk Assessment & Testing",
+        description: "Perform comprehensive risk assessments and design testing procedures",
+        target: "Identify 100% of material risks and control deficiencies",
+        metric: "Risk identification rate and testing effectiveness",
+        weight: 30
+      },
+      {
+        id: "audit-senior-3",
+        title: "Client Relationship Management",
+        description: "Build strong relationships with client management and audit committees",
+        target: "Achieve 95% client satisfaction score",
+        metric: "Client satisfaction ratings and feedback",
+        weight: 20
+      },
+      {
+        id: "audit-senior-4",
+        title: "Quality Assurance",
+        description: "Ensure audit quality and compliance with professional standards",
+        target: "Pass all internal and external quality reviews",
+        metric: "Quality review scores and compliance rates",
+        weight: 15
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "senior"
+  },
+  {
+    name: "Controller",
+    organization: "Patrick Accounting",
+    jobTitle: "Controller",
+    department: "Finance",
+    category: "finance",
+    description: "Oversees financial reporting, internal controls, and accounting operations for multiple client organizations.",
+    goals: [
+      {
+        id: "controller-1",
+        title: "Financial Reporting Excellence",
+        description: "Ensure accurate and timely financial reporting for all clients",
+        target: "Deliver 100% of financial statements within 5 business days",
+        metric: "Reporting timeliness and accuracy",
+        weight: 35
+      },
+      {
+        id: "controller-2",
+        title: "Internal Controls & Compliance",
+        description: "Design and maintain robust internal control systems",
+        target: "Zero material weaknesses in control assessments",
+        metric: "Control effectiveness and audit findings",
+        weight: 30
+      },
+      {
+        id: "controller-3",
+        title: "Strategic Financial Analysis",
+        description: "Provide strategic financial insights and recommendations",
+        target: "Deliver monthly KPI dashboards with actionable insights",
+        metric: "Value of insights and recommendations implemented",
+        weight: 20
+      },
+      {
+        id: "controller-4",
+        title: "Cash Flow Management",
+        description: "Optimize cash flow and working capital for clients",
+        target: "Improve client cash positions by 20%",
+        metric: "Cash flow improvements and forecasting accuracy",
+        weight: 15
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "lead"
+  },
+  {
+    name: "Tax Preparer",
+    organization: "Patrick Accounting",
+    jobTitle: "Tax Preparer",
+    department: "Tax",
+    category: "finance",
+    description: "Prepares individual and business tax returns, assists with tax research, and supports senior tax professionals.",
+    goals: [
+      {
+        id: "tax-prep-1",
+        title: "Tax Return Preparation",
+        description: "Accurately prepare individual and simple business tax returns",
+        target: "Complete 80 returns per tax season with 96% accuracy",
+        metric: "Number of returns completed and error rate",
+        weight: 40
+      },
+      {
+        id: "tax-prep-2",
+        title: "Client Data Management",
+        description: "Organize and maintain client tax documents and information",
+        target: "100% of client files organized and accessible",
+        metric: "File organization and data accuracy",
+        weight: 25
+      },
+      {
+        id: "tax-prep-3",
+        title: "Tax Software Proficiency",
+        description: "Master tax preparation software and stay current with updates",
+        target: "Achieve advanced certification in tax software",
+        metric: "Software proficiency and certification status",
+        weight: 20
+      },
+      {
+        id: "tax-prep-4",
+        title: "Client Communication",
+        description: "Respond to client inquiries and gather necessary information",
+        target: "Respond to all client requests within 24 hours",
+        metric: "Response time and client satisfaction",
+        weight: 15
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "individual"
+  },
+  {
+    name: "Bookkeeping Specialist",
+    organization: "Patrick Accounting",
+    jobTitle: "Bookkeeping Specialist",
+    department: "Bookkeeping",
+    category: "finance",
+    description: "Maintains accurate financial records, processes transactions, and supports monthly close procedures for assigned clients.",
+    goals: [
+      {
+        id: "bookkeep-spec-1",
+        title: "Transaction Processing",
+        description: "Accurately record and categorize all client transactions",
+        target: "Process 1000+ transactions monthly with 99% accuracy",
+        metric: "Transaction volume and accuracy rate",
+        weight: 35
+      },
+      {
+        id: "bookkeep-spec-2",
+        title: "Account Reconciliation",
+        description: "Complete monthly bank and credit card reconciliations",
+        target: "Reconcile all accounts within 3 days of month-end",
+        metric: "Reconciliation timeliness and accuracy",
+        weight: 30
+      },
+      {
+        id: "bookkeep-spec-3",
+        title: "Financial Report Preparation",
+        description: "Prepare accurate monthly financial reports for clients",
+        target: "Deliver reports by the 10th of each month",
+        metric: "Report delivery and quality metrics",
+        weight: 20
+      },
+      {
+        id: "bookkeep-spec-4",
+        title: "Client Support",
+        description: "Provide responsive support for client bookkeeping questions",
+        target: "Maintain 95% client satisfaction rating",
+        metric: "Client satisfaction and response times",
+        weight: 15
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "individual"
+  },
+  {
+    name: "Payroll Manager",
+    organization: "Patrick Accounting",
+    jobTitle: "Payroll Manager",
+    department: "Payroll",
+    category: "operations",
+    description: "Manages payroll processing for multiple clients, ensures compliance with payroll regulations, and leads payroll team.",
+    goals: [
+      {
+        id: "payroll-mgr-1",
+        title: "Payroll Processing Excellence",
+        description: "Ensure accurate and timely payroll processing for all clients",
+        target: "100% on-time payroll with zero critical errors",
+        metric: "Payroll accuracy and timeliness",
+        weight: 40
+      },
+      {
+        id: "payroll-mgr-2",
+        title: "Compliance Management",
+        description: "Maintain compliance with federal, state, and local payroll regulations",
+        target: "Zero compliance violations or penalties",
+        metric: "Compliance audit results and penalty avoidance",
+        weight: 30
+      },
+      {
+        id: "payroll-mgr-3",
+        title: "Tax Filing & Reporting",
+        description: "Ensure accurate and timely payroll tax filings and reporting",
+        target: "100% of tax filings completed before deadlines",
+        metric: "Tax filing timeliness and accuracy",
+        weight: 20
+      },
+      {
+        id: "payroll-mgr-4",
+        title: "Client Onboarding",
+        description: "Successfully onboard new payroll clients",
+        target: "Onboard 2-3 new clients monthly with smooth transition",
+        metric: "Client onboarding success rate",
+        weight: 10
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "manager"
+  },
+  {
+    name: "Client Onboarding Specialist",
+    organization: "Patrick Accounting",
+    jobTitle: "Client Onboarding Specialist",
+    department: "Client Services",
+    category: "client_success",
+    description: "Manages the onboarding process for new accounting clients, ensuring smooth transition and setup of services.",
+    goals: [
+      {
+        id: "onboard-spec-1",
+        title: "New Client Onboarding",
+        description: "Successfully onboard new clients to firm services",
+        target: "Complete 15-20 client onboardings monthly",
+        metric: "Number of successful onboardings completed",
+        weight: 35
+      },
+      {
+        id: "onboard-spec-2",
+        title: "Documentation & Setup",
+        description: "Gather and organize all necessary client documentation",
+        target: "100% completion of onboarding checklists within 5 days",
+        metric: "Documentation completeness and setup time",
+        weight: 30
+      },
+      {
+        id: "onboard-spec-3",
+        title: "System Integration",
+        description: "Set up clients in all necessary systems and software",
+        target: "Complete system setup within 48 hours of documentation receipt",
+        metric: "System setup speed and accuracy",
+        weight: 20
+      },
+      {
+        id: "onboard-spec-4",
+        title: "Client Training",
+        description: "Train clients on firm processes and portal usage",
+        target: "95% of clients proficient in portal use after training",
+        metric: "Client training effectiveness and adoption rates",
+        weight: 15
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "individual"
+  },
+  {
+    name: "Practice Manager",
+    organization: "Patrick Accounting",
+    jobTitle: "Practice Manager",
+    department: "Operations",
+    category: "operations",
+    description: "Manages day-to-day operations of the accounting practice, coordinates between departments, and ensures service quality.",
+    goals: [
+      {
+        id: "practice-mgr-1",
+        title: "Practice Operations",
+        description: "Oversee smooth daily operations across all service lines",
+        target: "Maintain 98% operational efficiency score",
+        metric: "Operational efficiency and service delivery metrics",
+        weight: 35
+      },
+      {
+        id: "practice-mgr-2",
+        title: "Resource Management",
+        description: "Optimize staff allocation and workload distribution",
+        target: "Achieve 85% staff utilization with balanced workloads",
+        metric: "Staff utilization and workload balance",
+        weight: 30
+      },
+      {
+        id: "practice-mgr-3",
+        title: "Quality Control",
+        description: "Implement and monitor quality control procedures",
+        target: "Maintain less than 2% rework rate across all services",
+        metric: "Quality metrics and rework rates",
+        weight: 20
+      },
+      {
+        id: "practice-mgr-4",
+        title: "Technology Implementation",
+        description: "Lead adoption of new technologies and process improvements",
+        target: "Implement 3 major process improvements annually",
+        metric: "Technology adoption and efficiency gains",
+        weight: 15
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "manager"
+  },
+  {
+    name: "CFO Services Director",
+    organization: "Patrick Accounting",
+    jobTitle: "CFO Services Director",
+    department: "Advisory",
+    category: "finance",
+    description: "Provides outsourced CFO services to clients, offering strategic financial guidance and executive-level insights.",
+    goals: [
+      {
+        id: "cfo-dir-1",
+        title: "Strategic Financial Advisory",
+        description: "Provide CFO-level strategic guidance to client businesses",
+        target: "Support 8-10 clients with monthly strategic sessions",
+        metric: "Client engagement and value delivered",
+        weight: 35
+      },
+      {
+        id: "cfo-dir-2",
+        title: "Financial Planning & Analysis",
+        description: "Develop comprehensive financial plans and forecasts",
+        target: "Deliver quarterly forecasts with 90% accuracy",
+        metric: "Forecast accuracy and planning effectiveness",
+        weight: 30
+      },
+      {
+        id: "cfo-dir-3",
+        title: "Business Growth Support",
+        description: "Guide clients through growth initiatives and funding",
+        target: "Help secure $5M+ in funding for clients annually",
+        metric: "Funding secured and growth metrics",
+        weight: 20
+      },
+      {
+        id: "cfo-dir-4",
+        title: "Performance Improvement",
+        description: "Identify and implement performance improvements",
+        target: "Achieve 20% average improvement in client profitability",
+        metric: "Client performance improvements",
+        weight: 15
+      }
+    ],
+    industries: ["accounting", "finance", "professional_services"],
+    roleLevel: "lead"
   }
 ];
 
