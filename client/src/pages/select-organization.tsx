@@ -13,7 +13,7 @@ export default function SelectOrganizationPage() {
 
   // Fetch available organizations for super admin
   const { data: organizations, isLoading, error } = useQuery({
-    queryKey: ['/api/super-admin/organizations'],
+    queryKey: ['/api/organizations'],
   });
 
   // Check if coming from Slack OAuth
