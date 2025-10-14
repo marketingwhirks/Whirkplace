@@ -138,8 +138,7 @@ app.use("/api", (req, res, next) => {
       req.path.startsWith("/business/plans") ||
       req.path.startsWith("/business/select-plan") ||
       req.path.startsWith("/partners/applications") ||
-      req.path.startsWith("/test/kra/") ||
-      req.path === "/emergency-fix-production") {  // Skip org resolution for emergency fix
+      req.path.startsWith("/test/kra/")) {
     return next();
   }
   
@@ -180,6 +179,34 @@ app.use((req, res, next) => {
 (async () => {
   try {
     // Authentication configuration is now simpler and deterministic
+    
+    // CRITICAL: Synchronize database schema FIRST before any other operations
+    // This ensures all tables and columns exist before the application tries to use them
+    console.log('🔄 Running automatic database schema synchronization...');
+    const { syncDatabaseSchema } = await import("./services/databaseSync");
+    const syncResult = await syncDatabaseSchema();
+    
+    if (!syncResult.success) {
+      console.error('🚨 Database schema sync failed with critical errors!');
+      console.error('   Message:', syncResult.message);
+      console.error('   Errors:', JSON.stringify(syncResult.errors, null, 2));
+      
+      // Check if this is a critical failure that should stop startup
+      if (syncResult.message.includes('critical')) {
+        console.error('💥 FATAL: Cannot continue with critical schema errors');
+        console.error('   The application may not function correctly');
+        // In production, we might want to exit here
+        // For now, we'll continue but log the warning
+        if (process.env.NODE_ENV === 'production') {
+          console.error('⚠️  WARNING: Continuing despite critical schema errors in production');
+        }
+      }
+    } else {
+      console.log('✅ Database schema synchronized successfully');
+      if (Object.keys(syncResult.errors).length > 0) {
+        console.log('   Note: Some non-critical sync issues were encountered');
+      }
+    }
     
     // Run development seeding before setting up routes
     await runDevelopmentSeeding();

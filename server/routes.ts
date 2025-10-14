@@ -179,6 +179,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // DEPRECATED: Database sync now happens automatically on application startup
+  // The sync logic has been moved to server/services/databaseSync.ts and runs
+  // automatically when the application starts, ensuring the schema is always in sync.
+  // This endpoint is kept commented out for historical reference only.
+  
+  /*
   // COMPREHENSIVE DATABASE SYNC ENDPOINT - Ensures production matches development schema
   app.get("/api/emergency-fix-production", async (req, res) => {
     try {
@@ -1071,6 +1077,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+  */
+  // END OF DEPRECATED EMERGENCY SYNC ENDPOINT
 
   // Local authentication login using centralized AuthService
   app.post("/auth/local/login", requireOrganization(), async (req, res) => {
