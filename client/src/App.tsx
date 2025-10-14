@@ -14,6 +14,7 @@ import Checkins from "@/pages/checkins";
 import OneOnOnesPage from "@/pages/one-on-ones";
 import KraManagementPage from "@/pages/kra-management";
 import Team from "@/pages/team";
+import Teams from "@/pages/teams";
 import Wins from "@/pages/wins";
 import ShoutoutsPage from "@/pages/shoutouts";
 import TeamGoals from "@/pages/team-goals";
@@ -60,6 +61,7 @@ function Router() {
             <Route path="/one-on-ones" component={OneOnOnesPage} />
             <Route path="/kra-management" component={KraManagementPage} />
             <Route path="/team" component={Team} />
+            <Route path="/teams" component={Teams} />
             <Route path="/wins" component={Wins} />
             <Route path="/shoutouts" component={ShoutoutsPage} />
             <Route path="/team-goals" component={TeamGoals} />

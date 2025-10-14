@@ -5142,6 +5142,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get teams with all users and their KRAs - comprehensive view
+  app.get("/api/teams/with-kras", requireAuth(), async (req, res) => {
+    try {
+      // Get all teams with hierarchy
+      const teams = await storage.getAllTeams(req.orgId);
+      const users = await storage.getAllUsers(req.orgId, false); // Only active users
+      const userKras = await storage.getActiveUserKras(req.orgId);
+      
+      // Create a map of user KRAs
+      const userKraMap = new Map<string, any[]>();
+      for (const kra of userKras) {
+        if (!userKraMap.has(kra.userId)) {
+          userKraMap.set(kra.userId, []);
+        }
+        userKraMap.get(kra.userId)!.push({
+          id: kra.id,
+          name: kra.name,
+          status: kra.status,
+          progress: kra.progress,
+          templateId: kra.templateId,
+          startDate: kra.startDate,
+          endDate: kra.endDate
+        });
+      }
+      
+      // Organize users by team
+      const teamUsersMap = new Map<string, any[]>();
+      for (const user of users) {
+        if (user.teamId) {
+          if (!teamUsersMap.has(user.teamId)) {
+            teamUsersMap.set(user.teamId, []);
+          }
+          teamUsersMap.get(user.teamId)!.push({
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            isTeamLead: false,
+            kras: userKraMap.get(user.id) || []
+          });
+        }
+      }
+      
+      // Build hierarchical team structure with users and KRAs
+      const teamsWithUsers = teams.map(team => {
+        const teamMembers = teamUsersMap.get(team.id) || [];
+        
+        // Identify team leader and mark them
+        const leader = teamMembers.find(m => m.id === team.leaderId);
+        if (leader) {
+          leader.isTeamLead = true;
+        }
+        
+        // Sort members: leader first, then alphabetically
+        const sortedMembers = teamMembers.sort((a, b) => {
+          if (a.isTeamLead && !b.isTeamLead) return -1;
+          if (!a.isTeamLead && b.isTeamLead) return 1;
+          return a.name.localeCompare(b.name);
+        });
+        
+        return {
+          id: team.id,
+          name: team.name,
+          description: team.description,
+          leaderId: team.leaderId,
+          leaderName: leader?.name || null,
+          teamType: team.teamType,
+          parentTeamId: team.parentTeamId,
+          memberCount: teamMembers.length,
+          kraCount: teamMembers.reduce((acc, m) => acc + m.kras.length, 0),
+          members: sortedMembers
+        };
+      });
+      
+      // Sort teams alphabetically
+      teamsWithUsers.sort((a, b) => a.name.localeCompare(b.name));
+      
+      res.json({
+        teams: teamsWithUsers,
+        summary: {
+          totalTeams: teams.length,
+          totalUsers: users.length,
+          totalKras: userKras.length,
+          teamsWithKras: teamsWithUsers.filter(t => t.kraCount > 0).length
+        }
+      });
+    } catch (error) {
+      console.error("GET /api/teams/with-kras - Error:", error);
+      res.status(500).json({ message: "Failed to fetch teams with KRAs" });
+    }
+  });
+
   // Check-ins with hierarchical visibility controls
   app.get("/api/checkins", requireAuth(), async (req, res) => {
     try {
@@ -10573,18 +10665,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         templates = await storage.getAllKraTemplates(req.orgId, activeOnly);
       }
       
+      // Get all user KRAs for this organization to count assignments
+      const allUserKras = await storage.getActiveUserKras(req.orgId);
+      
+      // Count assignments for each template
+      const templateAssignmentCounts = new Map<string, number>();
+      for (const userKra of allUserKras) {
+        if (userKra.templateId) {
+          const currentCount = templateAssignmentCounts.get(userKra.templateId) || 0;
+          templateAssignmentCounts.set(userKra.templateId, currentCount + 1);
+        }
+      }
+      
+      // Add assignment counts to templates
+      const templatesWithCounts = templates.map(template => ({
+        ...template,
+        assignmentCount: templateAssignmentCounts.get(template.id) || 0
+      }));
+      
       // Apply pagination
       const startIndex = (page - 1) * limit;
       const endIndex = startIndex + limit;
-      const paginatedTemplates = templates.slice(startIndex, endIndex);
+      const paginatedTemplates = templatesWithCounts.slice(startIndex, endIndex);
       
       res.json({
         templates: paginatedTemplates,
         pagination: {
           page,
           limit,
-          total: templates.length,
-          totalPages: Math.ceil(templates.length / limit)
+          total: templatesWithCounts.length,
+          totalPages: Math.ceil(templatesWithCounts.length / limit)
         }
       });
     } catch (error) {
