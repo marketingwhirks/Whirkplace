@@ -115,8 +115,8 @@ export default function QuestionsPage() {
           ? `Created ${data.details.categoriesCreated} categories and ${data.details.questionsCreated} questions`
           : "Question bank populated successfully",
       });
-      refetchCategories();
-      refetchBank();
+      queryClient.invalidateQueries({ queryKey: ["/api/question-categories"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/question-bank"] });
     },
     onError: (error: any) => {
       toast({
@@ -138,7 +138,7 @@ export default function QuestionsPage() {
         title: "✅ Question Created",
         description: "The question has been added to your active questions",
       });
-      refetchQuestions();
+      queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
       setShowCreateDialog(false);
     },
     onError: (error: any) => {
@@ -161,7 +161,7 @@ export default function QuestionsPage() {
         title: "✅ Question Updated",
         description: "The question has been updated successfully",
       });
-      refetchQuestions();
+      queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
       setEditingQuestion(null);
     },
     onError: (error: any) => {
@@ -184,7 +184,7 @@ export default function QuestionsPage() {
         title: "✅ Question Deleted",
         description: "The question has been removed from active questions",
       });
-      refetchQuestions();
+      queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
     },
     onError: (error: any) => {
       toast({
@@ -206,7 +206,7 @@ export default function QuestionsPage() {
         title: "✅ Question Added",
         description: "The question has been added to your active questions",
       });
-      refetchQuestions();
+      queryClient.invalidateQueries({ queryKey: ["/api/questions"] });
     },
     onError: (error: any) => {
       toast({
