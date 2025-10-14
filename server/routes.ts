@@ -206,15 +206,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      // Try to add missing columns one by one
-      const columns = [
+      // FIX 1: Organizations table - missing Slack token columns
+      console.log("Fixing organizations table...");
+      const orgColumns = [
         { name: 'slack_access_token', type: 'TEXT' },
         { name: 'slack_refresh_token', type: 'TEXT' },
         { name: 'slack_token_expires_at', type: 'TIMESTAMP' },
         { name: 'slack_connection_status', type: "TEXT DEFAULT 'not_connected'" }
       ];
       
-      for (const col of columns) {
+      for (const col of orgColumns) {
         try {
           // Check if column exists
           const checkResult = await db.execute(sql`
@@ -227,18 +228,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (checkResult.rows.length === 0) {
             // Column doesn't exist, add it
             await db.execute(sql.raw(`ALTER TABLE organizations ADD COLUMN ${col.name} ${col.type}`));
-            results.push({ column: col.name, status: "ADDED" });
+            results.push({ table: 'organizations', column: col.name, status: "ADDED" });
           } else {
-            results.push({ column: col.name, status: "EXISTS" });
+            results.push({ table: 'organizations', column: col.name, status: "EXISTS" });
           }
         } catch (colError: any) {
           console.error(`Error with column ${col.name}:`, colError);
-          results.push({ column: col.name, status: "ERROR", error: colError.message });
+          results.push({ table: 'organizations', column: col.name, status: "ERROR", error: colError.message });
         }
       }
       
-      // Verify final state
-      const verifyResult = await db.execute(sql`
+      // FIX 2: Check-ins table - ensure all required columns exist
+      console.log("Checking checkins table...");
+      const checkinColumns = [
+        { name: 'submitted_at', type: 'TIMESTAMP' },
+        { name: 'submitted_on_time', type: 'BOOLEAN DEFAULT FALSE' },
+        { name: 'review_status', type: "VARCHAR DEFAULT 'PENDING'" },
+        { name: 'reviewed_by', type: 'VARCHAR' },
+        { name: 'reviewed_at', type: 'TIMESTAMP' },
+        { name: 'reviewed_on_time', type: 'BOOLEAN DEFAULT FALSE' },
+        { name: 'review_comments', type: 'TEXT' },
+        { name: 'response_comments', type: 'JSON' },
+        { name: 'add_to_one_on_one', type: 'BOOLEAN DEFAULT FALSE' },
+        { name: 'flag_for_follow_up', type: 'BOOLEAN DEFAULT FALSE' }
+      ];
+      
+      for (const col of checkinColumns) {
+        try {
+          // Check if column exists
+          const checkResult = await db.execute(sql`
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'checkins' 
+            AND column_name = ${col.name}
+          `);
+          
+          if (checkResult.rows.length === 0) {
+            // Column doesn't exist, add it
+            await db.execute(sql.raw(`ALTER TABLE checkins ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}`));
+            results.push({ table: 'checkins', column: col.name, status: "ADDED" });
+          } else {
+            results.push({ table: 'checkins', column: col.name, status: "EXISTS" });
+          }
+        } catch (colError: any) {
+          // Ignore "already exists" errors
+          if (colError.message.includes('already exists')) {
+            results.push({ table: 'checkins', column: col.name, status: "EXISTS" });
+          } else {
+            console.error(`Error with checkins column ${col.name}:`, colError);
+            results.push({ table: 'checkins', column: col.name, status: "ERROR", error: colError.message });
+          }
+        }
+      }
+      
+      // Verify final state for organizations
+      const verifyOrgResult = await db.execute(sql`
         SELECT column_name, data_type 
         FROM information_schema.columns 
         WHERE table_name = 'organizations' 
@@ -246,15 +290,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ORDER BY column_name
       `);
       
+      // Verify final state for checkins
+      const verifyCheckinsResult = await db.execute(sql`
+        SELECT column_name, data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'checkins' 
+        AND column_name IN ('submitted_at', 'submitted_on_time', 'review_status', 'reviewed_by', 
+                            'reviewed_at', 'reviewed_on_time', 'review_comments', 'response_comments',
+                            'add_to_one_on_one', 'flag_for_follow_up')
+        ORDER BY column_name
+      `);
+      
       console.log("✅ Database fix completed. Results:", results);
-      console.log("📋 Final columns:", verifyResult.rows);
+      console.log("📋 Final org columns:", verifyOrgResult.rows);
+      console.log("📋 Final checkin columns:", verifyCheckinsResult.rows);
       
       res.json({
         success: true,
-        message: "Database fix attempted",
+        message: "Database fix attempted - both organizations and checkins tables",
         results,
-        finalColumns: verifyResult.rows,
-        timestamp: new Date().toISOString()
+        finalOrganizationColumns: verifyOrgResult.rows,
+        finalCheckinsColumns: verifyCheckinsResult.rows,
+        timestamp: new Date().toISOString(),
+        note: "Please test login and check-in submission after this fix"
       });
       
     } catch (error) {
