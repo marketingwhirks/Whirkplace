@@ -175,7 +175,10 @@ export const organizations = pgTable("organizations", {
   slackWorkspaceId: text("slack_workspace_id"), // Slack workspace ID for validation
   slackChannelId: text("slack_channel_id"), // Default Slack channel for notifications
   slackWinsChannelId: text("slack_wins_channel_id"), // Specific channel for wins notifications (optional, falls back to slackChannelId)
-  slackBotToken: text("slack_bot_token"), // Slack bot token for API calls
+  slackBotToken: text("slack_bot_token"), // Slack bot token for API calls (deprecated - use slackAccessToken)
+  slackAccessToken: text("slack_access_token"), // OAuth access token (expires every 12 hours with rotation)
+  slackRefreshToken: text("slack_refresh_token"), // OAuth refresh token for refreshing access token
+  slackTokenExpiresAt: timestamp("slack_token_expires_at"), // When the access token expires
   slackSigningSecret: text("slack_signing_secret"), // For webhook verification
   enableSlackIntegration: boolean("enable_slack_integration").notNull().default(false),
   slackConnectionStatus: text("slack_connection_status").default("not_configured"), // not_configured, connected, error
