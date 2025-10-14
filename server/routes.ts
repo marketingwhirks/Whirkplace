@@ -10449,7 +10449,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const validatedData = assignmentSchema.parse(req.body);
-      const assignedBy = req.user.id;
+      const assignedBy = req.userId;
       
       // Create assignments for each user
       const assignments = [];
