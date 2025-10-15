@@ -1215,7 +1215,13 @@ function TemplateCard({ template }: { template: KraTemplateWithMeta }) {
   );
 }
 
-function UserKraCard({ userKra }: { userKra: UserKraWithDetails }) {
+function UserKraCard({ 
+  userKra, 
+  onDelete 
+}: { 
+  userKra: UserKraWithDetails;
+  onDelete: (kraId: string) => void;
+}) {
   const { data: currentUser } = useViewAsRole();
   const canEdit = currentUser?.role === 'admin' || 
     (currentUser?.role === 'manager' && userKra.assignee?.id !== currentUser.id);
@@ -1316,10 +1322,26 @@ function UserKraCard({ userKra }: { userKra: UserKraWithDetails }) {
             
             <div className="flex gap-2">
               {canEdit && (
-                <Button variant="outline" size="sm" data-testid={`button-edit-kra-${userKra.id}`}>
-                  <Edit2 className="w-3 h-3 mr-1" />
-                  Edit
-                </Button>
+                <>
+                  <Button variant="outline" size="sm" data-testid={`button-edit-kra-${userKra.id}`}>
+                    <Edit2 className="w-3 h-3 mr-1" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (confirm(`Are you sure you want to remove this KRA assignment for ${userKra.assignee?.name}?`)) {
+                        onDelete(userKra.id);
+                      }
+                    }}
+                    data-testid={`button-delete-kra-${userKra.id}`}
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-900/20"
+                  >
+                    <Trash2 className="w-4 h-4 mr-1" />
+                    Remove
+                  </Button>
+                </>
               )}
               <Button variant="outline" size="sm" data-testid={`button-view-kra-${userKra.id}`}>
                 View Details
@@ -1493,10 +1515,35 @@ function KraTemplates() {
 function UserKras() {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const { toast } = useToast();
   
   const { data: krasData, isLoading } = useQuery<UserKrasResponse>({
     queryKey: ["/api/user-kras", { page: 1, limit: 20 }],
     staleTime: 30 * 1000, // Cache for 30 seconds
+  });
+
+  const deleteUserKraMutation = useMutation({
+    mutationFn: async (kraId: string) => {
+      const response = await apiRequest("DELETE", `/api/user-kras/${kraId}`);
+      if (!response.ok) {
+        throw new Error('Failed to delete KRA');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user-kras"] });
+      toast({
+        title: "KRA Removed",
+        description: "The KRA assignment has been successfully removed.",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to remove KRA assignment. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const filteredKras = krasData?.kras?.filter(kra => {
@@ -1596,7 +1643,11 @@ function UserKras() {
       ) : (
         <div className="space-y-4">
           {filteredKras.map((kra) => (
-            <UserKraCard key={kra.id} userKra={kra} />
+            <UserKraCard 
+              key={kra.id} 
+              userKra={kra} 
+              onDelete={(kraId) => deleteUserKraMutation.mutate(kraId)}
+            />
           ))}
           
           {filteredKras.length < (krasData?.pagination.total || 0) && (
