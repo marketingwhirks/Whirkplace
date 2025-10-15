@@ -62,6 +62,7 @@ import { cn } from "@/lib/utils";
 import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
+import { WeeklySummary } from "@/components/analytics/WeeklySummary";
 
 // Types and interfaces
 interface FilterState {
@@ -1024,6 +1025,9 @@ export default function Analytics() {
             </div>
           </div>
         )}
+
+        {/* Weekly Summary - Show for managers and admins */}
+        {currentUser?.role !== 'member' && <WeeklySummary />}
 
         {/* Filters */}
         <div data-testid="analytics-filters">

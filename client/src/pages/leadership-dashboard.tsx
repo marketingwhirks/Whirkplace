@@ -18,6 +18,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import RatingStars from "@/components/checkin/rating-stars";
 import type { Checkin, User as UserType, Team, Question, ComplianceMetricsResult } from "@shared/schema";
 import { DateRange } from "react-day-picker";
+import { LeadershipSummary } from "@/components/analytics/LeadershipSummary";
 
 interface EnhancedCheckinLeadership extends Checkin {
   user?: {
@@ -343,6 +344,9 @@ export default function LeadershipDashboard() {
   return (
     <>
     <main className="flex-1 overflow-auto p-6 space-y-6">
+        {/* Leadership Summary */}
+        <LeadershipSummary />
+
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Card>

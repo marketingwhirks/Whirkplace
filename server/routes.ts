@@ -41,6 +41,7 @@ import { resolveRedirectUri } from "./utils/redirect-uri";
 import { sendWelcomeEmail, sendSlackPasswordSetupEmail } from "./services/emailService";
 import { sanitizeUser, sanitizeUsers } from "./utils/sanitizeUser";
 import { getWeekStartCentral } from "@shared/utils/dueDates";
+import { WeeklySummaryService } from "./services/weeklySummaryService";
 
 // Initialize Stripe with appropriate keys based on environment
 let stripe: Stripe | null = null;
@@ -8096,6 +8097,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Team compliance batch analytics error:", error);
       res.status(500).json({ message: "Failed to fetch team compliance metrics" });
+    }
+  });
+
+  // Weekly Summary Reports
+  const summaryService = new WeeklySummaryService();
+
+  // Get team weekly summary for managers
+  app.get("/api/analytics/team-summary", requireAuth(), requireRole(['manager', 'admin']), async (req, res) => {
+    try {
+      const user = req.currentUser!;
+      const { weekStart } = req.query;
+      
+      // Get user's team
+      const userDetails = await storage.getUser(req.orgId, user.id);
+      if (!userDetails?.teamId) {
+        return res.status(400).json({ message: "You are not assigned to a team" });
+      }
+      
+      // CRITICAL: Verify the team belongs to the user's organization
+      const team = await storage.getTeam(req.orgId, userDetails.teamId);
+      if (!team || team.organizationId !== req.orgId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const organization = await storage.getOrganization(req.orgId);
+      const startDate = weekStart ? new Date(weekStart as string) : getWeekStartCentral(new Date(), organization);
+      const summary = await summaryService.generateTeamSummary(req.orgId, userDetails.teamId, startDate);
+      
+      res.json(summary);
+    } catch (error) {
+      console.error("Failed to generate team summary:", error);
+      res.status(500).json({ message: "Failed to generate team summary" });
+    }
+  });
+
+  // Get leadership summary for admins
+  app.get("/api/analytics/leadership-summary", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { weekStart } = req.query;
+      
+      const organization = await storage.getOrganization(req.orgId);
+      const startDate = weekStart ? new Date(weekStart as string) : getWeekStartCentral(new Date(), organization);
+      const summary = await summaryService.generateLeadershipSummary(req.orgId, startDate);
+      
+      res.json(summary);
+    } catch (error) {
+      console.error("Failed to generate leadership summary:", error);
+      res.status(500).json({ message: "Failed to generate leadership summary" });
     }
   });
 
