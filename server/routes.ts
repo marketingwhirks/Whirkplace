@@ -5748,55 +5748,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sanitizedData = sanitizeForOrganization(checkinData, req.orgId);
       const checkin = await storage.createCheckin(req.orgId, sanitizedData);
       
-      // Auto-increment team goals for check-ins completed metric
-      if (checkin.isComplete && req.currentUser?.teamId) {
-        await storage.incrementGoalsByMetric(req.orgId, "check-ins completed", req.currentUser.teamId);
-      }
+      // Send response immediately to prevent timeouts in production
+      res.status(201).json(checkin);
       
-      // Send notification if check-in is submitted for review
-      if (checkin.isComplete && checkin.submittedAt) {
+      // Handle team goals and notifications asynchronously
+      setImmediate(async () => {
         try {
-          const user = await storage.getUser(req.orgId, checkin.userId);
-          if (user) {
-            // Find team leader to notify
-            let teamLeaderName = "Team Leader";
-            
-            // First try direct manager
-            if (user.managerId) {
-              const manager = await storage.getUser(req.orgId, user.managerId);
-              if (manager) {
-                teamLeaderName = manager.name;
-              }
-            }
-            // Then try team leader if no direct manager
-            else if (user.teamId) {
-              const team = await storage.getTeam(req.orgId, user.teamId);
-              if (team?.leaderId) {
-                const teamLeader = await storage.getUser(req.orgId, team.leaderId);
-                if (teamLeader) {
-                  teamLeaderName = teamLeader.name;
+          // Auto-increment team goals for check-ins completed metric
+          if (checkin.isComplete && req.currentUser?.teamId) {
+            await storage.incrementGoalsByMetric(req.orgId, "check-ins completed", req.currentUser.teamId);
+          }
+          
+          // Send notification if check-in is submitted for review
+          if (checkin.isComplete && checkin.submittedAt) {
+            const user = await storage.getUser(req.orgId, checkin.userId);
+            if (user) {
+              // Find team leader to notify
+              let teamLeaderName = "Team Leader";
+              
+              // First try direct manager
+              if (user.managerId) {
+                const manager = await storage.getUser(req.orgId, user.managerId);
+                if (manager) {
+                  teamLeaderName = manager.name;
                 }
               }
+              // Then try team leader if no direct manager
+              else if (user.teamId) {
+                const team = await storage.getTeam(req.orgId, user.teamId);
+                if (team?.leaderId) {
+                  const teamLeader = await storage.getUser(req.orgId, team.leaderId);
+                  if (teamLeader) {
+                    teamLeaderName = teamLeader.name;
+                  }
+                }
+              }
+              
+              // Get first response as summary
+              const responses = checkin.responses as Record<string, string>;
+              const firstResponse = Object.values(responses)[0] || undefined;
+              
+              await notifyCheckinSubmitted(
+                user.name,
+                teamLeaderName,
+                checkin.overallMood,
+                firstResponse
+              );
             }
-            
-            // Get first response as summary
-            const responses = checkin.responses as Record<string, string>;
-            const firstResponse = Object.values(responses)[0] || undefined;
-            
-            await notifyCheckinSubmitted(
-              user.name,
-              teamLeaderName,
-              checkin.overallMood,
-              firstResponse
-            );
           }
-        } catch (notificationError) {
-          console.error("Failed to send check-in submission notification:", notificationError);
-          // Don't fail the request if notification fails
+        } catch (error) {
+          console.error("Failed to handle post-checkin tasks:", error);
         }
-      }
-      
-      res.status(201).json(checkin);
+      });
     } catch (error) {
       console.error("Check-in validation error:", error);
       res.status(400).json({ 
@@ -5903,53 +5906,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Check-in not found" });
       }
       
-      // Send notification if check-in is newly submitted for review
+      // Send response immediately to prevent timeouts in production
+      res.json(checkin);
+      
+      // Handle notifications asynchronously
       const wasNotSubmitted = !existingCheckin.isComplete || !existingCheckin.submittedAt;
       const isNowSubmitted = checkin.isComplete && checkin.submittedAt;
       
       if (wasNotSubmitted && isNowSubmitted) {
-        try {
-          const user = await storage.getUser(req.orgId, checkin.userId);
-          if (user) {
-            // Find team leader to notify
-            let teamLeaderName = "Team Leader";
-            
-            // First try direct manager
-            if (user.managerId) {
-              const manager = await storage.getUser(req.orgId, user.managerId);
-              if (manager) {
-                teamLeaderName = manager.name;
-              }
-            }
-            // Then try team leader if no direct manager
-            else if (user.teamId) {
-              const team = await storage.getTeam(req.orgId, user.teamId);
-              if (team?.leaderId) {
-                const teamLeader = await storage.getUser(req.orgId, team.leaderId);
-                if (teamLeader) {
-                  teamLeaderName = teamLeader.name;
+        setImmediate(async () => {
+          try {
+            const user = await storage.getUser(req.orgId, checkin.userId);
+            if (user) {
+              // Find team leader to notify
+              let teamLeaderName = "Team Leader";
+              
+              // First try direct manager
+              if (user.managerId) {
+                const manager = await storage.getUser(req.orgId, user.managerId);
+                if (manager) {
+                  teamLeaderName = manager.name;
                 }
               }
+              // Then try team leader if no direct manager
+              else if (user.teamId) {
+                const team = await storage.getTeam(req.orgId, user.teamId);
+                if (team?.leaderId) {
+                  const teamLeader = await storage.getUser(req.orgId, team.leaderId);
+                  if (teamLeader) {
+                    teamLeaderName = teamLeader.name;
+                  }
+                }
+              }
+              
+              // Get first response as summary
+              const responses = checkin.responses as Record<string, string>;
+              const firstResponse = Object.values(responses)[0] || undefined;
+              
+              await notifyCheckinSubmitted(
+                user.name,
+                teamLeaderName,
+                checkin.overallMood,
+                firstResponse
+              );
             }
-            
-            // Get first response as summary
-            const responses = checkin.responses as Record<string, string>;
-            const firstResponse = Object.values(responses)[0] || undefined;
-            
-            await notifyCheckinSubmitted(
-              user.name,
-              teamLeaderName,
-              checkin.overallMood,
-              firstResponse
-            );
+          } catch (notificationError) {
+            console.error("Failed to send check-in submission notification:", notificationError);
           }
-        } catch (notificationError) {
-          console.error("Failed to send check-in submission notification:", notificationError);
-          // Don't fail the request if notification fails
-        }
+        });
       }
-      
-      res.json(checkin);
     } catch (error) {
       console.error("Check-in update validation error:", error);
       res.status(400).json({ 
@@ -6848,63 +6853,71 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sanitizedData = sanitizeForOrganization(winData, req.orgId);
       const win = await storage.createWin(req.orgId, sanitizedData);
       
-      // Get the organization for Slack channel configuration
-      const organization = await storage.getOrganization(req.orgId);
+      // Send response immediately to prevent timeouts in production
+      res.status(201).json(win);
       
-      // Get users involved
-      const recipient = await storage.getUser(req.orgId, win.userId);
-      const sender = win.nominatedBy ? await storage.getUser(req.orgId, win.nominatedBy) : null;
-      
-      // Auto-increment team goals for wins metric
-      if (recipient?.teamId) {
-        await storage.incrementGoalsByMetric(req.orgId, "wins", recipient.teamId);
-      }
-      
-      if (recipient) {
-        // Handle Slack notifications based on visibility
-        if (win.isPublic) {
-          // Public win: post to organization's configured wins channel, or fallback to main channel
-          const channelId = organization?.slackWinsChannelId || organization?.slackChannelId || 'C09JR9655B7'; // Use wins channel first, then main channel, then default
+      // Handle team goals and Slack notifications asynchronously
+      setImmediate(async () => {
+        try {
+          // Get the organization for Slack channel configuration
+          const organization = await storage.getOrganization(req.orgId);
           
-          console.log(`📢 Announcing public win to channel ${channelId}`);
-          const slackMessageId = await announceWin(
-            win.title, 
-            win.description, 
-            recipient.name, 
-            sender?.name,
-            channelId
-          );
+          // Get users involved
+          const recipient = await storage.getUser(req.orgId, win.userId);
+          const sender = win.nominatedBy ? await storage.getUser(req.orgId, win.nominatedBy) : null;
           
-          if (slackMessageId) {
-            await storage.updateWin(req.orgId, win.id, { slackMessageId });
+          // Auto-increment team goals for wins metric
+          if (recipient?.teamId) {
+            await storage.incrementGoalsByMetric(req.orgId, "wins", recipient.teamId);
           }
-        } else {
-          // Private win: send DM to recipient if they have a Slack ID
-          if (recipient.slackUserId) {
-            console.log(`💌 Sending private win DM to ${recipient.name} (${recipient.slackUserId})`);
-            const { sendPrivateWinNotification } = await import('./services/slack');
-            
-            const slackMessageId = await sendPrivateWinNotification(
-              win.title,
-              win.description,
-              recipient.slackUserId,
-              recipient.name,
-              sender?.name || req.currentUser!.name,
-              sender?.name
-            );
-            
-            if (slackMessageId) {
-              await storage.updateWin(req.orgId, win.id, { slackMessageId });
+          
+          if (recipient) {
+            // Handle Slack notifications based on visibility
+            if (win.isPublic) {
+              // Public win: post to organization's configured wins channel, or fallback to main channel
+              const channelId = organization?.slackWinsChannelId || organization?.slackChannelId || 'C09JR9655B7'; // Use wins channel first, then main channel, then default
+              
+              console.log(`📢 Announcing public win to channel ${channelId}`);
+              const slackMessageId = await announceWin(
+                win.title, 
+                win.description, 
+                recipient.name, 
+                sender?.name,
+                channelId
+              );
+              
+              if (slackMessageId) {
+                await storage.updateWin(req.orgId, win.id, { slackMessageId });
+              }
+            } else {
+              // Private win: send DM to recipient if they have a Slack ID
+              if (recipient.slackUserId) {
+                console.log(`💌 Sending private win DM to ${recipient.name} (${recipient.slackUserId})`);
+                const { sendPrivateWinNotification } = await import('./services/slack');
+                
+                const slackMessageId = await sendPrivateWinNotification(
+                  win.title,
+                  win.description,
+                  recipient.slackUserId,
+                  recipient.name,
+                  sender?.name || req.currentUser!.name,
+                  sender?.name
+                );
+                
+                if (slackMessageId) {
+                  await storage.updateWin(req.orgId, win.id, { slackMessageId });
+                }
+              } else {
+                console.log(`⚠️ Cannot send private win DM to ${recipient.name}: No Slack user ID`);
+              }
             }
           } else {
-            console.log(`⚠️ Cannot send private win DM to ${recipient.name}: No Slack user ID`);
+            console.warn(`⚠️ Could not find recipient user for win ${win.id}`);
           }
+        } catch (error) {
+          console.error("Failed to handle post-win tasks:", error);
         }
-      } else {
-        console.warn(`⚠️ Could not find recipient user for win ${win.id}`);
-      }
-      
-      res.status(201).json(win);
+      });
     } catch (error) {
       console.error("Error creating win:", error);
       res.status(400).json({ message: "Invalid win data" });

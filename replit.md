@@ -29,7 +29,19 @@ The application adopts a multi-tenant architecture to support multiple organizat
 
 ## Critical Issues & Resolutions
 
-### Production Deployment Issue (October 12, 2025)
+### Production Response Timeout Issue (October 15, 2025 - RESOLVED)
+**Problem**: In production, check-ins and wins showed as "failed" even though data was successfully saved
+
+**Root Cause**: Slack notifications were blocking API responses, causing frontend to timeout before receiving success confirmation
+
+**Resolution**: Made all Slack notifications asynchronous using `setImmediate()` in:
+- `POST /api/checkins` - Creates new check-ins
+- `PATCH /api/checkins/:id` - Updates existing check-ins  
+- `POST /api/wins` - Creates new wins
+
+Response is now sent immediately after database save, with notifications handled asynchronously afterward
+
+### Production Deployment Issue (October 12, 2025) 
 **Problem**: All API-dependent features work in development but fail in production after publishing. This affects:
 - One-on-one meeting scheduling
 - KRA management (manual and AI generation)  
