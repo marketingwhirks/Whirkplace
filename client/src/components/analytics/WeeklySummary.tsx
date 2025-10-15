@@ -43,10 +43,19 @@ interface TeamSummary {
   }>;
 }
 
-export function WeeklySummary() {
+interface WeeklySummaryProps {
+  shouldFetch?: boolean;
+}
+
+export function WeeklySummary({ shouldFetch = true }: WeeklySummaryProps) {
   const { data: summary, isLoading } = useQuery<TeamSummary>({
     queryKey: ["/api/analytics/team-summary"],
+    enabled: shouldFetch,
   });
+
+  if (!shouldFetch) {
+    return null;
+  }
 
   if (isLoading) {
     return (

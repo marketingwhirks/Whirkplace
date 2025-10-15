@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow, format, subDays, startOfWeek, endOfWeek } from "date-fns";
 import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Users, Filter,
-  Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer
+  Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer, FileText
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,6 +88,7 @@ export default function LeadershipDashboard() {
   });
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCheckin, setSelectedCheckin] = useState<EnhancedCheckinLeadership | null>(null);
+  const [showOrgSummary, setShowOrgSummary] = useState(false);
 
   // Build query parameters
   const queryParams = useMemo(() => {
@@ -345,7 +346,21 @@ export default function LeadershipDashboard() {
     <>
     <main className="flex-1 overflow-auto p-6 space-y-6">
         {/* Leadership Summary */}
-        <LeadershipSummary />
+        <div className="space-y-4">
+          {!showOrgSummary && (
+            <div className="flex justify-start">
+              <Button 
+                onClick={() => setShowOrgSummary(true)}
+                className="flex items-center gap-2"
+                data-testid="button-generate-organization-summary"
+              >
+                <FileText className="w-4 h-4" />
+                Generate Organization Summary
+              </Button>
+            </div>
+          )}
+          <LeadershipSummary shouldFetch={showOrgSummary} />
+        </div>
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

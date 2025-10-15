@@ -56,7 +56,8 @@ import {
   Target, 
   Activity,
   Trophy,
-  AlertCircle 
+  AlertCircle,
+  FileText 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TourGuide } from "@/components/TourGuide";
@@ -882,6 +883,7 @@ export default function Analytics() {
 
   const [filters, setFilters] = useState<FilterState>(getInitialFilters);
   const updateUrl = useUrlSync(filters, setFilters);
+  const [showWeeklySummary, setShowWeeklySummary] = useState(false);
 
   // Update filters when user data loads
   useEffect(() => {
@@ -1027,7 +1029,23 @@ export default function Analytics() {
         )}
 
         {/* Weekly Summary - Show for managers and admins */}
-        {currentUser?.role !== 'member' && <WeeklySummary />}
+        {currentUser?.role !== 'member' && (
+          <div className="space-y-4">
+            {!showWeeklySummary && (
+              <div className="flex justify-start">
+                <Button 
+                  onClick={() => setShowWeeklySummary(true)}
+                  className="flex items-center gap-2"
+                  data-testid="button-generate-weekly-summary"
+                >
+                  <FileText className="w-4 h-4" />
+                  Generate Weekly Summary
+                </Button>
+              </div>
+            )}
+            <WeeklySummary shouldFetch={showWeeklySummary} />
+          </div>
+        )}
 
         {/* Filters */}
         <div data-testid="analytics-filters">

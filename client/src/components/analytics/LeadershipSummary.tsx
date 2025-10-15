@@ -81,10 +81,19 @@ interface LeadershipSummary {
   };
 }
 
-export function LeadershipSummary() {
+interface LeadershipSummaryProps {
+  shouldFetch?: boolean;
+}
+
+export function LeadershipSummary({ shouldFetch = true }: LeadershipSummaryProps) {
   const { data: summary, isLoading } = useQuery<LeadershipSummary>({
     queryKey: ["/api/analytics/leadership-summary"],
+    enabled: shouldFetch,
   });
+
+  if (!shouldFetch) {
+    return null;
+  }
 
   if (isLoading) {
     return (
