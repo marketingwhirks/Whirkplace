@@ -730,37 +730,36 @@ export default function TeamManagement() {
               Team Hierarchy
             </TabsTrigger>
           </TabsList>
-        </Tabs>
-        
-        {/* Search and Filter Bar */}
-        <div className="mb-6 flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-            <Input
-              type="text"
-              placeholder="Search teams or members..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-              data-testid="input-search-teams"
-            />
+          
+          {/* Search and Filter Bar */}
+          <div className="mb-6 flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                type="text"
+                placeholder="Search teams or members..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+                data-testid="input-search-teams"
+              />
+            </div>
+            <Select value={filterRole} onValueChange={setFilterRole}>
+              <SelectTrigger className="w-[180px]" data-testid="select-filter-role">
+                <Filter className="w-4 h-4 mr-2" />
+                <SelectValue placeholder="Filter by role" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Roles</SelectItem>
+                <SelectItem value="admin">Admins</SelectItem>
+                <SelectItem value="manager">Managers</SelectItem>
+                <SelectItem value="member">Members</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={filterRole} onValueChange={setFilterRole}>
-            <SelectTrigger className="w-[180px]" data-testid="select-filter-role">
-              <Filter className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Filter by role" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Roles</SelectItem>
-              <SelectItem value="admin">Admins</SelectItem>
-              <SelectItem value="manager">Managers</SelectItem>
-              <SelectItem value="member">Members</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        
-        {/* Team Cards */}
-        <TabsContent value={activeTab} className="mt-0">
+          
+          {/* Team Cards */}
+          <TabsContent value={activeTab} className="mt-0">
           {isLoading ? (
           <div className="space-y-4">
             {[...Array(3)].map((_, i) => (
@@ -846,7 +845,8 @@ export default function TeamManagement() {
             )}
           </div>
         )}
-        </TabsContent>
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   );
