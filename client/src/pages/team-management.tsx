@@ -5,7 +5,7 @@ import {
   Shield, CheckCircle, Clock, AlertCircle, User, Briefcase,
   Plus, Edit, Trash2, UserPlus, UserMinus, Settings, Download,
   ArrowRight, Filter, Search, MoreVertical, FileJson, FileText,
-  ChevronUp, UsersIcon, GitBranch
+  ChevronUp, UsersIcon, GitBranch, UserCheck
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -258,6 +258,15 @@ function TeamCard({ team, isAdmin }: { team: Team; isAdmin: boolean }) {
       description: `Manager change coming soon for ${memberName}`,
     });
   };
+
+  const handleSetReviewer = (member: TeamMember) => {
+    // For now, show a toast with placeholder
+    toast({
+      title: "Set Custom Reviewer",
+      description: `Custom reviewer assignment for ${member.name} coming soon`,
+    });
+    // TODO: Open a dialog to select a reviewer from available managers/leaders
+  };
   
   return (
     <Card className="mb-4">
@@ -448,6 +457,10 @@ function TeamCard({ team, isAdmin }: { team: Team; isAdmin: boolean }) {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Member Actions</DropdownMenuLabel>
                             <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleSetReviewer(member)}>
+                              <UserCheck className="w-4 h-4 mr-2" />
+                              Set Custom Reviewer
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleChangeManager(member.id, member.name)}>
                               <UserCog className="w-4 h-4 mr-2" />
                               Change Manager

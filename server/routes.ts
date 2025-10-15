@@ -5953,40 +5953,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Verify authorization - check if user can review this check-in
       if (user.role !== "admin") {
+        // Check authorization - who can review this check-in
         const checkinUser = await storage.getUser(req.orgId, existingCheckin.userId);
         if (!checkinUser) {
           return res.status(404).json({ message: "User not found" });
         }
 
-        // Check if this is a self-review scenario
-        const isSelfReview = existingCheckin.userId === user.id;
-        const userHasNoManager = !checkinUser.managerId;
-        
-        if (isSelfReview) {
-          // Allow self-review only if the user has no manager
-          if (!userHasNoManager) {
-            return res.status(403).json({ 
-              message: "Self-review is not allowed. Your check-in should be reviewed by your manager." 
-            });
-          }
-          // Self-review is allowed for users without managers
-        } else {
-          // Check if user is a team leader of the check-in user's team
-          let isTeamLeader = false;
-          if (checkinUser.teamId) {
-            const team = await storage.getTeam(req.orgId, checkinUser.teamId);
-            isTeamLeader = team?.leaderId === user.id;
-          }
+        // Determine who should review this user
+        let authorizedReviewer: string | null = null;
 
-          // If team leader, they can review. Otherwise check manager relationship
-          if (!isTeamLeader) {
-            const isDirectManager = checkinUser.managerId === user.id;
-            if (!isDirectManager) {
-              return res.status(403).json({ 
-                message: "You can only review check-ins from your team members or direct reports" 
-              });
-            }
+        // 1. Check for custom reviewer
+        if (checkinUser.reviewerId) {
+          authorizedReviewer = checkinUser.reviewerId;
+        }
+        // 2. Check for team leader
+        else if (checkinUser.teamId) {
+          const team = await storage.getTeam(req.orgId, checkinUser.teamId);
+          if (team?.leaderId) {
+            authorizedReviewer = team.leaderId;
           }
+        }
+        // 3. Fall back to manager (backward compatibility)
+        if (!authorizedReviewer && checkinUser.managerId) {
+          authorizedReviewer = checkinUser.managerId;
+        }
+
+        // Check if current user is authorized
+        const isSelfReview = existingCheckin.userId === user.id;
+        const isAuthorizedReviewer = user.id === authorizedReviewer;
+
+        if (!isAuthorizedReviewer && !isSelfReview) {
+          return res.status(403).json({ 
+            message: "You are not authorized to review this check-in" 
+          });
+        }
+
+        // Self-review only allowed if no reviewer assigned
+        if (isSelfReview && authorizedReviewer && authorizedReviewer !== user.id) {
+          return res.status(403).json({ 
+            message: "Self-review is not allowed when a reviewer is assigned" 
+          });
         }
       }
       

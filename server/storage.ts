@@ -2190,57 +2190,74 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Check-in Review Methods
-  async getPendingCheckins(organizationId: string, managerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]> {
-    let whereConditions = [
+  async getPendingCheckins(organizationId: string, reviewerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]> {
+    const whereConditions = [
       eq(checkins.organizationId, organizationId),
       eq(checkins.reviewStatus, ReviewStatus.PENDING),
       eq(checkins.isComplete, true)
     ];
 
-    if (managerId) {
-      // First check if user is a team leader
-      const teamsLed = await db
-        .select()
+    if (reviewerId) {
+      // Get all users who should be reviewed by this reviewer
+      const usersToReview: string[] = [];
+      
+      // 1. Get users with this person as custom reviewer
+      const customReviewees = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(and(
+          eq(users.organizationId, organizationId),
+          eq(users.reviewerId, reviewerId),
+          eq(users.isActive, true)
+        ));
+      usersToReview.push(...customReviewees.map(u => u.id));
+      
+      // 2. Get teams where this person is the leader
+      const ledTeams = await db
+        .select({ id: teams.id })
         .from(teams)
         .where(and(
           eq(teams.organizationId, organizationId),
-          eq(teams.leaderId, managerId)
+          eq(teams.leaderId, reviewerId)
         ));
-
-      let reportIds: string[] = [];
-
-      if (teamsLed.length > 0) {
-        // User is a team leader - get ALL team members
-        const teamIds = teamsLed.map(t => t.id);
+      
+      if (ledTeams.length > 0) {
         const teamMembers = await db
-          .select()
+          .select({ id: users.id, reviewerId: users.reviewerId })
           .from(users)
           .where(and(
             eq(users.organizationId, organizationId),
-            inArray(users.teamId, teamIds),
+            inArray(users.teamId, ledTeams.map(t => t.id)),
             eq(users.isActive, true)
           ));
-        reportIds = teamMembers.map(u => u.id).filter(id => id !== managerId); // Exclude self
-      } else {
-        // Not a team leader - use manager relationships (include inactive for historical data)
-        const reports = await this.getUsersByManager(organizationId, managerId, true);
-        reportIds = reports.map(user => user.id);
+        // Only include team members who don't have a custom reviewer
+        const teamMembersToReview = teamMembers
+          .filter(u => !u.reviewerId && u.id !== reviewerId)
+          .map(u => u.id);
+        usersToReview.push(...teamMembersToReview);
       }
       
-      // If includeOwnIfNoManager is true, check if the user has no manager themselves
+      // 3. For backward compatibility, also get direct reports (manager relationship)
+      const directReports = await this.getUsersByManager(organizationId, reviewerId, true);
+      const reportIds = directReports
+        .filter(u => !u.reviewerId && !usersToReview.includes(u.id))
+        .map(u => u.id);
+      usersToReview.push(...reportIds);
+      
+      // 4. Include self if has no reviewer and includeOwnIfNoManager is true
       if (includeOwnIfNoManager) {
-        const managerUser = await this.getUser(organizationId, managerId);
-        if (managerUser && !managerUser.managerId) {
-          // User has no manager, include their own pending check-ins for self-review
-          if (!reportIds.includes(managerId)) {
-            reportIds.push(managerId);
+        const reviewer = await this.getUser(organizationId, reviewerId);
+        if (reviewer && !reviewer.reviewerId && !reviewer.managerId) {
+          const reviewerTeam = reviewer.teamId ? await this.getTeam(organizationId, reviewer.teamId) : null;
+          if (!reviewerTeam || reviewerTeam.leaderId !== reviewerId) {
+            usersToReview.push(reviewerId);
           }
         }
       }
       
-      if (reportIds.length === 0) return [];
+      if (usersToReview.length === 0) return [];
       
-      whereConditions.push(inArray(checkins.userId, reportIds));
+      whereConditions.push(inArray(checkins.userId, [...new Set(usersToReview)]));
     }
 
     return await db

@@ -243,6 +243,7 @@ export const users = pgTable("users", {
   organizationId: varchar("organization_id").notNull(),
   teamId: varchar("team_id"),
   managerId: varchar("manager_id"),
+  reviewerId: varchar("reviewer_id"), // Custom reviewer override - if null, defaults to team leader or manager
   avatar: text("avatar"),
   isAccountOwner: boolean("is_account_owner").notNull().default(false), // Tracks if user is the account owner (legal organization owner)
   // Slack integration fields
