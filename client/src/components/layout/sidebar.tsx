@@ -42,7 +42,7 @@ const baseNavigation = [
   { name: "Reviews", href: "/reviews", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
   { name: "KRA Management", href: "/kra-management", icon: Target, roles: ["member", "manager", "admin"] },
   { name: "Team", href: "/team", icon: Users, roles: ["member", "manager", "admin"] },
-  { name: "Teams Overview", href: "/teams", icon: Users, roles: ["member", "manager", "admin"] },
+  { name: "Team Management", href: "/team-management", icon: Users, roles: ["member", "manager", "admin"] },
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },
   { name: "Billing", href: "/billing", icon: CreditCard, roles: ["admin"] },
