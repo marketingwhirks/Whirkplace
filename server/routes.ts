@@ -3681,6 +3681,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireOrganization()(req, res, next);
   });
 
+  // ========== KRA CATEGORIES MANAGEMENT (SUPER ADMIN ONLY) ==========
+  
+  // Get all KRA categories
+  app.get("/api/kra-categories", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const categories = await storage.getKraCategories();
+      res.json(categories);
+    } catch (error) {
+      console.error("Error fetching KRA categories:", error);
+      res.status(500).json({ message: "Failed to fetch KRA categories" });
+    }
+  });
+
+  // Create a new KRA category
+  app.post("/api/kra-categories", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { insertKraCategorySchema } = await import("@shared/schema");
+      const categoryData = insertKraCategorySchema.parse(req.body);
+      
+      const category = await storage.createKraCategory(categoryData);
+      res.json(category);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid category data", details: error.errors });
+      }
+      console.error("Error creating KRA category:", error);
+      res.status(500).json({ message: "Failed to create KRA category" });
+    }
+  });
+
+  // Update a KRA category
+  app.patch("/api/kra-categories/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const { insertKraCategorySchema } = await import("@shared/schema");
+      const updateData = insertKraCategorySchema.partial().parse(req.body);
+      
+      const category = await storage.updateKraCategory(req.params.id, updateData);
+      if (!category) {
+        return res.status(404).json({ message: "KRA category not found" });
+      }
+      res.json(category);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", details: error.errors });
+      }
+      console.error("Error updating KRA category:", error);
+      res.status(500).json({ message: "Failed to update KRA category" });
+    }
+  });
+
+  // Delete a KRA category
+  app.delete("/api/kra-categories/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const deleted = await storage.deleteKraCategory(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "KRA category not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting KRA category:", error);
+      res.status(500).json({ message: "Failed to delete KRA category" });
+    }
+  });
+
   // ========== PARTNER MANAGEMENT ROUTES ==========
   // These routes handle partner firm management and require authentication
   
@@ -6552,7 +6616,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.post("/api/question-categories", requireAuth(), requireRole(['admin']), async (req, res) => {
+  app.post("/api/question-categories", requireAuth(), requireSuperAdmin(), async (req, res) => {
     try {
       const { insertQuestionCategorySchema } = await import("@shared/schema");
       const categoryData = insertQuestionCategorySchema.parse(req.body);
@@ -6568,7 +6632,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.patch("/api/question-categories/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+  app.patch("/api/question-categories/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
     try {
       const { insertQuestionCategorySchema } = await import("@shared/schema");
       const updateData = insertQuestionCategorySchema.partial().parse(req.body);
@@ -6587,7 +6651,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  app.delete("/api/question-categories/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+  app.delete("/api/question-categories/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
     try {
       const deleted = await storage.deleteQuestionCategory(req.params.id);
       if (!deleted) {

@@ -20,7 +20,7 @@ import { z } from "zod";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { Crown, Settings, DollarSign, Ticket, Users, Building2, Trash2, Edit, Plus, Eye, ShieldAlert, AlertCircle, CheckCircle2, RefreshCw, Key, Info, ChevronDown, CreditCard, Database, AlertTriangle, Calendar, Clock, Activity, FileWarning, CheckCircle, XCircle } from "lucide-react";
+import { Crown, Settings, DollarSign, Ticket, Users, Building2, Trash2, Edit, Plus, Eye, ShieldAlert, AlertCircle, CheckCircle2, RefreshCw, Key, Info, ChevronDown, CreditCard, Database, AlertTriangle, Calendar, Clock, Activity, FileWarning, CheckCircle, XCircle, FolderTree, ArrowRight } from "lucide-react";
 import { format, startOfWeek, parseISO } from "date-fns";
 import type { User as CurrentUser } from "@shared/schema";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -864,6 +864,34 @@ export default function SuperAdminPage() {
 
           {/* Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-6">
+            {/* Quick Actions */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Quick Actions</CardTitle>
+                <CardDescription>Manage platform configuration and settings</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <a href="/super-admin/categories" className="block">
+                    <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <FolderTree className="h-8 w-8 text-purple-500 mb-2" />
+                            <h3 className="font-semibold">Category Management</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                              Manage KRA and Question categories
+                            </p>
+                          </div>
+                          <ArrowRight className="h-5 w-5 text-gray-400" />
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </a>
+                </div>
+              </CardContent>
+            </Card>
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>

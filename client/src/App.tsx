@@ -26,6 +26,7 @@ import Analytics from "@/pages/analytics";
 import Settings from "@/pages/settings";
 import Admin from "@/pages/admin";
 import SuperAdmin from "@/pages/super-admin";
+import SuperAdminCategories from "@/pages/super-admin-categories";
 import BillingPage from "@/pages/billing";
 import IntegrationTest from "@/pages/IntegrationTest";
 import LoginPage from "@/pages/login";
@@ -75,6 +76,7 @@ function Router() {
             <Route path="/billing" component={BillingPage} />
             <Route path="/roadmap" component={RoadmapPage} />
             <Route path="/super-admin" component={SuperAdmin} />
+            <Route path="/super-admin/categories" component={SuperAdminCategories} />
             <Route path="/onboarding" component={OnboardingPage} />
             <Route path="/integration-test" component={IntegrationTest} />
             <Route path="/select-organization" component={SelectOrganizationPage} />

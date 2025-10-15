@@ -5,6 +5,7 @@ import {
   type Question, type InsertQuestion,
   type TeamQuestionSetting, type InsertTeamQuestionSetting,
   type QuestionCategory, type InsertQuestionCategory,
+  type KraCategory, type InsertKraCategory,
   type QuestionBank, type InsertQuestionBank,
   type Win, type InsertWin,
   type Comment, type InsertComment,
@@ -38,7 +39,7 @@ import {
   type UserIdentity, type InsertUserIdentity,
   type UserTour, type InsertUserTour,
   type PasswordResetToken, type InsertPasswordResetToken,
-  users, teams, checkins, questions, teamQuestionSettings, questionCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
+  users, teams, checkins, questions, teamQuestionSettings, questionCategories, kraCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
   organizationAuthProviders, userIdentities, userTours, teamGoals, passwordResetTokens,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
@@ -225,6 +226,12 @@ export interface IStorage {
   createQuestionCategory(category: InsertQuestionCategory): Promise<QuestionCategory>;
   updateQuestionCategory(id: string, category: Partial<InsertQuestionCategory>): Promise<QuestionCategory | undefined>;
   deleteQuestionCategory(id: string): Promise<boolean>;
+  
+  // KRA Categories
+  getKraCategories(): Promise<KraCategory[]>;
+  createKraCategory(category: InsertKraCategory): Promise<KraCategory>;
+  updateKraCategory(id: string, category: Partial<InsertKraCategory>): Promise<KraCategory | undefined>;
+  deleteKraCategory(id: string): Promise<boolean>;
   
   // Question Bank
   getQuestionBank(categoryId?: string): Promise<QuestionBank[]>;
@@ -2585,6 +2592,42 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .delete(questionCategories)
       .where(eq(questionCategories.id, id));
+    return result.rowCount > 0;
+  }
+  
+  // KRA Categories
+  async getKraCategories(): Promise<KraCategory[]> {
+    return await db
+      .select()
+      .from(kraCategories)
+      .orderBy(kraCategories.order, kraCategories.name);
+  }
+  
+  async createKraCategory(category: InsertKraCategory): Promise<KraCategory> {
+    const [newCategory] = await db
+      .insert(kraCategories)
+      .values({
+        id: sql`gen_random_uuid()`,
+        ...category,
+        createdAt: new Date()
+      })
+      .returning();
+    return newCategory;
+  }
+  
+  async updateKraCategory(id: string, categoryUpdate: Partial<InsertKraCategory>): Promise<KraCategory | undefined> {
+    const [updated] = await db
+      .update(kraCategories)
+      .set(categoryUpdate)
+      .where(eq(kraCategories.id, id))
+      .returning();
+    return updated;
+  }
+  
+  async deleteKraCategory(id: string): Promise<boolean> {
+    const result = await db
+      .delete(kraCategories)
+      .where(eq(kraCategories.id, id));
     return result.rowCount > 0;
   }
   

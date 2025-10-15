@@ -354,6 +354,16 @@ export const questionCategories = pgTable("question_categories", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });
 
+// KRA categories for organizing KRA templates into groups
+export const kraCategories = pgTable("kra_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  order: integer("order").notNull().default(0),
+  isDefault: boolean("is_default").notNull().default(false), // System default categories
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
+
 // Question bank - shared templates that organizations can use
 export const questionBank = pgTable("question_bank", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -809,6 +819,15 @@ export const insertQuestionCategorySchema = createInsertSchema(questionCategorie
   order: z.number().int().min(0, "Order must be non-negative"),
 });
 
+export const insertKraCategorySchema = createInsertSchema(kraCategories).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  name: z.string().min(1, "Category name is required").max(50, "Category name too long"),
+  description: z.string().max(200, "Description too long").optional(),
+  order: z.number().int().min(0, "Order must be non-negative"),
+});
+
 export const insertQuestionBankSchema = createInsertSchema(questionBank).omit({
   id: true,
   createdAt: true,
@@ -1047,6 +1066,9 @@ export type Checkin = typeof checkins.$inferSelect;
 
 export type InsertQuestionCategory = z.infer<typeof insertQuestionCategorySchema>;
 export type QuestionCategory = typeof questionCategories.$inferSelect;
+
+export type InsertKraCategory = z.infer<typeof insertKraCategorySchema>;
+export type KraCategory = typeof kraCategories.$inferSelect;
 
 export type InsertQuestionBank = z.infer<typeof insertQuestionBankSchema>;
 export type QuestionBank = typeof questionBank.$inferSelect;
