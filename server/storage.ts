@@ -150,6 +150,7 @@ export interface IStorage {
   getUsersByTeam(organizationId: string, teamId: string, includeInactive?: boolean): Promise<User[]>;
   getUsersByManager(organizationId: string, managerId: string, includeInactive?: boolean): Promise<User[]>;
   getUsersByTeamLeadership(organizationId: string, leaderId: string, includeInactive?: boolean): Promise<User[]>;
+  getTeamMembersByLeader(organizationId: string, leaderId: string): Promise<User[]>;
   getAllUsers(organizationId: string, includeInactive?: boolean): Promise<User[]>;
   getUserOrganizations(email: string): Promise<Array<{user: User; organization: Organization}>>;
 
@@ -829,6 +830,28 @@ export class DatabaseStorage implements IStorage {
     }
     
     return await db.select().from(users).where(and(...conditions));
+  }
+
+  async getTeamMembersByLeader(organizationId: string, leaderId: string): Promise<User[]> {
+    const teamsLed = await db
+      .select()
+      .from(teams)
+      .where(and(
+        eq(teams.organizationId, organizationId),
+        eq(teams.leaderId, leaderId)
+      ));
+      
+    if (teamsLed.length === 0) return [];
+    
+    const teamIds = teamsLed.map(t => t.id);
+    return await db
+      .select()
+      .from(users)
+      .where(and(
+        eq(users.organizationId, organizationId),
+        inArray(users.teamId, teamIds),
+        eq(users.isActive, true)
+      ));
   }
 
   async getAllUsers(organizationId: string, includeInactive = false): Promise<User[]> {
@@ -2175,16 +2198,43 @@ export class DatabaseStorage implements IStorage {
     ];
 
     if (managerId) {
-      // Get pending check-ins for manager's team members (include inactive for historical data)
-      const reports = await this.getUsersByManager(organizationId, managerId, true);
-      const reportIds = reports.map(user => user.id);
+      // First check if user is a team leader
+      const teamsLed = await db
+        .select()
+        .from(teams)
+        .where(and(
+          eq(teams.organizationId, organizationId),
+          eq(teams.leaderId, managerId)
+        ));
+
+      let reportIds: string[] = [];
+
+      if (teamsLed.length > 0) {
+        // User is a team leader - get ALL team members
+        const teamIds = teamsLed.map(t => t.id);
+        const teamMembers = await db
+          .select()
+          .from(users)
+          .where(and(
+            eq(users.organizationId, organizationId),
+            inArray(users.teamId, teamIds),
+            eq(users.isActive, true)
+          ));
+        reportIds = teamMembers.map(u => u.id).filter(id => id !== managerId); // Exclude self
+      } else {
+        // Not a team leader - use manager relationships (include inactive for historical data)
+        const reports = await this.getUsersByManager(organizationId, managerId, true);
+        reportIds = reports.map(user => user.id);
+      }
       
-      // If includeOwnIfNoManager is true, check if the manager has no manager themselves
+      // If includeOwnIfNoManager is true, check if the user has no manager themselves
       if (includeOwnIfNoManager) {
         const managerUser = await this.getUser(organizationId, managerId);
         if (managerUser && !managerUser.managerId) {
           // User has no manager, include their own pending check-ins for self-review
-          reportIds.push(managerId);
+          if (!reportIds.includes(managerId)) {
+            reportIds.push(managerId);
+          }
         }
       }
       
@@ -6598,6 +6648,21 @@ export class MemStorage implements IStorage {
     return teamUsers.filter(user => user.isActive !== false);
   }
 
+  async getTeamMembersByLeader(organizationId: string, leaderId: string): Promise<User[]> {
+    const teamsLed = Array.from(this.teams.values()).filter(team => 
+      team.leaderId === leaderId && team.organizationId === organizationId
+    );
+      
+    if (teamsLed.length === 0) return [];
+    
+    const teamIds = teamsLed.map(t => t.id);
+    return Array.from(this.users.values()).filter(user => 
+      user.teamId && teamIds.includes(user.teamId) && 
+      user.organizationId === organizationId &&
+      user.isActive !== false
+    );
+  }
+
   async getAllUsers(organizationId: string, includeInactive = false): Promise<User[]> {
     const orgUsers = Array.from(this.users.values()).filter(user => 
       user.organizationId === organizationId
@@ -6934,7 +6999,7 @@ export class MemStorage implements IStorage {
   }
 
   // Check-in Review Methods
-  async getPendingCheckins(organizationId: string, managerId?: string): Promise<Checkin[]> {
+  async getPendingCheckins(organizationId: string, managerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]> {
     let checkins = Array.from(this.checkins.values())
       .filter(checkin => 
         checkin.organizationId === organizationId &&
@@ -6943,9 +7008,41 @@ export class MemStorage implements IStorage {
       );
 
     if (managerId) {
-      // Get pending check-ins for manager's team members
-      const reports = await this.getUsersByManager(organizationId, managerId);
-      const reportIds = reports.map(user => user.id);
+      // First check if user is a team leader
+      const teamsLed = Array.from(this.teams.values()).filter(team => 
+        team.organizationId === organizationId &&
+        team.leaderId === managerId
+      );
+
+      let reportIds: string[] = [];
+
+      if (teamsLed.length > 0) {
+        // User is a team leader - get ALL team members
+        const teamIds = teamsLed.map(t => t.id);
+        const teamMembers = Array.from(this.users.values()).filter(user => 
+          user.organizationId === organizationId &&
+          user.teamId && teamIds.includes(user.teamId) &&
+          user.isActive !== false
+        );
+        reportIds = teamMembers.map(u => u.id).filter(id => id !== managerId); // Exclude self
+      } else {
+        // Not a team leader - use manager relationships (include inactive for historical data)
+        const reports = await this.getUsersByManager(organizationId, managerId, true);
+        reportIds = reports.map(user => user.id);
+      }
+      
+      // If includeOwnIfNoManager is true, check if the user has no manager themselves
+      if (includeOwnIfNoManager) {
+        const managerUser = await this.getUser(organizationId, managerId);
+        if (managerUser && !managerUser.managerId) {
+          // User has no manager, include their own pending check-ins for self-review
+          if (!reportIds.includes(managerId)) {
+            reportIds.push(managerId);
+          }
+        }
+      }
+      
+      if (reportIds.length === 0) return [];
       
       checkins = checkins.filter(checkin => reportIds.includes(checkin.userId));
     }

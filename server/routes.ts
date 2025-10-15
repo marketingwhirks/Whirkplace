@@ -5971,9 +5971,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
           // Self-review is allowed for users without managers
         } else {
-          // Check if user is the direct manager
-          const isDirectManager = checkinUser.managerId === user.id;
-          
           // Check if user is a team leader of the check-in user's team
           let isTeamLeader = false;
           if (checkinUser.teamId) {
@@ -5981,10 +5978,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
             isTeamLeader = team?.leaderId === user.id;
           }
 
-          if (!isDirectManager && !isTeamLeader) {
-            return res.status(403).json({ 
-              message: "You can only review check-ins from your direct reports or team members" 
-            });
+          // If team leader, they can review. Otherwise check manager relationship
+          if (!isTeamLeader) {
+            const isDirectManager = checkinUser.managerId === user.id;
+            if (!isDirectManager) {
+              return res.status(403).json({ 
+                message: "You can only review check-ins from your team members or direct reports" 
+              });
+            }
           }
         }
       }
