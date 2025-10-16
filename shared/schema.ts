@@ -213,6 +213,8 @@ export const organizations = pgTable("organizations", {
   stripePriceId: text("stripe_price_id"), // Which price they're subscribed to
   trialEndsAt: timestamp("trial_ends_at"),
   // User-Based Billing Information
+  billingInterval: text("billing_interval"), // Added: billing interval (monthly, yearly, etc.)
+  planType: text("plan_type"), // Added: type of plan (basic, premium, enterprise, etc.)
   billingUserCount: integer("billing_user_count").notNull().default(0), // Number of billable users (for tracking subscription quantity)
   billingPricePerUser: integer("billing_price_per_user").notNull().default(0), // Price per user/seat (in cents)
   billingPeriodStart: timestamp("billing_period_start"), // Current billing period start date
@@ -263,6 +265,12 @@ export const users = pgTable("users", {
   microsoftAccessToken: text("microsoft_access_token"), // Microsoft OAuth access token
   microsoftRefreshToken: text("microsoft_refresh_token"), // Microsoft OAuth refresh token
   authProvider: text("auth_provider").notNull().default("local"), // local, slack, microsoft
+  // Slack OAuth tokens (in addition to organization-level tokens)
+  slackAccessToken: text("slack_access_token"), // Added: user-specific Slack OAuth access token
+  slackRefreshToken: text("slack_refresh_token"), // Added: user-specific Slack OAuth refresh token
+  // Reminder opt-in preferences  
+  weeklyReminderOptIn: boolean("weekly_reminder_opt_in").notNull().default(false), // Added: opt-in for weekly reminders
+  reviewReminderOptIn: boolean("review_reminder_opt_in").notNull().default(false), // Added: opt-in for review reminders
   // Personal review reminder preferences (for managers and admins)
   personalReviewReminderDay: text("personal_review_reminder_day"), // Override org default for personal review reminders
   personalReviewReminderTime: text("personal_review_reminder_time"), // Override org default for personal review time
@@ -355,15 +363,14 @@ export const questionCategories = pgTable("question_categories", {
 });
 
 // KRA categories for organizing KRA templates into groups
-// COMMENTED OUT: This table doesn't exist in production yet
-// export const kraCategories = pgTable("kra_categories", {
-//   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-//   name: text("name").notNull(),
-//   description: text("description"),
-//   order: integer("order").notNull().default(0),
-//   isDefault: boolean("is_default").notNull().default(false), // System default categories
-//   createdAt: timestamp("created_at").notNull().default(sql`now()`),
-// });
+export const kraCategories = pgTable("kra_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  order: integer("order").notNull().default(0),
+  isDefault: boolean("is_default").notNull().default(false), // System default categories
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+});
 
 // Question bank - shared templates that organizations can use
 export const questionBank = pgTable("question_bank", {
@@ -611,6 +618,8 @@ export const complianceMetricsDaily = pgTable("compliance_metrics_daily", {
 export const aggregationWatermarks = pgTable("aggregation_watermarks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: varchar("organization_id").notNull(),
+  aggregationType: text("aggregation_type").notNull(), // Added: type of aggregation being tracked
+  lastProcessedDate: date("last_processed_date").notNull(), // Added: last processed date for aggregation
   lastProcessedAt: timestamp("last_processed_at").notNull(),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
@@ -859,15 +868,14 @@ export const insertQuestionCategorySchema = createInsertSchema(questionCategorie
   order: z.number().int().min(0, "Order must be non-negative"),
 });
 
-// COMMENTED OUT: kraCategories table doesn't exist in production
-// export const insertKraCategorySchema = createInsertSchema(kraCategories).omit({
-//   id: true,
-//   createdAt: true,
-// }).extend({
-//   name: z.string().min(1, "Category name is required").max(50, "Category name too long"),
-//   description: z.string().max(200, "Description too long").optional(),
-//   order: z.number().int().min(0, "Order must be non-negative"),
-// });
+export const insertKraCategorySchema = createInsertSchema(kraCategories).omit({
+  id: true,
+  createdAt: true,
+}).extend({
+  name: z.string().min(1, "Category name is required").max(50, "Category name too long"),
+  description: z.string().max(200, "Description too long").optional(),
+  order: z.number().int().min(0, "Order must be non-negative"),
+});
 
 export const insertQuestionBankSchema = createInsertSchema(questionBank).omit({
   id: true,
@@ -1110,9 +1118,8 @@ export type Checkin = typeof checkins.$inferSelect;
 export type InsertQuestionCategory = z.infer<typeof insertQuestionCategorySchema>;
 export type QuestionCategory = typeof questionCategories.$inferSelect;
 
-// COMMENTED OUT: kraCategories table doesn't exist in production
-// export type InsertKraCategory = z.infer<typeof insertKraCategorySchema>;
-// export type KraCategory = typeof kraCategories.$inferSelect;
+export type InsertKraCategory = z.infer<typeof insertKraCategorySchema>;
+export type KraCategory = typeof kraCategories.$inferSelect;
 
 export type InsertQuestionBank = z.infer<typeof insertQuestionBankSchema>;
 export type QuestionBank = typeof questionBank.$inferSelect;
@@ -1305,6 +1312,7 @@ export const kraTemplates = pgTable("kra_templates", {
   category: text("category").notNull().default("general"), // sales, engineering, marketing, etc.
   jobTitle: text("job_title"), // Specific job title (e.g., "Software Engineer", "Tax Manager")
   industries: text("industries").array().notNull().default([]), // Array of applicable industries
+  criteria: text("criteria"), // Added: criteria for this KRA template
   isGlobal: boolean("is_global").notNull().default(false), // Available as template for all orgs
   isActive: boolean("is_active").notNull().default(true),
   createdBy: varchar("created_by").notNull(),
@@ -1327,6 +1335,9 @@ export const userKras = pgTable("user_kras", {
   name: text("name").notNull(),
   description: text("description"),
   goals: jsonb("goals").notNull().default([]), // Array with progress tracking
+  criteria: text("criteria"), // Added: criteria for this KRA
+  quarter: text("quarter"), // Added: quarter this KRA is for
+  year: integer("year"), // Added: year this KRA is for
   assignedBy: varchar("assigned_by").notNull(), // Manager who assigned it
   startDate: timestamp("start_date").notNull(),
   endDate: timestamp("end_date"),
