@@ -411,7 +411,11 @@ export default function Dashboard() {
         
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" data-testid="dashboard-widgets">
-          <Card>
+          <Card 
+            className="cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200"
+            onClick={() => navigate(currentUser.role === "admin" ? "/analytics" : "/checkins")}
+            data-testid="card-team-health"
+          >
             <CardContent className="p-6">
               <div className="flex items-center">
                 <div className="flex-1">
@@ -438,7 +442,11 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card
+            className="cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200"
+            onClick={() => navigate("/checkins")}
+            data-testid="card-checkins-complete"
+          >
             <CardContent className="p-6">
               <div className="flex items-center">
                 <div className="flex-1">
@@ -553,7 +561,11 @@ export default function Dashboard() {
 
           {/* Show Wins and Questions for non-managers or when no compliance data */}
           {(currentUser.role !== "manager" || !teamCheckinCompliance) && (
-            <Card>
+            <Card
+              className="cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200"
+              onClick={() => navigate("/wins")}
+              data-testid="card-wins-count"
+            >
               <CardContent className="p-6">
                 <div className="flex items-center">
                   <div className="flex-1">
@@ -580,7 +592,11 @@ export default function Dashboard() {
           )}
 
           {(currentUser.role !== "manager" || !teamReviewCompliance) && (
-            <Card>
+            <Card
+              className="cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200"
+              onClick={() => navigate("/questions")}
+              data-testid="card-questions-count"
+            >
               <CardContent className="p-6">
                 <div className="flex items-center">
                   <div className="flex-1">
@@ -605,7 +621,11 @@ export default function Dashboard() {
           )}
 
           {/* Shoutouts Received Card */}
-          <Card>
+          <Card
+            className="cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200"
+            onClick={() => navigate("/shoutouts")}
+            data-testid="card-shoutouts"
+          >
             <CardContent className="p-6">
               <div className="flex items-center">
                 <div className="flex-1">
@@ -649,14 +669,27 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Check-ins */}
           <div className="lg:col-span-2">
-            <Card>
+            <Card 
+              className="cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200"
+              onClick={(e) => {
+                // Only navigate if clicking on card itself, not on buttons/links inside
+                if ((e.target as HTMLElement).closest('button') || 
+                    (e.target as HTMLElement).closest('[data-no-card-click]')) return;
+                navigate("/checkins");
+              }}
+              data-testid="card-recent-checkins"
+            >
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>
                     {currentUser.role === "member" ? "Your Check-ins" : currentUser.role === "manager" ? "Team Check-ins" : "Recent Check-ins"}
                   </CardTitle>
-                  <Button variant="link" data-testid="button-view-all-checkins">
-                    View All
+                  <Button 
+                    variant="link" 
+                    onClick={() => navigate("/checkins")}
+                    data-testid="button-view-all-checkins"
+                  >
+                    View All <ArrowRight className="w-4 h-4 ml-1" />
                   </Button>
                 </div>
               </CardHeader>
@@ -775,6 +808,7 @@ export default function Dashboard() {
                                 size="sm" 
                                 onClick={() => setSelectedCheckin(checkin)}
                                 data-testid={`button-view-checkin-${checkin.id}`}
+                                data-no-card-click="true"
                               >
                                 View Details
                               </Button>
@@ -846,14 +880,27 @@ export default function Dashboard() {
             </Card>
 
             {/* Recent Wins */}
-            <Card>
+            <Card 
+              className="cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200"
+              onClick={(e) => {
+                // Only navigate if clicking on card itself, not on buttons/links inside
+                if ((e.target as HTMLElement).closest('button') || 
+                    (e.target as HTMLElement).closest('[data-no-card-click]')) return;
+                navigate("/wins");
+              }}
+              data-testid="card-recent-wins"
+            >
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>
                     {currentUser.role === "member" ? "Your Wins 🎉" : currentUser.role === "manager" ? "Team Wins 🎉" : "Recent Wins 🎉"}
                   </CardTitle>
-                  <Button variant="link" data-testid="button-view-all-wins">
-                    View All
+                  <Button 
+                    variant="link" 
+                    onClick={() => navigate("/wins")}
+                    data-testid="button-view-all-wins"
+                  >
+                    View All <ArrowRight className="w-4 h-4 ml-1" />
                   </Button>
                 </div>
               </CardHeader>
@@ -903,19 +950,32 @@ export default function Dashboard() {
 
         {/* Team Goals Widget */}
         {teamGoals.length > 0 && (
-          <Card>
+          <Card 
+            className="cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200"
+            onClick={(e) => {
+              // Only navigate if clicking on card itself, not on buttons/links inside
+              if ((e.target as HTMLElement).closest('button') || 
+                  (e.target as HTMLElement).closest('[data-no-card-click]')) return;
+              navigate("/team-goals");
+            }}
+            data-testid="card-team-goals"
+          >
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <Target className="w-5 h-5" />
                   Team Goal Progress
                 </CardTitle>
-                <Link href="/team-goals" data-testid="button-view-all-goals">
-                  <Button variant="ghost" size="sm" className="gap-2">
-                    View All Team Goals
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="gap-2"
+                  onClick={() => navigate("/team-goals")}
+                  data-testid="button-view-all-goals"
+                >
+                  View All Team Goals
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
               </div>
               {currentUser.role === 'admin' && (
                 <p className="text-sm text-muted-foreground">
@@ -1075,11 +1135,14 @@ export default function Dashboard() {
                   <p className="text-sm text-muted-foreground">
                     No active team goals at the moment
                   </p>
-                  <Link href="/team-goals">
-                    <Button variant="link" size="sm" className="mt-2">
-                      View all goals
-                    </Button>
-                  </Link>
+                  <Button 
+                    variant="link" 
+                    size="sm" 
+                    className="mt-2"
+                    onClick={() => navigate("/team-goals")}
+                  >
+                    View all goals
+                  </Button>
                 </div>
               )}
             </CardContent>
@@ -1089,12 +1152,25 @@ export default function Dashboard() {
         {/* Team Structure & Check-in Interface */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Team Structure */}
-          <Card>
+          <Card 
+            className="cursor-pointer hover:shadow-lg hover:border-primary/50 transition-all duration-200"
+            onClick={(e) => {
+              // Only navigate if clicking on card itself, not on buttons/links inside
+              if ((e.target as HTMLElement).closest('button') || 
+                  (e.target as HTMLElement).closest('[data-no-card-click]')) return;
+              navigate("/team");
+            }}
+            data-testid="card-team-structure"
+          >
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>Team Structure</CardTitle>
-                <Button variant="link" data-testid="button-edit-team-structure">
-                  Edit Structure
+                <Button 
+                  variant="link" 
+                  onClick={() => navigate("/team-management")}
+                  data-testid="button-edit-team-structure"
+                >
+                  Edit Structure <ArrowRight className="w-4 h-4 ml-1" />
                 </Button>
               </div>
             </CardHeader>
