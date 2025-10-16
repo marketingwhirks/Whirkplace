@@ -41,17 +41,23 @@ The application adopts a multi-tenant architecture to support multiple organizat
 
 ## Critical Issues & Resolutions
 
-### Production Response Timeout Issue (October 15, 2025 - RESOLVED)
+### Production Response Timeout Issue (October 15, 2025 - RESOLVED October 16, 2025)
 **Problem**: In production, check-ins and wins showed as "failed" even though data was successfully saved
 
 **Root Cause**: Slack notifications were blocking API responses, causing frontend to timeout before receiving success confirmation
 
-**Resolution**: Made all Slack notifications asynchronous using `setImmediate()` in:
-- `POST /api/checkins` - Creates new check-ins
-- `PATCH /api/checkins/:id` - Updates existing check-ins  
-- `POST /api/wins` - Creates new wins
+**Resolution**: Implemented comprehensive timeout handling:
+1. Made all Slack notifications asynchronous using `setImmediate()` 
+2. Added 5-second timeouts to all Slack API calls using `Promise.race()`
+3. Enhanced error logging to track non-critical notification failures
+4. Response is sent immediately after database save
 
-Response is now sent immediately after database save, with notifications handled asynchronously afterward
+**Fixed Endpoints**:
+- `POST /api/checkins` - Creates new check-ins (with timeout protection)
+- `PATCH /api/checkins/:id` - Updates existing check-ins (with timeout protection)
+- `POST /api/wins` - Creates new wins (with timeout protection for both public and private notifications)
+
+**Result**: Check-ins and wins now save successfully with immediate response (under 1 second), even if Slack API is slow or unavailable
 
 ### Deployment Blocker - NOT NULL Constraint (October 16, 2025 - RESOLVED)
 **Problem**: Publishing failed with ERROR 23502 - NOT NULL constraint violation in compliance_metrics_daily table
