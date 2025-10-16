@@ -588,6 +588,16 @@ export const complianceMetricsDaily = pgTable("compliance_metrics_daily", {
   reviewOnTimeCount: integer("review_on_time_count").notNull().default(0), // Reviews completed on time
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+  // Additional columns in production database
+  metricDate: date("metric_date").notNull().default(sql`CURRENT_DATE`), // Metric calculation date
+  totalDue: integer("total_due").notNull().default(0), // Total items due
+  onTimeSubmissions: integer("on_time_submissions").notNull().default(0), // On-time submissions
+  lateSubmissions: integer("late_submissions").notNull().default(0), // Late submissions
+  missingSubmissions: integer("missing_submissions").notNull().default(0), // Missing submissions
+  onTimeReviews: integer("on_time_reviews").notNull().default(0), // On-time reviews
+  lateReviews: integer("late_reviews").notNull().default(0), // Late reviews
+  pendingReviews: integer("pending_reviews").notNull().default(0), // Pending reviews
+  teamBreakdown: jsonb("team_breakdown").notNull().default(sql`'{}'::jsonb`), // Team breakdown data
 }, (table) => ({
   orgBucketDateIdx: index("compliance_metrics_org_bucket_date_idx").on(table.organizationId, table.bucketDate),
   orgUserBucketDateIdx: index("compliance_metrics_org_user_bucket_date_idx").on(table.organizationId, table.userId, table.bucketDate),
