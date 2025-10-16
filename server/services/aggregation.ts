@@ -546,11 +546,15 @@ export class AggregationService {
         .insert(aggregationWatermarks)
         .values({
           organizationId,
+          aggregationType: 'daily_metrics', // Set the aggregation type
+          lastProcessedDate: timestamp.toISOString().split('T')[0], // Set the processed date
           lastProcessedAt: timestamp
         })
         .onConflictDoUpdate({
           target: aggregationWatermarks.organizationId,
           set: {
+            aggregationType: 'daily_metrics',
+            lastProcessedDate: timestamp.toISOString().split('T')[0],
             lastProcessedAt: timestamp,
             updatedAt: sql`now()`
           }
