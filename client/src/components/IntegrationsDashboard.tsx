@@ -31,7 +31,8 @@ import {
   Key,
   Link,
   Unlink,
-  Plus
+  Plus,
+  Bell
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -1208,6 +1209,58 @@ export function IntegrationsDashboard() {
                         <HelpCircle className="w-4 h-4 mr-2" />
                         Run Diagnostics
                       </Button>
+                      
+                      {/* Test Reminder Button - Only show for admins */}
+                      {userData?.role === 'admin' && (
+                        <Button
+                          onClick={async () => {
+                            try {
+                              toast({
+                                title: "📬 Sending Test Reminders...",
+                                description: "This will send check-in reminders to all users who haven't submitted this week.",
+                              });
+                              
+                              const response = await fetch('/api/slack/test-weekly-reminders', {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                },
+                                credentials: 'include'
+                              });
+                              
+                              if (!response.ok) {
+                                const error = await response.json();
+                                throw new Error(error.message || 'Failed to send test reminders');
+                              }
+                              
+                              const result = await response.json();
+                              
+                              toast({
+                                title: "✅ Test Reminders Sent!",
+                                description: `Successfully sent ${result.remindersSent} reminders to Slack. ${result.errors} errors occurred.`,
+                              });
+                              
+                              // Show detailed results if available
+                              if (result.details) {
+                                console.log("Test Reminder Details:", result.details);
+                              }
+                            } catch (error: any) {
+                              console.error("Test reminder failed:", error);
+                              toast({
+                                title: "❌ Test Failed",
+                                description: error.message || "Failed to send test reminders. Check console for details.",
+                                variant: "destructive",
+                              });
+                            }
+                          }}
+                          variant="outline"
+                          className="border-blue-500 text-blue-600 hover:bg-blue-50 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                          data-testid="button-test-slack-reminders"
+                        >
+                          <Bell className="w-4 h-4 mr-2" />
+                          Test Reminders
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ) : (
