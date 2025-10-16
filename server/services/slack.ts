@@ -1038,9 +1038,27 @@ export async function announceWin(
   winDescription: string, 
   userName: string, 
   nominatedBy?: string,
-  channelId?: string
+  channelId?: string,
+  organizationId?: string
 ) {
-  if (!slack) {
+  // Get organization-specific token if available
+  let slackClient: WebClient | null = slack;
+  
+  if (organizationId) {
+    try {
+      const token = await getValidSlackToken(organizationId);
+      if (token) {
+        slackClient = new WebClient(token);
+        console.log(`Using organization-specific token for win announcement`);
+      } else {
+        console.log(`No organization-specific token for org ${organizationId}, using bot token`);
+      }
+    } catch (error) {
+      console.warn(`Failed to get org token for win announcement:`, error);
+    }
+  }
+  
+  if (!slackClient) {
     console.log("Slack client not configured, skipping win announcement");
     return;
   }
@@ -1083,7 +1101,7 @@ export async function announceWin(
         }
       ],
       text: `${announcement}: ${winTitle}`
-    });
+    }, organizationId);
 
     console.log(`✅ Public win announced to channel ${channel}`);
     return messageId;
@@ -1189,13 +1207,35 @@ export async function announceShoutout(
   message: string, 
   fromUserName: string, 
   toUserName: string, 
-  companyValues: string[] = []
+  companyValues: string[] = [],
+  channelId?: string,
+  organizationId?: string
 ) {
-  if (!slack) return;
+  // Get organization-specific token if available
+  let slackClient: WebClient | null = slack;
+  
+  if (organizationId) {
+    try {
+      const token = await getValidSlackToken(organizationId);
+      if (token) {
+        slackClient = new WebClient(token);
+        console.log(`Using organization-specific token for shoutout announcement`);
+      } else {
+        console.log(`No organization-specific token for org ${organizationId}, using bot token`);
+      }
+    } catch (error) {
+      console.warn(`Failed to get org token for shoutout announcement:`, error);
+    }
+  }
+  
+  if (!slackClient) {
+    console.log("Slack client not configured, skipping shoutout announcement");
+    return;
+  }
 
-  const channel = process.env.SLACK_CHANNEL_ID;
+  const channel = channelId || process.env.SLACK_CHANNEL_ID;
   if (!channel) {
-    console.warn("SLACK_CHANNEL_ID not configured. Shoutout announcement not sent for security.");
+    console.warn("No Slack channel configured for shoutout announcements");
     return;
   }
   
@@ -1253,12 +1293,20 @@ export async function announceShoutout(
     }
   });
 
-  const messageId = await sendSlackMessage({
-    channel,
-    blocks
-  });
+  try {
+    const messageId = await sendSlackMessage({
+      channel,
+      blocks,
+      text: `${fromUserName} gave a shoutout to ${toUserName}: ${message}`
+    }, organizationId);
 
-  return messageId;
+    console.log(`✅ Public shoutout announced to channel ${channel}`);
+    return messageId;
+  } catch (error) {
+    console.error('Error announcing shoutout to Slack channel:', error);
+    // Don't throw - shoutout creation should succeed even if Slack fails
+    return undefined;
+  }
 }
 
 /**

@@ -6900,32 +6900,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           if (recipient) {
             // Handle Slack notifications based on visibility
-            if (win.isPublic) {
+            if (win.isPublic && organization?.enableSlackIntegration) {
               // Public win: post to organization's configured wins channel, or fallback to main channel
-              const channelId = organization?.slackWinsChannelId || organization?.slackChannelId || 'C09JR9655B7'; // Use wins channel first, then main channel, then default
+              const channelId = organization?.slackWinsChannelId || organization?.slackChannelId;
               
-              console.log(`📢 Announcing public win to channel ${channelId}`);
-              // Add timeout to Slack notification to prevent hanging
-              const notificationTimeout = new Promise<string | undefined>((resolve) => 
-                setTimeout(() => {
-                  console.warn('⏱️ Slack announcement timeout - skipping');
-                  resolve(undefined);
-                }, 5000)
-              );
+              if (!channelId) {
+                console.warn(`⚠️ No Slack channel configured for organization ${organization.name} (${organization.id})`);
+                console.log(`   slack_wins_channel_id: ${organization.slackWinsChannelId}`);
+                console.log(`   slack_channel_id: ${organization.slackChannelId}`);
+                console.log(`   To fix: Configure a Slack channel ID in organization settings`);
+              } else {
+                console.log(`📢 Announcing public win to channel ${channelId} for org ${organization.name}`);
+                // Add timeout to Slack notification to prevent hanging
+                const notificationTimeout = new Promise<string | undefined>((resolve) => 
+                  setTimeout(() => {
+                    console.warn('⏱️ Slack announcement timeout - skipping');
+                    resolve(undefined);
+                  }, 5000)
+                );
+                
+                const slackMessageId = await Promise.race([
+                  announceWin(
+                    win.title, 
+                    win.description, 
+                    recipient.name, 
+                    sender?.name,
+                    channelId,
+                    req.orgId
+                  ),
+                  notificationTimeout
+                ]);
               
-              const slackMessageId = await Promise.race([
-                announceWin(
-                  win.title, 
-                  win.description, 
-                  recipient.name, 
-                  sender?.name,
-                  channelId
-                ),
-                notificationTimeout
-              ]);
-              
-              if (slackMessageId) {
-                await storage.updateWin(req.orgId, win.id, { slackMessageId });
+                if (slackMessageId) {
+                  await storage.updateWin(req.orgId, win.id, { slackMessageId });
+                  console.log(`✅ Win Slack message sent with ID: ${slackMessageId}`);
+                } else {
+                  console.log(`⚠️ Win created but Slack notification failed or timed out`);
+                }
               }
             } else {
               // Private win: send DM to recipient if they have a Slack ID
@@ -7253,24 +7264,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.incrementGoalsByMetric(req.orgId, "kudos given", shoutoutData.toTeamId);
         }
         
-        // Send Slack notification if public
-        if (shoutout.isPublic) {
+        // Send Slack notification if public and Slack integration is enabled
+        const organization = await storage.getOrganization(req.orgId);
+        if (shoutout.isPublic && organization?.enableSlackIntegration) {
           const fromUser = await storage.getUser(req.orgId, shoutout.fromUserId);
           
           if (fromUser && team) {
-            try {
-              const slackMessageId = await announceShoutout(
-                shoutout.message,
-                fromUser.name,
-                `Team ${team.name}`, // Use team name for Slack notification
-                shoutout.values
-              );
-              
-              if (slackMessageId) {
-                await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
+            const channelId = organization?.slackWinsChannelId || organization?.slackChannelId;
+            if (!channelId) {
+              console.warn(`⚠️ No Slack channel configured for organization ${organization.name} (team shoutout)`);
+            } else {
+              try {
+                console.log(`📢 Announcing team shoutout to channel ${channelId} for org ${organization.name}`);
+                const slackMessageId = await announceShoutout(
+                  shoutout.message,
+                  fromUser.name,
+                  `Team ${team.name}`, // Use team name for Slack notification
+                  shoutout.values,
+                  channelId,
+                  req.orgId
+                );
+                
+                if (slackMessageId) {
+                  await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
+                  console.log(`✅ Team shoutout Slack message sent with ID: ${slackMessageId}`);
+                }
+              } catch (slackError) {
+                console.warn("Failed to send Slack notification for team shoutout:", slackError);
               }
-            } catch (slackError) {
-              console.warn("Failed to send Slack notification for team shoutout:", slackError);
             }
           }
         }
@@ -7318,25 +7339,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.incrementGoalsByMetric(req.orgId, "kudos given", req.currentUser.teamId);
           }
           
-          // Send Slack notification if public
-          if (shoutout.isPublic) {
+          // Send Slack notification if public and Slack integration is enabled
+          const organization = await storage.getOrganization(req.orgId);
+          if (shoutout.isPublic && organization?.enableSlackIntegration) {
             const fromUser = await storage.getUser(req.orgId, shoutout.fromUserId);
             const toUser = await storage.getUser(req.orgId, shoutout.toUserId!);
             
             if (fromUser && toUser) {
-              try {
-                const slackMessageId = await announceShoutout(
-                  shoutout.message,
-                  fromUser.name,
-                  toUser.name,
-                  shoutout.values
-                );
-                
-                if (slackMessageId) {
-                  await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
+              const channelId = organization?.slackWinsChannelId || organization?.slackChannelId;
+              if (!channelId) {
+                console.warn(`⚠️ No Slack channel configured for organization ${organization.name} (individual shoutout)`);
+              } else {
+                try {
+                  console.log(`📢 Announcing shoutout to channel ${channelId} for org ${organization.name}`);
+                  const slackMessageId = await announceShoutout(
+                    shoutout.message,
+                    fromUser.name,
+                    toUser.name,
+                    shoutout.values,
+                    channelId,
+                    req.orgId
+                  );
+                  
+                  if (slackMessageId) {
+                    await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
+                    console.log(`✅ Shoutout Slack message sent with ID: ${slackMessageId}`);
+                  }
+                } catch (slackError) {
+                  console.warn("Failed to send Slack notification for shoutout:", slackError);
                 }
-              } catch (slackError) {
-                console.warn("Failed to send Slack notification for shoutout:", slackError);
               }
             }
           }
