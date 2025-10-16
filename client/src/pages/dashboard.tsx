@@ -20,7 +20,7 @@ import type { Checkin, Win, User, Question, ComplianceMetricsResult, Shoutout, T
 import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 
 interface DashboardStats {
   averageRating: number;
@@ -30,6 +30,7 @@ interface DashboardStats {
 
 export default function Dashboard() {
   const { toast } = useToast();
+  const [, navigate] = useLocation(); // Navigation function
   const { data: currentUser, isLoading: userLoading, error: userError } = useViewAsRole();
   const [checkinData, setCheckinData] = useState({
     overallMood: 0,
@@ -798,7 +799,11 @@ export default function Dashboard() {
               <CardContent className="space-y-3">
                 {/* Create New Question - Only for managers and admins */}
                 {(currentUser.role === "manager" || currentUser.role === "admin") && (
-                  <Button className="w-full justify-start" data-testid="button-create-question">
+                  <Button 
+                    className="w-full justify-start" 
+                    onClick={() => navigate('/questions')}
+                    data-testid="button-create-question"
+                  >
                     <Plus className="w-4 h-4 mr-2" />
                     Create New Question
                   </Button>
@@ -816,13 +821,23 @@ export default function Dashboard() {
                   </Button>
                 )}
                 {/* Celebrate a Win - Available to all users */}
-                <Button variant="secondary" className="w-full justify-start" data-testid="button-celebrate-win">
+                <Button 
+                  variant="secondary" 
+                  className="w-full justify-start" 
+                  onClick={() => navigate('/wins')}
+                  data-testid="button-celebrate-win"
+                >
                   <Trophy className="w-4 h-4 mr-2" />
                   Celebrate a Win
                 </Button>
                 {/* Manage Team - Only for managers (own team) and admins (all teams) */}
                 {(currentUser.role === "manager" || currentUser.role === "admin") && (
-                  <Button variant="secondary" className="w-full justify-start" data-testid="button-manage-team">
+                  <Button 
+                    variant="secondary" 
+                    className="w-full justify-start" 
+                    onClick={() => navigate('/team-management')}
+                    data-testid="button-manage-team"
+                  >
                     <UserCog className="w-4 h-4 mr-2" />
                     Manage Team
                   </Button>
