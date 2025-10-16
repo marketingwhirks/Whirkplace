@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Target, Plus, Search, Filter, Settings, Users, CheckCircle, 
   Circle, ChevronDown, Calendar, User, BarChart3, Edit2, X, Brain, Sparkles,
-  MoreVertical, Trash2, CheckSquare, XSquare
+  MoreVertical, Trash2, CheckSquare, XSquare, Eye, Clock, AlertCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/layout/header";
@@ -696,6 +696,354 @@ function EditTemplateDialog({ template, open, onClose }: { template: KraTemplate
   );
 }
 
+function TemplateDetailsDialog({ template, open, onClose }: { template: KraTemplateWithMeta; open: boolean; onClose: () => void }) {
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Eye className="w-5 h-5" />
+            KRA Template Details
+          </DialogTitle>
+          <DialogDescription>
+            View complete information about this KRA template
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-6">
+          {/* Template Header Info */}
+          <div className="space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1 flex-1">
+                <h3 className="text-lg font-semibold">{template.name}</h3>
+                {template.description && (
+                  <p className="text-sm text-muted-foreground">{template.description}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant={template.isActive ? "default" : "secondary"}>
+                  {template.isActive ? "Active" : "Inactive"}
+                </Badge>
+                <Badge variant="outline">
+                  {template.category || "General"}
+                </Badge>
+              </div>
+            </div>
+            
+            {/* Statistics */}
+            <div className="grid grid-cols-2 gap-4">
+              <Card className="p-3">
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Assignments</p>
+                    <p className="text-lg font-semibold">{template.assignmentCount || 0}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-3">
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total KRAs</p>
+                    <p className="text-lg font-semibold">{template.goals?.length || 0}</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          </div>
+          
+          {/* Goals/KRAs Section */}
+          {template.goals && Array.isArray(template.goals) && template.goals.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" />
+                Key Result Areas ({template.goals.length})
+              </h4>
+              <div className="space-y-3">
+                {template.goals.map((goal: any, index: number) => (
+                  <Card key={index} className="p-4">
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between">
+                        <h5 className="font-medium flex items-center gap-2">
+                          <Circle className="w-3 h-3" />
+                          {goal.title || `KRA ${index + 1}`}
+                        </h5>
+                        <Badge variant="outline" className="ml-2">
+                          KRA {index + 1}
+                        </Badge>
+                      </div>
+                      
+                      {goal.description && (
+                        <p className="text-sm text-muted-foreground pl-5">
+                          {goal.description}
+                        </p>
+                      )}
+                      
+                      <div className="flex flex-wrap gap-4 pl-5 text-sm">
+                        {goal.target && (
+                          <div className="flex items-center gap-1">
+                            <Target className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">Target:</span>
+                            <span className="font-medium">{goal.target}</span>
+                          </div>
+                        )}
+                        {goal.metric && (
+                          <div className="flex items-center gap-1">
+                            <BarChart3 className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">Metric:</span>
+                            <span className="font-medium">{goal.metric}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Template Metadata */}
+          <div className="border-t pt-4 space-y-2 text-sm text-muted-foreground">
+            <p>Template ID: {template.id}</p>
+            {template.createdBy && (
+              <p>Created by: {template.createdBy}</p>
+            )}
+          </div>
+        </div>
+        
+        <DialogFooter>
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={onClose}
+            data-testid="button-close-template-details"
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function UserKraDetailsDialog({ userKra, open, onClose }: { userKra: UserKraWithDetails; open: boolean; onClose: () => void }) {
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'default';
+      case 'in_progress': return 'secondary';
+      case 'overdue': return 'destructive';
+      default: return 'outline';
+    }
+  };
+
+  const progress = userKra.progress || 0;
+  const progressPercentage = Math.min(progress, 100);
+
+  return (
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Eye className="w-5 h-5" />
+            KRA Assignment Details
+          </DialogTitle>
+          <DialogDescription>
+            View complete information about this KRA assignment
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-6">
+          {/* Assignment Header Info */}
+          <div className="space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="space-y-1 flex-1">
+                <h3 className="text-lg font-semibold">{userKra.template?.name || userKra.name || "KRA Assignment"}</h3>
+                {userKra.description && (
+                  <p className="text-sm text-muted-foreground">{userKra.description}</p>
+                )}
+              </div>
+              <Badge variant={getStatusColor(userKra.status)}>
+                {userKra.status.replace('_', ' ')}
+              </Badge>
+            </div>
+            
+            {/* Assignment Info */}
+            <div className="grid grid-cols-2 gap-4">
+              <Card className="p-3">
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Assigned To</p>
+                    <p className="text-sm font-semibold">{userKra.assignee?.name || "Unknown User"}</p>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-3">
+                <div className="flex items-center gap-2">
+                  <User className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Assigned By</p>
+                    <p className="text-sm font-semibold">{userKra.assignedByUser?.name || "Unknown"}</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+            
+            {/* Timeline */}
+            <div className="space-y-3">
+              <h4 className="text-sm font-semibold flex items-center gap-2">
+                <Clock className="w-4 h-4" />
+                Timeline
+              </h4>
+              <div className="grid grid-cols-2 gap-4">
+                {userKra.startDate && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Start Date</p>
+                    <p className="text-sm font-medium">
+                      {format(typeof userKra.startDate === 'string' ? parseISO(userKra.startDate) : new Date(userKra.startDate), "MMM d, yyyy")}
+                    </p>
+                  </div>
+                )}
+                {userKra.endDate && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">End Date</p>
+                    <p className="text-sm font-medium">
+                      {format(typeof userKra.endDate === 'string' ? parseISO(userKra.endDate) : new Date(userKra.endDate), "MMM d, yyyy")}
+                    </p>
+                  </div>
+                )}
+                {userKra.reviewDate && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Review Date</p>
+                    <p className="text-sm font-medium">
+                      {format(typeof userKra.reviewDate === 'string' ? parseISO(userKra.reviewDate) : new Date(userKra.reviewDate), "MMM d, yyyy")}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            {/* Progress */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold">Overall Progress</span>
+                <span className="text-sm text-muted-foreground">
+                  {progress}% Complete
+                </span>
+              </div>
+              <Progress value={progressPercentage} className="h-3" />
+            </div>
+          </div>
+          
+          {/* Goals/KRAs Section */}
+          {userKra.goals && Array.isArray(userKra.goals) && userKra.goals.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <BarChart3 className="w-4 h-4" />
+                Key Result Areas ({userKra.goals.length})
+              </h4>
+              <div className="space-y-3">
+                {userKra.goals.map((goal: any, index: number) => (
+                  <Card key={index} className="p-4">
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between">
+                        <h5 className="font-medium flex items-center gap-2">
+                          {goal.completed ? (
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-muted-foreground" />
+                          )}
+                          <span className={goal.completed ? "line-through text-muted-foreground" : ""}>
+                            {goal.title || `KRA ${index + 1}`}
+                          </span>
+                        </h5>
+                        <Badge variant={goal.completed ? "default" : "outline"} className="ml-2">
+                          {goal.completed ? "Completed" : "Pending"}
+                        </Badge>
+                      </div>
+                      
+                      {goal.description && (
+                        <p className="text-sm text-muted-foreground pl-6">
+                          {goal.description}
+                        </p>
+                      )}
+                      
+                      <div className="flex flex-wrap gap-4 pl-6 text-sm">
+                        {goal.target && (
+                          <div className="flex items-center gap-1">
+                            <Target className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">Target:</span>
+                            <span className="font-medium">{goal.target}</span>
+                          </div>
+                        )}
+                        {goal.metric && (
+                          <div className="flex items-center gap-1">
+                            <BarChart3 className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">Metric:</span>
+                            <span className="font-medium">{goal.metric}</span>
+                          </div>
+                        )}
+                        {goal.progress !== undefined && (
+                          <div className="flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">Progress:</span>
+                            <span className="font-medium">{goal.progress}%</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {/* Notes/Comments */}
+          {userKra.notes && (
+            <div>
+              <h4 className="text-sm font-semibold mb-2 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                Notes
+              </h4>
+              <Card className="p-4">
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {userKra.notes}
+                </p>
+              </Card>
+            </div>
+          )}
+          
+          {/* Assignment Metadata */}
+          <div className="border-t pt-4 space-y-2 text-sm text-muted-foreground">
+            <p>Assignment ID: {userKra.id}</p>
+            {userKra.templateId && (
+              <p>Template ID: {userKra.templateId}</p>
+            )}
+            {userKra.createdAt && (
+              <p>Created: {format(typeof userKra.createdAt === 'string' ? parseISO(userKra.createdAt) : new Date(userKra.createdAt), "MMM d, yyyy 'at' h:mm a")}</p>
+            )}
+            {userKra.updatedAt && (
+              <p>Last Updated: {format(typeof userKra.updatedAt === 'string' ? parseISO(userKra.updatedAt) : new Date(userKra.updatedAt), "MMM d, yyyy 'at' h:mm a")}</p>
+            )}
+          </div>
+        </div>
+        
+        <DialogFooter>
+          <Button 
+            type="button" 
+            variant="outline" 
+            onClick={onClose}
+            data-testid="button-close-kra-details"
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AssignKraDialog({ trigger, template }: { trigger: React.ReactNode; template?: KraTemplateWithMeta }) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
@@ -1017,6 +1365,7 @@ function TemplateCard({ template }: { template: KraTemplateWithMeta }) {
   const canManage = currentUser?.role === 'admin' || currentUser?.role === 'manager';
   const { toast } = useToast();
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   
   // Delete template mutation
   const deleteTemplateMutation = useMutation({
@@ -1194,7 +1543,12 @@ function TemplateCard({ template }: { template: KraTemplateWithMeta }) {
                     }
                   />
                 )}
-                <Button variant="outline" size="sm" data-testid={`button-view-template-${template.id}`}>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setDetailsDialogOpen(true)}
+                  data-testid={`button-view-template-${template.id}`}
+                >
                   View Details
                 </Button>
               </div>
@@ -1211,6 +1565,15 @@ function TemplateCard({ template }: { template: KraTemplateWithMeta }) {
           onClose={() => setEditDialogOpen(false)}
         />
       )}
+      
+      {/* Template Details Dialog */}
+      {detailsDialogOpen && (
+        <TemplateDetailsDialog 
+          template={template}
+          open={detailsDialogOpen}
+          onClose={() => setDetailsDialogOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -1225,6 +1588,7 @@ function UserKraCard({
   const { data: currentUser } = useViewAsRole();
   const canEdit = currentUser?.role === 'admin' || 
     (currentUser?.role === 'manager' && userKra.assignee?.id !== currentUser.id);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   
   const progress = userKra.progress || 0;
   const targetProgress = 100; // Default target progress
@@ -1240,6 +1604,7 @@ function UserKraCard({
   };
 
   return (
+    <>
     <Card className="hover:shadow-md transition-shadow" data-testid={`card-user-kra-${userKra.id}`}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
@@ -1343,7 +1708,12 @@ function UserKraCard({
                   </Button>
                 </>
               )}
-              <Button variant="outline" size="sm" data-testid={`button-view-kra-${userKra.id}`}>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setDetailsDialogOpen(true)}
+                data-testid={`button-view-kra-${userKra.id}`}
+              >
                 View Details
               </Button>
             </div>
@@ -1351,6 +1721,16 @@ function UserKraCard({
         </div>
       </CardContent>
     </Card>
+    
+    {/* User KRA Details Dialog */}
+    {detailsDialogOpen && (
+      <UserKraDetailsDialog 
+        userKra={userKra}
+        open={detailsDialogOpen}
+        onClose={() => setDetailsDialogOpen(false)}
+      />
+    )}
+    </>
   );
 }
 
