@@ -5748,6 +5748,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sanitizedData = sanitizeForOrganization(checkinData, req.orgId);
       const checkin = await storage.createCheckin(req.orgId, sanitizedData);
       
+      // Log successful save for debugging production issues
+      console.log(`✅ Check-in saved successfully for user ${req.currentUser?.email} (${checkin.id})`);
+      
       // Send response immediately to prevent timeouts in production
       res.status(201).json(checkin);
       
@@ -5788,16 +5791,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const responses = checkin.responses as Record<string, string>;
               const firstResponse = Object.values(responses)[0] || undefined;
               
-              await notifyCheckinSubmitted(
-                user.name,
-                teamLeaderName,
-                checkin.overallMood,
-                firstResponse
+              // Add timeout to Slack notification to prevent hanging
+              const notificationTimeout = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Slack notification timeout')), 5000)
               );
+              
+              await Promise.race([
+                notifyCheckinSubmitted(
+                  user.name,
+                  teamLeaderName,
+                  checkin.overallMood,
+                  firstResponse
+                ),
+                notificationTimeout
+              ]);
             }
           }
         } catch (error) {
-          console.error("Failed to handle post-checkin tasks:", error);
+          // Log Slack notification errors but don't let them affect the user
+          console.error("Failed to handle post-checkin tasks (non-critical):", error);
         }
       });
     } catch (error) {
@@ -5906,6 +5918,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Check-in not found" });
       }
       
+      // Log successful update for debugging production issues
+      console.log(`✅ Check-in updated successfully for user ${req.currentUser?.email} (${checkin.id})`);
+      
       // Send response immediately to prevent timeouts in production
       res.json(checkin);
       
@@ -5943,15 +5958,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const responses = checkin.responses as Record<string, string>;
               const firstResponse = Object.values(responses)[0] || undefined;
               
-              await notifyCheckinSubmitted(
-                user.name,
-                teamLeaderName,
-                checkin.overallMood,
-                firstResponse
+              // Add timeout to Slack notification to prevent hanging
+              const notificationTimeout = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Slack notification timeout')), 5000)
               );
+              
+              await Promise.race([
+                notifyCheckinSubmitted(
+                  user.name,
+                  teamLeaderName,
+                  checkin.overallMood,
+                  firstResponse
+                ),
+                notificationTimeout
+              ]);
             }
           } catch (notificationError) {
-            console.error("Failed to send check-in submission notification:", notificationError);
+            // Log Slack notification errors but don't let them affect the user
+            console.error("Failed to send check-in submission notification (non-critical):", notificationError);
           }
         });
       }
@@ -6853,6 +6877,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const sanitizedData = sanitizeForOrganization(winData, req.orgId);
       const win = await storage.createWin(req.orgId, sanitizedData);
       
+      // Log successful save for debugging production issues
+      console.log(`✅ Win saved successfully for user ${req.currentUser?.email} (${win.id})`);
+      
       // Send response immediately to prevent timeouts in production
       res.status(201).json(win);
       
@@ -6878,13 +6905,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const channelId = organization?.slackWinsChannelId || organization?.slackChannelId || 'C09JR9655B7'; // Use wins channel first, then main channel, then default
               
               console.log(`📢 Announcing public win to channel ${channelId}`);
-              const slackMessageId = await announceWin(
-                win.title, 
-                win.description, 
-                recipient.name, 
-                sender?.name,
-                channelId
+              // Add timeout to Slack notification to prevent hanging
+              const notificationTimeout = new Promise<string | undefined>((resolve) => 
+                setTimeout(() => {
+                  console.warn('⏱️ Slack announcement timeout - skipping');
+                  resolve(undefined);
+                }, 5000)
               );
+              
+              const slackMessageId = await Promise.race([
+                announceWin(
+                  win.title, 
+                  win.description, 
+                  recipient.name, 
+                  sender?.name,
+                  channelId
+                ),
+                notificationTimeout
+              ]);
               
               if (slackMessageId) {
                 await storage.updateWin(req.orgId, win.id, { slackMessageId });
@@ -6895,14 +6933,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log(`💌 Sending private win DM to ${recipient.name} (${recipient.slackUserId})`);
                 const { sendPrivateWinNotification } = await import('./services/slack');
                 
-                const slackMessageId = await sendPrivateWinNotification(
-                  win.title,
-                  win.description,
-                  recipient.slackUserId,
-                  recipient.name,
-                  sender?.name || req.currentUser!.name,
-                  sender?.name
+                // Add timeout to Slack notification to prevent hanging
+                const notificationTimeout = new Promise<string | undefined>((resolve) => 
+                  setTimeout(() => {
+                    console.warn('⏱️ Slack DM timeout - skipping');
+                    resolve(undefined);
+                  }, 5000)
                 );
+                
+                const slackMessageId = await Promise.race([
+                  sendPrivateWinNotification(
+                    win.title,
+                    win.description,
+                    recipient.slackUserId,
+                    recipient.name,
+                    sender?.name || req.currentUser!.name,
+                    sender?.name
+                  ),
+                  notificationTimeout
+                ]);
                 
                 if (slackMessageId) {
                   await storage.updateWin(req.orgId, win.id, { slackMessageId });
