@@ -629,6 +629,15 @@ export async function sendSlackMessage(
   message: ChatPostMessageArguments,
   organizationId?: string
 ): Promise<string | undefined> {
+  console.log('📬 sendSlackMessage called with:', {
+    channel: message.channel,
+    hasBlocks: !!message.blocks,
+    text: message.text?.substring(0, 50) + '...',
+    organizationId,
+    hasBotToken: !!process.env.SLACK_BOT_TOKEN,
+    globalSlackClientExists: !!slack
+  });
+  
   // Try to get organization-specific token first
   let slackClient: WebClient | null = slack;
   
@@ -637,23 +646,50 @@ export async function sendSlackMessage(
       const token = await getValidSlackToken(organizationId);
       if (token) {
         slackClient = new WebClient(token);
-        console.log(`Using organization-specific token for org ${organizationId}`);
+        console.log(`✅ Using organization-specific token for org ${organizationId}`);
+      } else {
+        console.log(`⚠️ No org-specific token for ${organizationId}, using bot token`);
       }
     } catch (error) {
-      console.warn(`Failed to get org token for ${organizationId}, falling back to bot token:`, error);
+      console.warn(`⚠️ Failed to get org token for ${organizationId}, falling back to bot token:`, error);
     }
   }
   
   if (!slackClient) {
-    console.warn("Slack not configured. Message not sent:", JSON.stringify(message));
+    console.error("❌ Slack client not configured. Bot token exists:", !!process.env.SLACK_BOT_TOKEN);
+    console.warn("Message not sent:", JSON.stringify(message));
     return undefined;
   }
 
   try {
+    console.log('📤 Attempting to post message to Slack channel:', message.channel);
     const response = await slackClient.chat.postMessage(message);
+    
+    if (!response.ok) {
+      console.error('❌ Slack API returned not ok:', {
+        error: response.error,
+        channel: message.channel
+      });
+      throw new Error(`Slack API error: ${response.error}`);
+    }
+    
+    console.log('✅ Message successfully posted to Slack:', {
+      messageId: response.ts,
+      channel: response.channel,
+      ok: response.ok
+    });
+    
     return response.ts;
-  } catch (error) {
-    console.error('Error sending Slack message:', error);
+  } catch (error: any) {
+    console.error('❌ Error sending Slack message:', {
+      error: error.message || error,
+      channel: message.channel,
+      errorCode: error.data?.error,
+      errorDetails: error.data,
+      stack: error.stack,
+      hasSlackClient: !!slackClient,
+      errorType: error.constructor?.name
+    });
     throw error;
   }
 }
@@ -1031,6 +1067,97 @@ export async function sendCheckinReminder(userNames: string[], questions: Array<
 }
 
 /**
+ * Test Slack connection and channel permissions
+ */
+export async function testSlackConnection(organizationId?: string): Promise<{ 
+  success: boolean; 
+  details: any; 
+  error?: string 
+}> {
+  console.log('🧪 Testing Slack connection...');
+  
+  try {
+    // Check if bot token exists
+    if (!process.env.SLACK_BOT_TOKEN) {
+      return { 
+        success: false, 
+        details: { hasBotToken: false },
+        error: 'SLACK_BOT_TOKEN not configured' 
+      };
+    }
+    
+    // Check if global slack client exists
+    if (!slack) {
+      return {
+        success: false,
+        details: { hasBotToken: true, hasSlackClient: false },
+        error: 'Slack client not initialized despite having token'
+      };
+    }
+    
+    // Test basic auth
+    const authTest = await slack.auth.test();
+    console.log('✅ Slack auth test passed:', {
+      team: authTest.team,
+      user: authTest.user,
+      bot_id: authTest.bot_id
+    });
+    
+    // Get channel info if organization provided
+    let channelInfo = null;
+    if (organizationId) {
+      const org = await storage.getOrganization(organizationId);
+      if (org?.slack_wins_channel_id) {
+        try {
+          const channelResult = await slack.conversations.info({
+            channel: org.slack_wins_channel_id
+          });
+          channelInfo = {
+            id: channelResult.channel?.id,
+            name: channelResult.channel?.name,
+            is_member: channelResult.channel?.is_member
+          };
+          console.log('📢 Channel info:', channelInfo);
+        } catch (error: any) {
+          console.error('Failed to get channel info:', error);
+          channelInfo = { error: error.data?.error || error.message };
+        }
+      }
+    }
+    
+    return {
+      success: true,
+      details: {
+        hasBotToken: true,
+        hasSlackClient: true,
+        authTest: {
+          ok: authTest.ok,
+          team: authTest.team,
+          team_id: authTest.team_id,
+          user: authTest.user,
+          user_id: authTest.user_id,
+          bot_id: authTest.bot_id
+        },
+        channelInfo,
+        organizationId
+      }
+    };
+  } catch (error: any) {
+    console.error('❌ Slack connection test failed:', error);
+    return {
+      success: false,
+      details: {
+        hasBotToken: !!process.env.SLACK_BOT_TOKEN,
+        hasSlackClient: !!slack,
+        errorCode: error.data?.error,
+        errorMessage: error.message
+      },
+      error: error.message || 'Unknown error'
+    };
+  }
+}
+
+/**
  * Announce a public win to the organization's configured Slack channel
  */
 export async function announceWin(
@@ -1041,32 +1168,49 @@ export async function announceWin(
   channelId?: string,
   organizationId?: string
 ) {
+  console.log('🎯 announceWin called with:', {
+    winTitle,
+    userName,
+    nominatedBy,
+    channelId,
+    organizationId,
+    hasBotToken: !!process.env.SLACK_BOT_TOKEN,
+    globalSlackClientExists: !!slack
+  });
+
   // Get organization-specific token if available
   let slackClient: WebClient | null = slack;
   
   if (organizationId) {
     try {
+      console.log(`Checking for organization-specific token for org ${organizationId}...`);
       const token = await getValidSlackToken(organizationId);
       if (token) {
         slackClient = new WebClient(token);
-        console.log(`Using organization-specific token for win announcement`);
+        console.log(`✅ Using organization-specific token for win announcement`);
       } else {
-        console.log(`No organization-specific token for org ${organizationId}, using bot token`);
+        console.log(`⚠️ No organization-specific token for org ${organizationId}, using bot token`);
       }
     } catch (error) {
-      console.warn(`Failed to get org token for win announcement:`, error);
+      console.warn(`⚠️ Failed to get org token for win announcement:`, error);
     }
   }
   
   if (!slackClient) {
-    console.log("Slack client not configured, skipping win announcement");
+    console.error("❌ Slack client not configured, skipping win announcement. Bot token exists:", !!process.env.SLACK_BOT_TOKEN);
     return;
   }
 
   // Use provided channel ID or fall back to environment variable
   const channel = channelId || process.env.SLACK_CHANNEL_ID;
+  console.log(`📢 Channel configuration:`, {
+    providedChannelId: channelId,
+    envChannelId: process.env.SLACK_CHANNEL_ID,
+    finalChannel: channel
+  });
+  
   if (!channel) {
-    console.warn("No Slack channel configured for win announcements");
+    console.error("❌ No Slack channel configured for win announcements");
     return;
   }
   
@@ -1075,6 +1219,12 @@ export async function announceWin(
     : `🏆 Let's celebrate ${userName}!`;
 
   try {
+    console.log('🚀 Attempting to send win to Slack...', {
+      channel,
+      organizationId,
+      hasSlackClient: !!slackClient
+    });
+    
     const messageId = await sendSlackMessage({
       channel,
       blocks: [
@@ -1103,10 +1253,17 @@ export async function announceWin(
       text: `${announcement}: ${winTitle}`
     }, organizationId);
 
-    console.log(`✅ Public win announced to channel ${channel}`);
+    console.log(`✅ Public win announced to channel ${channel} with message ID: ${messageId}`);
     return messageId;
-  } catch (error) {
-    console.error('Error announcing win to Slack channel:', error);
+  } catch (error: any) {
+    console.error('❌ Error announcing win to Slack channel:', {
+      error: error.message || error,
+      stack: error.stack,
+      channel,
+      organizationId,
+      hasSlackClient: !!slackClient,
+      errorType: error.constructor?.name
+    });
     // Don't throw - win creation should succeed even if Slack fails
     return undefined;
   }

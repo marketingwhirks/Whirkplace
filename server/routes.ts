@@ -21,7 +21,7 @@ import {
 import { eq, desc, and } from "drizzle-orm";
 import Stripe from "stripe";
 import { WebClient } from "@slack/web-api";
-import { sendCheckinReminder, announceWin, sendPrivateWinNotification, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo, sendPasswordSetupViaSlackDM } from "./services/slack";
+import { sendCheckinReminder, announceWin, sendPrivateWinNotification, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo, sendPasswordSetupViaSlackDM, testSlackConnection } from "./services/slack";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import Papa from "papaparse";
@@ -8768,6 +8768,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Failed to send test welcome message:", error);
       res.status(500).json({ message: "Failed to send test welcome message" });
+    }
+  });
+
+  // Test Slack Connection and Configuration
+  app.get("/api/slack/test-connection", requireOrganization(), requireAuth(), requireRole('admin'), async (req, res) => {
+    try {
+      console.log('🧪 Testing Slack connection for organization:', req.orgId);
+      
+      // Test the connection
+      const result = await testSlackConnection(req.orgId);
+      
+      // Get organization details
+      const organization = await storage.getOrganization(req.orgId);
+      
+      res.json({
+        ...result,
+        organization: {
+          id: organization?.id,
+          name: organization?.name,
+          enable_slack_integration: organization?.enableSlackIntegration,
+          slack_wins_channel_id: organization?.slackWinsChannelId,
+          slack_channel_id: organization?.slackChannelId,
+          has_bot_token: !!process.env.SLACK_BOT_TOKEN
+        }
+      });
+    } catch (error) {
+      console.error("Failed to test Slack connection:", error);
+      res.status(500).json({ 
+        success: false,
+        message: "Failed to test Slack connection",
+        error: error.message || error
+      });
     }
   });
 
