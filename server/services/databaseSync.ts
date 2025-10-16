@@ -422,7 +422,7 @@ const tableDefinitions = {
     columns: [
       { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
       { name: 'organization_id', def: 'VARCHAR NOT NULL' },
-      { name: 'metric_date', def: 'DATE NOT NULL' },
+      { name: 'metric_date', def: 'DATE DEFAULT CURRENT_DATE' },
       { name: 'total_shoutouts', def: 'INTEGER NOT NULL DEFAULT 0' },
       { name: 'public_shoutouts', def: 'INTEGER NOT NULL DEFAULT 0' },
       { name: 'private_shoutouts', def: 'INTEGER NOT NULL DEFAULT 0' },

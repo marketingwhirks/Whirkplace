@@ -559,6 +559,7 @@ export const shoutoutMetricsDaily = pgTable("shoutout_metrics_daily", {
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
   // Extra columns that exist in production database
+  metricDate: date("metric_date").default(sql`CURRENT_DATE`), // Metric calculation date (nullable for existing data)
   totalShoutouts: integer("total_shoutouts").notNull().default(0),
   publicShoutouts: integer("public_shoutouts").notNull().default(0),
   privateShoutouts: integer("private_shoutouts").notNull().default(0),
