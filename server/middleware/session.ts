@@ -32,6 +32,10 @@ function isProduction(req: Request): boolean {
  * Create session middleware with appropriate cookie configuration
  */
 export function createDynamicSessionMiddleware() {
+  // Validate SESSION_SECRET is set
+  if (!process.env.SESSION_SECRET) {
+    throw new Error('SESSION_SECRET environment variable is required for security. Please set a strong, random secret.');
+  }
   // Session store configuration (shared for all environments)
   const sessionStore = new PgSession({
     conString: process.env.DATABASE_URL,
@@ -44,7 +48,7 @@ export function createDynamicSessionMiddleware() {
   // Create production session middleware (secure cookies)
   const prodSessionMiddleware = session({
     store: sessionStore,
-    secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
+    secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: true, // Important for OAuth flows
     name: 'connect.sid',
@@ -62,7 +66,7 @@ export function createDynamicSessionMiddleware() {
   // Create development session middleware (non-secure cookies)
   const devSessionMiddleware = session({
     store: sessionStore,
-    secret: process.env.SESSION_SECRET || 'whirkplace-default-secret-change-in-production',
+    secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: true, // Important for OAuth flows
     name: 'connect.sid',
