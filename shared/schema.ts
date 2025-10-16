@@ -355,14 +355,15 @@ export const questionCategories = pgTable("question_categories", {
 });
 
 // KRA categories for organizing KRA templates into groups
-export const kraCategories = pgTable("kra_categories", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
-  description: text("description"),
-  order: integer("order").notNull().default(0),
-  isDefault: boolean("is_default").notNull().default(false), // System default categories
-  createdAt: timestamp("created_at").notNull().default(sql`now()`),
-});
+// COMMENTED OUT: This table doesn't exist in production yet
+// export const kraCategories = pgTable("kra_categories", {
+//   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+//   name: text("name").notNull(),
+//   description: text("description"),
+//   order: integer("order").notNull().default(0),
+//   isDefault: boolean("is_default").notNull().default(false), // System default categories
+//   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+// });
 
 // Question bank - shared templates that organizations can use
 export const questionBank = pgTable("question_bank", {
