@@ -8162,6 +8162,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Compliance Tracking Endpoints
+  // Get missing check-ins (users who haven't submitted for a given week)
+  app.get("/api/compliance/missing-checkins", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { weekOf, teamId } = req.query;
+      
+      // Parse weekOf date if provided
+      const targetDate = weekOf ? new Date(weekOf as string) : new Date();
+      
+      // For managers, optionally filter by their teams
+      const user = req.currentUser!;
+      let filterTeamId: string | undefined = teamId as string | undefined;
+      
+      // If user is a manager (not admin), they can only see their team's data
+      if (user.role === 'manager') {
+        const managerDetails = await storage.getUser(req.orgId, user.id);
+        if (managerDetails?.teamId) {
+          filterTeamId = managerDetails.teamId; // Override to ensure managers only see their team
+        }
+      }
+      
+      // Get missing check-ins data
+      const missingCheckins = await storage.getMissingCheckins(req.orgId, targetDate, filterTeamId);
+      
+      res.json(missingCheckins);
+    } catch (error) {
+      console.error("Failed to fetch missing check-ins:", error);
+      res.status(500).json({ message: "Failed to fetch missing check-ins" });
+    }
+  });
+
+  // Get pending reviews (check-ins awaiting manager review)
+  app.get("/api/compliance/pending-reviews", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { teamId } = req.query;
+      const user = req.currentUser!;
+      
+      // For managers, filter by their assigned reviews
+      let filterManagerId: string | undefined = undefined;
+      let filterTeamId: string | undefined = teamId as string | undefined;
+      
+      if (user.role === 'manager') {
+        filterManagerId = user.id; // Managers only see reviews assigned to them
+        
+        // Additionally, if they have a team, filter by that too
+        const managerDetails = await storage.getUser(req.orgId, user.id);
+        if (managerDetails?.teamId && !filterTeamId) {
+          filterTeamId = managerDetails.teamId;
+        }
+      }
+      
+      // Get pending reviews data
+      const pendingReviews = await storage.getPendingReviews(req.orgId, filterManagerId, filterTeamId);
+      
+      res.json(pendingReviews);
+    } catch (error) {
+      console.error("Failed to fetch pending reviews:", error);
+      res.status(500).json({ message: "Failed to fetch pending reviews" });
+    }
+  });
+
   // Weekly Summary Reports
   const summaryService = new WeeklySummaryService();
 

@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow, format, subDays, startOfWeek, endOfWeek } from "date-fns";
 import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Users, Filter,
-  Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer, FileText
+  Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer, FileText,
+  AlertCircle, AlertTriangle, UserX, ClipboardList
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,11 +15,14 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import RatingStars from "@/components/checkin/rating-stars";
 import type { Checkin, User as UserType, Team, Question, ComplianceMetricsResult } from "@shared/schema";
 import { DateRange } from "react-day-picker";
 import { LeadershipSummary } from "@/components/analytics/LeadershipSummary";
+import { Link } from "wouter";
 
 interface EnhancedCheckinLeadership extends Checkin {
   user?: {
@@ -187,6 +191,59 @@ export default function LeadershipDashboard() {
       }, {} as Record<string, { checkin: ComplianceMetricsResult; review: ComplianceMetricsResult }>);
     },
     enabled: !userLoading && !!currentUser && currentUser.role === "admin" && teams.length > 0,
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+  });
+
+  // Fetch missing check-ins data
+  const { data: missingCheckins, isLoading: missingCheckinsLoading } = useQuery<Array<{
+    weekOf: string;
+    users: Array<{
+      id: string;
+      name: string;
+      email: string;
+      teamId: string | null;
+      teamName: string | null;
+      managerId: string | null;
+      managerName: string | null;
+      daysOverdue: number;
+      dueDate: string;
+    }>;
+  }>>({
+    queryKey: ["/api/compliance/missing-checkins", selectedTeam],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedTeam !== "all") params.append("teamId", selectedTeam);
+      const response = await fetch(`/api/compliance/missing-checkins?${params.toString()}`);
+      if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
+      return response.json();
+    },
+    enabled: !userLoading && !!currentUser && currentUser.role === "admin",
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+  });
+
+  // Fetch pending reviews data
+  const { data: pendingReviews, isLoading: pendingReviewsLoading } = useQuery<Array<{
+    id: string;
+    userId: string;
+    userName: string;
+    userEmail: string;
+    teamId: string | null;
+    teamName: string | null;
+    weekOf: string;
+    submittedAt: string;
+    daysPending: number;
+    overallMood: number;
+    reviewDueDate: string;
+  }>>({
+    queryKey: ["/api/compliance/pending-reviews", selectedTeam],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (selectedTeam !== "all") params.append("teamId", selectedTeam);
+      const response = await fetch(`/api/compliance/pending-reviews?${params.toString()}`);
+      if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
+      return response.json();
+    },
+    enabled: !userLoading && !!currentUser && currentUser.role === "admin",
     staleTime: 2 * 60 * 1000, // Cache for 2 minutes
   });
 
@@ -542,6 +599,177 @@ export default function LeadershipDashboard() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Compliance Tracking - Missing Check-ins & Pending Reviews */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Missing Check-in Submissions */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserX className="w-5 h-5 text-red-500" />
+                Missing Check-in Submissions
+              </CardTitle>
+              <CardDescription>
+                Users who haven't submitted their weekly check-ins
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {missingCheckinsLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                </div>
+              ) : missingCheckins && missingCheckins.length > 0 && missingCheckins[0].users.length > 0 ? (
+                <ScrollArea className="h-[300px]">
+                  <div className="space-y-4">
+                    {missingCheckins.map(weekData => (
+                      <div key={weekData.weekOf} className="space-y-2">
+                        <h4 className="text-sm font-semibold text-muted-foreground">
+                          Week of {format(new Date(weekData.weekOf), "MMM d, yyyy")}
+                        </h4>
+                        <div className="space-y-2">
+                          {weekData.users.map(user => (
+                            <div 
+                              key={user.id} 
+                              className="flex items-start justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                              data-testid={`missing-checkin-user-${user.id}`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">{user.name}</p>
+                                <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                                <div className="flex items-center gap-4 mt-1">
+                                  <Badge variant="secondary" className="text-xs">
+                                    {user.teamName || "No Team"}
+                                  </Badge>
+                                  {user.managerName && (
+                                    <span className="text-xs text-muted-foreground">
+                                      Reports to: {user.managerName}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-1">
+                                <Badge 
+                                  variant={user.daysOverdue > 7 ? "destructive" : user.daysOverdue > 3 ? "default" : "secondary"}
+                                  className="text-xs"
+                                >
+                                  {user.daysOverdue > 0 ? (
+                                    <>
+                                      <AlertTriangle className="w-3 h-3 mr-1" />
+                                      {user.daysOverdue} {user.daysOverdue === 1 ? "day" : "days"} overdue
+                                    </>
+                                  ) : (
+                                    "Due today"
+                                  )}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">
+                                  Due: {format(new Date(user.dueDate), "MMM d, h:mm a")}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <CheckCircle className="w-12 h-12 text-green-500 mb-3" />
+                  <p className="text-sm font-medium">All check-ins submitted!</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    No missing submissions for the current week
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Incomplete Reviews */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-orange-500" />
+                Pending Reviews
+              </CardTitle>
+              <CardDescription>
+                Check-ins awaiting manager review
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {pendingReviewsLoading ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                </div>
+              ) : pendingReviews && pendingReviews.length > 0 ? (
+                <ScrollArea className="h-[300px]">
+                  <div className="space-y-2">
+                    {pendingReviews.map(review => (
+                      <Link 
+                        key={review.id} 
+                        href={`/checkins?checkinId=${review.id}`}
+                        className="block"
+                      >
+                        <div 
+                          className="flex items-start justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors cursor-pointer"
+                          data-testid={`pending-review-${review.id}`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{review.userName}</p>
+                            <p className="text-xs text-muted-foreground truncate">{review.userEmail}</p>
+                            <div className="flex items-center gap-4 mt-1">
+                              <Badge variant="secondary" className="text-xs">
+                                {review.teamName || "No Team"}
+                              </Badge>
+                              <div className="flex items-center gap-1">
+                                <RatingStars rating={review.overallMood} readonly size="xs" />
+                                <span className="text-xs text-muted-foreground ml-1">
+                                  Mood: {review.overallMood}
+                                </span>
+                              </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Week of {format(new Date(review.weekOf), "MMM d")} • Submitted {format(new Date(review.submittedAt), "MMM d, h:mm a")}
+                            </p>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <Badge 
+                              variant={review.daysPending > 7 ? "destructive" : review.daysPending > 3 ? "default" : "secondary"}
+                              className="text-xs"
+                            >
+                              <Clock className="w-3 h-3 mr-1" />
+                              {review.daysPending} {review.daysPending === 1 ? "day" : "days"} pending
+                            </Badge>
+                            <Button 
+                              size="sm"
+                              variant="outline"
+                              className="text-xs h-6 px-2"
+                              data-testid={`button-review-${review.id}`}
+                            >
+                              <Eye className="w-3 h-3 mr-1" />
+                              Review
+                            </Button>
+                          </div>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                  <CheckCircle className="w-12 h-12 text-green-500 mb-3" />
+                  <p className="text-sm font-medium">All reviews complete!</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    No pending reviews at this time
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Filters and Export */}
         <Card>

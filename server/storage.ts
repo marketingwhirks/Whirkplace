@@ -503,6 +503,36 @@ export interface IStorage {
   deleteUserIdentity(userId: string, provider: string): Promise<boolean>;
   findUserByProviderIdentity(organizationId: string, provider: string, providerUserId: string): Promise<User | undefined>;
 
+  // Compliance Tracking - Missing Check-ins and Pending Reviews
+  getMissingCheckins(organizationId: string, weekOf?: Date, teamId?: string): Promise<Array<{ 
+    weekOf: Date; 
+    users: Array<{ 
+      id: string; 
+      name: string; 
+      email: string; 
+      teamId: string | null; 
+      teamName: string | null; 
+      managerId: string | null;
+      managerName: string | null;
+      daysOverdue: number;
+      dueDate: Date;
+    }> 
+  }>>;
+  
+  getPendingReviews(organizationId: string, managerId?: string, teamId?: string): Promise<Array<{ 
+    id: string; 
+    userId: string; 
+    userName: string; 
+    userEmail: string; 
+    teamId: string | null; 
+    teamName: string | null; 
+    weekOf: Date;
+    submittedAt: Date; 
+    daysPending: number;
+    overallMood: number;
+    reviewDueDate: Date;
+  }>>;
+
 }
 
 export class DatabaseStorage implements IStorage {
@@ -8986,6 +9016,181 @@ export class MemStorage implements IStorage {
     } catch (error) {
       console.error(`Failed to increment goals for metric ${metric}:`, error);
       // Don't throw error to prevent disrupting the main operation
+    }
+  }
+
+  // Compliance Tracking - Missing Check-ins
+  async getMissingCheckins(organizationId: string, weekOf?: Date, teamId?: string): Promise<Array<{ 
+    weekOf: Date; 
+    users: Array<{ 
+      id: string; 
+      name: string; 
+      email: string; 
+      teamId: string | null; 
+      teamName: string | null; 
+      managerId: string | null;
+      managerName: string | null;
+      daysOverdue: number;
+      dueDate: Date;
+    }> 
+  }>> {
+    try {
+      // Get the week to check - default to current week
+      const targetWeek = weekOf ? getWeekStartCentral(weekOf) : getWeekStartCentral(new Date());
+      const today = new Date();
+      
+      // Get all active users in the organization (optionally filtered by team)
+      let query = db
+        .select({
+          userId: users.id,
+          userName: users.name,
+          userEmail: users.email,
+          userTeamId: users.teamId,
+          teamName: teams.name,
+          managerId: users.managerId,
+          managerName: sql<string>`(SELECT name FROM ${users} m WHERE m.id = ${users.managerId})`.as('manager_name'),
+        })
+        .from(users)
+        .leftJoin(teams, eq(users.teamId, teams.id))
+        .where(
+          and(
+            eq(users.organizationId, organizationId),
+            eq(users.isActive, true),
+            teamId ? eq(users.teamId, teamId) : undefined
+          )
+        );
+      
+      const activeUsers = await query;
+      
+      // Check for each user if they have submitted a check-in for the target week
+      const missingUsers = [];
+      for (const user of activeUsers) {
+        // Check if user was on vacation
+        const [vacation] = await db
+          .select()
+          .from(vacations)
+          .where(
+            and(
+              eq(vacations.organizationId, organizationId),
+              eq(vacations.userId, user.userId),
+              eq(vacations.weekOf, targetWeek)
+            )
+          )
+          .limit(1);
+        
+        // Skip if user was on vacation
+        if (vacation) continue;
+        
+        // Check if user has submitted check-in for this week
+        const [checkin] = await db
+          .select()
+          .from(checkins)
+          .where(
+            and(
+              eq(checkins.organizationId, organizationId),
+              eq(checkins.userId, user.userId),
+              eq(checkins.weekOf, targetWeek),
+              eq(checkins.isComplete, true) // Check-in must be complete/submitted
+            )
+          )
+          .limit(1);
+        
+        // If no check-in found, add to missing list
+        if (!checkin) {
+          const dueDate = getCheckinDueDate(targetWeek);
+          const daysOverdue = Math.max(0, Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+          
+          missingUsers.push({
+            id: user.userId,
+            name: user.userName,
+            email: user.userEmail,
+            teamId: user.userTeamId,
+            teamName: user.teamName,
+            managerId: user.managerId,
+            managerName: user.managerName,
+            daysOverdue,
+            dueDate
+          });
+        }
+      }
+      
+      // Return grouped by week (for now just the single week, but structure allows for expansion)
+      return [{
+        weekOf: targetWeek,
+        users: missingUsers
+      }];
+    } catch (error) {
+      console.error("Failed to get missing check-ins:", error);
+      throw error;
+    }
+  }
+
+  // Compliance Tracking - Pending Reviews
+  async getPendingReviews(organizationId: string, managerId?: string, teamId?: string): Promise<Array<{ 
+    id: string; 
+    userId: string; 
+    userName: string; 
+    userEmail: string; 
+    teamId: string | null; 
+    teamName: string | null; 
+    weekOf: Date;
+    submittedAt: Date; 
+    daysPending: number;
+    overallMood: number;
+    reviewDueDate: Date;
+  }>> {
+    try {
+      const today = new Date();
+      
+      // Build the query with optional filters
+      let query = db
+        .select({
+          id: checkins.id,
+          userId: checkins.userId,
+          userName: users.name,
+          userEmail: users.email,
+          teamId: users.teamId,
+          teamName: teams.name,
+          weekOf: checkins.weekOf,
+          submittedAt: checkins.submittedAt,
+          overallMood: checkins.overallMood,
+          reviewDueDate: checkins.reviewDueDate,
+        })
+        .from(checkins)
+        .innerJoin(users, eq(checkins.userId, users.id))
+        .leftJoin(teams, eq(users.teamId, teams.id))
+        .where(
+          and(
+            eq(checkins.organizationId, organizationId),
+            eq(checkins.isComplete, true), // Check-in is submitted
+            eq(checkins.reviewStatus, "pending"), // Review is pending
+            sql`${checkins.submittedAt} IS NOT NULL`, // Has been submitted
+            sql`${checkins.reviewedAt} IS NULL`, // Has not been reviewed
+            managerId ? eq(checkins.reviewedBy, managerId) : undefined,
+            teamId ? eq(users.teamId, teamId) : undefined
+          )
+        )
+        .orderBy(checkins.submittedAt);
+      
+      const pendingReviews = await query;
+      
+      // Calculate days pending for each review
+      return pendingReviews.map(review => ({
+        id: review.id,
+        userId: review.userId,
+        userName: review.userName,
+        userEmail: review.userEmail,
+        teamId: review.teamId,
+        teamName: review.teamName,
+        weekOf: review.weekOf,
+        submittedAt: review.submittedAt!,
+        overallMood: review.overallMood,
+        reviewDueDate: review.reviewDueDate,
+        daysPending: Math.max(0, Math.floor((today.getTime() - review.submittedAt!.getTime()) / (1000 * 60 * 60 * 24)))
+      }));
+    } catch (error) {
+      console.error("Failed to get pending reviews:", error);
+      throw error;
     }
   }
 }
