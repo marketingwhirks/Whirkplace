@@ -3326,6 +3326,21 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  async createBulkNotifications(organizationId: string, notificationsData: InsertNotification[]): Promise<Notification[]> {
+    if (notificationsData.length === 0) return [];
+    
+    const notificationsToInsert = notificationsData.map(notification => ({
+      ...notification,
+      organizationId
+    }));
+    
+    const created = await db
+      .insert(notifications)
+      .values(notificationsToInsert)
+      .returning();
+    return created;
+  }
+
   async markNotificationAsRead(organizationId: string, id: string): Promise<Notification | undefined> {
     const [updated] = await db
       .update(notifications)
@@ -7501,6 +7516,24 @@ export class MemStorage implements IStorage {
     };
     this.notifications.set(id, newNotification);
     return newNotification;
+  }
+
+  async createBulkNotifications(organizationId: string, notificationsData: InsertNotification[]): Promise<Notification[]> {
+    const created: Notification[] = [];
+    for (const notification of notificationsData) {
+      const id = randomUUID();
+      const newNotification: Notification = {
+        ...notification,
+        id,
+        organizationId,
+        isRead: notification.isRead ?? false,
+        readAt: null,
+        createdAt: new Date(),
+      };
+      this.notifications.set(id, newNotification);
+      created.push(newNotification);
+    }
+    return created;
   }
 
   async markNotificationAsRead(organizationId: string, id: string): Promise<Notification | undefined> {

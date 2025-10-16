@@ -13,9 +13,9 @@ import {
   insertKraRatingSchema, insertKraHistorySchema,
   insertOrganizationSchema, insertBusinessPlanSchema, insertOrganizationOnboardingSchema, insertUserInvitationSchema,
   insertDashboardConfigSchema, insertDashboardWidgetTemplateSchema, insertBugReportSchema,
-  insertPartnerApplicationSchema, insertPartnerFirmSchema,
+  insertPartnerApplicationSchema, insertPartnerFirmSchema, insertNotificationSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
-  type ReviewStatusType, type Checkin,
+  type ReviewStatusType, type Checkin, type InsertNotification,
   organizations, billingEvents
 } from "@shared/schema";
 import { eq, desc, and } from "drizzle-orm";
@@ -7481,6 +7481,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete notification" });
+    }
+  });
+
+  // Admin endpoint to create org-wide notifications
+  app.post("/api/admin/notifications", requireAuth(), requireRole(["admin", "super_admin"]), async (req, res) => {
+    try {
+      const { title, message, type = "info", metadata } = req.body;
+      
+      if (!title || !message) {
+        return res.status(400).json({ message: "Title and message are required" });
+      }
+      
+      // Get all active users in the organization
+      const allUsers = await storage.getAllUsers(req.orgId, false); // false = only active users
+      
+      if (allUsers.length === 0) {
+        return res.status(400).json({ message: "No active users found in organization" });
+      }
+      
+      // Create notifications for all users
+      const notificationsToCreate: InsertNotification[] = allUsers.map(user => ({
+        userId: user.id,
+        type,
+        title,
+        message,
+        isRead: false,
+        metadata: metadata || {},
+        createdBy: req.userId
+      }));
+      
+      const createdNotifications = await storage.createBulkNotifications(req.orgId, notificationsToCreate);
+      
+      res.json({
+        message: `Successfully created ${createdNotifications.length} notifications`,
+        count: createdNotifications.length
+      });
+    } catch (error) {
+      console.error("Failed to create bulk notifications:", error);
+      res.status(500).json({ message: "Failed to create notifications" });
     }
   });
 

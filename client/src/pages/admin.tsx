@@ -39,7 +39,10 @@ import {
   FileText,
   AlertTriangle,
   Key,
-  Eye
+  Eye,
+  Bell,
+  Megaphone,
+  Send
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -106,6 +109,15 @@ const createTeamSchema = z.object({
 
 type CreateTeamFormData = z.infer<typeof createTeamSchema>;
 
+// Form validation schema for announcements
+const createAnnouncementSchema = z.object({
+  title: z.string().min(1, "Title is required").max(200, "Title must be less than 200 characters"),
+  message: z.string().min(1, "Message is required").max(1000, "Message must be less than 1000 characters"),
+  type: z.enum(["info", "warning", "success", "error"]).default("info"),
+});
+
+type CreateAnnouncementFormData = z.infer<typeof createAnnouncementSchema>;
+
 export default function Admin() {
   const { toast } = useToast();
   const [showSyncDialog, setShowSyncDialog] = useState(false);
@@ -129,6 +141,9 @@ export default function Admin() {
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [importResults, setImportResults] = useState<any>(null);
   const [showImportResultsDialog, setShowImportResultsDialog] = useState(false);
+  
+  // Announcement state
+  const [showAnnouncementDialog, setShowAnnouncementDialog] = useState(false);
 
   const { data: currentUser, actualUser, canSwitchRoles } = useViewAsRole();
 
@@ -188,6 +203,43 @@ export default function Admin() {
       });
     },
   });
+
+  // Create announcement mutation
+  const createAnnouncementMutation = useMutation({
+    mutationFn: async (data: CreateAnnouncementFormData) => {
+      const response = await apiRequest("POST", "/api/admin/notifications", data);
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Announcement Sent",
+        description: data.message || "Announcement successfully sent to all users",
+      });
+      setShowAnnouncementDialog(false);
+      announcementForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to send announcement",
+        description: error.message || "Failed to create announcement",
+      });
+    },
+  });
+
+  // Form for creating announcements
+  const announcementForm = useForm<CreateAnnouncementFormData>({
+    resolver: zodResolver(createAnnouncementSchema),
+    defaultValues: {
+      title: "",
+      message: "",
+      type: "info",
+    },
+  });
+
+  const onAnnouncementSubmit = (data: CreateAnnouncementFormData) => {
+    createAnnouncementMutation.mutate(data);
+  };
 
   // Bulk import mutation
   const bulkImportMutation = useMutation({
@@ -886,6 +938,171 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Announcements Card */}
+        <Card data-testid="card-announcements">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Megaphone className="w-5 h-5" />
+              Organization Announcements
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Send important announcements to all active users in your organization. Use this to notify users about maintenance, new features, bug fixes, or important updates.
+            </p>
+            
+            <Button 
+              onClick={() => setShowAnnouncementDialog(true)}
+              data-testid="button-create-announcement"
+            >
+              <Bell className="w-4 h-4 mr-2" />
+              Create Announcement
+            </Button>
+            
+            <div className="rounded-lg bg-muted p-4">
+              <h4 className="text-sm font-medium flex items-center gap-2 mb-2">
+                <AlertCircle className="w-4 h-4" />
+                Usage Guidelines
+              </h4>
+              <ul className="text-xs text-muted-foreground space-y-1 list-disc list-inside">
+                <li>All active users in the organization will receive the announcement</li>
+                <li>Users will see a notification badge on the bell icon</li>
+                <li>Choose the appropriate notification type (info, success, warning, error)</li>
+                <li>Keep messages concise and actionable</li>
+                <li>Use sparingly to maintain effectiveness</li>
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Announcement Dialog */}
+        <Dialog open={showAnnouncementDialog} onOpenChange={setShowAnnouncementDialog}>
+          <DialogContent className="max-w-2xl" data-testid="dialog-create-announcement">
+            <DialogHeader>
+              <DialogTitle>Create Organization Announcement</DialogTitle>
+              <DialogDescription>
+                Send an announcement to all active users in your organization. This will appear in their notifications.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <Form {...announcementForm}>
+              <form onSubmit={announcementForm.handleSubmit(onAnnouncementSubmit)} className="space-y-4">
+                <FormField
+                  control={announcementForm.control}
+                  name="title"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Title</FormLabel>
+                      <FormControl>
+                        <Input 
+                          placeholder="e.g., System Maintenance Scheduled" 
+                          {...field} 
+                          data-testid="input-announcement-title"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={announcementForm.control}
+                  name="message"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Message</FormLabel>
+                      <FormControl>
+                        <Textarea 
+                          placeholder="Enter your announcement message..." 
+                          className="min-h-[120px]"
+                          {...field} 
+                          data-testid="input-announcement-message"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={announcementForm.control}
+                  name="type"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notification Type</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-announcement-type">
+                            <SelectValue placeholder="Select notification type" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="info" data-testid="option-type-info">
+                            <div className="flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 text-blue-500" />
+                              Information
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="success" data-testid="option-type-success">
+                            <div className="flex items-center gap-2">
+                              <CheckCircle className="w-4 h-4 text-green-500" />
+                              Success
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="warning" data-testid="option-type-warning">
+                            <div className="flex items-center gap-2">
+                              <AlertTriangle className="w-4 h-4 text-orange-500" />
+                              Warning
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="error" data-testid="option-type-error">
+                            <div className="flex items-center gap-2">
+                              <XCircle className="w-4 h-4 text-red-500" />
+                              Error
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <div className="flex justify-end gap-2">
+                  <Button 
+                    type="button"
+                    variant="outline" 
+                    onClick={() => {
+                      setShowAnnouncementDialog(false);
+                      announcementForm.reset();
+                    }}
+                    data-testid="button-cancel-announcement"
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    type="submit"
+                    disabled={createAnnouncementMutation.isPending}
+                    data-testid="button-send-announcement"
+                  >
+                    {createAnnouncementMutation.isPending ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Send Announcement
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
 
         {/* Import Results Dialog */}
         <Dialog open={showImportResultsDialog} onOpenChange={setShowImportResultsDialog}>
