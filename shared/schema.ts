@@ -612,100 +612,104 @@ export const aggregationWatermarks = pgTable("aggregation_watermarks", {
 }));
 
 // Onboarding Checklist Templates - Admin-created templates for new team members
-export const onboardingTemplates = pgTable("onboarding_templates", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  organizationId: varchar("organization_id").notNull(),
-  name: text("name").notNull(),
-  description: text("description"),
-  targetRole: text("target_role"), // Optional: specific role this template is for (e.g., "developer", "manager")
-  targetTeamId: varchar("target_team_id"), // Optional: specific team this template is for
-  durationDays: integer("duration_days").notNull().default(30), // Expected completion time in days
-  isActive: boolean("is_active").notNull().default(true),
-  isDefault: boolean("is_default").notNull().default(false), // One default template per organization
-  createdBy: varchar("created_by").notNull(),
-  createdAt: timestamp("created_at").notNull().default(sql`now()`),
-  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
-}, (table) => ({
-  orgIdx: index("onboarding_templates_org_idx").on(table.organizationId),
-  orgActiveIdx: index("onboarding_templates_org_active_idx").on(table.organizationId, table.isActive),
-  orgDefaultIdx: index("onboarding_templates_org_default_idx").on(table.organizationId, table.isDefault),
-  targetTeamIdx: index("onboarding_templates_target_team_idx").on(table.targetTeamId),
-}));
+// COMMENTED OUT: Tables don't exist in production
+// export const onboardingTemplates = pgTable("onboarding_templates", {
+//   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+//   organizationId: varchar("organization_id").notNull(),
+//   name: text("name").notNull(),
+//   description: text("description"),
+//   targetRole: text("target_role"), // Optional: specific role this template is for (e.g., "developer", "manager")
+//   targetTeamId: varchar("target_team_id"), // Optional: specific team this template is for
+//   durationDays: integer("duration_days").notNull().default(30), // Expected completion time in days
+//   isActive: boolean("is_active").notNull().default(true),
+//   isDefault: boolean("is_default").notNull().default(false), // One default template per organization
+//   createdBy: varchar("created_by").notNull(),
+//   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+//   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+// }, (table) => ({
+//   orgIdx: index("onboarding_templates_org_idx").on(table.organizationId),
+//   orgActiveIdx: index("onboarding_templates_org_active_idx").on(table.organizationId, table.isActive),
+//   orgDefaultIdx: index("onboarding_templates_org_default_idx").on(table.organizationId, table.isDefault),
+//   targetTeamIdx: index("onboarding_templates_target_team_idx").on(table.targetTeamId),
+// }));
 
 // Individual checklist items within onboarding templates
-export const onboardingTemplateItems = pgTable("onboarding_template_items", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  templateId: varchar("template_id").notNull(),
-  organizationId: varchar("organization_id").notNull(),
-  title: text("title").notNull(),
-  description: text("description"),
-  category: text("category"), // e.g., "Setup", "Training", "Meetings", "Documentation"
-  estimatedHours: integer("estimated_hours"), // Optional time estimate
-  dayTarget: integer("day_target"), // Target day for completion (e.g., day 3, day 7)
-  isRequired: boolean("is_required").notNull().default(true),
-  requiresManagerApproval: boolean("requires_manager_approval").notNull().default(false),
-  orderIndex: integer("order_index").notNull().default(0), // For sorting items
-  resourceLinks: text("resource_links").array().notNull().default([]), // URLs to helpful resources
-  createdAt: timestamp("created_at").notNull().default(sql`now()`),
-}, (table) => ({
-  templateIdx: index("onboarding_template_items_template_idx").on(table.templateId),
-  templateOrderIdx: index("onboarding_template_items_template_order_idx").on(table.templateId, table.orderIndex),
-  categoryIdx: index("onboarding_template_items_category_idx").on(table.category),
-  dayTargetIdx: index("onboarding_template_items_day_target_idx").on(table.dayTarget),
-}));
+// COMMENTED OUT: Table doesn't exist in production
+// export const onboardingTemplateItems = pgTable("onboarding_template_items", {
+//   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+//   templateId: varchar("template_id").notNull(),
+//   organizationId: varchar("organization_id").notNull(),
+//   title: text("title").notNull(),
+//   description: text("description"),
+//   category: text("category"), // e.g., "Setup", "Training", "Meetings", "Documentation"
+//   estimatedHours: integer("estimated_hours"), // Optional time estimate
+//   dayTarget: integer("day_target"), // Target day for completion (e.g., day 3, day 7)
+//   isRequired: boolean("is_required").notNull().default(true),
+//   requiresManagerApproval: boolean("requires_manager_approval").notNull().default(false),
+//   orderIndex: integer("order_index").notNull().default(0), // For sorting items
+//   resourceLinks: text("resource_links").array().notNull().default([]), // URLs to helpful resources
+//   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+// }, (table) => ({
+//   templateIdx: index("onboarding_template_items_template_idx").on(table.templateId),
+//   templateOrderIdx: index("onboarding_template_items_template_order_idx").on(table.templateId, table.orderIndex),
+//   categoryIdx: index("onboarding_template_items_category_idx").on(table.category),
+//   dayTargetIdx: index("onboarding_template_items_day_target_idx").on(table.dayTarget),
+// }));
 
 // User assignments to onboarding templates - tracks who is doing which checklist
-export const onboardingAssignments = pgTable("onboarding_assignments", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  organizationId: varchar("organization_id").notNull(),
-  userId: varchar("user_id").notNull(),
-  templateId: varchar("template_id").notNull(),
-  assignedBy: varchar("assigned_by").notNull(), // Manager or admin who assigned the checklist
-  startDate: timestamp("start_date").notNull().default(sql`now()`), // When onboarding starts
-  targetCompletionDate: timestamp("target_completion_date").notNull(), // Expected completion date
-  actualCompletionDate: timestamp("actual_completion_date"), // When actually completed
-  status: text("status").notNull().default("in_progress"), // in_progress, completed, overdue, paused
-  completionPercentage: integer("completion_percentage").notNull().default(0), // 0-100
-  managerNotes: text("manager_notes"), // Optional notes from manager
-  createdAt: timestamp("created_at").notNull().default(sql`now()`),
-  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
-}, (table) => ({
-  orgIdx: index("onboarding_assignments_org_idx").on(table.organizationId),
-  orgUserIdx: index("onboarding_assignments_org_user_idx").on(table.organizationId, table.userId),
-  orgStatusIdx: index("onboarding_assignments_org_status_idx").on(table.organizationId, table.status),
-  userTemplateIdx: index("onboarding_assignments_user_template_idx").on(table.userId, table.templateId),
-  assignedByIdx: index("onboarding_assignments_assigned_by_idx").on(table.assignedBy),
-  // Unique constraint: one active assignment per user per template
-  userTemplateUnique: unique("onboarding_assignments_user_template_unique").on(table.userId, table.templateId),
-}));
+// COMMENTED OUT: Table doesn't exist in production
+// export const onboardingAssignments = pgTable("onboarding_assignments", {
+//   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+//   organizationId: varchar("organization_id").notNull(),
+//   userId: varchar("user_id").notNull(),
+//   templateId: varchar("template_id").notNull(),
+//   assignedBy: varchar("assigned_by").notNull(), // Manager or admin who assigned the checklist
+//   startDate: timestamp("start_date").notNull().default(sql`now()`), // When onboarding starts
+//   targetCompletionDate: timestamp("target_completion_date").notNull(), // Expected completion date
+//   actualCompletionDate: timestamp("actual_completion_date"), // When actually completed
+//   status: text("status").notNull().default("in_progress"), // in_progress, completed, overdue, paused
+//   completionPercentage: integer("completion_percentage").notNull().default(0), // 0-100
+//   managerNotes: text("manager_notes"), // Optional notes from manager
+//   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+//   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+// }, (table) => ({
+//   orgIdx: index("onboarding_assignments_org_idx").on(table.organizationId),
+//   orgUserIdx: index("onboarding_assignments_org_user_idx").on(table.organizationId, table.userId),
+//   orgStatusIdx: index("onboarding_assignments_org_status_idx").on(table.organizationId, table.status),
+//   userTemplateIdx: index("onboarding_assignments_user_template_idx").on(table.userId, table.templateId),
+//   assignedByIdx: index("onboarding_assignments_assigned_by_idx").on(table.assignedBy),
+//   // Unique constraint: one active assignment per user per template
+//   userTemplateUnique: unique("onboarding_assignments_user_template_unique").on(table.userId, table.templateId),
+// }));
 
 // User progress on individual checklist items
-export const onboardingProgress = pgTable("onboarding_progress", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  organizationId: varchar("organization_id").notNull(),
-  assignmentId: varchar("assignment_id").notNull(),
-  templateItemId: varchar("template_item_id").notNull(),
-  userId: varchar("user_id").notNull(),
-  status: text("status").notNull().default("pending"), // pending, in_progress, completed, skipped, blocked
-  completedAt: timestamp("completed_at"),
-  notes: text("notes"), // User notes about completing this item
-  managerApprovalStatus: text("manager_approval_status").default("not_required"), // not_required, pending, approved, rejected
-  approvedBy: varchar("approved_by"), // Manager who approved (if required)
-  approvedAt: timestamp("approved_at"),
-  rejectionReason: text("rejection_reason"), // If manager rejected, why?
-  timeSpentHours: integer("time_spent_hours"), // Optional: actual time spent
-  createdAt: timestamp("created_at").notNull().default(sql`now()`),
-  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
-}, (table) => ({
-  orgIdx: index("onboarding_progress_org_idx").on(table.organizationId),
-  assignmentIdx: index("onboarding_progress_assignment_idx").on(table.assignmentId),
-  userIdx: index("onboarding_progress_user_idx").on(table.userId),
-  statusIdx: index("onboarding_progress_status_idx").on(table.status),
-  approvalStatusIdx: index("onboarding_progress_approval_status_idx").on(table.managerApprovalStatus),
-  approvedByIdx: index("onboarding_progress_approved_by_idx").on(table.approvedBy),
-  // Unique constraint: one progress record per assignment per template item
-  assignmentItemUnique: unique("onboarding_progress_assignment_item_unique").on(table.assignmentId, table.templateItemId),
-}));
+// COMMENTED OUT: Table doesn't exist in production
+// export const onboardingProgress = pgTable("onboarding_progress", {
+//   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+//   organizationId: varchar("organization_id").notNull(),
+//   assignmentId: varchar("assignment_id").notNull(),
+//   templateItemId: varchar("template_item_id").notNull(),
+//   userId: varchar("user_id").notNull(),
+//   status: text("status").notNull().default("pending"), // pending, in_progress, completed, skipped, blocked
+//   completedAt: timestamp("completed_at"),
+//   notes: text("notes"), // User notes about completing this item
+//   managerApprovalStatus: text("manager_approval_status").default("not_required"), // not_required, pending, approved, rejected
+//   approvedBy: varchar("approved_by"), // Manager who approved (if required)
+//   approvedAt: timestamp("approved_at"),
+//   rejectionReason: text("rejection_reason"), // If manager rejected, why?
+//   timeSpentHours: integer("time_spent_hours"), // Optional: actual time spent
+//   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+//   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+// }, (table) => ({
+//   orgIdx: index("onboarding_progress_org_idx").on(table.organizationId),
+//   assignmentIdx: index("onboarding_progress_assignment_idx").on(table.assignmentId),
+//   userIdx: index("onboarding_progress_user_idx").on(table.userId),
+//   statusIdx: index("onboarding_progress_status_idx").on(table.status),
+//   approvalStatusIdx: index("onboarding_progress_approval_status_idx").on(table.managerApprovalStatus),
+//   approvedByIdx: index("onboarding_progress_approved_by_idx").on(table.approvedBy),
+//   // Unique constraint: one progress record per assignment per template item
+//   assignmentItemUnique: unique("onboarding_progress_assignment_item_unique").on(table.assignmentId, table.templateItemId),
+// }));
 
 // Organization Auth Providers - Stores configured auth providers per organization
 export const organizationAuthProviders = pgTable("organization_auth_providers", {
@@ -842,14 +846,15 @@ export const insertQuestionCategorySchema = createInsertSchema(questionCategorie
   order: z.number().int().min(0, "Order must be non-negative"),
 });
 
-export const insertKraCategorySchema = createInsertSchema(kraCategories).omit({
-  id: true,
-  createdAt: true,
-}).extend({
-  name: z.string().min(1, "Category name is required").max(50, "Category name too long"),
-  description: z.string().max(200, "Description too long").optional(),
-  order: z.number().int().min(0, "Order must be non-negative"),
-});
+// COMMENTED OUT: kraCategories table doesn't exist in production
+// export const insertKraCategorySchema = createInsertSchema(kraCategories).omit({
+//   id: true,
+//   createdAt: true,
+// }).extend({
+//   name: z.string().min(1, "Category name is required").max(50, "Category name too long"),
+//   description: z.string().max(200, "Description too long").optional(),
+//   order: z.number().int().min(0, "Order must be non-negative"),
+// });
 
 export const insertQuestionBankSchema = createInsertSchema(questionBank).omit({
   id: true,
@@ -960,56 +965,58 @@ export const insertAggregationWatermarkSchema = createInsertSchema(aggregationWa
 });
 
 // Onboarding Checklist Zod Schemas
-export const insertOnboardingTemplateSchema = createInsertSchema(onboardingTemplates).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-}).extend({
-  name: z.string().min(1, "Template name is required").max(100, "Template name too long"),
-  description: z.string().max(500, "Description too long").optional(),
-  targetRole: z.string().max(50, "Target role too long").optional(),
-  durationDays: z.number().int().min(1, "Duration must be at least 1 day").max(365, "Duration too long"),
-});
+// COMMENTED OUT: Tables don't exist in production
+// export const insertOnboardingTemplateSchema = createInsertSchema(onboardingTemplates).omit({
+//   id: true,
+//   createdAt: true,
+//   updatedAt: true,
+// }).extend({
+//   name: z.string().min(1, "Template name is required").max(100, "Template name too long"),
+//   description: z.string().max(500, "Description too long").optional(),
+//   targetRole: z.string().max(50, "Target role too long").optional(),
+//   durationDays: z.number().int().min(1, "Duration must be at least 1 day").max(365, "Duration too long"),
+// });
 
-export const insertOnboardingTemplateItemSchema = createInsertSchema(onboardingTemplateItems).omit({
-  id: true,
-  createdAt: true,
-}).extend({
-  title: z.string().min(1, "Item title is required").max(200, "Item title too long"),
-  description: z.string().max(1000, "Description too long").optional(),
-  category: z.string().max(50, "Category too long").optional(),
-  estimatedHours: z.number().int().min(0, "Estimated hours must be positive").max(100, "Estimated hours too high").optional(),
-  dayTarget: z.number().int().min(1, "Day target must be at least 1").max(365, "Day target too high").optional(),
-  orderIndex: z.number().int().min(0, "Order index must be non-negative"),
-  resourceLinks: z.array(z.string().url("Invalid resource URL")).optional(),
-});
+// export const insertOnboardingTemplateItemSchema = createInsertSchema(onboardingTemplateItems).omit({
+//   id: true,
+//   createdAt: true,
+// }).extend({
+//   title: z.string().min(1, "Item title is required").max(200, "Item title too long"),
+//   description: z.string().max(1000, "Description too long").optional(),
+//   category: z.string().max(50, "Category too long").optional(),
+//   estimatedHours: z.number().int().min(0, "Estimated hours must be positive").max(100, "Estimated hours too high").optional(),
+//   dayTarget: z.number().int().min(1, "Day target must be at least 1").max(365, "Day target too high").optional(),
+//   orderIndex: z.number().int().min(0, "Order index must be non-negative"),
+//   resourceLinks: z.array(z.string().url("Invalid resource URL")).optional(),
+// });
 
-export const insertOnboardingAssignmentSchema = createInsertSchema(onboardingAssignments).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  completionPercentage: true, // Calculated automatically
-  actualCompletionDate: true, // Set when completed
-}).extend({
-  startDate: z.coerce.date(),
-  targetCompletionDate: z.coerce.date(),
-  status: z.enum(["in_progress", "completed", "overdue", "paused"]).default("in_progress"),
-  managerNotes: z.string().max(1000, "Manager notes too long").optional(),
-});
+// COMMENTED OUT: Table doesn't exist in production
+// export const insertOnboardingAssignmentSchema = createInsertSchema(onboardingAssignments).omit({
+//   id: true,
+//   createdAt: true,
+//   updatedAt: true,
+//   completionPercentage: true, // Calculated automatically
+//   actualCompletionDate: true, // Set when completed
+// }).extend({
+//   startDate: z.coerce.date(),
+//   targetCompletionDate: z.coerce.date(),
+//   status: z.enum(["in_progress", "completed", "overdue", "paused"]).default("in_progress"),
+//   managerNotes: z.string().max(1000, "Manager notes too long").optional(),
+// });
 
-export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgress).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  completedAt: true, // Set when status changes to completed
-  approvedAt: true, // Set when manager approves
-}).extend({
-  status: z.enum(["pending", "in_progress", "completed", "skipped", "blocked"]).default("pending"),
-  notes: z.string().max(1000, "Notes too long").optional(),
-  managerApprovalStatus: z.enum(["not_required", "pending", "approved", "rejected"]).default("not_required"),
-  rejectionReason: z.string().max(500, "Rejection reason too long").optional(),
-  timeSpentHours: z.number().int().min(0, "Time spent must be positive").max(100, "Time spent too high").optional(),
-});
+// export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgress).omit({
+//   id: true,
+//   createdAt: true,
+//   updatedAt: true,
+//   completedAt: true, // Set when status changes to completed
+//   approvedAt: true, // Set when manager approves
+// }).extend({
+//   status: z.enum(["pending", "in_progress", "completed", "skipped", "blocked"]).default("pending"),
+//   notes: z.string().max(1000, "Notes too long").optional(),
+//   managerApprovalStatus: z.enum(["not_required", "pending", "approved", "rejected"]).default("not_required"),
+//   rejectionReason: z.string().max(500, "Rejection reason too long").optional(),
+//   timeSpentHours: z.number().int().min(0, "Time spent must be positive").max(100, "Time spent too high").optional(),
+// });
 
 // Separate schema for updates - only allow certain fields to be modified
 export const updateShoutoutSchema = z.object({
@@ -1090,8 +1097,9 @@ export type Checkin = typeof checkins.$inferSelect;
 export type InsertQuestionCategory = z.infer<typeof insertQuestionCategorySchema>;
 export type QuestionCategory = typeof questionCategories.$inferSelect;
 
-export type InsertKraCategory = z.infer<typeof insertKraCategorySchema>;
-export type KraCategory = typeof kraCategories.$inferSelect;
+// COMMENTED OUT: kraCategories table doesn't exist in production
+// export type InsertKraCategory = z.infer<typeof insertKraCategorySchema>;
+// export type KraCategory = typeof kraCategories.$inferSelect;
 
 export type InsertQuestionBank = z.infer<typeof insertQuestionBankSchema>;
 export type QuestionBank = typeof questionBank.$inferSelect;
@@ -1553,39 +1561,41 @@ export type BugReport = typeof bugReports.$inferSelect;
 // Super Admin Tables for System-wide Management
 
 // System Settings - Global configuration for signup screens, features, etc.
-export const systemSettings = pgTable("system_settings", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  key: text("key").notNull().unique(), // e.g., "signup_enabled", "maintenance_mode", "welcome_message"
-  value: jsonb("value").notNull(), // Flexible JSON value for any setting type
-  description: text("description"), // Human-readable description of the setting
-  category: text("category").notNull().default("general"), // general, signup, pricing, features
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").notNull().default(sql`now()`),
-  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
-}, (table) => ({
-  // Index for efficient category-based queries
-  categoryIdx: index("system_settings_category_idx").on(table.category),
-}));
+// COMMENTED OUT: Table doesn't exist in production
+// export const systemSettings = pgTable("system_settings", {
+//   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+//   key: text("key").notNull().unique(), // e.g., "signup_enabled", "maintenance_mode", "welcome_message"
+//   value: jsonb("value").notNull(), // Flexible JSON value for any setting type
+//   description: text("description"), // Human-readable description of the setting
+//   category: text("category").notNull().default("general"), // general, signup, pricing, features
+//   isActive: boolean("is_active").notNull().default(true),
+//   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+//   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+// }, (table) => ({
+//   // Index for efficient category-based queries
+//   categoryIdx: index("system_settings_category_idx").on(table.category),
+// }));
 
 // Pricing Plans - System-wide plan management with Stripe integration
-export const pricingPlans = pgTable("pricing_plans", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(), // e.g., "Standard", "Professional", "Enterprise"
-  description: text("description"),
-  price: integer("price").notNull(), // Price in cents
-  currency: text("currency").notNull().default("usd"),
-  billingPeriod: text("billing_period").notNull(), // monthly, yearly, one_time
-  stripePriceId: text("stripe_price_id"), // Stripe price ID for integration
-  features: jsonb("features").notNull().default([]), // Array of feature descriptions
-  isActive: boolean("is_active").notNull().default(true),
-  isPopular: boolean("is_popular").notNull().default(false), // Highlight as recommended
-  sortOrder: integer("sort_order").notNull().default(0), // Display order
-  createdAt: timestamp("created_at").notNull().default(sql`now()`),
-  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
-}, (table) => ({
-  // Index for active plans ordering
-  activeSortIdx: index("pricing_plans_active_sort_idx").on(table.isActive, table.sortOrder),
-}));
+// COMMENTED OUT: Table doesn't exist in production
+// export const pricingPlans = pgTable("pricing_plans", {
+//   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+//   name: text("name").notNull(), // e.g., "Standard", "Professional", "Enterprise"
+//   description: text("description"),
+//   price: integer("price").notNull(), // Price in cents
+//   currency: text("currency").notNull().default("usd"),
+//   billingPeriod: text("billing_period").notNull(), // monthly, yearly, one_time
+//   stripePriceId: text("stripe_price_id"), // Stripe price ID for integration
+//   features: jsonb("features").notNull().default([]), // Array of feature descriptions
+//   isActive: boolean("is_active").notNull().default(true),
+//   isPopular: boolean("is_popular").notNull().default(false), // Highlight as recommended
+//   sortOrder: integer("sort_order").notNull().default(0), // Display order
+//   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+//   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+// }, (table) => ({
+//   // Index for active plans ordering
+//   activeSortIdx: index("pricing_plans_active_sort_idx").on(table.isActive, table.sortOrder),
+// }));
 
 // Discount Codes - System-wide promotional codes  
 export const discountCodes = pgTable("discount_codes", {
@@ -1689,21 +1699,22 @@ export const userTours = pgTable("user_tours", {
 }));
 
 // Super Admin Zod schemas
-export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
-export type SystemSetting = typeof systemSettings.$inferSelect;
+// COMMENTED OUT: Tables don't exist in production
+// export const insertSystemSettingSchema = createInsertSchema(systemSettings).omit({
+//   id: true,
+//   createdAt: true,
+//   updatedAt: true,
+// });
+// export type InsertSystemSetting = z.infer<typeof insertSystemSettingSchema>;
+// export type SystemSetting = typeof systemSettings.$inferSelect;
 
-export const insertPricingPlanSchema = createInsertSchema(pricingPlans).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-});
-export type InsertPricingPlan = z.infer<typeof insertPricingPlanSchema>;
-export type PricingPlan = typeof pricingPlans.$inferSelect;
+// export const insertPricingPlanSchema = createInsertSchema(pricingPlans).omit({
+//   id: true,
+//   createdAt: true,
+//   updatedAt: true,
+// });
+// export type InsertPricingPlan = z.infer<typeof insertPricingPlanSchema>;
+// export type PricingPlan = typeof pricingPlans.$inferSelect;
 
 export const insertDiscountCodeSchema = createInsertSchema(discountCodes).omit({
   id: true,
@@ -1806,17 +1817,19 @@ export type InsertPartnerApplication = z.infer<typeof insertPartnerApplicationSc
 export type PartnerApplication = typeof partnerApplications.$inferSelect;
 
 // Onboarding Checklist Types
-export type InsertOnboardingTemplate = z.infer<typeof insertOnboardingTemplateSchema>;
-export type OnboardingTemplate = typeof onboardingTemplates.$inferSelect;
+// COMMENTED OUT: Tables don't exist in production
+// export type InsertOnboardingTemplate = z.infer<typeof insertOnboardingTemplateSchema>;
+// export type OnboardingTemplate = typeof onboardingTemplates.$inferSelect;
 
-export type InsertOnboardingTemplateItem = z.infer<typeof insertOnboardingTemplateItemSchema>;
-export type OnboardingTemplateItem = typeof onboardingTemplateItems.$inferSelect;
+// export type InsertOnboardingTemplateItem = z.infer<typeof insertOnboardingTemplateItemSchema>;
+// export type OnboardingTemplateItem = typeof onboardingTemplateItems.$inferSelect;
 
-export type InsertOnboardingAssignment = z.infer<typeof insertOnboardingAssignmentSchema>;
-export type OnboardingAssignment = typeof onboardingAssignments.$inferSelect;
+// COMMENTED OUT: Table doesn't exist in production
+// export type InsertOnboardingAssignment = z.infer<typeof insertOnboardingAssignmentSchema>;
+// export type OnboardingAssignment = typeof onboardingAssignments.$inferSelect;
 
-export type InsertOnboardingProgress = z.infer<typeof insertOnboardingProgressSchema>;
-export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
+// export type InsertOnboardingProgress = z.infer<typeof insertOnboardingProgressSchema>;
+// export type OnboardingProgress = typeof onboardingProgress.$inferSelect;
 
 // Widget Configuration Types
 export interface WidgetConfig {

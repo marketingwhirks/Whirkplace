@@ -5,7 +5,6 @@ import {
   type Question, type InsertQuestion,
   type TeamQuestionSetting, type InsertTeamQuestionSetting,
   type QuestionCategory, type InsertQuestionCategory,
-  type KraCategory, type InsertKraCategory,
   type QuestionBank, type InsertQuestionBank,
   type Win, type InsertWin,
   type Comment, type InsertComment,
@@ -29,8 +28,6 @@ import {
   type LeaderboardOptions, type LeaderboardEntry,
   type AnalyticsOverview, type AnalyticsPeriod,
   type ComplianceMetricsOptions, type ComplianceMetricsResult,
-  type SystemSetting, type InsertSystemSetting,
-  type PricingPlan, type InsertPricingPlan,
   type DiscountCode, type InsertDiscountCode,
   type DiscountCodeUsage, type InsertDiscountCodeUsage,
   type DashboardConfig, type InsertDashboardConfig,
@@ -39,10 +36,10 @@ import {
   type UserIdentity, type InsertUserIdentity,
   type UserTour, type InsertUserTour,
   type PasswordResetToken, type InsertPasswordResetToken,
-  users, teams, checkins, questions, teamQuestionSettings, questionCategories, kraCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
+  users, teams, checkins, questions, teamQuestionSettings, questionCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
   organizationAuthProviders, userIdentities, userTours, teamGoals, passwordResetTokens,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
-  systemSettings, pricingPlans, discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
+  discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   ReviewStatus
 } from "@shared/schema";
@@ -227,11 +224,11 @@ export interface IStorage {
   updateQuestionCategory(id: string, category: Partial<InsertQuestionCategory>): Promise<QuestionCategory | undefined>;
   deleteQuestionCategory(id: string): Promise<boolean>;
   
-  // KRA Categories
-  getKraCategories(): Promise<KraCategory[]>;
-  createKraCategory(category: InsertKraCategory): Promise<KraCategory>;
-  updateKraCategory(id: string, category: Partial<InsertKraCategory>): Promise<KraCategory | undefined>;
-  deleteKraCategory(id: string): Promise<boolean>;
+  // KRA Categories - COMMENTED OUT: Table doesn't exist in production
+  // getKraCategories(): Promise<KraCategory[]>;
+  // createKraCategory(category: InsertKraCategory): Promise<KraCategory>;
+  // updateKraCategory(id: string, category: Partial<InsertKraCategory>): Promise<KraCategory | undefined>;
+  // deleteKraCategory(id: string): Promise<boolean>;
   
   // Question Bank
   getQuestionBank(categoryId?: string): Promise<QuestionBank[]>;
@@ -421,19 +418,19 @@ export interface IStorage {
   getBugReports(organizationId: string, statusFilter?: string, userId?: string): Promise<BugReport[]>;
   getBugReportsByUser(organizationId: string, userId: string): Promise<BugReport[]>;
 
-  // Super Admin - System Settings
-  getSystemSetting(key: string): Promise<SystemSetting | undefined>;
-  getAllSystemSettings(category?: string): Promise<SystemSetting[]>;
-  createSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting>;
-  updateSystemSetting(id: string, setting: Partial<InsertSystemSetting>): Promise<SystemSetting | undefined>;
-  deleteSystemSetting(id: string): Promise<boolean>;
+  // Super Admin - System Settings - COMMENTED OUT: Tables don't exist in production
+  // getSystemSetting(key: string): Promise<SystemSetting | undefined>;
+  // getAllSystemSettings(category?: string): Promise<SystemSetting[]>;
+  // createSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting>;
+  // updateSystemSetting(id: string, setting: Partial<InsertSystemSetting>): Promise<SystemSetting | undefined>;
+  // deleteSystemSetting(id: string): Promise<boolean>;
 
-  // Super Admin - Pricing Plans
-  getPricingPlan(id: string): Promise<PricingPlan | undefined>;
-  getAllPricingPlans(activeOnly?: boolean): Promise<PricingPlan[]>;
-  createPricingPlan(plan: InsertPricingPlan): Promise<PricingPlan>;
-  updatePricingPlan(id: string, plan: Partial<InsertPricingPlan>): Promise<PricingPlan | undefined>;
-  deletePricingPlan(id: string): Promise<boolean>;
+  // Super Admin - Pricing Plans - COMMENTED OUT: Tables don't exist in production
+  // getPricingPlan(id: string): Promise<PricingPlan | undefined>;
+  // getAllPricingPlans(activeOnly?: boolean): Promise<PricingPlan[]>;
+  // createPricingPlan(plan: InsertPricingPlan): Promise<PricingPlan>;
+  // updatePricingPlan(id: string, plan: Partial<InsertPricingPlan>): Promise<PricingPlan | undefined>;
+  // deletePricingPlan(id: string): Promise<boolean>;
 
   // Super Admin - Discount Codes
   getDiscountCode(id: string): Promise<DiscountCode | undefined>;
@@ -2595,41 +2592,41 @@ export class DatabaseStorage implements IStorage {
     return result.rowCount > 0;
   }
   
-  // KRA Categories
-  async getKraCategories(): Promise<KraCategory[]> {
-    return await db
-      .select()
-      .from(kraCategories)
-      .orderBy(kraCategories.order, kraCategories.name);
-  }
+  // KRA Categories - COMMENTED OUT: Table doesn't exist in production
+  // async getKraCategories(): Promise<KraCategory[]> {
+  //   return await db
+  //     .select()
+  //     .from(kraCategories)
+  //     .orderBy(kraCategories.order, kraCategories.name);
+  // }
   
-  async createKraCategory(category: InsertKraCategory): Promise<KraCategory> {
-    const [newCategory] = await db
-      .insert(kraCategories)
-      .values({
-        id: sql`gen_random_uuid()`,
-        ...category,
-        createdAt: new Date()
-      })
-      .returning();
-    return newCategory;
-  }
+  // async createKraCategory(category: InsertKraCategory): Promise<KraCategory> {
+  //   const [newCategory] = await db
+  //     .insert(kraCategories)
+  //     .values({
+  //       id: sql`gen_random_uuid()`,
+  //       ...category,
+  //       createdAt: new Date()
+  //     })
+  //     .returning();
+  //   return newCategory;
+  // }
   
-  async updateKraCategory(id: string, categoryUpdate: Partial<InsertKraCategory>): Promise<KraCategory | undefined> {
-    const [updated] = await db
-      .update(kraCategories)
-      .set(categoryUpdate)
-      .where(eq(kraCategories.id, id))
-      .returning();
-    return updated;
-  }
+  // async updateKraCategory(id: string, categoryUpdate: Partial<InsertKraCategory>): Promise<KraCategory | undefined> {
+  //   const [updated] = await db
+  //     .update(kraCategories)
+  //     .set(categoryUpdate)
+  //     .where(eq(kraCategories.id, id))
+  //     .returning();
+  //   return updated;
+  // }
   
-  async deleteKraCategory(id: string): Promise<boolean> {
-    const result = await db
-      .delete(kraCategories)
-      .where(eq(kraCategories.id, id));
-    return result.rowCount > 0;
-  }
+  // async deleteKraCategory(id: string): Promise<boolean> {
+  //   const result = await db
+  //     .delete(kraCategories)
+  //     .where(eq(kraCategories.id, id));
+  //   return result.rowCount > 0;
+  // }
   
   // Question Bank
   async getQuestionBank(categoryId?: string): Promise<QuestionBank[]> {
@@ -5405,127 +5402,127 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  // Super Admin - System Settings
-  async getSystemSetting(key: string): Promise<SystemSetting | undefined> {
-    try {
-      const [setting] = await db.select().from(systemSettings).where(eq(systemSettings.key, key));
-      return setting;
-    } catch (error) {
-      console.error("Failed to get system setting:", error);
-      throw error;
-    }
-  }
+  // Super Admin - System Settings - COMMENTED OUT: Tables don't exist in production
+  // async getSystemSetting(key: string): Promise<SystemSetting | undefined> {
+  //   try {
+  //     const [setting] = await db.select().from(systemSettings).where(eq(systemSettings.key, key));
+  //     return setting;
+  //   } catch (error) {
+  //     console.error("Failed to get system setting:", error);
+  //     throw error;
+  //   }
+  // }
 
-  async getAllSystemSettings(category?: string): Promise<SystemSetting[]> {
-    try {
-      let query = db.select().from(systemSettings);
-      if (category) {
-        query = query.where(eq(systemSettings.category, category));
-      }
-      return await query.orderBy(systemSettings.category, systemSettings.key);
-    } catch (error) {
-      console.error("Failed to get system settings:", error);
-      throw error;
-    }
-  }
+  // async getAllSystemSettings(category?: string): Promise<SystemSetting[]> {
+  //   try {
+  //     let query = db.select().from(systemSettings);
+  //     if (category) {
+  //       query = query.where(eq(systemSettings.category, category));
+  //     }
+  //     return await query.orderBy(systemSettings.category, systemSettings.key);
+  //   } catch (error) {
+  //     console.error("Failed to get system settings:", error);
+  //     throw error;
+  //   }
+  // }
 
-  async createSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting> {
-    try {
-      const [newSetting] = await db.insert(systemSettings).values(setting).returning();
-      return newSetting;
-    } catch (error) {
-      console.error("Failed to create system setting:", error);
-      throw error;
-    }
-  }
+  // async createSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting> {
+  //   try {
+  //     const [newSetting] = await db.insert(systemSettings).values(setting).returning();
+  //     return newSetting;
+  //   } catch (error) {
+  //     console.error("Failed to create system setting:", error);
+  //     throw error;
+  //   }
+  // }
 
-  async updateSystemSetting(id: string, setting: Partial<InsertSystemSetting>): Promise<SystemSetting | undefined> {
-    try {
-      const updateData = {
-        ...setting,
-        updatedAt: new Date(),
-      };
-      const [updatedSetting] = await db.update(systemSettings)
-        .set(updateData)
-        .where(eq(systemSettings.id, id))
-        .returning();
-      return updatedSetting;
-    } catch (error) {
-      console.error("Failed to update system setting:", error);
-      throw error;
-    }
-  }
+  // async updateSystemSetting(id: string, setting: Partial<InsertSystemSetting>): Promise<SystemSetting | undefined> {
+  //   try {
+  //     const updateData = {
+  //       ...setting,
+  //       updatedAt: new Date(),
+  //     };
+  //     const [updatedSetting] = await db.update(systemSettings)
+  //       .set(updateData)
+  //       .where(eq(systemSettings.id, id))
+  //       .returning();
+  //     return updatedSetting;
+  //   } catch (error) {
+  //     console.error("Failed to update system setting:", error);
+  //     throw error;
+  //   }
+  // }
 
-  async deleteSystemSetting(id: string): Promise<boolean> {
-    try {
-      const result = await db.delete(systemSettings).where(eq(systemSettings.id, id));
-      return result.rowCount !== null && result.rowCount > 0;
-    } catch (error) {
-      console.error("Failed to delete system setting:", error);
-      throw error;
-    }
-  }
+  // async deleteSystemSetting(id: string): Promise<boolean> {
+  //   try {
+  //     const result = await db.delete(systemSettings).where(eq(systemSettings.id, id));
+  //     return result.rowCount !== null && result.rowCount > 0;
+  //   } catch (error) {
+  //     console.error("Failed to delete system setting:", error);
+  //     throw error;
+  //   }
+  // }
 
-  // Super Admin - Pricing Plans
-  async getPricingPlan(id: string): Promise<PricingPlan | undefined> {
-    try {
-      const [plan] = await db.select().from(pricingPlans).where(eq(pricingPlans.id, id));
-      return plan;
-    } catch (error) {
-      console.error("Failed to get pricing plan:", error);
-      throw error;
-    }
-  }
+  // Super Admin - Pricing Plans - COMMENTED OUT: Tables don't exist in production
+  // async getPricingPlan(id: string): Promise<PricingPlan | undefined> {
+  //   try {
+  //     const [plan] = await db.select().from(pricingPlans).where(eq(pricingPlans.id, id));
+  //     return plan;
+  //   } catch (error) {
+  //     console.error("Failed to get pricing plan:", error);
+  //     throw error;
+  //   }
+  // }
 
-  async getAllPricingPlans(activeOnly?: boolean): Promise<PricingPlan[]> {
-    try {
-      let query = db.select().from(pricingPlans);
-      if (activeOnly) {
-        query = query.where(eq(pricingPlans.isActive, true));
-      }
-      return await query.orderBy(pricingPlans.sortOrder, pricingPlans.name);
-    } catch (error) {
-      console.error("Failed to get pricing plans:", error);
-      throw error;
-    }
-  }
+  // async getAllPricingPlans(activeOnly?: boolean): Promise<PricingPlan[]> {
+  //   try {
+  //     let query = db.select().from(pricingPlans);
+  //     if (activeOnly) {
+  //       query = query.where(eq(pricingPlans.isActive, true));
+  //     }
+  //     return await query.orderBy(pricingPlans.sortOrder, pricingPlans.name);
+  //   } catch (error) {
+  //     console.error("Failed to get pricing plans:", error);
+  //     throw error;
+  //   }
+  // }
 
-  async createPricingPlan(plan: InsertPricingPlan): Promise<PricingPlan> {
-    try {
-      const [newPlan] = await db.insert(pricingPlans).values(plan).returning();
-      return newPlan;
-    } catch (error) {
-      console.error("Failed to create pricing plan:", error);
-      throw error;
-    }
-  }
+  // async createPricingPlan(plan: InsertPricingPlan): Promise<PricingPlan> {
+  //   try {
+  //     const [newPlan] = await db.insert(pricingPlans).values(plan).returning();
+  //     return newPlan;
+  //   } catch (error) {
+  //     console.error("Failed to create pricing plan:", error);
+  //     throw error;
+  //   }
+  // }
 
-  async updatePricingPlan(id: string, plan: Partial<InsertPricingPlan>): Promise<PricingPlan | undefined> {
-    try {
-      const updateData = {
-        ...plan,
-        updatedAt: new Date(),
-      };
-      const [updatedPlan] = await db.update(pricingPlans)
-        .set(updateData)
-        .where(eq(pricingPlans.id, id))
-        .returning();
-      return updatedPlan;
-    } catch (error) {
-      console.error("Failed to update pricing plan:", error);
-      throw error;
-    }
-  }
+  // async updatePricingPlan(id: string, plan: Partial<InsertPricingPlan>): Promise<PricingPlan | undefined> {
+  //   try {
+  //     const updateData = {
+  //       ...plan,
+  //       updatedAt: new Date(),
+  //     };
+  //     const [updatedPlan] = await db.update(pricingPlans)
+  //       .set(updateData)
+  //       .where(eq(pricingPlans.id, id))
+  //       .returning();
+  //     return updatedPlan;
+  //   } catch (error) {
+  //     console.error("Failed to update pricing plan:", error);
+  //     throw error;
+  //   }
+  // }
 
-  async deletePricingPlan(id: string): Promise<boolean> {
-    try {
-      const result = await db.delete(pricingPlans).where(eq(pricingPlans.id, id));
-      return result.rowCount !== null && result.rowCount > 0;
-    } catch (error) {
-      console.error("Failed to delete pricing plan:", error);
-      throw error;
-    }
-  }
+  // async deletePricingPlan(id: string): Promise<boolean> {
+  //   try {
+  //     const result = await db.delete(pricingPlans).where(eq(pricingPlans.id, id));
+  //     return result.rowCount !== null && result.rowCount > 0;
+  //   } catch (error) {
+  //     console.error("Failed to delete pricing plan:", error);
+  //     throw error;
+  //   }
+  // }
 
   // Super Admin - Discount Codes
   async getDiscountCode(id: string): Promise<DiscountCode | undefined> {
@@ -8340,49 +8337,49 @@ export class MemStorage implements IStorage {
     return !!vacation;
   }
 
-  // Super Admin - System Settings (MemStorage implementation)
-  async getSystemSetting(key: string): Promise<SystemSetting | undefined> {
-    // MemStorage doesn't support super admin features - return undefined
-    return undefined;
-  }
+  // Super Admin - System Settings (MemStorage implementation) - COMMENTED OUT: Tables don't exist in production
+  // async getSystemSetting(key: string): Promise<SystemSetting | undefined> {
+  //   // MemStorage doesn't support super admin features - return undefined
+  //   return undefined;
+  // }
 
-  async getAllSystemSettings(category?: string): Promise<SystemSetting[]> {
-    // MemStorage doesn't support super admin features - return empty array
-    return [];
-  }
+  // async getAllSystemSettings(category?: string): Promise<SystemSetting[]> {
+  //   // MemStorage doesn't support super admin features - return empty array
+  //   return [];
+  // }
 
-  async createSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting> {
-    throw new Error("Super admin features not supported in MemStorage");
-  }
+  // async createSystemSetting(setting: InsertSystemSetting): Promise<SystemSetting> {
+  //   throw new Error("Super admin features not supported in MemStorage");
+  // }
 
-  async updateSystemSetting(id: string, setting: Partial<InsertSystemSetting>): Promise<SystemSetting | undefined> {
-    throw new Error("Super admin features not supported in MemStorage");
-  }
+  // async updateSystemSetting(id: string, setting: Partial<InsertSystemSetting>): Promise<SystemSetting | undefined> {
+  //   throw new Error("Super admin features not supported in MemStorage");
+  // }
 
-  async deleteSystemSetting(id: string): Promise<boolean> {
-    throw new Error("Super admin features not supported in MemStorage");
-  }
+  // async deleteSystemSetting(id: string): Promise<boolean> {
+  //   throw new Error("Super admin features not supported in MemStorage");
+  // }
 
-  // Super Admin - Pricing Plans (MemStorage implementation)
-  async getPricingPlan(id: string): Promise<PricingPlan | undefined> {
-    return undefined;
-  }
+  // Super Admin - Pricing Plans (MemStorage implementation) - COMMENTED OUT: Tables don't exist in production
+  // async getPricingPlan(id: string): Promise<PricingPlan | undefined> {
+  //   return undefined;
+  // }
 
-  async getAllPricingPlans(activeOnly?: boolean): Promise<PricingPlan[]> {
-    return [];
-  }
+  // async getAllPricingPlans(activeOnly?: boolean): Promise<PricingPlan[]> {
+  //   return [];
+  // }
 
-  async createPricingPlan(plan: InsertPricingPlan): Promise<PricingPlan> {
-    throw new Error("Super admin features not supported in MemStorage");
-  }
+  // async createPricingPlan(plan: InsertPricingPlan): Promise<PricingPlan> {
+  //   throw new Error("Super admin features not supported in MemStorage");
+  // }
 
-  async updatePricingPlan(id: string, plan: Partial<InsertPricingPlan>): Promise<PricingPlan | undefined> {
-    throw new Error("Super admin features not supported in MemStorage");
-  }
+  // async updatePricingPlan(id: string, plan: Partial<InsertPricingPlan>): Promise<PricingPlan | undefined> {
+  //   throw new Error("Super admin features not supported in MemStorage");
+  // }
 
-  async deletePricingPlan(id: string): Promise<boolean> {
-    throw new Error("Super admin features not supported in MemStorage");
-  }
+  // async deletePricingPlan(id: string): Promise<boolean> {
+  //   throw new Error("Super admin features not supported in MemStorage");
+  // }
 
   // Super Admin - Discount Codes (MemStorage implementation)
   async getDiscountCode(id: string): Promise<DiscountCode | undefined> {
