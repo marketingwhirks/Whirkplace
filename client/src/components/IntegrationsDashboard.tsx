@@ -1220,18 +1220,7 @@ export function IntegrationsDashboard() {
                                 description: "This will send check-in reminders to all users who haven't submitted this week.",
                               });
                               
-                              const response = await fetch('/api/slack/test-weekly-reminders', {
-                                method: 'POST',
-                                headers: {
-                                  'Content-Type': 'application/json',
-                                },
-                                credentials: 'include'
-                              });
-                              
-                              if (!response.ok) {
-                                const error = await response.json();
-                                throw new Error(error.message || 'Failed to send test reminders');
-                              }
+                              const response = await apiRequest('POST', '/api/slack/test-weekly-reminders');
                               
                               const result = await response.json();
                               
