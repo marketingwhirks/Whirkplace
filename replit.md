@@ -53,6 +53,17 @@ The application adopts a multi-tenant architecture to support multiple organizat
 
 Response is now sent immediately after database save, with notifications handled asynchronously afterward
 
+### Deployment Blocker - NOT NULL Constraint (October 16, 2025 - RESOLVED)
+**Problem**: Publishing failed with ERROR 23502 - NOT NULL constraint violation in compliance_metrics_daily table
+
+**Root Cause**: The production database had additional columns not present in schema.ts, particularly `metric_date` which required a non-null value
+
+**Resolution**: Added all missing columns to schema.ts with appropriate default values:
+- metric_date (default: CURRENT_DATE)
+- totalDue, onTimeSubmissions, lateSubmissions, missingSubmissions (default: 0)
+- onTimeReviews, lateReviews, pendingReviews (default: 0)
+- teamBreakdown (default: empty JSONB object)
+
 ### Production Deployment Issue (October 12, 2025) 
 **Problem**: All API-dependent features work in development but fail in production after publishing. This affects:
 - One-on-one meeting scheduling
