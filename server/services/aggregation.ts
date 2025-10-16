@@ -113,6 +113,7 @@ export class AggregationService {
           userId,
           teamId,
           bucketDate: bucketDate.toISOString().split('T')[0],
+          metricDate: bucketDate.toISOString().split('T')[0], // Set metricDate to same as bucketDate
           moodSum,
           checkinCount,
           updatedAt: sql`now()`
@@ -182,6 +183,7 @@ export class AggregationService {
           userId,
           teamId,
           bucketDate: bucketDate.toISOString().split('T')[0],
+          metricDate: bucketDate.toISOString().split('T')[0], // Set metricDate to same as bucketDate
           receivedCount,
           givenCount,
           publicCount,
@@ -310,6 +312,7 @@ export class AggregationService {
           userId,
           teamId,
           bucketDate: bucketDate.toISOString().split('T')[0],
+          metricDate: bucketDate.toISOString().split('T')[0], // Set metricDate to same as bucketDate
           checkinComplianceCount,
           checkinOnTimeCount,
           reviewComplianceCount,
