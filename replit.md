@@ -39,6 +39,21 @@ The application adopts a multi-tenant architecture to support multiple organizat
 7. **Rate Limiting**: Authentication endpoints limited to 10 requests per 15-minute window.
 8. **Data Validation**: Comprehensive Zod schema validation on all inputs.
 
+## Recent Fixes (October 16, 2025)
+
+### Aggregation Service Errors - RESOLVED
+**Problem**: Multiple NOT NULL constraint violations in aggregation tables preventing metrics processing
+
+**Root Causes**:
+1. `metric_date` column not being set in pulseMetricsDaily, shoutoutMetricsDaily, and complianceMetricsDaily tables
+2. `aggregation_type` and `last_processed_date` columns not being set in aggregationWatermarks table
+
+**Resolution**: Updated aggregation service to set all required fields:
+- Added `metricDate` to all daily metric table inserts
+- Added `aggregationType` and `lastProcessedDate` to watermark updates
+
+**Result**: Aggregation service now processes metrics successfully without errors
+
 ## Critical Issues & Resolutions
 
 ### Production Response Timeout Issue (October 15, 2025 - RESOLVED October 16, 2025)
