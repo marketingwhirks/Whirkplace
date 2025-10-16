@@ -739,28 +739,30 @@ export const organizationAuthProviders = pgTable("organization_auth_providers", 
 export const userIdentities = pgTable("user_identities", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),
-  organizationId: varchar("organization_id").notNull(),
+  // organizationId: varchar("organization_id").notNull(), // COMMENTED OUT: Not in production
   provider: text("provider").notNull(), // local, slack, microsoft, google, etc.
   providerUserId: text("provider_user_id").notNull(), // User ID from the provider
   providerEmail: text("provider_email"), // Email from provider
-  providerUsername: text("provider_username"), // Username from provider
+  // providerUsername: text("provider_username"), // COMMENTED OUT: Not in production
   providerDisplayName: text("provider_display_name"), // Display name from provider
-  providerAvatar: text("provider_avatar"), // Avatar URL from provider
+  // providerAvatar: text("provider_avatar"), // COMMENTED OUT: Not in production
+  metadata: jsonb("metadata"), // Metadata from provider (exists in production)
   profile: jsonb("profile").notNull().default({}), // Full profile data from provider
-  accessToken: text("access_token"), // User-specific OAuth token
-  refreshToken: text("refresh_token"), // User-specific refresh token
-  tokenExpiresAt: timestamp("token_expires_at"),
-  lastLoginAt: timestamp("last_login_at"),
-  createdAt: timestamp("created_at").notNull().default(sql`gen_random_uuid()`),
+  // accessToken: text("access_token"), // COMMENTED OUT: Not in production
+  // refreshToken: text("refresh_token"), // COMMENTED OUT: Not in production
+  // tokenExpiresAt: timestamp("token_expires_at"), // COMMENTED OUT: Not in production
+  lastLogin: timestamp("last_login"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at"),
 }, (table) => ({
   userProviderIdx: index("user_identities_user_provider_idx").on(table.userId, table.provider),
-  orgProviderUserIdx: index("user_identities_org_provider_user_idx").on(table.organizationId, table.provider, table.providerUserId),
+  // orgProviderUserIdx: index("user_identities_org_provider_user_idx").on(table.organizationId, table.provider, table.providerUserId), // COMMENTED OUT: Uses organizationId
   providerEmailIdx: index("user_identities_provider_email_idx").on(table.providerEmail),
-  lastLoginIdx: index("user_identities_last_login_idx").on(table.lastLoginAt),
+  lastLoginIdx: index("user_identities_last_login_idx").on(table.lastLogin),
   // Unique constraint: one identity per provider per user
   userProviderUnique: unique("user_identities_user_provider_unique").on(table.userId, table.provider),
   // Unique constraint: provider user ID must be unique within organization and provider
-  orgProviderUserUnique: unique("user_identities_org_provider_user_unique").on(table.organizationId, table.provider, table.providerUserId),
+  // orgProviderUserUnique: unique("user_identities_org_provider_user_unique").on(table.organizationId, table.provider, table.providerUserId), // COMMENTED OUT: Uses organizationId
 }));
 
 // Password Reset Tokens table for password recovery
