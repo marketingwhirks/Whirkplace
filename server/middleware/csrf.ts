@@ -110,7 +110,6 @@ export function validateCSRF() {
     // 8. Stripe checkout callback (GET request)
     // 9. Super-admin DELETE endpoints (to avoid body parsing issues with DELETE requests)
     // 10. Admin sync endpoints (already protected by authentication and admin role checks)
-    const isStateChanging = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
     const isOAuthCallback = (req.path.includes('/auth/') || req.originalUrl.includes('/auth/')) && 
                            (req.path.includes('/callback') || req.originalUrl.includes('/callback'));
     const isBackdoorAuth = /\/auth\/backdoor$/.test(req.originalUrl) || req.path === '/auth/backdoor';
