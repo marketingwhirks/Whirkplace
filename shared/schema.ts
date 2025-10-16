@@ -1285,8 +1285,6 @@ export const oneOnOnes = pgTable("one_on_ones", {
   meetingUrl: text("meeting_url"), // Teams meeting URL or other online meeting link
   isOnlineMeeting: boolean("is_online_meeting").notNull().default(false),
   syncWithOutlook: boolean("sync_with_outlook").notNull().default(false), // Whether to sync with Outlook
-  // Missing columns from production database
-  createdBy: varchar("created_by"), // User who created the meeting (nullable for existing data)
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
 }, (table) => ({

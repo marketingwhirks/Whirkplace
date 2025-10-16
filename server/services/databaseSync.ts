@@ -580,7 +580,7 @@ const tableDefinitions = {
       { name: 'recurrence_end_date', def: 'TIMESTAMP' },
       { name: 'recurrence_end_count', def: 'INTEGER' },
       { name: 'is_recurrence_template', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
-      { name: 'created_by', def: 'VARCHAR' },
+      { name: 'created_by', def: 'VARCHAR NOT NULL' },
       { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
       { name: 'cancelled_at', def: 'TIMESTAMP' },
       { name: 'cancelled_by', def: 'VARCHAR' },
