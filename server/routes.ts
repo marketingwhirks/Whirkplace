@@ -4481,6 +4481,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Vacation validation schemas
   const vacationQuerySchema = z.object({
+    userId: z.string().optional(), // Admin can query for specific user
     from: z.string().optional().refine((val) => {
       if (!val) return true;
       const date = new Date(val);
@@ -7763,10 +7764,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "From date must be before to date" });
       }
       
-      // Users can only view their own vacations
+      // Determine which user's vacations to fetch
+      let targetUserId = currentUser.id;
+      
+      // Admins can fetch vacations for any user via userId query param
+      if (query.userId && currentUser.role === "admin") {
+        // Verify the user exists in the organization
+        const targetUser = await storage.getUser(req.orgId, query.userId);
+        if (!targetUser) {
+          return res.status(404).json({ 
+            message: "User not found in this organization" 
+          });
+        }
+        targetUserId = query.userId;
+      }
+      
+      // Fetch vacations for the target user
       const vacations = await storage.getUserVacationsByRange(
         req.orgId, 
-        currentUser.id, 
+        targetUserId, 
         query.from, 
         query.to
       );
@@ -7841,6 +7857,94 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       console.error("Failed to delete vacation:", error);
       res.status(500).json({ message: "Failed to delete vacation" });
+    }
+  });
+
+  // Admin vacation management endpoints
+  // Allows admins to mark vacations for any user in their organization
+  app.post("/api/admin/vacations", requireAuth(), requireRole("admin"), async (req, res) => {
+    try {
+      const { userId, weekOf, note } = req.body;
+      
+      if (!userId || !weekOf) {
+        return res.status(400).json({ 
+          message: "Missing required fields: userId and weekOf" 
+        });
+      }
+
+      // Verify the user exists in the organization
+      const targetUser = await storage.getUser(req.orgId, userId);
+      if (!targetUser) {
+        return res.status(404).json({ 
+          message: "User not found in this organization" 
+        });
+      }
+
+      // Parse and validate the week date
+      const weekDate = new Date(weekOf);
+      if (isNaN(weekDate.getTime())) {
+        return res.status(400).json({ 
+          message: "Invalid date format for weekOf" 
+        });
+      }
+
+      const vacation = await storage.upsertVacationWeek(
+        req.orgId,
+        userId,
+        weekDate,
+        note
+      );
+      
+      res.status(201).json(vacation);
+    } catch (error) {
+      console.error("Failed to create vacation for user:", error);
+      res.status(500).json({ 
+        message: "Failed to create vacation",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Admin endpoint to delete a vacation for any user
+  app.delete("/api/admin/vacations/:userId/:weekOf", requireAuth(), requireRole("admin"), async (req, res) => {
+    try {
+      const { userId, weekOf } = req.params;
+      
+      // Verify the user exists in the organization
+      const targetUser = await storage.getUser(req.orgId, userId);
+      if (!targetUser) {
+        return res.status(404).json({ 
+          message: "User not found in this organization" 
+        });
+      }
+
+      // Parse and validate the week date
+      const weekDate = new Date(weekOf);
+      if (isNaN(weekDate.getTime())) {
+        return res.status(400).json({ 
+          message: "Invalid date format for weekOf" 
+        });
+      }
+
+      const deleted = await storage.deleteVacationWeek(
+        req.orgId,
+        userId,
+        weekDate
+      );
+      
+      if (!deleted) {
+        return res.status(404).json({ 
+          message: "Vacation week not found for this user" 
+        });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete vacation for user:", error);
+      res.status(500).json({ 
+        message: "Failed to delete vacation",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
     }
   });
 
