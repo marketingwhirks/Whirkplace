@@ -12338,11 +12338,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/team-goals", requireAuth(), requireTeamLead(), async (req, res) => {
     try {
+      // Convert string dates to Date objects before validation
+      const processedData = {
+        ...req.body,
+        startDate: req.body.startDate ? new Date(req.body.startDate) : undefined,
+        endDate: req.body.endDate ? new Date(req.body.endDate) : undefined,
+        organizationId: req.orgId // Ensure organizationId is set
+      };
+      
       const validationSchema = insertTeamGoalSchema.extend({
-        createdBy: z.string().uuid().optional()
+        createdBy: z.string().optional(),
+        organizationId: z.string()
       });
       
-      const goalData = validationSchema.parse(req.body);
+      const goalData = validationSchema.parse(processedData);
       
       // Calculate date ranges based on goal type
       const now = new Date();
@@ -12368,6 +12377,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const goal = await storage.createTeamGoal(req.orgId, {
         ...goalData,
+        organizationId: req.orgId,
         createdBy: req.userId!,
         startDate,
         endDate
@@ -12376,6 +12386,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(goal);
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.error("POST /api/team-goals - Validation error:", error.errors);
         return res.status(400).json({ message: "Invalid goal data", errors: error.errors });
       }
       console.error("POST /api/team-goals - Error:", error);

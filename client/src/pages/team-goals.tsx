@@ -149,11 +149,18 @@ export default function TeamGoals() {
 
   // Create goal mutation
   const createGoalMutation = useMutation({
-    mutationFn: (data: TeamGoalFormData) =>
-      apiRequest("/api/team-goals", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
+    mutationFn: async (data: TeamGoalFormData) => {
+      try {
+        const response = await apiRequest("/api/team-goals", {
+          method: "POST",
+          body: JSON.stringify(data),
+        });
+        return response;
+      } catch (error: any) {
+        console.error("Error creating team goal:", error);
+        throw error;
+      }
+    },
     onSuccess: (newGoal) => {
       toast({
         title: "Success",
@@ -163,10 +170,12 @@ export default function TeamGoals() {
       setCreateDialogOpen(false);
       createForm.reset();
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.error("Create goal error:", error);
+      const errorMessage = error?.message || error?.response?.data?.message || "Failed to create team goal";
       toast({
         title: "Error",
-        description: "Failed to create team goal",
+        description: errorMessage,
         variant: "destructive",
       });
     },
@@ -320,11 +329,15 @@ export default function TeamGoals() {
   };
 
   const onCreateSubmit = (data: TeamGoalFormData) => {
+    console.log("Submitting team goal data:", data);
+    
     // Handle "organization" value as no team (organization-wide)
     const submissionData = {
       ...data,
       teamId: data.teamId === "organization" ? undefined : data.teamId
     };
+    
+    console.log("Processed submission data:", submissionData);
     createGoalMutation.mutate(submissionData);
   };
 
