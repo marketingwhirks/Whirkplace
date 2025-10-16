@@ -388,6 +388,7 @@ export interface IStorage {
   getUserKrasByUser(organizationId: string, userId: string, statusFilter?: string): Promise<UserKra[]>;
   getUserKrasByAssigner(organizationId: string, assignerId: string): Promise<UserKra[]>;
   getActiveUserKras(organizationId: string): Promise<UserKra[]>;
+  getAllUserKras(organizationId: string, statusFilter?: string): Promise<UserKra[]>;
   getUsersForKraAssignment(organizationId: string): Promise<User[]>;
 
   // Action Items
@@ -4989,6 +4990,23 @@ export class DatabaseStorage implements IStorage {
         .orderBy(desc(userKras.lastUpdated));
     } catch (error) {
       console.error("Failed to fetch active user KRAs:", error);
+      throw error;
+    }
+  }
+
+  async getAllUserKras(organizationId: string, statusFilter?: string): Promise<UserKra[]> {
+    try {
+      const conditions = [eq(userKras.organizationId, organizationId)];
+      if (statusFilter && statusFilter !== 'all') {
+        conditions.push(eq(userKras.status, statusFilter));
+      }
+      return await db
+        .select()
+        .from(userKras)
+        .where(and(...conditions))
+        .orderBy(desc(userKras.lastUpdated));
+    } catch (error) {
+      console.error("Failed to fetch all user KRAs:", error);
       throw error;
     }
   }

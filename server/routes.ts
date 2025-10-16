@@ -11742,21 +11742,82 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // User KRAs endpoints
   app.get("/api/user-kras", requireAuth(), requireFeatureAccess('kra_management'), async (req, res) => {
     try {
-      const userId = req.query.userId as string || req.userId;
+      const userId = req.query.userId as string;
       const statusFilter = req.query.status as string;
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
       
-      // Non-managers can only see their own KRAs
+      // Get current user to check role
       const currentUser = await storage.getUser(req.orgId, req.userId);
       if (!currentUser) {
         return res.status(401).json({ message: "User not found" });
       }
       
-      if (userId !== req.userId && currentUser.role !== 'admin' && currentUser.role !== 'manager') {
-        return res.status(403).json({ message: "You can only view your own KRAs" });
+      let krasData: any[] = [];
+      
+      // Admins can see all KRAs in the organization
+      if (currentUser.role === 'admin' && !userId) {
+        // When admin views the assignments tab without a specific user filter,
+        // show all KRAs in the organization
+        krasData = await storage.getAllUserKras(req.orgId, statusFilter);
+        
+        // Fetch additional data for each KRA (user info, template info)
+        const krasWithDetails = await Promise.all(krasData.map(async (kra) => {
+          const [assignee, template, assignedByUser] = await Promise.all([
+            storage.getUser(req.orgId, kra.userId),
+            kra.templateId ? storage.getKraTemplate(req.orgId, kra.templateId) : null,
+            storage.getUser(req.orgId, kra.assignedBy)
+          ]);
+          
+          return {
+            ...kra,
+            assignee,
+            template,
+            assignedByUser
+          };
+        }));
+        
+        krasData = krasWithDetails;
+      } else {
+        // Non-admins or admins with a specific user filter
+        const targetUserId = userId || req.userId;
+        
+        // Check permissions
+        if (targetUserId !== req.userId && currentUser.role !== 'admin' && currentUser.role !== 'manager') {
+          return res.status(403).json({ message: "You can only view your own KRAs" });
+        }
+        
+        krasData = await storage.getUserKrasByUser(req.orgId, targetUserId, statusFilter);
+        
+        // Fetch additional data for each KRA
+        const krasWithDetails = await Promise.all(krasData.map(async (kra) => {
+          const [assignee, template, assignedByUser] = await Promise.all([
+            storage.getUser(req.orgId, kra.userId),
+            kra.templateId ? storage.getKraTemplate(req.orgId, kra.templateId) : null,
+            storage.getUser(req.orgId, kra.assignedBy)
+          ]);
+          
+          return {
+            ...kra,
+            assignee,
+            template,
+            assignedByUser
+          };
+        }));
+        
+        krasData = krasWithDetails;
       }
       
-      const userKras = await storage.getUserKrasByUser(req.orgId, userId, statusFilter);
-      res.json(userKras);
+      // Return formatted response with pagination
+      res.json({
+        kras: krasData,
+        pagination: {
+          page,
+          limit,
+          total: krasData.length,
+          totalPages: Math.ceil(krasData.length / limit)
+        }
+      });
     } catch (error) {
       console.error("GET /api/user-kras - Error:", error);
       res.status(500).json({ message: "Failed to fetch user KRAs" });
