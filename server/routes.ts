@@ -8223,6 +8223,145 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Send Slack reminders for missing check-ins
+  app.post("/api/slack/remind-missing-checkins", requireAuth(), requireRole(['admin', 'manager']), generateCSRF(), validateCSRF(), async (req, res) => {
+    try {
+      const { userIds } = req.body;
+      
+      if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).json({ message: "User IDs are required" });
+      }
+
+      const { sendMissingCheckinReminder } = await import('./services/slack');
+      
+      let successCount = 0;
+      let failCount = 0;
+      const errors: string[] = [];
+      
+      for (const userId of userIds) {
+        try {
+          // Get user details
+          const user = await storage.getUser(req.orgId, userId);
+          if (!user) {
+            errors.push(`User ${userId} not found`);
+            failCount++;
+            continue;
+          }
+          
+          if (!user.slackUserId) {
+            errors.push(`${user.name} does not have Slack integration enabled`);
+            failCount++;
+            continue;
+          }
+          
+          // Calculate days overdue
+          const weekStart = getWeekStartCentral(new Date());
+          const checkinDueDate = getCheckinDueDate(weekStart);
+          const daysOverdue = Math.max(0, Math.floor((Date.now() - checkinDueDate.getTime()) / (1000 * 60 * 60 * 24)));
+          
+          // Send reminder
+          const sent = await sendMissingCheckinReminder(user.slackUserId, user.name, daysOverdue);
+          
+          if (sent) {
+            successCount++;
+          } else {
+            errors.push(`Failed to send reminder to ${user.name}`);
+            failCount++;
+          }
+        } catch (error) {
+          console.error(`Error sending reminder to user ${userId}:`, error);
+          errors.push(`Error processing user ${userId}`);
+          failCount++;
+        }
+      }
+      
+      res.json({
+        success: true,
+        remindersSent: successCount,
+        remindersFailed: failCount,
+        errors: errors.length > 0 ? errors : undefined,
+        message: `Sent ${successCount} reminder${successCount !== 1 ? 's' : ''}`
+      });
+    } catch (error) {
+      console.error("Failed to send missing check-in reminders:", error);
+      res.status(500).json({ message: "Failed to send reminders" });
+    }
+  });
+
+  // Send Slack reminders for pending reviews
+  app.post("/api/slack/remind-pending-reviews", requireAuth(), requireRole(['admin', 'manager']), generateCSRF(), validateCSRF(), async (req, res) => {
+    try {
+      const { managerIds } = req.body;
+      
+      if (!managerIds || !Array.isArray(managerIds) || managerIds.length === 0) {
+        return res.status(400).json({ message: "Manager IDs are required" });
+      }
+
+      const { sendCheckinReviewReminder } = await import('./services/slack');
+      
+      let successCount = 0;
+      let failCount = 0;
+      const errors: string[] = [];
+      
+      for (const managerId of managerIds) {
+        try {
+          // Get manager details
+          const manager = await storage.getUser(req.orgId, managerId);
+          if (!manager) {
+            errors.push(`Manager ${managerId} not found`);
+            failCount++;
+            continue;
+          }
+          
+          if (!manager.slackUserId) {
+            errors.push(`${manager.name} does not have Slack integration enabled`);
+            failCount++;
+            continue;
+          }
+          
+          // Get pending reviews for this manager
+          const pendingReviews = await storage.getPendingReviews(req.orgId, managerId);
+          
+          if (pendingReviews.length === 0) {
+            continue; // No pending reviews, skip
+          }
+          
+          // Prepare check-in data for the reminder
+          const teamMemberCheckins = pendingReviews.map(review => ({
+            memberName: review.userName,
+            moodRating: review.overallMood,
+            submittedAt: review.submittedAt,
+            needsReview: true
+          }));
+          
+          // Send reminder
+          await sendCheckinReviewReminder(
+            manager.slackUserId,
+            manager.name,
+            teamMemberCheckins
+          );
+          
+          successCount++;
+        } catch (error) {
+          console.error(`Error sending reminder to manager ${managerId}:`, error);
+          errors.push(`Error processing manager ${managerId}`);
+          failCount++;
+        }
+      }
+      
+      res.json({
+        success: true,
+        remindersSent: successCount,
+        remindersFailed: failCount,
+        errors: errors.length > 0 ? errors : undefined,
+        message: `Sent ${successCount} reminder${successCount !== 1 ? 's' : ''}`
+      });
+    } catch (error) {
+      console.error("Failed to send pending review reminders:", error);
+      res.status(500).json({ message: "Failed to send reminders" });
+    }
+  });
+
   // Weekly Summary Reports
   const summaryService = new WeeklySummaryService();
 

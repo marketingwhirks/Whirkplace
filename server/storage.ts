@@ -531,6 +531,8 @@ export interface IStorage {
     daysPending: number;
     overallMood: number;
     reviewDueDate: Date;
+    managerId: string | null;
+    managerName: string | null;
   }>>;
 
 }
@@ -9138,11 +9140,15 @@ export class MemStorage implements IStorage {
     daysPending: number;
     overallMood: number;
     reviewDueDate: Date;
+    managerId: string | null;
+    managerName: string | null;
   }>> {
     try {
       const today = new Date();
       
       // Build the query with optional filters
+      // For pending reviews, we need to filter by the user's manager (who should review it)
+      // not by reviewedBy (which is only set after review)
       let query = db
         .select({
           id: checkins.id,
@@ -9151,6 +9157,8 @@ export class MemStorage implements IStorage {
           userEmail: users.email,
           teamId: users.teamId,
           teamName: teams.name,
+          managerId: users.managerId,
+          managerName: sql<string>`manager.name`,
           weekOf: checkins.weekOf,
           submittedAt: checkins.submittedAt,
           overallMood: checkins.overallMood,
@@ -9159,6 +9167,7 @@ export class MemStorage implements IStorage {
         .from(checkins)
         .innerJoin(users, eq(checkins.userId, users.id))
         .leftJoin(teams, eq(users.teamId, teams.id))
+        .leftJoin(sql`${users} as manager`, sql`manager.id = ${users.managerId}`)
         .where(
           and(
             eq(checkins.organizationId, organizationId),
@@ -9166,7 +9175,8 @@ export class MemStorage implements IStorage {
             eq(checkins.reviewStatus, "pending"), // Review is pending
             sql`${checkins.submittedAt} IS NOT NULL`, // Has been submitted
             sql`${checkins.reviewedAt} IS NULL`, // Has not been reviewed
-            managerId ? eq(checkins.reviewedBy, managerId) : undefined,
+            // Filter by the manager who should review (user's manager), not reviewedBy
+            managerId ? eq(users.managerId, managerId) : undefined,
             teamId ? eq(users.teamId, teamId) : undefined
           )
         )
@@ -9182,6 +9192,8 @@ export class MemStorage implements IStorage {
         userEmail: review.userEmail,
         teamId: review.teamId,
         teamName: review.teamName,
+        managerId: review.managerId,
+        managerName: review.managerName,
         weekOf: review.weekOf,
         submittedAt: review.submittedAt!,
         overallMood: review.overallMood,

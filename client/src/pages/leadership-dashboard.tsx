@@ -1,10 +1,10 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow, format, subDays, startOfWeek, endOfWeek } from "date-fns";
 import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Users, Filter,
   Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer, FileText,
-  AlertCircle, AlertTriangle, UserX, ClipboardList
+  AlertCircle, AlertTriangle, UserX, ClipboardList, Send
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,8 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import RatingStars from "@/components/checkin/rating-stars";
 import type { Checkin, User as UserType, Team, Question, ComplianceMetricsResult } from "@shared/schema";
 import { DateRange } from "react-day-picker";
@@ -83,6 +85,7 @@ interface ComplianceMetrics {
 
 export default function LeadershipDashboard() {
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const { toast } = useToast();
   const [selectedTeam, setSelectedTeam] = useState<string>("all");
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
   const [selectedUser, setSelectedUser] = useState<string>("all");
@@ -93,6 +96,51 @@ export default function LeadershipDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCheckin, setSelectedCheckin] = useState<EnhancedCheckinLeadership | null>(null);
   const [showOrgSummary, setShowOrgSummary] = useState(false);
+
+  // Reminder mutations
+  const missingCheckinReminderMutation = useMutation({
+    mutationFn: async (userIds: string[]) => {
+      return apiRequest('/api/slack/remind-missing-checkins', {
+        method: 'POST',
+        body: JSON.stringify({ userIds }),
+      });
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Reminders Sent",
+        description: data.message || `Successfully sent ${data.remindersSent} reminder(s)`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to send reminders. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const pendingReviewReminderMutation = useMutation({
+    mutationFn: async (managerIds: string[]) => {
+      return apiRequest('/api/slack/remind-pending-reviews', {
+        method: 'POST',
+        body: JSON.stringify({ managerIds }),
+      });
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Reminders Sent",
+        description: data.message || `Successfully sent ${data.remindersSent} reminder(s)`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to send reminders. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   // Build query parameters
   const queryParams = useMemo(() => {
@@ -234,6 +282,8 @@ export default function LeadershipDashboard() {
     daysPending: number;
     overallMood: number;
     reviewDueDate: string;
+    managerId: string | null;
+    managerName: string | null;
   }>>({
     queryKey: ["/api/compliance/pending-reviews", selectedTeam],
     queryFn: async () => {
@@ -605,13 +655,36 @@ export default function LeadershipDashboard() {
           {/* Missing Check-in Submissions */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <UserX className="w-5 h-5 text-red-500" />
-                Missing Check-in Submissions
-              </CardTitle>
-              <CardDescription>
-                Users who haven't submitted their weekly check-ins
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="flex items-center gap-2">
+                    <UserX className="w-5 h-5 text-red-500" />
+                    Missing Check-in Submissions
+                  </CardTitle>
+                  <CardDescription>
+                    Users who haven't submitted their weekly check-ins
+                  </CardDescription>
+                </div>
+                {missingCheckins && missingCheckins.length > 0 && missingCheckins[0]?.users?.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const userIds = missingCheckins.flatMap(week => week.users.map(u => u.id));
+                      missingCheckinReminderMutation.mutate(userIds);
+                    }}
+                    disabled={missingCheckinReminderMutation.isPending}
+                    data-testid="button-remind-missing-checkins"
+                  >
+                    {missingCheckinReminderMutation.isPending ? (
+                      <Clock className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4 mr-2" />
+                    )}
+                    Send Slack Reminder
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {missingCheckinsLoading ? (
@@ -689,13 +762,38 @@ export default function LeadershipDashboard() {
           {/* Incomplete Reviews */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ClipboardList className="w-5 h-5 text-orange-500" />
-                Pending Reviews
-              </CardTitle>
-              <CardDescription>
-                Check-ins awaiting manager review
-              </CardDescription>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="flex items-center gap-2">
+                    <ClipboardList className="w-5 h-5 text-orange-500" />
+                    Pending Reviews
+                  </CardTitle>
+                  <CardDescription>
+                    Check-ins awaiting manager review
+                  </CardDescription>
+                </div>
+                {pendingReviews && pendingReviews.length > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      const uniqueManagerIds = [...new Set(pendingReviews
+                        .filter(r => r.managerId)
+                        .map(r => r.managerId!))];
+                      pendingReviewReminderMutation.mutate(uniqueManagerIds);
+                    }}
+                    disabled={pendingReviewReminderMutation.isPending}
+                    data-testid="button-remind-pending-reviews"
+                  >
+                    {pendingReviewReminderMutation.isPending ? (
+                      <Clock className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4 mr-2" />
+                    )}
+                    Send Slack Reminder
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {pendingReviewsLoading ? (
