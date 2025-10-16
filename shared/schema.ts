@@ -526,6 +526,17 @@ export const pulseMetricsDaily = pgTable("pulse_metrics_daily", {
   checkinCount: integer("checkin_count").notNull().default(0), // Number of check-ins
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+  // Extra columns that exist in production database
+  metricDate: date("metric_date").notNull().default(sql`CURRENT_DATE`), // Legacy column
+  totalCheckins: integer("total_checkins").notNull().default(0),
+  averageMood: integer("average_mood"), // Changed to integer to match database
+  mood1Count: integer("mood_1_count").notNull().default(0),
+  mood2Count: integer("mood_2_count").notNull().default(0),
+  mood3Count: integer("mood_3_count").notNull().default(0),
+  mood4Count: integer("mood_4_count").notNull().default(0),
+  mood5Count: integer("mood_5_count").notNull().default(0),
+  uniqueUsers: integer("unique_users").notNull().default(0),
+  teamBreakdown: jsonb("team_breakdown").notNull().default({}),
 }, (table) => ({
   orgBucketDateIdx: index("pulse_metrics_org_bucket_date_idx").on(table.organizationId, table.bucketDate),
   orgUserBucketDateIdx: index("pulse_metrics_org_user_bucket_date_idx").on(table.organizationId, table.userId, table.bucketDate),
@@ -546,6 +557,15 @@ export const shoutoutMetricsDaily = pgTable("shoutout_metrics_daily", {
   privateCount: integer("private_count").notNull().default(0), // Private shoutouts received
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+  // Extra columns that exist in production database
+  totalShoutouts: integer("total_shoutouts").notNull().default(0),
+  publicShoutouts: integer("public_shoutouts").notNull().default(0),
+  privateShoutouts: integer("private_shoutouts").notNull().default(0),
+  uniqueSenders: integer("unique_senders").notNull().default(0),
+  uniqueReceivers: integer("unique_receivers").notNull().default(0),
+  valueCounts: jsonb("value_counts").notNull().default({}),
+  topSenders: jsonb("top_senders").notNull().default([]),
+  topReceivers: jsonb("top_receivers").notNull().default([]),
 }, (table) => ({
   orgBucketDateIdx: index("shoutout_metrics_org_bucket_date_idx").on(table.organizationId, table.bucketDate),
   orgUserBucketDateIdx: index("shoutout_metrics_org_user_bucket_date_idx").on(table.organizationId, table.userId, table.bucketDate),
@@ -582,6 +602,8 @@ export const aggregationWatermarks = pgTable("aggregation_watermarks", {
   lastProcessedAt: timestamp("last_processed_at").notNull(),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
   updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+  // Extra column that exists in production database
+  lastProcessedId: varchar("last_processed_id"),
 }, (table) => ({
   orgIdx: index("aggregation_watermarks_org_idx").on(table.organizationId),
   // Unique constraint to ensure one watermark per organization
@@ -1265,6 +1287,9 @@ export const kraTemplates = pgTable("kra_templates", {
   isActive: boolean("is_active").notNull().default(true),
   createdBy: varchar("created_by").notNull(),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  // Extra columns that exist in production database
+  department: text("department"),
+  isSystem: boolean("is_system").notNull().default(false),
 }, (table) => ({
   orgCategoryIdx: index("kra_templates_org_category_idx").on(table.organizationId, table.category),
   activeIdx: index("kra_templates_active_idx").on(table.isActive),
@@ -1287,6 +1312,15 @@ export const userKras = pgTable("user_kras", {
   progress: integer("progress").notNull().default(0), // 0-100 percentage
   lastUpdated: timestamp("last_updated").notNull().default(sql`now()`),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  // Extra columns that exist in production database
+  isActive: boolean("is_active").notNull().default(true),
+  selfRating: integer("self_rating"),
+  selfNote: text("self_note"),
+  managerRating: integer("manager_rating"),
+  managerNote: text("manager_note"),
+  finalized: boolean("finalized").notNull().default(false),
+  finalizedAt: timestamp("finalized_at"),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
 }, (table) => ({
   userIdx: index("user_kras_user_idx").on(table.organizationId, table.userId),
   assignedByIdx: index("user_kras_assigned_by_idx").on(table.assignedBy),
