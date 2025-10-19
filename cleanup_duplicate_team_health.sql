@@ -115,7 +115,7 @@ SELECT
     "createdAt",
     CASE 
         WHEN has_questions = false AND row_num > 1 THEN '❌ WILL BE DELETED (duplicate with no questions)'
-        WHEN has_questions = false AND row_num = 1 AND total_duplicates > 1 THEN '⚠️ WILL BE DELETED (first but no questions, keeping newer ones)'
+        WHEN has_questions = false ]]]AND row_num = 1 AND total_duplicates > 1 THEN '⚠️ WILL BE DELETED (first but no questions, keeping newer ones)'
         WHEN has_questions = true THEN '✅ WILL BE KEPT (has questions)'
         ELSE '✅ WILL BE KEPT (only one exists)'
     END as action
