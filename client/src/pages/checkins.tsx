@@ -3,9 +3,9 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { formatDistanceToNow, startOfWeek, addWeeks, isSameWeek, format } from "date-fns";
+import { formatDistanceToNow, startOfWeek, addWeeks, isSameWeek, format, isToday, isPast } from "date-fns";
 import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle, Smile, Flag, UserPlus, CheckCheck, Plane } from "lucide-react";
-import { getCheckinWeekFriday } from "@shared/utils/dueDates";
+import { getCheckinWeekFriday, getCheckinDueDate } from "@shared/utils/dueDates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -137,6 +137,18 @@ export default function Checkins() {
   const { data: vacations = [], refetch: refetchVacations } = useQuery<Vacation[]>({
     queryKey: ["/api/vacations"],
     enabled: !!currentUser,
+  });
+
+  // Fetch current organization data for due date calculation
+  const { data: currentOrganization } = useQuery({
+    queryKey: ["/api/organizations", currentUser?.organizationId],
+    queryFn: async () => {
+      if (!currentUser?.organizationId) return null;
+      const response = await fetch(`/api/organizations/${currentUser.organizationId}`);
+      if (!response.ok) throw new Error('Failed to fetch organization');
+      return response.json();
+    },
+    enabled: !!currentUser?.organizationId,
   });
 
   // Check if current week is marked as vacation
@@ -623,7 +635,19 @@ export default function Checkins() {
                 <ClipboardCheck className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
                 <h3 className="text-lg font-medium mb-2">Ready to check in?</h3>
                 <p className="text-muted-foreground mb-4">
-                  Submit your weekly check-in to share how you're doing with your team.
+                  {(() => {
+                    const dueDate = currentOrganization ? getCheckinDueDate(new Date(), currentOrganization) : null;
+                    if (dueDate) {
+                      if (isToday(dueDate)) {
+                        return `Due today by ${format(dueDate, 'h:mm a')}`;
+                      } else if (isPast(dueDate)) {
+                        return `Past due - was due ${format(dueDate, 'EEEE, MMMM d')} at ${format(dueDate, 'h:mm a')}`;
+                      } else {
+                        return `Due by ${format(dueDate, 'EEEE, MMMM d')} at ${format(dueDate, 'h:mm a')}`;
+                      }
+                    }
+                    return "Submit your weekly check-in to share how you're doing with your team.";
+                  })()}
                 </p>
                 <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
                   <DialogTrigger asChild>

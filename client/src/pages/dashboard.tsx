@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, isToday, isPast, format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +21,7 @@ import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
 import { Link, useLocation } from "wouter";
+import { getCheckinDueDate } from "@shared/utils/dueDates";
 
 interface DashboardStats {
   averageRating: number;
@@ -212,6 +213,17 @@ export default function Dashboard() {
     queryKey: ["/api/users", currentUser.id, "previous-checkin"],
   });
 
+  // Fetch current organization data for due date calculation
+  const { data: currentOrganization } = useQuery({
+    queryKey: ["/api/organizations", currentUser.organizationId],
+    queryFn: async () => {
+      const response = await fetch(`/api/organizations/${currentUser.organizationId}`);
+      if (!response.ok) throw new Error('Failed to fetch organization');
+      return response.json();
+    },
+    enabled: !!currentUser?.organizationId,
+  });
+
   // Fetch team goals for dashboard
   const { data: teamGoals = [], isLoading: goalsLoading } = useQuery<TeamGoal[]>({
     queryKey: ["/api/team-goals/dashboard"]
@@ -377,37 +389,123 @@ export default function Dashboard() {
           />
         )}
         
-        {/* Late Check-in Notification */}
-        {!previousCheckin && questions.length > 0 && (
-          <Card className="border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-900/20">
-            <CardContent className="p-4">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center space-x-3">
-                  <Clock className="h-5 w-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
-                  <div>
-                    <p className="font-medium text-orange-900 dark:text-orange-300">
-                      Previous Week Check-in Missing
-                    </p>
-                    <p className="text-sm text-orange-700 dark:text-orange-400">
-                      You can still submit your check-in for last week
-                    </p>
+        {/* Check-in Due Date Notification */}
+        {(() => {
+          // Calculate current week's due date
+          const currentDueDate = currentOrganization ? getCheckinDueDate(new Date(), currentOrganization) : null;
+          const previousDueDate = currentOrganization ? getCheckinDueDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), currentOrganization) : null;
+          
+          // Determine check-in status
+          let notificationContent = null;
+          
+          if (!currentCheckin && questions.length > 0) {
+            // No check-in submitted for current week
+            if (currentDueDate) {
+              if (isToday(currentDueDate)) {
+                // Due today
+                notificationContent = {
+                  title: "Check-in Due Today",
+                  message: `Submit your check-in by ${format(currentDueDate, 'h:mm a')}`,
+                  variant: "warning" as const,
+                  icon: AlertCircle,
+                  buttonText: "Submit Check-in"
+                };
+              } else if (isPast(currentDueDate)) {
+                // Past due
+                notificationContent = {
+                  title: "You have a check-in past due",
+                  message: `Was due ${format(currentDueDate, 'MMMM d, yyyy')} at ${format(currentDueDate, 'h:mm a')}`,
+                  variant: "error" as const,
+                  icon: AlertCircle,
+                  buttonText: "Submit Late Check-in"
+                };
+              } else {
+                // Upcoming
+                notificationContent = {
+                  title: "Check-in Upcoming",
+                  message: `Due by ${format(currentDueDate, 'EEEE, MMMM d, yyyy')} at ${format(currentDueDate, 'h:mm a')}`,
+                  variant: "info" as const,
+                  icon: Clock,
+                  buttonText: "Submit Check-in"
+                };
+              }
+            }
+          } else if (!previousCheckin && questions.length > 0 && previousDueDate && isPast(previousDueDate)) {
+            // Previous week's check-in missing
+            notificationContent = {
+              title: "Previous Week Check-in Missing",
+              message: `Was due ${format(previousDueDate, 'MMMM d, yyyy')}. You can still submit it`,
+              variant: "warning" as const,
+              icon: Clock,
+              buttonText: "Submit Late Check-in"
+            };
+          }
+          
+          if (!notificationContent) return null;
+          
+          const variantStyles = {
+            info: "border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/20",
+            warning: "border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-900/20",
+            error: "border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/20"
+          };
+          
+          const iconColors = {
+            info: "text-blue-600 dark:text-blue-400",
+            warning: "text-orange-600 dark:text-orange-400",
+            error: "text-red-600 dark:text-red-400"
+          };
+          
+          const textColors = {
+            info: "text-blue-900 dark:text-blue-300",
+            warning: "text-orange-900 dark:text-orange-300",
+            error: "text-red-900 dark:text-red-300"
+          };
+          
+          const subtextColors = {
+            info: "text-blue-700 dark:text-blue-400",
+            warning: "text-orange-700 dark:text-orange-400",
+            error: "text-red-700 dark:text-red-400"
+          };
+          
+          const buttonStyles = {
+            info: "border-blue-500 text-blue-700 hover:bg-blue-100 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-900/40",
+            warning: "border-orange-500 text-orange-700 hover:bg-orange-100 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-900/40",
+            error: "border-red-500 text-red-700 hover:bg-red-100 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-900/40"
+          };
+          
+          const Icon = notificationContent.icon;
+          
+          return (
+            <Card className={variantStyles[notificationContent.variant]}>
+              <CardContent className="p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div className="flex items-center space-x-3">
+                    <Icon className={`h-5 w-5 ${iconColors[notificationContent.variant]} flex-shrink-0`} />
+                    <div>
+                      <p className={`font-medium ${textColors[notificationContent.variant]}`}>
+                        {notificationContent.title}
+                      </p>
+                      <p className={`text-sm ${subtextColors[notificationContent.variant]}`}>
+                        {notificationContent.message}
+                      </p>
+                    </div>
                   </div>
+                  <Link to="/checkins" className="w-full sm:w-auto">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className={`w-full sm:w-auto ${buttonStyles[notificationContent.variant]}`}
+                      data-testid="button-late-checkin-dashboard"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      {notificationContent.buttonText}
+                    </Button>
+                  </Link>
                 </div>
-                <Link to="/checkins" className="w-full sm:w-auto">
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    className="w-full sm:w-auto border-orange-500 text-orange-700 hover:bg-orange-100 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-900/40"
-                    data-testid="button-late-checkin-dashboard"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Submit Late Check-in
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              </CardContent>
+            </Card>
+          );
+        })()}
         
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6" data-testid="dashboard-widgets">

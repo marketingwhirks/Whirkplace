@@ -854,28 +854,50 @@ export async function sendPersonalizedCheckinReminder(
   userId: string, 
   userName: string, 
   questions: Array<{id: string, text: string}> = [],
-  isWeeklyScheduled: boolean = false
+  isWeeklyScheduled: boolean = false,
+  organization?: any
 ) {
   if (!slack) return;
 
   const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
   const checkinUrl = `${appUrl}/#/checkins`;
 
+  // Calculate the due date for the check-in
+  const dueDate = organization ? getCheckinDueDate(new Date(), organization) : null;
+  const dueDateText = dueDate 
+    ? `Due by ${dueDate.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        month: 'long', 
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: organization?.timezone || 'America/Chicago'
+      })}`
+    : 'Due by end of week';
+
+  // Determine if it's due today
+  const isDueToday = dueDate && 
+    dueDate.toDateString() === new Date().toDateString();
+
   const reminderBlocks: any[] = [
     {
       type: 'section' as const,
       text: {
         type: 'mrkdwn' as const,
-        text: isWeeklyScheduled 
-          ? `🔔 *Weekly Check-in Reminder - ${new Date().toLocaleDateString()}*`
-          : `📝 *Check-in Reminder*`
+        text: isDueToday
+          ? `⏰ *Check-in Due Today - ${new Date().toLocaleDateString()}*`
+          : isWeeklyScheduled 
+            ? `🔔 *Weekly Check-in Reminder - ${new Date().toLocaleDateString()}*`
+            : `📝 *Check-in Reminder*`
       }
     },
     {
       type: 'section' as const,
       text: {
         type: 'mrkdwn' as const,
-        text: `Hi ${userName}! 👋 Hope you're having a great ${isWeeklyScheduled ? 'Monday' : 'day'}! Time for your weekly team check-in.`
+        text: `Hi ${userName}! 👋 ${isDueToday 
+          ? `Your weekly check-in is due today. ${dueDateText}.`
+          : `Time for your weekly team check-in. ${dueDateText}.`}`
       }
     }
   ];
@@ -3555,7 +3577,8 @@ export async function scheduleWeeklyReminders(organizationId: string, storage: a
             user.slackUserId,
             user.name || user.slackDisplayName || 'Team Member',
             questions,
-            true // isWeeklyScheduled
+            true, // isWeeklyScheduled
+            organization // Pass organization for due date calculation
           );
           
           remindersSent++;
@@ -4744,11 +4767,13 @@ async function scheduleReminderLater(userId: string, userName: string, hours: nu
   setTimeout(async () => {
     try {
       const questions = await storage.getActiveQuestions(organizationId);
+      const organization = await storage.getOrganization(organizationId);
       await sendPersonalizedCheckinReminder(
         userId,
         userName,
         questions,
-        false // Not weekly scheduled
+        false, // Not weekly scheduled
+        organization
       );
       console.log(`Delayed reminder sent to ${userName} after ${hours} hours`);
     } catch (error) {
