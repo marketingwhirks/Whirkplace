@@ -7440,6 +7440,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Post Reactions (for Wins and Shoutouts)
+  app.get("/api/:postType/:id/reactions", requireAuth(), async (req, res) => {
+    try {
+      const { postType, id } = req.params;
+      
+      if (postType !== 'wins' && postType !== 'shoutouts') {
+        return res.status(400).json({ message: "Invalid post type" });
+      }
+      
+      const postTypeForDb = postType === 'wins' ? 'win' : 'shoutout';
+      const reactions = await storage.getReactionsByPost(req.orgId, id, postTypeForDb as 'win' | 'shoutout');
+      
+      // Get user info for reactions
+      const userIds = [...new Set(reactions.map(r => r.userId))];
+      const users = await Promise.all(userIds.map(userId => storage.getUser(req.orgId, userId)));
+      const userMap = new Map(users.filter(u => u).map(u => [u!.id, u!]));
+      
+      // Group reactions by emoji with user info
+      const reactionGroups = reactions.reduce((acc, reaction) => {
+        if (!acc[reaction.emoji]) {
+          acc[reaction.emoji] = {
+            emoji: reaction.emoji,
+            count: 0,
+            users: [],
+            hasUserReacted: false
+          };
+        }
+        
+        const user = userMap.get(reaction.userId);
+        if (user) {
+          acc[reaction.emoji].users.push({
+            id: user.id,
+            name: user.name
+          });
+        }
+        
+        if (reaction.userId === req.userId) {
+          acc[reaction.emoji].hasUserReacted = true;
+        }
+        
+        acc[reaction.emoji].count++;
+        return acc;
+      }, {} as Record<string, any>);
+      
+      res.json(Object.values(reactionGroups));
+    } catch (error) {
+      console.error("Failed to fetch reactions:", error);
+      res.status(500).json({ message: "Failed to fetch reactions" });
+    }
+  });
+
+  app.post("/api/reactions", requireAuth(), async (req, res) => {
+    try {
+      const { postId, postType, emoji } = req.body;
+      
+      if (!postId || !postType || !emoji) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+      
+      if (postType !== 'win' && postType !== 'shoutout') {
+        return res.status(400).json({ message: "Invalid post type" });
+      }
+      
+      const reaction = await storage.addReaction({
+        postId,
+        postType,
+        emoji,
+        userId: req.userId!,
+        organizationId: req.orgId
+      });
+      
+      res.status(201).json(reaction);
+    } catch (error) {
+      console.error("Failed to add reaction:", error);
+      res.status(500).json({ message: "Failed to add reaction" });
+    }
+  });
+
+  app.delete("/api/reactions/:id", requireAuth(), async (req, res) => {
+    try {
+      // First check if the reaction exists and belongs to the user
+      const reactions = await storage.getUserReactionsByPost(req.userId!, req.params.id, 'win');
+      const winReaction = reactions.find(r => r.id === req.params.id);
+      
+      if (!winReaction) {
+        // Check shoutouts if not found in wins
+        const shoutoutReactions = await storage.getUserReactionsByPost(req.userId!, req.params.id, 'shoutout');
+        const shoutoutReaction = shoutoutReactions.find(r => r.id === req.params.id);
+        
+        if (!shoutoutReaction) {
+          return res.status(404).json({ message: "Reaction not found or unauthorized" });
+        }
+      }
+      
+      const deleted = await storage.removeReaction(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Reaction not found" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete reaction:", error);
+      res.status(500).json({ message: "Failed to delete reaction" });
+    }
+  });
+
   // Notifications
   app.get("/api/notifications", requireAuth(), async (req, res) => {
     try {

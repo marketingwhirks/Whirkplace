@@ -102,6 +102,24 @@ export const GoalStatus = {
 
 export type GoalStatusValue = typeof GoalStatus[keyof typeof GoalStatus];
 
+// Post Reactions table for emoji reactions on wins and shoutouts
+export const postReactions = pgTable("post_reactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull(),
+  postType: text("post_type").notNull(), // 'win' or 'shoutout'
+  emoji: text("emoji").notNull(), // The emoji character
+  userId: varchar("user_id").notNull(),
+  organizationId: varchar("organization_id").notNull(),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for fetching reactions by post
+  postIdx: index("post_reactions_post_idx").on(table.postId, table.postType),
+  // Index for user reactions lookup
+  userIdx: index("post_reactions_user_idx").on(table.userId),
+  // Unique constraint: one reaction per emoji per user per post
+  uniqueUserEmojiPost: unique("unique_user_emoji_post").on(table.userId, table.postId, table.postType, table.emoji),
+}));
+
 // Team Goals table for tracking team objectives and prizes
 export const teamGoals = pgTable("team_goals", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -919,6 +937,11 @@ export const insertShoutoutSchema = createInsertSchema(shoutouts).omit({
   message: z.string().min(1, "Message is required").max(500, "Message too long"),
 });
 
+export const insertPostReactionSchema = createInsertSchema(postReactions).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertNotificationSchema = createInsertSchema(notifications).omit({
   id: true,
   createdAt: true,
@@ -1148,6 +1171,9 @@ export type Notification = typeof notifications.$inferSelect;
 
 export type InsertShoutout = z.infer<typeof insertShoutoutSchema>;
 export type Shoutout = typeof shoutouts.$inferSelect;
+
+export type InsertPostReaction = z.infer<typeof insertPostReactionSchema>;
+export type PostReaction = typeof postReactions.$inferSelect;
 
 export type InsertVacation = z.infer<typeof insertVacationSchema>;
 export type Vacation = typeof vacations.$inferSelect;

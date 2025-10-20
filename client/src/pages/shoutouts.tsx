@@ -24,6 +24,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { EmojiReactions } from "@/components/ui/emoji-reactions";
 
 import type { Shoutout, User, InsertShoutout, Team } from "@shared/schema";
 import { insertShoutoutSchema, defaultCompanyValuesArray } from "@shared/schema";
@@ -765,6 +766,15 @@ export default function ShoutoutsPage() {
                             ))}
                           </div>
                         )}
+                        
+                        {/* Emoji Reactions */}
+                        <div className="mt-4 pt-3 border-t">
+                          <EmojiReactions
+                            postId={shoutoutItem.id}
+                            postType="shoutout"
+                            compact={false}
+                          />
+                        </div>
                       </CardContent>
                     </Card>
                   ))}

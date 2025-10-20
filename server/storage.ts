@@ -9,6 +9,7 @@ import {
   type Win, type InsertWin,
   type Comment, type InsertComment,
   type Shoutout, type InsertShoutout,
+  type PostReaction, type InsertPostReaction,
   type Notification, type InsertNotification,
   type Vacation, type InsertVacation,
   type Organization, type InsertOrganization,
@@ -36,7 +37,7 @@ import {
   type UserIdentity, type InsertUserIdentity,
   type UserTour, type InsertUserTour,
   type PasswordResetToken, type InsertPasswordResetToken,
-  users, teams, checkins, questions, teamQuestionSettings, questionCategories, questionBank, wins, comments, shoutouts, notifications, vacations, organizations, partnerFirms,
+  users, teams, checkins, questions, teamQuestionSettings, questionCategories, questionBank, wins, comments, shoutouts, postReactions, notifications, vacations, organizations, partnerFirms,
   organizationAuthProviders, userIdentities, userTours, teamGoals, passwordResetTokens,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
@@ -291,6 +292,12 @@ export interface IStorage {
   getShoutoutsByUser(organizationId: string, userId: string, type?: 'received' | 'given'): Promise<Shoutout[]>;
   getRecentShoutouts(organizationId: string, limit?: number): Promise<Shoutout[]>;
   getPublicShoutouts(organizationId: string, limit?: number): Promise<Shoutout[]>;
+
+  // Post Reactions
+  addReaction(reaction: InsertPostReaction): Promise<PostReaction>;
+  removeReaction(id: string): Promise<boolean>;
+  getReactionsByPost(organizationId: string, postId: string, postType: 'win' | 'shoutout'): Promise<PostReaction[]>;
+  getUserReactionsByPost(userId: string, postId: string, postType: 'win' | 'shoutout'): Promise<PostReaction[]>;
 
   // Notifications
   getNotification(organizationId: string, id: string): Promise<Notification | undefined>;
@@ -3308,6 +3315,56 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(shoutouts.createdAt))
       .limit(limit);
+  }
+
+  // Post Reactions
+  async addReaction(reaction: InsertPostReaction): Promise<PostReaction> {
+    // Check if user already has this reaction for this post
+    const existing = await db
+      .select()
+      .from(postReactions)
+      .where(and(
+        eq(postReactions.userId, reaction.userId),
+        eq(postReactions.postId, reaction.postId),
+        eq(postReactions.postType, reaction.postType),
+        eq(postReactions.emoji, reaction.emoji)
+      ))
+      .limit(1);
+
+    if (existing.length > 0) {
+      return existing[0];
+    }
+
+    const [newReaction] = await db.insert(postReactions).values(reaction).returning();
+    return newReaction;
+  }
+
+  async removeReaction(id: string): Promise<boolean> {
+    const result = await db.delete(postReactions).where(eq(postReactions.id, id));
+    return true;
+  }
+
+  async getReactionsByPost(organizationId: string, postId: string, postType: 'win' | 'shoutout'): Promise<PostReaction[]> {
+    return await db
+      .select()
+      .from(postReactions)
+      .where(and(
+        eq(postReactions.organizationId, organizationId),
+        eq(postReactions.postId, postId),
+        eq(postReactions.postType, postType)
+      ))
+      .orderBy(postReactions.createdAt);
+  }
+
+  async getUserReactionsByPost(userId: string, postId: string, postType: 'win' | 'shoutout'): Promise<PostReaction[]> {
+    return await db
+      .select()
+      .from(postReactions)
+      .where(and(
+        eq(postReactions.userId, userId),
+        eq(postReactions.postId, postId),
+        eq(postReactions.postType, postType)
+      ));
   }
 
   // Notifications
@@ -7494,6 +7551,54 @@ export class MemStorage implements IStorage {
       .filter(shoutoutRecord => shoutoutRecord.isPublic && shoutoutRecord.organizationId === organizationId)
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
       .slice(0, limit);
+  }
+
+  // Post Reactions - MemStorage implementation
+  private reactionsMap = new Map<string, PostReaction>();
+
+  async addReaction(reaction: InsertPostReaction): Promise<PostReaction> {
+    // Check if user already has this reaction for this post
+    const existing = Array.from(this.reactionsMap.values()).find(r => 
+      r.userId === reaction.userId &&
+      r.postId === reaction.postId &&
+      r.postType === reaction.postType &&
+      r.emoji === reaction.emoji
+    );
+
+    if (existing) {
+      return existing;
+    }
+
+    const newReaction: PostReaction = {
+      id: randomUUID(),
+      ...reaction,
+      createdAt: new Date(),
+    };
+    this.reactionsMap.set(newReaction.id, newReaction);
+    return newReaction;
+  }
+
+  async removeReaction(id: string): Promise<boolean> {
+    return this.reactionsMap.delete(id);
+  }
+
+  async getReactionsByPost(organizationId: string, postId: string, postType: 'win' | 'shoutout'): Promise<PostReaction[]> {
+    return Array.from(this.reactionsMap.values())
+      .filter(reaction => 
+        reaction.organizationId === organizationId &&
+        reaction.postId === postId &&
+        reaction.postType === postType
+      )
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  async getUserReactionsByPost(userId: string, postId: string, postType: 'win' | 'shoutout'): Promise<PostReaction[]> {
+    return Array.from(this.reactionsMap.values())
+      .filter(reaction => 
+        reaction.userId === userId &&
+        reaction.postId === postId &&
+        reaction.postType === postType
+      );
   }
 
   // Notifications - MemStorage implementation

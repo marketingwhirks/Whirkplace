@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow, format } from "date-fns";
-import { Plus, Edit, Trash2, Lock, Globe, Trophy, Star, Check, Sparkles, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, Lock, Globe, Trophy, Star, Check, Sparkles, Filter, MessageCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +26,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
+import { EmojiReactions } from "@/components/ui/emoji-reactions";
 
 import type { Win, User, InsertWin, CompanyValue } from "@shared/schema";
 import { insertWinSchema, DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
@@ -592,6 +593,15 @@ export default function Wins() {
                         Shared on Slack
                       </Badge>
                     )}
+                    
+                    {/* Emoji Reactions */}
+                    <div className="mt-4 pt-3 border-t">
+                      <EmojiReactions
+                        postId={win.id}
+                        postType="win"
+                        compact={false}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
               ))}
