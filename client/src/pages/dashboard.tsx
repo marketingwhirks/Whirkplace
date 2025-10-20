@@ -381,9 +381,9 @@ export default function Dashboard() {
         {!previousCheckin && questions.length > 0 && (
           <Card className="border-orange-200 dark:border-orange-800 bg-orange-50/50 dark:bg-orange-900/20">
             <CardContent className="p-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div className="flex items-center space-x-3">
-                  <Clock className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                  <Clock className="h-5 w-5 text-orange-600 dark:text-orange-400 flex-shrink-0" />
                   <div>
                     <p className="font-medium text-orange-900 dark:text-orange-300">
                       Previous Week Check-in Missing
@@ -393,11 +393,11 @@ export default function Dashboard() {
                     </p>
                   </div>
                 </div>
-                <Link to="/checkins">
+                <Link to="/checkins" className="w-full sm:w-auto">
                   <Button 
                     variant="outline" 
                     size="sm"
-                    className="border-orange-500 text-orange-700 hover:bg-orange-100 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-900/40"
+                    className="w-full sm:w-auto border-orange-500 text-orange-700 hover:bg-orange-100 dark:border-orange-400 dark:text-orange-400 dark:hover:bg-orange-900/40"
                     data-testid="button-late-checkin-dashboard"
                   >
                     <Plus className="w-4 h-4 mr-2" />

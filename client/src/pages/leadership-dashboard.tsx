@@ -1230,37 +1230,39 @@ export default function LeadershipDashboard() {
                 {filteredCheckins.slice(0, 50).map((checkin) => (
                   <div
                     key={checkin.id}
-                    className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer"
+                    className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer space-y-3 sm:space-y-0"
                     onClick={() => setSelectedCheckin(checkin)}
                     data-testid={`checkin-row-${checkin.id}`}
                   >
                     <div className="flex items-center space-x-4">
-                      <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
+                      <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
                         <span className="text-primary-foreground font-medium">
                           {checkin.user?.name?.[0] || "?"}
                         </span>
                       </div>
-                      <div>
-                        <p className="font-medium">{checkin.user?.name || "Unknown User"}</p>
-                        <p className="text-sm text-muted-foreground">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{checkin.user?.name || "Unknown User"}</p>
+                        <p className="text-sm text-muted-foreground truncate">
                           {checkin.team?.name || "No Team"} • {format(new Date(checkin.createdAt), "MMM d, yyyy")}
                         </p>
                       </div>
                     </div>
                     
-                    <div className="flex items-center space-x-4">
-                      <RatingStars rating={checkin.overallMood} readonly size="sm" />
-                      <Badge 
-                        variant={checkin.reviewStatus === "pending" ? "secondary" : 
-                               checkin.reviewStatus === "approved" ? "default" : "destructive"}
-                      >
-                        {checkin.reviewStatus}
-                      </Badge>
-                      {checkin.reviewer && (
-                        <span className="text-xs text-muted-foreground">
-                          by {checkin.reviewer.name}
-                        </span>
-                      )}
+                    <div className="flex items-center justify-between sm:justify-end space-x-2 sm:space-x-4 pl-14 sm:pl-0">
+                      <div className="flex items-center space-x-2 sm:space-x-4">
+                        <RatingStars rating={checkin.overallMood} readonly size="sm" />
+                        <Badge 
+                          variant={checkin.reviewStatus === "pending" ? "secondary" : 
+                                 checkin.reviewStatus === "approved" ? "default" : "destructive"}
+                        >
+                          {checkin.reviewStatus}
+                        </Badge>
+                        {checkin.reviewer && (
+                          <span className="text-xs text-muted-foreground hidden sm:inline">
+                            by {checkin.reviewer.name}
+                          </span>
+                        )}
+                      </div>
                       <Button variant="ghost" size="sm">
                         <Eye className="w-4 h-4" />
                       </Button>

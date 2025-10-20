@@ -288,7 +288,7 @@ const FiltersBar = ({
   return (
     <Card className="mb-6">
       <CardContent className="p-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-4">
           {/* Scope Selector */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Scope</Label>
