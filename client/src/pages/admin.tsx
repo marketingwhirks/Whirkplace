@@ -1972,17 +1972,23 @@ export default function Admin() {
                         Add Week
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-4" align="end">
-                      <div className="space-y-4">
+                    <PopoverContent 
+                      className="w-auto p-4 max-h-[80vh] overflow-y-auto" 
+                      align="end"
+                      sideOffset={5}
+                    >
+                      <div className="space-y-4 pb-2">
                         <div>
                           <p className="text-sm font-medium mb-2">Select a week</p>
-                          <CalendarComponent
-                            mode="single"
-                            selected={selectedVacationDate}
-                            onSelect={setSelectedVacationDate}
-                            disabled={(date) => date < new Date()}
-                            initialFocus
-                          />
+                          <div className="max-h-[280px] overflow-y-auto">
+                            <CalendarComponent
+                              mode="single"
+                              selected={selectedVacationDate}
+                              onSelect={setSelectedVacationDate}
+                              disabled={(date) => date < new Date()}
+                              initialFocus
+                            />
+                          </div>
                         </div>
                         <div>
                           <label className="text-sm font-medium">Note (optional)</label>
@@ -1994,7 +2000,7 @@ export default function Admin() {
                             data-testid="input-user-vacation-note"
                           />
                         </div>
-                        <div className="flex justify-end gap-2">
+                        <div className="flex justify-end gap-2 sticky bottom-0 bg-popover pt-2">
                           <Button
                             variant="outline"
                             size="sm"
