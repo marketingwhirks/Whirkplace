@@ -151,10 +151,7 @@ export default function TeamGoals() {
   const createGoalMutation = useMutation({
     mutationFn: async (data: TeamGoalFormData) => {
       try {
-        const response = await apiRequest("/api/team-goals", {
-          method: "POST",
-          body: JSON.stringify(data),
-        });
+        const response = await apiRequest("POST", "/api/team-goals", data);
         return response;
       } catch (error: any) {
         console.error("Error creating team goal:", error);
@@ -184,10 +181,7 @@ export default function TeamGoals() {
   // Update goal mutation
   const updateGoalMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<TeamGoalFormData> }) =>
-      apiRequest(`/api/team-goals/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(data),
-      }),
+      apiRequest("PATCH", `/api/team-goals/${id}`, data),
     onSuccess: () => {
       toast({
         title: "Success",
@@ -209,9 +203,7 @@ export default function TeamGoals() {
   // Delete goal mutation
   const deleteGoalMutation = useMutation({
     mutationFn: (id: string) =>
-      apiRequest(`/api/team-goals/${id}`, {
-        method: "DELETE",
-      }),
+      apiRequest("DELETE", `/api/team-goals/${id}`),
     onSuccess: () => {
       toast({
         title: "Success",

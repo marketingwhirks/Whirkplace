@@ -7275,24 +7275,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (!channelId) {
               console.warn(`⚠️ No Slack channel configured for organization ${organization.name} (team shoutout)`);
             } else {
-              try {
-                console.log(`📢 Announcing team shoutout to channel ${channelId} for org ${organization.name}`);
-                const slackMessageId = await announceShoutout(
-                  shoutout.message,
-                  fromUser.name,
-                  `Team ${team.name}`, // Use team name for Slack notification
-                  shoutout.values,
-                  channelId,
-                  req.orgId
-                );
-                
-                if (slackMessageId) {
-                  await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
-                  console.log(`✅ Team shoutout Slack message sent with ID: ${slackMessageId}`);
+              // Send Slack notification asynchronously to prevent blocking
+              setImmediate(async () => {
+                try {
+                  console.log(`📢 Announcing team shoutout to channel ${channelId} for org ${organization.name}`);
+                  
+                  // Add timeout to prevent long-running Slack API calls
+                  const slackPromise = announceShoutout(
+                    shoutout.message,
+                    fromUser.name,
+                    `Team ${team.name}`, // Use team name for Slack notification
+                    shoutout.values,
+                    channelId,
+                    req.orgId
+                  );
+                  
+                  const timeoutPromise = new Promise<null>((resolve) => {
+                    setTimeout(() => resolve(null), 5000);
+                  });
+                  
+                  const slackMessageId = await Promise.race([slackPromise, timeoutPromise]);
+                  
+                  if (slackMessageId) {
+                    await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
+                    console.log(`✅ Team shoutout Slack message sent with ID: ${slackMessageId}`);
+                  } else {
+                    console.warn("⏱️ Slack notification timed out for team shoutout");
+                  }
+                } catch (slackError) {
+                  console.warn("Failed to send Slack notification for team shoutout:", slackError);
                 }
-              } catch (slackError) {
-                console.warn("Failed to send Slack notification for team shoutout:", slackError);
-              }
+              });
             }
           }
         }
@@ -7351,24 +7364,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
               if (!channelId) {
                 console.warn(`⚠️ No Slack channel configured for organization ${organization.name} (individual shoutout)`);
               } else {
-                try {
-                  console.log(`📢 Announcing shoutout to channel ${channelId} for org ${organization.name}`);
-                  const slackMessageId = await announceShoutout(
-                    shoutout.message,
-                    fromUser.name,
-                    toUser.name,
-                    shoutout.values,
-                    channelId,
-                    req.orgId
-                  );
-                  
-                  if (slackMessageId) {
-                    await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
-                    console.log(`✅ Shoutout Slack message sent with ID: ${slackMessageId}`);
+                // Send Slack notification asynchronously to prevent blocking
+                setImmediate(async () => {
+                  try {
+                    console.log(`📢 Announcing shoutout to channel ${channelId} for org ${organization.name}`);
+                    
+                    // Add timeout to prevent long-running Slack API calls
+                    const slackPromise = announceShoutout(
+                      shoutout.message,
+                      fromUser.name,
+                      toUser.name,
+                      shoutout.values,
+                      channelId,
+                      req.orgId
+                    );
+                    
+                    const timeoutPromise = new Promise<null>((resolve) => {
+                      setTimeout(() => resolve(null), 5000);
+                    });
+                    
+                    const slackMessageId = await Promise.race([slackPromise, timeoutPromise]);
+                    
+                    if (slackMessageId) {
+                      await storage.updateShoutout(req.orgId, shoutout.id, { slackMessageId });
+                      console.log(`✅ Shoutout Slack message sent with ID: ${slackMessageId}`);
+                    } else {
+                      console.warn("⏱️ Slack notification timed out for individual shoutout");
+                    }
+                  } catch (slackError) {
+                    console.warn("Failed to send Slack notification for shoutout:", slackError);
                   }
-                } catch (slackError) {
-                  console.warn("Failed to send Slack notification for shoutout:", slackError);
-                }
+                });
               }
             }
           }
