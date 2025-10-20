@@ -143,10 +143,8 @@ export default function LeadershipDashboard() {
   // Reminder mutations
   const missingCheckinReminderMutation = useMutation({
     mutationFn: async (userIds: string[]) => {
-      return apiRequest('/api/slack/remind-missing-checkins', {
-        method: 'POST',
-        body: JSON.stringify({ userIds }),
-      });
+      const response = await apiRequest('POST', '/api/slack/remind-missing-checkins', { userIds });
+      return response.json();
     },
     onSuccess: (data) => {
       toast({
@@ -165,10 +163,8 @@ export default function LeadershipDashboard() {
 
   const pendingReviewReminderMutation = useMutation({
     mutationFn: async (managerIds: string[]) => {
-      return apiRequest('/api/slack/remind-pending-reviews', {
-        method: 'POST',
-        body: JSON.stringify({ managerIds }),
-      });
+      const response = await apiRequest('POST', '/api/slack/remind-pending-reviews', { managerIds });
+      return response.json();
     },
     onSuccess: (data) => {
       toast({
