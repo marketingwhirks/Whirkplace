@@ -849,18 +849,20 @@ export default function SuperAdminPage() {
 
         {/* Main Content */}
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-8 lg:w-[960px]">
-            <TabsTrigger value="dashboard" data-testid="tab-dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="organizations" data-testid="tab-organizations">Organizations</TabsTrigger>
-            <TabsTrigger value="data-management" data-testid="tab-data-management">
-              <span className="text-purple-700 dark:text-purple-400 font-semibold">Data Mgmt</span>
-            </TabsTrigger>
-            <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
-            <TabsTrigger value="pricing" data-testid="tab-pricing">Pricing</TabsTrigger>
-            <TabsTrigger value="discounts" data-testid="tab-discounts">Discounts</TabsTrigger>
-            <TabsTrigger value="users" data-testid="tab-users">Users</TabsTrigger>
-            <TabsTrigger value="org-pricing" data-testid="tab-org-pricing">Org Pricing</TabsTrigger>
-          </TabsList>
+          <div className="overflow-x-auto pb-2">
+            <TabsList className="grid w-max grid-cols-4 sm:grid-cols-4 md:grid-cols-8 min-w-full">
+              <TabsTrigger value="dashboard" data-testid="tab-dashboard" className="text-xs sm:text-sm">Dashboard</TabsTrigger>
+              <TabsTrigger value="organizations" data-testid="tab-organizations" className="text-xs sm:text-sm">Orgs</TabsTrigger>
+              <TabsTrigger value="data-management" data-testid="tab-data-management" className="text-xs sm:text-sm">
+                <span className="text-purple-700 dark:text-purple-400 font-semibold">Data</span>
+              </TabsTrigger>
+              <TabsTrigger value="settings" data-testid="tab-settings" className="text-xs sm:text-sm">Settings</TabsTrigger>
+              <TabsTrigger value="pricing" data-testid="tab-pricing" className="text-xs sm:text-sm">Pricing</TabsTrigger>
+              <TabsTrigger value="discounts" data-testid="tab-discounts" className="text-xs sm:text-sm">Discounts</TabsTrigger>
+              <TabsTrigger value="users" data-testid="tab-users" className="text-xs sm:text-sm">Users</TabsTrigger>
+              <TabsTrigger value="org-pricing" data-testid="tab-org-pricing" className="text-xs sm:text-sm">Org Price</TabsTrigger>
+            </TabsList>
+          </div>
 
           {/* Dashboard Tab */}
           <TabsContent value="dashboard" className="space-y-6">
