@@ -7467,7 +7467,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Post Reactions (for Wins and Shoutouts)
-  app.get("/api/:postType/:id/reactions", requireAuth(), async (req, res) => {
+  app.get("/api/:postType/:id/reactions", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       const { postType, id } = req.params;
       
@@ -7502,7 +7502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
         
-        if (reaction.userId === req.userId) {
+        if (reaction.userId === req.currentUser!.id) {
           acc[reaction.emoji].hasUserReacted = true;
         }
         
@@ -7517,7 +7517,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/reactions", requireAuth(), async (req, res) => {
+  app.post("/api/reactions", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       const { postId, postType, emoji } = req.body;
       
@@ -7533,7 +7533,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         postId,
         postType,
         emoji,
-        userId: req.userId!,
+        userId: req.currentUser!.id,
         organizationId: req.orgId
       });
       
@@ -7544,15 +7544,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/reactions/:id", requireAuth(), async (req, res) => {
+  app.delete("/api/reactions/:id", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       // First check if the reaction exists and belongs to the user
-      const reactions = await storage.getUserReactionsByPost(req.userId!, req.params.id, 'win');
+      const reactions = await storage.getUserReactionsByPost(req.currentUser!.id, req.params.id, 'win');
       const winReaction = reactions.find(r => r.id === req.params.id);
       
       if (!winReaction) {
         // Check shoutouts if not found in wins
-        const shoutoutReactions = await storage.getUserReactionsByPost(req.userId!, req.params.id, 'shoutout');
+        const shoutoutReactions = await storage.getUserReactionsByPost(req.currentUser!.id, req.params.id, 'shoutout');
         const shoutoutReaction = shoutoutReactions.find(r => r.id === req.params.id);
         
         if (!shoutoutReaction) {
