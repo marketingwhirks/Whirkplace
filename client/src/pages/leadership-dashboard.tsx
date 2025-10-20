@@ -4,7 +4,7 @@ import { formatDistanceToNow, format, subDays, startOfWeek, endOfWeek } from "da
 import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Users, Filter,
   Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer, FileText,
-  AlertCircle, AlertTriangle, UserX, ClipboardList, Send
+  AlertCircle, AlertTriangle, UserX, ClipboardList, Send, Flame
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -96,6 +96,49 @@ export default function LeadershipDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCheckin, setSelectedCheckin] = useState<EnhancedCheckinLeadership | null>(null);
   const [showOrgSummary, setShowOrgSummary] = useState(false);
+
+  // CSV Export function for missing check-ins
+  const exportMissingCheckinsToCSV = () => {
+    if (!missingCheckins || missingCheckins.length === 0) return;
+    
+    // Prepare CSV data
+    const csvRows = [];
+    csvRows.push(['Name', 'Email', 'Team', 'Manager', 'Week Of', 'Due Date', 'Days Overdue', 'Missed Streak (Weeks)']);
+    
+    missingCheckins.forEach(weekData => {
+      weekData.users.forEach(user => {
+        csvRows.push([
+          user.name,
+          user.email,
+          user.teamName || 'No Team',
+          user.managerName || 'No Manager',
+          format(new Date(weekData.weekOf), 'MMM d, yyyy'),
+          format(new Date(user.dueDate), 'MMM d, yyyy'),
+          user.daysOverdue.toString(),
+          (user.missedStreak || 1).toString()
+        ]);
+      });
+    });
+    
+    // Convert to CSV string
+    const csvContent = csvRows.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `missing-checkins-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    
+    toast({
+      title: "Export Successful",
+      description: "Missing check-ins data has been exported to CSV",
+    });
+  };
 
   // Reminder mutations
   const missingCheckinReminderMutation = useMutation({
@@ -255,6 +298,7 @@ export default function LeadershipDashboard() {
       managerName: string | null;
       daysOverdue: number;
       dueDate: string;
+      missedStreak?: number; // Number of consecutive weeks missed
     }>;
   }>>({
     queryKey: ["/api/compliance/missing-checkins", selectedTeam],
@@ -666,23 +710,34 @@ export default function LeadershipDashboard() {
                   </CardDescription>
                 </div>
                 {missingCheckins && missingCheckins.length > 0 && missingCheckins[0]?.users?.length > 0 && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      const userIds = missingCheckins.flatMap(week => week.users.map(u => u.id));
-                      missingCheckinReminderMutation.mutate(userIds);
-                    }}
-                    disabled={missingCheckinReminderMutation.isPending}
-                    data-testid="button-remind-missing-checkins"
-                  >
-                    {missingCheckinReminderMutation.isPending ? (
-                      <Clock className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4 mr-2" />
-                    )}
-                    Send Slack Reminder
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={exportMissingCheckinsToCSV}
+                      data-testid="button-export-missing-checkins"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Export CSV
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const userIds = missingCheckins.flatMap(week => week.users.map(u => u.id));
+                        missingCheckinReminderMutation.mutate(userIds);
+                      }}
+                      disabled={missingCheckinReminderMutation.isPending}
+                      data-testid="button-remind-missing-checkins"
+                    >
+                      {missingCheckinReminderMutation.isPending ? (
+                        <Clock className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="w-4 h-4 mr-2" />
+                      )}
+                      Send Reminder
+                    </Button>
+                  </div>
                 )}
               </div>
             </CardHeader>
@@ -705,11 +760,25 @@ export default function LeadershipDashboard() {
                           {weekData.users.map(user => (
                             <div 
                               key={user.id} 
-                              className="flex items-start justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                              className={`flex items-start justify-between p-3 rounded-lg border bg-card hover:bg-accent/50 transition-colors ${
+                                user.missedStreak && user.missedStreak > 2 ? 'border-red-300 dark:border-red-800' : ''
+                              }`}
                               data-testid={`missing-checkin-user-${user.id}`}
                             >
                               <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm truncate">{user.name}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="font-medium text-sm truncate">{user.name}</p>
+                                  {user.missedStreak && user.missedStreak > 2 && (
+                                    <Badge 
+                                      variant="destructive" 
+                                      className="text-xs flex items-center gap-1"
+                                      title={`Has missed ${user.missedStreak} consecutive weeks`}
+                                    >
+                                      <Flame className="w-3 h-3" />
+                                      {user.missedStreak} week streak
+                                    </Badge>
+                                  )}
+                                </div>
                                 <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                                 <div className="flex items-center gap-4 mt-1">
                                   <Badge variant="secondary" className="text-xs">
@@ -739,6 +808,16 @@ export default function LeadershipDashboard() {
                                 <span className="text-xs text-muted-foreground">
                                   Due: {format(new Date(user.dueDate), "MMM d, h:mm a")}
                                 </span>
+                                {user.missedStreak && user.missedStreak === 1 && (
+                                  <span className="text-xs text-orange-600 dark:text-orange-400">
+                                    First miss
+                                  </span>
+                                )}
+                                {user.missedStreak && user.missedStreak === 2 && (
+                                  <span className="text-xs text-orange-600 dark:text-orange-400">
+                                    2 weeks missed
+                                  </span>
+                                )}
                               </div>
                             </div>
                           ))}

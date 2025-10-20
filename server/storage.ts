@@ -9067,6 +9067,7 @@ export class MemStorage implements IStorage {
       managerName: string | null;
       daysOverdue: number;
       dueDate: Date;
+      missedStreak: number; // Number of consecutive weeks missed
     }> 
   }>> {
     try {
@@ -9135,6 +9136,51 @@ export class MemStorage implements IStorage {
           const dueDate = getCheckinDueDate(targetWeek);
           const daysOverdue = Math.max(0, Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
           
+          // Calculate streak of missed check-ins
+          let missedStreak = 1; // They've at least missed this week
+          const msPerWeek = 7 * 24 * 60 * 60 * 1000;
+          let weekToCheck = new Date(targetWeek.getTime() - msPerWeek);
+          
+          // Look back up to 12 weeks to find their streak
+          for (let i = 0; i < 12; i++) {
+            // Check if they were on vacation that week
+            const [prevVacation] = await db
+              .select()
+              .from(vacations)
+              .where(
+                and(
+                  eq(vacations.organizationId, organizationId),
+                  eq(vacations.userId, user.userId),
+                  eq(vacations.weekOf, weekToCheck)
+                )
+              )
+              .limit(1);
+            
+            // If they were on vacation, streak is broken
+            if (prevVacation) break;
+            
+            // Check if they submitted that week
+            const [prevCheckin] = await db
+              .select()
+              .from(checkins)
+              .where(
+                and(
+                  eq(checkins.organizationId, organizationId),
+                  eq(checkins.userId, user.userId),
+                  eq(checkins.weekOf, weekToCheck),
+                  eq(checkins.isComplete, true)
+                )
+              )
+              .limit(1);
+            
+            // If they submitted that week, streak is broken
+            if (prevCheckin) break;
+            
+            // They missed this week too, increment streak
+            missedStreak++;
+            weekToCheck = new Date(weekToCheck.getTime() - msPerWeek);
+          }
+          
           missingUsers.push({
             id: user.userId,
             name: user.userName,
@@ -9144,7 +9190,8 @@ export class MemStorage implements IStorage {
             managerId: user.managerId,
             managerName: user.managerName,
             daysOverdue,
-            dueDate
+            dueDate,
+            missedStreak
           });
         }
       }
