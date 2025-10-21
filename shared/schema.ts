@@ -344,6 +344,7 @@ export const checkins = pgTable("checkins", {
   responses: jsonb("responses").notNull().default({}), // question_id -> response
   responseEmojis: jsonb("response_emojis").notNull().default({}), // question_id -> emoji (e.g., "😊", "😟", "🎯")
   responseFlags: jsonb("response_flags").notNull().default({}), // question_id -> {addToOneOnOne: bool, flagForFollowUp: bool}
+  questionSnapshots: jsonb("question_snapshots").notNull().default({}), // question_id -> {text, categoryId} - Store question text at time of submission
   winningNextWeek: text("winning_next_week"), // What winning looks like for next week
   isComplete: boolean("is_complete").notNull().default(false),
   submittedAt: timestamp("submitted_at"),
@@ -443,6 +444,55 @@ export const teamQuestionSettings = pgTable("team_question_settings", {
   teamIdx: index("team_question_settings_team_idx").on(table.teamId),
   // Index for question lookups
   questionIdx: index("team_question_settings_question_idx").on(table.questionId),
+}));
+
+// Question Usage History - Track when questions are used
+export const questionUsageHistory = pgTable("question_usage_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  questionId: varchar("question_id").notNull(),
+  questionText: text("question_text").notNull(), // Store the text at time of usage
+  organizationId: varchar("organization_id").notNull(),
+  userId: varchar("user_id"), // User who was asked the question
+  teamId: varchar("team_id"), // Team context
+  checkinId: varchar("checkin_id"), // Link to the check-in where this was asked
+  weekOf: timestamp("week_of").notNull(), // Which week this was asked for
+  categoryId: varchar("category_id"), // Category at time of usage
+  isActive: boolean("is_active").notNull().default(true), // Whether question was active at time of usage
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for question usage lookups
+  questionIdx: index("question_usage_history_question_idx").on(table.questionId),
+  // Index for organization analytics
+  orgIdx: index("question_usage_history_org_idx").on(table.organizationId),
+  // Index for user-specific history
+  userIdx: index("question_usage_history_user_idx").on(table.userId),
+  // Index for team analytics
+  teamIdx: index("question_usage_history_team_idx").on(table.teamId),
+  // Index for week-based queries
+  weekOfIdx: index("question_usage_history_week_idx").on(table.weekOf),
+}));
+
+// Organization Question Settings - Control automated question selection
+export const organizationQuestionSettings = pgTable("organization_question_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().unique(),
+  minimumQuestionsPerWeek: integer("minimum_questions_per_week").notNull().default(3),
+  maximumQuestionsPerWeek: integer("maximum_questions_per_week").notNull().default(5),
+  autoSelectEnabled: boolean("auto_select_enabled").notNull().default(false),
+  selectionStrategy: text("selection_strategy").notNull().default("rotating"), // random, rotating, smart
+  avoidRecentlyAskedDays: integer("avoid_recently_asked_days").notNull().default(30), // Don't repeat questions asked in last N days
+  prioritizeCategories: text("prioritize_categories").array().notNull().default([]), // Categories to prioritize
+  includeTeamSpecific: boolean("include_team_specific").notNull().default(true), // Include team-specific questions
+  includeUserKraRelated: boolean("include_user_kra_related").notNull().default(true), // Include questions related to user's KRAs
+  rotationSequence: jsonb("rotation_sequence").notNull().default({}), // Track rotation state for rotating strategy
+  lastAutoSelectDate: timestamp("last_auto_select_date"), // Last time auto-selection ran
+  createdBy: varchar("created_by").notNull(),
+  updatedBy: varchar("updated_by"),
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`now()`),
+}, (table) => ({
+  // Index for organization lookups
+  orgIdx: index("organization_question_settings_org_idx").on(table.organizationId),
 }));
 
 export const wins = pgTable("wins", {
@@ -1159,6 +1209,24 @@ export const insertTeamQuestionSettingSchema = createInsertSchema(teamQuestionSe
 });
 export type InsertTeamQuestionSetting = z.infer<typeof insertTeamQuestionSettingSchema>;
 export type TeamQuestionSetting = typeof teamQuestionSettings.$inferSelect;
+
+// Question Usage History schemas and types
+export const insertQuestionUsageHistorySchema = createInsertSchema(questionUsageHistory).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertQuestionUsageHistory = z.infer<typeof insertQuestionUsageHistorySchema>;
+export type QuestionUsageHistory = typeof questionUsageHistory.$inferSelect;
+
+// Organization Question Settings schemas and types
+export const insertOrganizationQuestionSettingsSchema = createInsertSchema(organizationQuestionSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastAutoSelectDate: true,
+});
+export type InsertOrganizationQuestionSettings = z.infer<typeof insertOrganizationQuestionSettingsSchema>;
+export type OrganizationQuestionSettings = typeof organizationQuestionSettings.$inferSelect;
 
 export type InsertWin = z.infer<typeof insertWinSchema>;
 export type Win = typeof wins.$inferSelect;

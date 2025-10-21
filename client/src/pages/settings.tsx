@@ -29,6 +29,7 @@ import { TourManagementCard } from "@/components/TourManagementCard";
 import { useTours, useResetTour } from "@/hooks/useTours";
 import { KraTemplatesManager } from "@/components/admin/KraTemplatesManager";
 import { QuestionsManager } from "@/components/admin/QuestionsManager";
+import { QuestionSettings } from "@/components/admin/QuestionSettings";
 
 import type { User as UserType, Team, Vacation } from "@shared/schema";
 import { DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
@@ -1038,6 +1039,11 @@ export default function Settings() {
                       <HelpCircle className="w-4 h-4" />
                       <span>Question Bank</span>
                     </TabsTrigger>
+                    
+                    <TabsTrigger value="question-settings" data-testid="tab-question-settings" className="shrink-0 whitespace-nowrap px-4 py-2 flex items-center gap-2 text-sm">
+                      <SettingsIcon className="w-4 h-4" />
+                      <span>Question Settings</span>
+                    </TabsTrigger>
                   </>
                 )}
                 
@@ -2046,6 +2052,13 @@ export default function Settings() {
             {currentUser?.role === "admin" && (
               <TabsContent value="questions" className="space-y-6">
                 <QuestionsManager />
+              </TabsContent>
+            )}
+
+            {/* Question Settings (Admin Only) */}
+            {currentUser?.role === "admin" && (
+              <TabsContent value="question-settings" className="space-y-6">
+                <QuestionSettings />
               </TabsContent>
             )}
 

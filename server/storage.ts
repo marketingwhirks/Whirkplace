@@ -6,6 +6,8 @@ import {
   type TeamQuestionSetting, type InsertTeamQuestionSetting,
   type QuestionCategory, type InsertQuestionCategory,
   type QuestionBank, type InsertQuestionBank,
+  type QuestionUsageHistory, type InsertQuestionUsageHistory,
+  type OrganizationQuestionSettings, type InsertOrganizationQuestionSettings,
   type Win, type InsertWin,
   type Comment, type InsertComment,
   type Shoutout, type InsertShoutout,
@@ -37,7 +39,7 @@ import {
   type UserIdentity, type InsertUserIdentity,
   type UserTour, type InsertUserTour,
   type PasswordResetToken, type InsertPasswordResetToken,
-  users, teams, checkins, questions, teamQuestionSettings, questionCategories, questionBank, wins, comments, shoutouts, postReactions, notifications, vacations, organizations, partnerFirms,
+  users, teams, checkins, questions, teamQuestionSettings, questionCategories, questionBank, questionUsageHistory, organizationQuestionSettings, wins, comments, shoutouts, postReactions, notifications, vacations, organizations, partnerFirms,
   organizationAuthProviders, userIdentities, userTours, teamGoals, passwordResetTokens,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
@@ -239,6 +241,26 @@ export interface IStorage {
   deleteQuestionBankItem(id: string): Promise<boolean>;
   incrementQuestionBankUsage(id: string): Promise<void>;
   approveQuestionBankItem(id: string): Promise<QuestionBank | undefined>;
+
+  // Question Usage History
+  trackQuestionUsage(organizationId: string, usage: InsertQuestionUsageHistory): Promise<QuestionUsageHistory>;
+  getQuestionUsageHistory(organizationId: string, questionId: string): Promise<QuestionUsageHistory[]>;
+  getQuestionUsageStats(organizationId: string, questionId: string): Promise<{
+    timesAsked: number;
+    lastAsked: Date | null;
+    uniqueUsers: number;
+    teams: string[];
+  }>;
+  getRecentlyAskedQuestions(organizationId: string, userId?: string, teamId?: string, daysBack?: number): Promise<QuestionUsageHistory[]>;
+  
+  // Organization Question Settings
+  getOrganizationQuestionSettings(organizationId: string): Promise<OrganizationQuestionSettings | undefined>;
+  createOrganizationQuestionSettings(organizationId: string, settings: InsertOrganizationQuestionSettings): Promise<OrganizationQuestionSettings>;
+  updateOrganizationQuestionSettings(organizationId: string, settings: Partial<InsertOrganizationQuestionSettings>): Promise<OrganizationQuestionSettings | undefined>;
+  
+  // Auto-selection of questions
+  autoSelectQuestions(organizationId: string, userId: string, teamId?: string): Promise<Question[]>;
+  getAllQuestions(organizationId: string, includeInactive?: boolean): Promise<Question[]>;
 
   // Wins
   getWin(organizationId: string, id: string): Promise<Win | undefined>;
@@ -1583,12 +1605,50 @@ export class DatabaseStorage implements IStorage {
     const submittedAt = isCompleting ? now : null;
     const submittedOnTime = submittedAt ? isSubmittedOnTime(submittedAt, dueDate) : false;
     
+    // Create question snapshots if responses exist
+    let questionSnapshots = null;
+    if (insertCheckin.responses && Object.keys(insertCheckin.responses).length > 0) {
+      const questionIds = Object.keys(insertCheckin.responses);
+      const questionsData = await db
+        .select()
+        .from(questions)
+        .where(and(
+          eq(questions.organizationId, organizationId),
+          inArray(questions.id, questionIds)
+        ));
+      
+      // Create snapshots map
+      questionSnapshots = {};
+      for (const question of questionsData) {
+        questionSnapshots[question.id] = {
+          id: question.id,
+          text: question.text,
+          categoryId: question.categoryId,
+          isActive: question.isActive,
+        };
+      }
+      
+      // Track question usage for each question asked
+      for (const questionId of questionIds) {
+        await this.trackQuestionUsage(organizationId, {
+          questionId,
+          userId: insertCheckin.userId,
+          teamId: insertCheckin.teamId,
+          checkinId: '', // Will be updated after checkin is created
+          createdAt: now,
+        }).catch(error => {
+          console.error(`Failed to track question usage for ${questionId}:`, error);
+        });
+      }
+    }
+    
     const [checkin] = await db
       .insert(checkins)
       .values({
         ...insertCheckin,
         organizationId,
         responses: insertCheckin.responses ?? {},
+        questionSnapshots,
         isComplete: isCompleting,
         submittedAt,
         dueDate,
@@ -1601,6 +1661,26 @@ export class DatabaseStorage implements IStorage {
         reviewComments: null,
       })
       .returning();
+    
+    // Update question usage with checkin ID
+    if (questionSnapshots) {
+      const questionIds = Object.keys(questionSnapshots);
+      for (const questionId of questionIds) {
+        // Update the most recent usage record for this question and user
+        await db
+          .update(questionUsageHistory)
+          .set({ checkinId: checkin.id })
+          .where(and(
+            eq(questionUsageHistory.organizationId, organizationId),
+            eq(questionUsageHistory.questionId, questionId),
+            eq(questionUsageHistory.userId, insertCheckin.userId),
+            eq(questionUsageHistory.checkinId, '')
+          ))
+          .catch(error => {
+            console.error(`Failed to update question usage with checkin ID:`, error);
+          });
+      }
+    }
     
     // Invalidate analytics cache for this organization to prevent serving stale data
     this.analyticsCache.invalidateForOrganization(organizationId);
@@ -2723,6 +2803,254 @@ export class DatabaseStorage implements IStorage {
       .where(eq(questionBank.id, id))
       .returning();
     return approved;
+  }
+
+  // Question Usage History
+  async trackQuestionUsage(organizationId: string, usage: InsertQuestionUsageHistory): Promise<QuestionUsageHistory> {
+    const [history] = await db
+      .insert(questionUsageHistory)
+      .values({
+        ...usage,
+        organizationId,
+      })
+      .returning();
+    return history;
+  }
+
+  async getQuestionUsageHistory(organizationId: string, questionId: string): Promise<QuestionUsageHistory[]> {
+    return await db
+      .select()
+      .from(questionUsageHistory)
+      .where(and(
+        eq(questionUsageHistory.organizationId, organizationId),
+        eq(questionUsageHistory.questionId, questionId)
+      ))
+      .orderBy(desc(questionUsageHistory.createdAt));
+  }
+
+  async getQuestionUsageStats(organizationId: string, questionId: string): Promise<{
+    timesAsked: number;
+    lastAsked: Date | null;
+    uniqueUsers: number;
+    teams: string[];
+  }> {
+    const history = await db
+      .select()
+      .from(questionUsageHistory)
+      .where(and(
+        eq(questionUsageHistory.organizationId, organizationId),
+        eq(questionUsageHistory.questionId, questionId)
+      ));
+
+    const uniqueUsers = new Set(history.filter(h => h.userId).map(h => h.userId)).size;
+    const uniqueTeams = [...new Set(history.filter(h => h.teamId).map(h => h.teamId))];
+    const lastAsked = history.length > 0 
+      ? history.reduce((latest, h) => h.createdAt > latest ? h.createdAt : latest, history[0].createdAt)
+      : null;
+
+    return {
+      timesAsked: history.length,
+      lastAsked,
+      uniqueUsers,
+      teams: uniqueTeams.filter(Boolean) as string[],
+    };
+  }
+
+  async getRecentlyAskedQuestions(organizationId: string, userId?: string, teamId?: string, daysBack: number = 30): Promise<QuestionUsageHistory[]> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysBack);
+
+    const conditions = [
+      eq(questionUsageHistory.organizationId, organizationId),
+      gte(questionUsageHistory.createdAt, cutoffDate),
+    ];
+
+    if (userId) {
+      conditions.push(eq(questionUsageHistory.userId, userId));
+    }
+    if (teamId) {
+      conditions.push(eq(questionUsageHistory.teamId, teamId));
+    }
+
+    return await db
+      .select()
+      .from(questionUsageHistory)
+      .where(and(...conditions))
+      .orderBy(desc(questionUsageHistory.createdAt));
+  }
+
+  // Organization Question Settings
+  async getOrganizationQuestionSettings(organizationId: string): Promise<OrganizationQuestionSettings | undefined> {
+    const [settings] = await db
+      .select()
+      .from(organizationQuestionSettings)
+      .where(eq(organizationQuestionSettings.organizationId, organizationId));
+    return settings;
+  }
+
+  async createOrganizationQuestionSettings(organizationId: string, settings: InsertOrganizationQuestionSettings): Promise<OrganizationQuestionSettings> {
+    const [created] = await db
+      .insert(organizationQuestionSettings)
+      .values({
+        ...settings,
+        organizationId,
+      })
+      .returning();
+    return created;
+  }
+
+  async updateOrganizationQuestionSettings(organizationId: string, settings: Partial<InsertOrganizationQuestionSettings>): Promise<OrganizationQuestionSettings | undefined> {
+    const [updated] = await db
+      .update(organizationQuestionSettings)
+      .set({
+        ...settings,
+        updatedAt: sql`now()`,
+      })
+      .where(eq(organizationQuestionSettings.organizationId, organizationId))
+      .returning();
+    return updated;
+  }
+
+  // Get all questions including inactive ones
+  async getAllQuestions(organizationId: string, includeInactive: boolean = false): Promise<Question[]> {
+    const conditions = [eq(questions.organizationId, organizationId)];
+    if (!includeInactive) {
+      conditions.push(eq(questions.isActive, true));
+    }
+
+    return await db
+      .select()
+      .from(questions)
+      .where(and(...conditions))
+      .orderBy(questions.order);
+  }
+
+  // Auto-select questions based on organization settings
+  async autoSelectQuestions(organizationId: string, userId: string, teamId?: string): Promise<Question[]> {
+    const settings = await this.getOrganizationQuestionSettings(organizationId);
+    if (!settings || !settings.autoSelectEnabled) {
+      // Return active questions as normal
+      return teamId 
+        ? await this.getActiveQuestionsForTeam(organizationId, teamId)
+        : await this.getActiveQuestions(organizationId);
+    }
+
+    // Get recently asked questions to avoid repetition
+    const recentHistory = await this.getRecentlyAskedQuestions(
+      organizationId,
+      userId,
+      teamId,
+      settings.avoidRecentlyAskedDays
+    );
+    const recentQuestionIds = new Set(recentHistory.map(h => h.questionId));
+
+    // Get all active questions
+    const allQuestions = await this.getAllQuestions(organizationId, false);
+    
+    // Filter out recently asked questions
+    let availableQuestions = allQuestions.filter(q => !recentQuestionIds.has(q.id));
+
+    // If team-specific, filter for team questions
+    if (teamId && settings.includeTeamSpecific) {
+      const teamSettings = await this.getTeamQuestionSettings(organizationId, teamId);
+      const disabledQuestionIds = new Set(
+        teamSettings.filter(s => s.isDisabled).map(s => s.questionId)
+      );
+      
+      availableQuestions = availableQuestions.filter(q => 
+        (q.teamId === teamId || !q.teamId) && !disabledQuestionIds.has(q.id)
+      );
+    }
+
+    // Apply category prioritization
+    if (settings.prioritizeCategories && settings.prioritizeCategories.length > 0) {
+      const priorityQuestions = availableQuestions.filter(q => 
+        settings.prioritizeCategories.includes(q.categoryId || '')
+      );
+      const otherQuestions = availableQuestions.filter(q => 
+        !settings.prioritizeCategories.includes(q.categoryId || '')
+      );
+      availableQuestions = [...priorityQuestions, ...otherQuestions];
+    }
+
+    // Select questions based on strategy
+    let selectedQuestions: Question[] = [];
+    const targetCount = Math.min(
+      settings.maximumQuestionsPerWeek,
+      Math.max(settings.minimumQuestionsPerWeek, availableQuestions.length)
+    );
+
+    switch (settings.selectionStrategy) {
+      case 'random':
+        // Randomly select questions
+        selectedQuestions = availableQuestions
+          .sort(() => Math.random() - 0.5)
+          .slice(0, targetCount);
+        break;
+
+      case 'rotating':
+        // Use rotation sequence to select questions
+        const rotationState = (settings.rotationSequence as any) || { lastIndex: 0 };
+        const startIndex = rotationState.lastIndex || 0;
+        
+        for (let i = 0; i < targetCount && i < availableQuestions.length; i++) {
+          const index = (startIndex + i) % availableQuestions.length;
+          selectedQuestions.push(availableQuestions[index]);
+        }
+        
+        // Update rotation state
+        await this.updateOrganizationQuestionSettings(organizationId, {
+          rotationSequence: { lastIndex: (startIndex + targetCount) % availableQuestions.length },
+          lastAutoSelectDate: new Date(),
+        });
+        break;
+
+      case 'smart':
+        // Smart selection based on usage stats and categories
+        const questionStats = await Promise.all(
+          availableQuestions.map(async (q) => ({
+            question: q,
+            stats: await this.getQuestionUsageStats(organizationId, q.id),
+          }))
+        );
+        
+        // Sort by least recently used and least frequently used
+        questionStats.sort((a, b) => {
+          // Prioritize never-asked questions
+          if (a.stats.timesAsked === 0) return -1;
+          if (b.stats.timesAsked === 0) return 1;
+          
+          // Then by last asked date (older first)
+          if (a.stats.lastAsked && b.stats.lastAsked) {
+            return a.stats.lastAsked.getTime() - b.stats.lastAsked.getTime();
+          }
+          
+          // Then by times asked (less frequent first)
+          return a.stats.timesAsked - b.stats.timesAsked;
+        });
+        
+        selectedQuestions = questionStats
+          .slice(0, targetCount)
+          .map(qs => qs.question);
+        break;
+
+      default:
+        // Default to rotating
+        selectedQuestions = availableQuestions.slice(0, targetCount);
+    }
+
+    // Ensure minimum questions are met
+    if (selectedQuestions.length < settings.minimumQuestionsPerWeek) {
+      // Add more questions from the available pool
+      const additionalNeeded = settings.minimumQuestionsPerWeek - selectedQuestions.length;
+      const selectedIds = new Set(selectedQuestions.map(q => q.id));
+      const additionalQuestions = allQuestions
+        .filter(q => !selectedIds.has(q.id))
+        .slice(0, additionalNeeded);
+      selectedQuestions.push(...additionalQuestions);
+    }
+
+    return selectedQuestions;
   }
 
   // Wins
@@ -6596,6 +6924,8 @@ export class MemStorage implements IStorage {
   private teams: Map<string, Team> = new Map();
   private checkins: Map<string, Checkin> = new Map();
   private questions: Map<string, Question> = new Map();
+  private questionUsageHistoryStorage: Map<string, QuestionUsageHistory> = new Map();
+  private organizationQuestionSettingsStorage: Map<string, OrganizationQuestionSettings> = new Map();
   private wins: Map<string, Win> = new Map();
   private comments: Map<string, Comment> = new Map();
   private shoutoutsMap: Map<string, Shoutout> = new Map();
@@ -7399,6 +7729,231 @@ export class MemStorage implements IStorage {
       return item;
     }
     return undefined;
+  }
+
+  // Question Usage History
+  async trackQuestionUsage(organizationId: string, usage: InsertQuestionUsageHistory): Promise<QuestionUsageHistory> {
+    const history: QuestionUsageHistory = {
+      ...usage,
+      id: randomUUID(),
+      organizationId,
+      createdAt: usage.createdAt || new Date(),
+    };
+    this.questionUsageHistoryStorage.set(history.id, history);
+    return history;
+  }
+
+  async getQuestionUsageHistory(organizationId: string, questionId: string): Promise<QuestionUsageHistory[]> {
+    return Array.from(this.questionUsageHistoryStorage.values())
+      .filter(h => h.organizationId === organizationId && h.questionId === questionId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getQuestionUsageStats(organizationId: string, questionId: string): Promise<{
+    timesAsked: number;
+    lastAsked: Date | null;
+    uniqueUsers: number;
+    teams: string[];
+  }> {
+    const history = this.getQuestionUsageHistory(organizationId, questionId);
+    const uniqueUsers = new Set((await history).filter(h => h.userId).map(h => h.userId)).size;
+    const uniqueTeams = [...new Set((await history).filter(h => h.teamId).map(h => h.teamId))];
+    const historyArray = await history;
+    const lastAsked = historyArray.length > 0
+      ? historyArray.reduce((latest, h) => h.createdAt > latest ? h.createdAt : latest, historyArray[0].createdAt)
+      : null;
+
+    return {
+      timesAsked: historyArray.length,
+      lastAsked,
+      uniqueUsers,
+      teams: uniqueTeams.filter(Boolean) as string[],
+    };
+  }
+
+  async getRecentlyAskedQuestions(organizationId: string, userId?: string, teamId?: string, daysBack: number = 30): Promise<QuestionUsageHistory[]> {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysBack);
+
+    return Array.from(this.questionUsageHistoryStorage.values())
+      .filter(h => {
+        if (h.organizationId !== organizationId) return false;
+        if (h.createdAt < cutoffDate) return false;
+        if (userId && h.userId !== userId) return false;
+        if (teamId && h.teamId !== teamId) return false;
+        return true;
+      })
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  // Organization Question Settings
+  async getOrganizationQuestionSettings(organizationId: string): Promise<OrganizationQuestionSettings | undefined> {
+    return this.organizationQuestionSettingsStorage.get(organizationId);
+  }
+
+  async createOrganizationQuestionSettings(organizationId: string, settings: InsertOrganizationQuestionSettings): Promise<OrganizationQuestionSettings> {
+    const created: OrganizationQuestionSettings = {
+      ...settings,
+      id: randomUUID(),
+      organizationId,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.organizationQuestionSettingsStorage.set(organizationId, created);
+    return created;
+  }
+
+  async updateOrganizationQuestionSettings(organizationId: string, settings: Partial<InsertOrganizationQuestionSettings>): Promise<OrganizationQuestionSettings | undefined> {
+    const existing = this.organizationQuestionSettingsStorage.get(organizationId);
+    if (!existing) return undefined;
+
+    const updated = {
+      ...existing,
+      ...settings,
+      updatedAt: new Date(),
+    };
+    this.organizationQuestionSettingsStorage.set(organizationId, updated);
+    return updated;
+  }
+
+  // Get all questions including inactive ones
+  async getAllQuestions(organizationId: string, includeInactive: boolean = false): Promise<Question[]> {
+    const questions = Array.from(this.questions.values())
+      .filter(question => question.organizationId === organizationId);
+    
+    if (!includeInactive) {
+      return questions.filter(q => q.isActive).sort((a, b) => a.order - b.order);
+    }
+    
+    return questions.sort((a, b) => a.order - b.order);
+  }
+
+  // Auto-select questions based on organization settings
+  async autoSelectQuestions(organizationId: string, userId: string, teamId?: string): Promise<Question[]> {
+    const settings = await this.getOrganizationQuestionSettings(organizationId);
+    if (!settings || !settings.autoSelectEnabled) {
+      // Return active questions as normal
+      return teamId
+        ? await this.getActiveQuestionsForTeam(organizationId, teamId)
+        : await this.getActiveQuestions(organizationId);
+    }
+
+    // Get recently asked questions to avoid repetition
+    const recentHistory = await this.getRecentlyAskedQuestions(
+      organizationId,
+      userId,
+      teamId,
+      settings.avoidRecentlyAskedDays
+    );
+    const recentQuestionIds = new Set(recentHistory.map(h => h.questionId));
+
+    // Get all active questions
+    const allQuestions = await this.getAllQuestions(organizationId, false);
+
+    // Filter out recently asked questions
+    let availableQuestions = allQuestions.filter(q => !recentQuestionIds.has(q.id));
+
+    // If team-specific, filter for team questions
+    if (teamId && settings.includeTeamSpecific) {
+      const teamSettings = await this.getTeamQuestionSettings(organizationId, teamId);
+      const disabledQuestionIds = new Set(
+        teamSettings.filter(s => s.isDisabled).map(s => s.questionId)
+      );
+
+      availableQuestions = availableQuestions.filter(q =>
+        (q.teamId === teamId || !q.teamId) && !disabledQuestionIds.has(q.id)
+      );
+    }
+
+    // Apply category prioritization
+    if (settings.prioritizeCategories && settings.prioritizeCategories.length > 0) {
+      const priorityQuestions = availableQuestions.filter(q =>
+        settings.prioritizeCategories.includes(q.categoryId || '')
+      );
+      const otherQuestions = availableQuestions.filter(q =>
+        !settings.prioritizeCategories.includes(q.categoryId || '')
+      );
+      availableQuestions = [...priorityQuestions, ...otherQuestions];
+    }
+
+    // Select questions based on strategy
+    let selectedQuestions: Question[] = [];
+    const targetCount = Math.min(
+      settings.maximumQuestionsPerWeek,
+      Math.max(settings.minimumQuestionsPerWeek, availableQuestions.length)
+    );
+
+    switch (settings.selectionStrategy) {
+      case 'random':
+        // Randomly select questions
+        selectedQuestions = availableQuestions
+          .sort(() => Math.random() - 0.5)
+          .slice(0, targetCount);
+        break;
+
+      case 'rotating':
+        // Use rotation sequence to select questions
+        const rotationState = (settings.rotationSequence as any) || { lastIndex: 0 };
+        const startIndex = rotationState.lastIndex || 0;
+
+        for (let i = 0; i < targetCount && i < availableQuestions.length; i++) {
+          const index = (startIndex + i) % availableQuestions.length;
+          selectedQuestions.push(availableQuestions[index]);
+        }
+
+        // Update rotation state
+        await this.updateOrganizationQuestionSettings(organizationId, {
+          rotationSequence: { lastIndex: (startIndex + targetCount) % availableQuestions.length },
+          lastAutoSelectDate: new Date(),
+        });
+        break;
+
+      case 'smart':
+        // Smart selection based on usage stats
+        const questionStats = await Promise.all(
+          availableQuestions.map(async (q) => ({
+            question: q,
+            stats: await this.getQuestionUsageStats(organizationId, q.id),
+          }))
+        );
+
+        // Sort by least recently used and least frequently used
+        questionStats.sort((a, b) => {
+          // Prioritize never-asked questions
+          if (a.stats.timesAsked === 0) return -1;
+          if (b.stats.timesAsked === 0) return 1;
+
+          // Then by last asked date (older first)
+          if (a.stats.lastAsked && b.stats.lastAsked) {
+            return a.stats.lastAsked.getTime() - b.stats.lastAsked.getTime();
+          }
+
+          // Then by times asked (less frequent first)
+          return a.stats.timesAsked - b.stats.timesAsked;
+        });
+
+        selectedQuestions = questionStats
+          .slice(0, targetCount)
+          .map(qs => qs.question);
+        break;
+
+      default:
+        // Default to rotating
+        selectedQuestions = availableQuestions.slice(0, targetCount);
+    }
+
+    // Ensure minimum questions are met
+    if (selectedQuestions.length < settings.minimumQuestionsPerWeek) {
+      // Add more questions from the available pool
+      const additionalNeeded = settings.minimumQuestionsPerWeek - selectedQuestions.length;
+      const selectedIds = new Set(selectedQuestions.map(q => q.id));
+      const additionalQuestions = allQuestions
+        .filter(q => !selectedIds.has(q.id))
+        .slice(0, additionalNeeded);
+      selectedQuestions.push(...additionalQuestions);
+    }
+
+    return selectedQuestions;
   }
 
   // Wins

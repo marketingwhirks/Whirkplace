@@ -153,8 +153,16 @@ export default function CheckinDetail({ checkin, questions, open, onOpenChange }
 
   // Get question text for each response
   const getQuestionText = (questionId: string) => {
+    // First check if the checkin has question snapshots stored
+    if (checkin.questionSnapshots && typeof checkin.questionSnapshots === 'object') {
+      const snapshots = checkin.questionSnapshots as Record<string, any>;
+      if (snapshots[questionId]) {
+        return snapshots[questionId].text || snapshots[questionId];
+      }
+    }
+    // Fallback to looking up from active questions
     const question = questions.find(q => q.id === questionId);
-    return question?.text || `Question ${questionId}`;
+    return question?.text || `Question`;
   };
 
   return (

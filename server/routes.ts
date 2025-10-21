@@ -6475,6 +6475,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to delete question" });
     }
   });
+
+  // Get all questions including inactive ones
+  app.get("/api/questions/all", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const includeInactive = req.query.includeInactive === 'true';
+      const questions = await storage.getAllQuestions(req.orgId, includeInactive);
+      res.json(questions);
+    } catch (error) {
+      console.error("Failed to fetch all questions:", error);
+      res.status(500).json({ message: "Failed to fetch questions" });
+    }
+  });
+
+  // Get question usage stats
+  app.get("/api/questions/:id/usage-stats", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const stats = await storage.getQuestionUsageStats(req.orgId, req.params.id);
+      const history = await storage.getQuestionUsageHistory(req.orgId, req.params.id);
+      res.json({ stats, history });
+    } catch (error) {
+      console.error("Failed to fetch question usage stats:", error);
+      res.status(500).json({ message: "Failed to fetch question usage stats" });
+    }
+  });
+
+  // Toggle question active/inactive status
+  app.patch("/api/questions/:id/toggle-active", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      // First get the current question to toggle its state
+      const currentQuestion = await storage.getQuestion(req.orgId, req.params.id);
+      if (!currentQuestion) {
+        return res.status(404).json({ message: "Question not found" });
+      }
+      
+      const updatedQuestion = await storage.updateQuestion(req.orgId, req.params.id, {
+        isActive: !currentQuestion.isActive
+      });
+      res.json(updatedQuestion);
+    } catch (error) {
+      console.error("Failed to toggle question status:", error);
+      res.status(500).json({ message: "Failed to toggle question status" });
+    }
+  });
+
+  // Get organization question settings
+  app.get("/api/organization/question-settings", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const settings = await storage.getOrganizationQuestionSettings(req.orgId);
+      res.json(settings || {
+        autoSelectEnabled: false,
+        selectionStrategy: 'rotating',
+        minimumQuestionsPerWeek: 3,
+        maximumQuestionsPerWeek: 10,
+        avoidRecentlyAskedDays: 30,
+        includeTeamSpecific: true,
+        prioritizeCategories: []
+      });
+    } catch (error) {
+      console.error("Failed to fetch organization question settings:", error);
+      res.status(500).json({ message: "Failed to fetch settings" });
+    }
+  });
+
+  // Update organization question settings
+  app.post("/api/organization/question-settings", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const settingsSchema = z.object({
+        autoSelectEnabled: z.boolean().optional(),
+        selectionStrategy: z.enum(['random', 'rotating', 'smart']).optional(),
+        minimumQuestionsPerWeek: z.number().min(1).max(20).optional(),
+        maximumQuestionsPerWeek: z.number().min(1).max(50).optional(),
+        avoidRecentlyAskedDays: z.number().min(0).max(365).optional(),
+        includeTeamSpecific: z.boolean().optional(),
+        prioritizeCategories: z.array(z.string()).optional()
+      });
+      
+      const settings = settingsSchema.parse(req.body);
+      
+      // Check if settings exist
+      const existingSettings = await storage.getOrganizationQuestionSettings(req.orgId);
+      const result = existingSettings
+        ? await storage.updateOrganizationQuestionSettings(req.orgId, settings)
+        : await storage.createOrganizationQuestionSettings(req.orgId, settings);
+      
+      res.json(result);
+    } catch (error) {
+      console.error("Failed to update organization question settings:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid settings data",
+          details: error.errors
+        });
+      }
+      res.status(500).json({ message: "Failed to update settings" });
+    }
+  });
+
+  // Auto-select questions for a user/team
+  app.get("/api/questions/auto-select", requireAuth(), async (req, res) => {
+    try {
+      const { userId, teamId } = req.query;
+      
+      // Use current user if no userId specified
+      const targetUserId = userId as string || req.currentUser?.id;
+      if (!targetUserId) {
+        return res.status(400).json({ message: "User ID required" });
+      }
+      
+      const questions = await storage.autoSelectQuestions(
+        req.orgId, 
+        targetUserId, 
+        teamId as string | undefined
+      );
+      res.json(questions);
+    } catch (error) {
+      console.error("Failed to auto-select questions:", error);
+      res.status(500).json({ message: "Failed to auto-select questions" });
+    }
+  });
   
   // Team Question Management
   app.get("/api/teams/:teamId/questions", requireAuth(), async (req, res) => {

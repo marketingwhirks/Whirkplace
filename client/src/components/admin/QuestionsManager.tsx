@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   HelpCircle, Plus, RefreshCw, Search, Filter, Check, X, 
   MessageSquare, AlertCircle, Database, Eye, EyeOff, Heart,
-  Scale, TrendingUp, MessageCircle, Star, Rocket
+  Scale, TrendingUp, MessageCircle, Star, Rocket, BarChart2,
+  Clock, Users, History, ToggleLeft, ToggleRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,20 +16,21 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import type { QuestionBank, QuestionCategory } from "@shared/schema";
+import type { QuestionBank, QuestionCategory, Question } from "@shared/schema";
 import { defaultQuestionCategories, getTotalQuestionsCount } from "@shared/defaultQuestions";
+import { format } from "date-fns";
 
-interface QuestionBankWithCategory extends QuestionBank {
+interface QuestionWithStats extends Question {
   categoryName?: string;
-  categoryIcon?: string;
-  categoryColor?: string;
-}
-
-interface QuestionsResponse {
-  questions: QuestionBankWithCategory[];
-  total: number;
+  stats?: {
+    timesAsked: number;
+    lastAsked: Date | null;
+    uniqueUsers: number;
+    teams: string[];
+  };
 }
 
 interface QuestionStats {
@@ -63,48 +65,85 @@ const categoryColors: Record<string, string> = {
   "engagement": "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400"
 };
 
-function QuestionCard({ question, onToggle }: { question: QuestionBankWithCategory; onToggle: () => void }) {
-  const [isActive, setIsActive] = useState(question.isActive !== false);
-  
+function QuestionCard({ 
+  question, 
+  onToggle,
+  onViewStats 
+}: { 
+  question: QuestionWithStats; 
+  onToggle: () => void;
+  onViewStats?: () => void;
+}) {
   const handleToggle = () => {
-    setIsActive(!isActive);
     onToggle();
   };
   
   return (
-    <Card className="hover:shadow-md transition-shadow">
+    <Card className={`hover:shadow-md transition-all ${!question.isActive ? 'opacity-60' : ''}`}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
             <p className="text-sm font-medium leading-relaxed">{question.text}</p>
-            {question.description && (
-              <p className="text-xs text-muted-foreground mt-1">{question.description}</p>
+            {/* Usage Statistics */}
+            {question.stats && (
+              <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <BarChart2 className="w-3 h-3" />
+                  <span>{question.stats.timesAsked} times asked</span>
+                </div>
+                {question.stats.lastAsked && (
+                  <div className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    <span>Last: {format(new Date(question.stats.lastAsked), 'MMM dd, yyyy')}</span>
+                  </div>
+                )}
+                {question.stats.uniqueUsers > 0 && (
+                  <div className="flex items-center gap-1">
+                    <Users className="w-3 h-3" />
+                    <span>{question.stats.uniqueUsers} users</span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
-          <Switch
-            checked={isActive}
-            onCheckedChange={handleToggle}
-            aria-label="Toggle question active status"
-          />
+          <div className="flex items-center gap-2">
+            {onViewStats && question.stats && question.stats.timesAsked > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onViewStats}
+                data-testid={`button-view-stats-${question.id}`}
+              >
+                <History className="w-4 h-4" />
+              </Button>
+            )}
+            <Switch
+              checked={question.isActive}
+              onCheckedChange={handleToggle}
+              aria-label="Toggle question active status"
+              data-testid={`switch-active-${question.id}`}
+            />
+          </div>
         </div>
       </CardHeader>
       <CardContent className="pt-0">
         <div className="flex items-center gap-2 flex-wrap">
           <Badge 
-            variant="secondary" 
-            className={`${categoryColors[question.categoryId] || ''} text-xs`}
+            variant={question.isActive ? "secondary" : "outline"} 
+            className={`${question.categoryId ? categoryColors[question.categoryId] : ''} text-xs`}
           >
-            <span className="mr-1">{question.categoryIcon || categoryIcons[question.categoryId]}</span>
-            {question.categoryName || question.categoryId}
+            {question.categoryId ? categoryIcons[question.categoryId] : <HelpCircle className="w-3 h-3" />}
+            <span className="ml-1">{question.categoryId || 'Uncategorized'}</span>
           </Badge>
-          {question.tags?.map((tag, idx) => (
-            <Badge key={idx} variant="outline" className="text-xs">
-              {tag}
+          {!question.isActive && (
+            <Badge variant="outline" className="text-xs">
+              <EyeOff className="w-3 h-3 mr-1" />
+              Inactive
             </Badge>
-          ))}
-          {question.isSystem && (
-            <Badge variant="default" className="text-xs">
-              System
+          )}
+          {question.teamId && (
+            <Badge variant="outline" className="text-xs">
+              Team Specific
             </Badge>
           )}
         </div>
@@ -117,66 +156,63 @@ export function QuestionsManager() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterCategory, setFilterCategory] = useState<string>("all");
+  const [showInactive, setShowInactive] = useState(false);
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);
-  const [selectedQuestion, setSelectedQuestion] = useState<QuestionBankWithCategory | null>(null);
+  const [showStatsDialog, setShowStatsDialog] = useState(false);
+  const [selectedQuestion, setSelectedQuestion] = useState<QuestionWithStats | null>(null);
+  const [questionHistory, setQuestionHistory] = useState<any[]>([]);
   
-  // Fetch question statistics
-  const { data: stats, isLoading: statsLoading } = useQuery<QuestionStats>({
-    queryKey: ["/api/questions/stats"],
-  });
-  
-  // Fetch existing questions
-  const { data: questionsResponse, isLoading: questionsLoading, refetch } = useQuery<QuestionsResponse>({
-    queryKey: ["/api/questions/bank", { categoryId: filterCategory === "all" ? undefined : filterCategory, search: searchTerm }],
+  // Fetch all questions with optional inactive
+  const { data: questions = [], isLoading: questionsLoading, refetch } = useQuery<QuestionWithStats[]>({
+    queryKey: ["/api/questions/all", { includeInactive: showInactive }],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (filterCategory !== "all") params.append("categoryId", filterCategory);
-      if (searchTerm) params.append("search", searchTerm);
+      params.append("includeInactive", showInactive.toString());
       
-      const response = await fetch(`/api/questions/bank?${params.toString()}`);
+      const response = await fetch(`/api/questions/all?${params.toString()}`);
       if (!response.ok) throw new Error("Failed to fetch questions");
-      return response.json();
+      const allQuestions = await response.json();
+      
+      // Fetch stats for each question in parallel
+      const questionsWithStats = await Promise.all(
+        allQuestions.map(async (q: Question) => {
+          try {
+            const statsResponse = await fetch(`/api/questions/${q.id}/usage-stats`);
+            if (statsResponse.ok) {
+              const { stats } = await statsResponse.json();
+              return { ...q, stats };
+            }
+          } catch {
+            // Ignore stats fetch errors
+          }
+          return q;
+        })
+      );
+      
+      return questionsWithStats;
     },
   });
   
-  const questions = questionsResponse?.questions || [];
-  
-  // Restore default questions mutation
-  const restoreQuestionsMutation = useMutation({
-    mutationFn: async () => {
-      const response = await apiRequest("POST", "/api/questions/seed-defaults", {});
-      return await response.json();
-    },
-    onSuccess: (data) => {
-      toast({
-        title: "Success",
-        description: `Restored ${data.questionsCreated} questions and ${data.categoriesCreated} categories`,
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/questions/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/questions/bank"] });
-      setShowRestoreDialog(false);
-      refetch();
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Restore Failed",
-        description: error.message || "Failed to restore default questions",
-        variant: "destructive",
-      });
-    },
+  // Filter questions based on search and category
+  const filteredQuestions = questions.filter(q => {
+    const matchesSearch = searchTerm === "" || 
+      q.text.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = filterCategory === "all" || 
+      q.categoryId === filterCategory;
+    return matchesSearch && matchesCategory;
   });
   
   // Toggle question active status mutation
   const toggleQuestionMutation = useMutation({
     mutationFn: async (questionId: string) => {
-      const response = await apiRequest("PATCH", `/api/questions/bank/${questionId}/toggle`, {});
+      const response = await apiRequest("PATCH", `/api/questions/${questionId}/toggle-active`, {});
       if (!response.ok) throw new Error("Failed to toggle question status");
       return response.json();
     },
     onSuccess: (data) => {
       toast({
         title: "Success",
-        description: data.message,
+        description: data.isActive ? "Question activated" : "Question deactivated",
       });
       refetch();
     },
@@ -189,11 +225,26 @@ export function QuestionsManager() {
     },
   });
   
-  const handleRestore = () => {
-    restoreQuestionsMutation.mutate();
+  // View question stats
+  const viewQuestionStats = async (question: QuestionWithStats) => {
+    setSelectedQuestion(question);
+    try {
+      const response = await fetch(`/api/questions/${question.id}/usage-stats`);
+      if (response.ok) {
+        const { history } = await response.json();
+        setQuestionHistory(history);
+        setShowStatsDialog(true);
+      }
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to load question history",
+        variant: "destructive",
+      });
+    }
   };
   
-  if (statsLoading || questionsLoading) {
+  if (questionsLoading) {
     return (
       <div className="space-y-4">
         <Skeleton className="h-10 w-full" />
@@ -207,27 +258,32 @@ export function QuestionsManager() {
     );
   }
   
-  const needsQuestions = !stats || stats.totalQuestions === 0;
+  const activeQuestions = questions.filter(q => q.isActive);
+  const inactiveQuestions = questions.filter(q => !q.isActive);
   
   return (
     <div className="space-y-6">
       {/* Header Section */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-medium">Question Bank Management</h3>
+          <h3 className="text-lg font-medium">Questions Management</h3>
           <p className="text-sm text-muted-foreground">
-            Manage check-in questions for your organization
+            Manage and track check-in questions for your organization
           </p>
         </div>
-        <Button 
-          onClick={() => setShowRestoreDialog(true)}
-          className="flex items-center gap-2"
-          variant={needsQuestions ? "default" : "outline"}
-          data-testid="button-restore-questions"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Restore Default Questions
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="show-inactive" className="text-sm">
+              Show Inactive
+            </Label>
+            <Switch
+              id="show-inactive"
+              checked={showInactive}
+              onCheckedChange={setShowInactive}
+              data-testid="switch-show-inactive"
+            />
+          </div>
+        </div>
       </div>
       
       {/* Statistics */}
@@ -235,14 +291,14 @@ export function QuestionsManager() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Database className="w-4 h-4" />
-              Total Questions
+              <Eye className="w-4 h-4" />
+              Active Questions
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalQuestions || 0}</div>
+            <div className="text-2xl font-bold">{activeQuestions.length}</div>
             <p className="text-xs text-muted-foreground">
-              Currently in your question bank
+              Currently active for check-ins
             </p>
           </CardContent>
         </Card>
@@ -250,14 +306,14 @@ export function QuestionsManager() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <HelpCircle className="w-4 h-4" />
-              Categories
+              <EyeOff className="w-4 h-4" />
+              Inactive Questions
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats?.totalCategories || 0}</div>
+            <div className="text-2xl font-bold">{inactiveQuestions.length}</div>
             <p className="text-xs text-muted-foreground">
-              Question categories available
+              Currently deactivated
             </p>
           </CardContent>
         </Card>
@@ -265,42 +321,21 @@ export function QuestionsManager() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
-              <Plus className="w-4 h-4" />
-              Available to Restore
+              <BarChart2 className="w-4 h-4" />
+              Total Usage
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{getTotalQuestionsCount()}</div>
+            <div className="text-2xl font-bold">
+              {questions.reduce((sum, q) => sum + (q.stats?.timesAsked || 0), 0)}
+            </div>
             <p className="text-xs text-muted-foreground">
-              Default questions ready to import
+              Total times questions asked
             </p>
           </CardContent>
         </Card>
       </div>
       
-      {/* Category breakdown */}
-      {stats && stats.categoryCounts && stats.categoryCounts.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">Questions by Category</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {stats.categoryCounts.map((cat) => (
-                <div key={cat.categoryId} className="flex items-center gap-2">
-                  <div className="flex items-center gap-1">
-                    {categoryIcons[cat.categoryId]}
-                    <span className="text-sm font-medium">{cat.categoryName}</span>
-                  </div>
-                  <Badge variant="secondary" className="ml-auto">
-                    {cat.count}
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
       
       {/* Filters */}
       <div className="flex gap-4">
@@ -330,92 +365,93 @@ export function QuestionsManager() {
       </div>
       
       {/* Questions List */}
-      {questions.length === 0 ? (
+      {filteredQuestions.length === 0 ? (
         <Card>
           <CardContent className="text-center py-12">
             <MessageSquare className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">
-              {needsQuestions ? "No Questions Found" : "No Questions Match Your Search"}
+              No Questions Found
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              {needsQuestions 
-                ? "Your question bank is empty. Restore default questions to get started with pre-built check-in questions."
+              {questions.length === 0 
+                ? "Your organization doesn't have any questions yet."
                 : "Try adjusting your search criteria or filters."}
             </p>
-            {needsQuestions && (
-              <Button 
-                onClick={() => setShowRestoreDialog(true)}
-                data-testid="button-restore-empty"
-              >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Restore Default Questions
-              </Button>
-            )}
           </CardContent>
         </Card>
       ) : (
         <ScrollArea className="h-[600px] pr-4">
           <div className="grid gap-3">
-            {questions.map((question) => (
+            {filteredQuestions.map((question) => (
               <QuestionCard 
                 key={question.id} 
                 question={question}
                 onToggle={() => toggleQuestionMutation.mutate(question.id)}
+                onViewStats={() => viewQuestionStats(question)}
               />
             ))}
           </div>
         </ScrollArea>
       )}
       
-      {/* Restore Dialog */}
-      <Dialog open={showRestoreDialog} onOpenChange={setShowRestoreDialog}>
-        <DialogContent>
+      {/* Question Stats Dialog */}
+      <Dialog open={showStatsDialog} onOpenChange={setShowStatsDialog}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Restore Default Questions</DialogTitle>
+            <DialogTitle>Question Usage History</DialogTitle>
             <DialogDescription>
-              This will restore the default question bank with pre-built check-in questions.
+              {selectedQuestion?.text}
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4">
-            <div className="p-4 bg-muted rounded-lg">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-5 h-5 text-muted-foreground mt-0.5" />
-                <div className="text-sm">
-                  <p className="font-medium mb-1">What will be restored:</p>
-                  <ul className="space-y-1 text-muted-foreground">
-                    <li>• 6 question categories</li>
-                    <li>• {getTotalQuestionsCount()} pre-built questions</li>
-                    <li>• Questions cover team health, growth, communication, and more</li>
-                    <li>• Duplicate questions will be skipped automatically</li>
-                  </ul>
+          {selectedQuestion && selectedQuestion.stats && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">Times Asked</p>
+                  <p className="text-2xl font-semibold">{selectedQuestion.stats.timesAsked}</p>
+                </div>
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">Unique Users</p>
+                  <p className="text-2xl font-semibold">{selectedQuestion.stats.uniqueUsers}</p>
+                </div>
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-sm text-muted-foreground">Last Asked</p>
+                  <p className="text-sm font-medium">
+                    {selectedQuestion.stats.lastAsked 
+                      ? format(new Date(selectedQuestion.stats.lastAsked), 'MMM dd, yyyy')
+                      : 'Never'}
+                  </p>
                 </div>
               </div>
+              
+              {questionHistory && questionHistory.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium mb-2">Recent Usage</h4>
+                  <ScrollArea className="h-[300px]">
+                    <div className="space-y-2">
+                      {questionHistory.map((entry: any, idx: number) => (
+                        <div key={idx} className="flex items-center justify-between p-2 bg-muted rounded-lg text-sm">
+                          <span>Used in check-in</span>
+                          <span className="text-muted-foreground">
+                            {format(new Date(entry.createdAt), 'MMM dd, yyyy HH:mm')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
             </div>
-            
-            {stats && stats.totalQuestions > 0 && (
-              <div className="p-3 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                  <strong>Note:</strong> You already have {stats.totalQuestions} questions. This action will only add missing questions, not replace existing ones.
-                </p>
-              </div>
-            )}
-          </div>
+          )}
           
           <DialogFooter>
             <Button 
               variant="outline" 
-              onClick={() => setShowRestoreDialog(false)}
-              data-testid="button-cancel-restore"
+              onClick={() => setShowStatsDialog(false)}
+              data-testid="button-close-stats"
             >
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleRestore}
-              disabled={restoreQuestionsMutation.isPending}
-              data-testid="button-confirm-restore"
-            >
-              {restoreQuestionsMutation.isPending ? "Restoring..." : "Restore Questions"}
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
