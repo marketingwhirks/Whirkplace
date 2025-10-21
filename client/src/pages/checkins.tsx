@@ -144,7 +144,7 @@ export default function Checkins() {
     queryKey: ["/api/organizations", currentUser?.organizationId],
     queryFn: async () => {
       if (!currentUser?.organizationId) return null;
-      const response = await fetch(`/api/organizations/${currentUser.organizationId}`);
+      const response = await apiRequest("GET", `/api/organizations/${currentUser.organizationId}`);
       if (!response.ok) throw new Error('Failed to fetch organization');
       return response.json();
     },
