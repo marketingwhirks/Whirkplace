@@ -631,8 +631,8 @@ export async function sendSlackMessage(
 ): Promise<string | undefined> {
   console.log('📬 sendSlackMessage called with:', {
     channel: message.channel,
-    hasBlocks: !!message.blocks,
-    text: message.text?.substring(0, 50) + '...',
+    hasBlocks: !!('blocks' in message && message.blocks),
+    text: 'text' in message ? message.text?.substring(0, 50) + '...' : undefined,
     organizationId,
     hasBotToken: !!process.env.SLACK_BOT_TOKEN,
     globalSlackClientExists: !!slack
@@ -969,12 +969,12 @@ export async function sendPersonalizedCheckinReminder(
   });
 
   try {
-    // Get organization-specific token if organizationId is provided
+    // Get organization-specific token if organization is provided
     let slackClient: WebClient | null = slack;
     
-    if (organizationId) {
+    if (organization?.id) {
       try {
-        const token = await getValidSlackToken(organizationId);
+        const token = await getValidSlackToken(organization.id);
         if (token) {
           slackClient = new WebClient(token);
           console.log(`Using organization-specific token for reminder to ${userName}`);
@@ -998,7 +998,7 @@ export async function sendPersonalizedCheckinReminder(
         channel: dmResult.channel.id,
         blocks: reminderBlocks,
         text: `Check-in reminder for ${userName}`
-      }, organizationId);
+      }, organization?.id);
 
       console.log(`Personalized check-in reminder sent to ${userName} (${userId})`);
     }
@@ -1129,10 +1129,10 @@ export async function testSlackConnection(organizationId?: string): Promise<{
     let channelInfo = null;
     if (organizationId) {
       const org = await storage.getOrganization(organizationId);
-      if (org?.slack_wins_channel_id) {
+      if (org?.slackWinsChannelId) {
         try {
           const channelResult = await slack.conversations.info({
-            channel: org.slack_wins_channel_id
+            channel: org.slackWinsChannelId
           });
           channelInfo = {
             id: channelResult.channel?.id,
@@ -4096,7 +4096,7 @@ export async function formatPersonalStatusMessage(userId: string, organizationId
     let statusMessage = `*📊 Your Personal Status Dashboard*\n\n`;
 
     // Check-in Status
-    const currentWeekStart = getWeekStartCentral();
+    const currentWeekStart = getWeekStartCentral(new Date());
     const currentCheckin = await storage.getCurrentWeekCheckin(organizationId, user.id);
     
     if (currentCheckin) {
@@ -4105,7 +4105,7 @@ export async function formatPersonalStatusMessage(userId: string, organizationId
       statusMessage += `• Mood: ${moodEmoji} ${currentCheckin.overallMood}/5\n`;
       statusMessage += `• Review Status: ${currentCheckin.reviewStatus === 'reviewed' ? '👁️ Reviewed' : '⏳ Pending Review'}\n\n`;
     } else {
-      const dueDate = getCheckinDueDate();
+      const dueDate = getCheckinDueDate(new Date());
       statusMessage += `*❌ Check-in Status:* Not completed\n`;
       statusMessage += `• Due: ${dueDate.toLocaleDateString()}\n`;
       statusMessage += `• Use \`/checkin\` to complete it\n\n`;
@@ -4185,7 +4185,7 @@ export async function formatTeamStatusMessage(userId: string, organizationId: st
       ? await storage.getAllUsers(organizationId, false) // All active users for admins
       : await storage.getUsersByManager(organizationId, user.id, false); // Direct reports for managers
 
-    const currentWeekStart = getWeekStartCentral();
+    const currentWeekStart = getWeekStartCentral(new Date());
 
     // Calculate check-in completion
     let completedCheckins = 0;
