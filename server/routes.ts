@@ -138,6 +138,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.type('text/plain').send(JSON.stringify(verificationContent, null, 2));
   });
 
+  // Version endpoint to verify deployments
+  app.get('/api/version', (req, res) => {
+    res.json({
+      version: '1.0.1',
+      buildTime: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      message: 'Build from October 21, 2025 - Fixed CSRF for emoji reactions, vacations, team goals'
+    });
+  });
+
   // Logout endpoint using centralized AuthService
   app.post("/api/auth/logout", async (req, res) => {
     try {
