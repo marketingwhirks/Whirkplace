@@ -244,13 +244,12 @@ export default function Admin() {
   // Bulk import mutation
   const bulkImportMutation = useMutation({
     mutationFn: async (file: File) => {
-      const response = await fetch("/api/admin/users/bulk-import", {
+      const response = await apiRequest("/api/admin/users/bulk-import", {
         method: "POST",
         headers: {
           "Content-Type": "text/csv",
         },
         body: file,
-        credentials: "include",
       });
       
       if (!response.ok) {
