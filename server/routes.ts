@@ -7467,7 +7467,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Post Reactions (for Wins and Shoutouts)
-  app.get("/api/:postType/:id/reactions", authenticateUser(), requireAuth(), async (req, res) => {
+  app.get("/api/:postType/:id/reactions", requireAuth(), async (req, res) => {
     try {
       const { postType, id } = req.params;
       
@@ -7517,7 +7517,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/reactions", authenticateUser(), requireAuth(), async (req, res) => {
+  app.post("/api/reactions", requireAuth(), async (req, res) => {
     try {
       const { postId, postType, emoji } = req.body;
       
@@ -7544,7 +7544,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/reactions/:id", authenticateUser(), requireAuth(), async (req, res) => {
+  app.delete("/api/reactions/:id", requireAuth(), async (req, res) => {
     try {
       // First check if the reaction exists and belongs to the user
       const reactions = await storage.getUserReactionsByPost(req.currentUser!.id, req.params.id, 'win');
@@ -7886,7 +7886,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Vacations
-  app.get("/api/vacations", requireAuth(), async (req, res) => {
+  app.get("/api/vacations", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       const currentUser = req.currentUser!;
       const query = vacationQuerySchema.parse(req.query);
@@ -7932,7 +7932,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/vacations", requireAuth(), async (req, res) => {
+  app.post("/api/vacations", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       const currentUser = req.currentUser!;
       const vacationData = insertVacationSchema.parse(req.body);
@@ -7963,7 +7963,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/vacations/:weekOf", requireAuth(), async (req, res) => {
+  app.delete("/api/vacations/:weekOf", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       const currentUser = req.currentUser!;
       const params = vacationParamSchema.parse(req.params);
@@ -12534,7 +12534,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Team Goals endpoints
-  app.get("/api/team-goals", requireAuth(), async (req, res) => {
+  app.get("/api/team-goals", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       const activeOnly = req.query.activeOnly === 'true';
       const userId = req.userId!;
@@ -12590,7 +12590,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/team-goals/dashboard", requireAuth(), async (req, res) => {
+  app.get("/api/team-goals/dashboard", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       const userId = (req as any).userId;
       const user = await storage.getUser(req.orgId, userId);
@@ -12622,7 +12622,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/team-goals/:id", requireAuth(), async (req, res) => {
+  app.get("/api/team-goals/:id", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       const goal = await storage.getTeamGoal(req.orgId, req.params.id);
       if (!goal) {
@@ -12635,7 +12635,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/team-goals", requireAuth(), requireTeamLead(), async (req, res) => {
+  app.post("/api/team-goals", authenticateUser(), requireAuth(), requireTeamLead(), async (req, res) => {
     try {
       // Convert string dates to Date objects before validation
       const processedData = {
@@ -12693,7 +12693,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/team-goals/:id", requireAuth(), async (req, res) => {
+  app.patch("/api/team-goals/:id", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       // Get existing goal to check permissions
       const existingGoal = await storage.getTeamGoal(req.orgId, req.params.id);
@@ -12730,7 +12730,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/team-goals/:id", requireAuth(), async (req, res) => {
+  app.delete("/api/team-goals/:id", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       // Get existing goal to check permissions
       const existingGoal = await storage.getTeamGoal(req.orgId, req.params.id);
@@ -12761,7 +12761,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/team-goals/:id/progress", requireAuth(), async (req, res) => {
+  app.post("/api/team-goals/:id/progress", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       const { increment } = req.body;
       
