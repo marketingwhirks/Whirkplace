@@ -421,9 +421,20 @@ export default function Dashboard() {
                 };
               } else {
                 // Upcoming
+                const daysUntilDue = Math.ceil((currentDueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                let message = "";
+                
+                if (daysUntilDue === 1) {
+                  message = "Due tomorrow";
+                } else if (daysUntilDue <= 7) {
+                  message = `Due ${format(currentDueDate, 'EEEE')} at ${format(currentDueDate, 'h:mm a')}`;
+                } else {
+                  message = `Due ${format(currentDueDate, 'MMM d')} at ${format(currentDueDate, 'h:mm a')}`;
+                }
+                
                 notificationContent = {
-                  title: "Check-in Upcoming",
-                  message: `Due by ${format(currentDueDate, 'EEEE, MMMM d, yyyy')} at ${format(currentDueDate, 'h:mm a')}`,
+                  title: "Check-in Upcoming", 
+                  message: message,
                   variant: "info" as const,
                   icon: Clock,
                   buttonText: "Submit Check-in"
