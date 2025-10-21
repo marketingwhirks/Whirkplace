@@ -23,6 +23,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Crown, Settings, DollarSign, Ticket, Users, Building2, Trash2, Edit, Plus, Eye, ShieldAlert, AlertCircle, CheckCircle2, RefreshCw, Key, Info, ChevronDown, CreditCard, Database, AlertTriangle, Calendar, Clock, Activity, FileWarning, CheckCircle, XCircle, FolderTree, ArrowRight } from "lucide-react";
 import { format, startOfWeek, parseISO } from "date-fns";
 import type { User as CurrentUser } from "@shared/schema";
+import { CategoryManager } from "@/components/admin/CategoryManager";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -850,11 +851,14 @@ export default function SuperAdminPage() {
         {/* Main Content */}
         <Tabs value={selectedTab} onValueChange={setSelectedTab} className="space-y-6">
           <div className="overflow-x-auto pb-2">
-            <TabsList className="grid w-max grid-cols-4 sm:grid-cols-4 md:grid-cols-8 min-w-full">
+            <TabsList className="grid w-max grid-cols-4 sm:grid-cols-5 md:grid-cols-9 min-w-full">
               <TabsTrigger value="dashboard" data-testid="tab-dashboard" className="text-xs sm:text-sm">Dashboard</TabsTrigger>
               <TabsTrigger value="organizations" data-testid="tab-organizations" className="text-xs sm:text-sm">Orgs</TabsTrigger>
               <TabsTrigger value="data-management" data-testid="tab-data-management" className="text-xs sm:text-sm">
                 <span className="text-purple-700 dark:text-purple-400 font-semibold">Data</span>
+              </TabsTrigger>
+              <TabsTrigger value="categories" data-testid="tab-categories" className="text-xs sm:text-sm">
+                <span className="text-orange-700 dark:text-orange-400 font-semibold">Categories</span>
               </TabsTrigger>
               <TabsTrigger value="settings" data-testid="tab-settings" className="text-xs sm:text-sm">Settings</TabsTrigger>
               <TabsTrigger value="pricing" data-testid="tab-pricing" className="text-xs sm:text-sm">Pricing</TabsTrigger>
@@ -1390,6 +1394,21 @@ export default function SuperAdminPage() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Categories Tab - Super Admin Only */}
+          <TabsContent value="categories" className="space-y-6">
+            {!isSuperAdmin ? (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertTitle>Access Denied</AlertTitle>
+                <AlertDescription>
+                  Category Management tools are only available to super administrators.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <CategoryManager />
+            )}
           </TabsContent>
 
           {/* System Settings Tab */}

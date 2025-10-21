@@ -16714,6 +16714,106 @@ You understand that KRAs are accountability tools that clearly define what succe
     }
   });
 
+  // ========== QUESTION CATEGORIES MANAGEMENT (SUPER ADMIN ONLY) ==========
+  
+  // GET /api/superadmin/categories - List all categories with counts
+  app.get("/api/superadmin/categories", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      console.log("📚 Super admin fetching question categories with counts");
+      
+      // Get all question categories
+      const categoriesResult = await db.execute(sql`
+        SELECT 
+          qc.*,
+          (SELECT COUNT(*) FROM question_bank qb WHERE qb.category_id = qc.id) as question_bank_count,
+          (SELECT COUNT(*) FROM questions q WHERE q.category_id = qc.id) as organization_questions_count
+        FROM question_categories qc
+        ORDER BY qc.name
+      `);
+      
+      // Format the response
+      const categories = categoriesResult.rows.map((cat: any) => ({
+        id: cat.id,
+        name: cat.name,
+        description: cat.description,
+        icon: cat.icon,
+        order: cat.order,
+        isDefault: cat.is_default,
+        createdAt: cat.created_at,
+        questionBankCount: parseInt(cat.question_bank_count || 0),
+        organizationQuestionsCount: parseInt(cat.organization_questions_count || 0),
+        totalQuestions: parseInt(cat.question_bank_count || 0) + parseInt(cat.organization_questions_count || 0)
+      }));
+      
+      console.log(`✅ Found ${categories.length} categories`);
+      res.json(categories);
+    } catch (error) {
+      console.error("Error fetching question categories:", error);
+      res.status(500).json({ message: "Failed to fetch question categories" });
+    }
+  });
+
+  // DELETE /api/superadmin/categories/:id - Delete a category (with safety checks)
+  app.delete("/api/superadmin/categories/:id", requireAuth(), requireSuperAdmin(), async (req, res) => {
+    try {
+      const categoryId = req.params.id;
+      
+      console.log(`🗑️ Super admin attempting to delete category ${categoryId}`, {
+        admin: req.currentUser?.email,
+        timestamp: new Date().toISOString()
+      });
+      
+      // First check if category exists and has no questions
+      const checkResult = await db.execute(sql`
+        SELECT 
+          qc.*,
+          (SELECT COUNT(*) FROM question_bank qb WHERE qb.category_id = qc.id) as question_bank_count,
+          (SELECT COUNT(*) FROM questions q WHERE q.category_id = qc.id) as organization_questions_count
+        FROM question_categories qc
+        WHERE qc.id = ${categoryId}
+      `);
+      
+      if (checkResult.rows.length === 0) {
+        return res.status(404).json({ message: "Category not found" });
+      }
+      
+      const category = checkResult.rows[0];
+      const bankCount = parseInt(category.question_bank_count || 0);
+      const orgCount = parseInt(category.organization_questions_count || 0);
+      
+      // Check if category is a system default
+      if (category.is_default) {
+        return res.status(400).json({ 
+          message: "Cannot delete system default category" 
+        });
+      }
+      
+      // Check if category has any questions
+      if (bankCount > 0 || orgCount > 0) {
+        return res.status(400).json({ 
+          message: `Cannot delete category with questions. This category has ${bankCount} questions in the question bank and ${orgCount} organization questions.` 
+        });
+      }
+      
+      // Delete the category
+      await db.execute(sql`
+        DELETE FROM question_categories 
+        WHERE id = ${categoryId}
+      `);
+      
+      console.log(`✅ Category ${categoryId} (${category.name}) deleted by ${req.currentUser?.email} at ${new Date().toISOString()}`);
+      
+      res.json({
+        message: "Category deleted successfully",
+        categoryId,
+        categoryName: category.name
+      });
+    } catch (error) {
+      console.error("Failed to delete category:", error);
+      res.status(500).json({ message: "Failed to delete category" });
+    }
+  });
+
   // ===================================
   // CRITICAL SESSION & SLACK ENDPOINTS
   // ===================================
