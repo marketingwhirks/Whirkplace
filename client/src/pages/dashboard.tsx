@@ -429,7 +429,7 @@ export default function Dashboard() {
                 } else if (daysUntilDue <= 7) {
                   message = `Due ${format(currentDueDate, 'EEEE')} at ${format(currentDueDate, 'h:mm a')}`;
                 } else {
-                  message = `Due ${format(currentDueDate, 'MMM d')} at ${format(currentDueDate, 'h:mm a')}`;
+                  message = `Due ${format(currentDueDate, 'EEEE')} at ${format(currentDueDate, 'h:mm a')}`;
                 }
                 
                 notificationContent = {

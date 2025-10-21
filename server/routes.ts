@@ -8061,7 +8061,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/vacations", authenticateUser(), requireAuth(), async (req, res) => {
+  app.post("/api/vacations", requireAuth(), async (req, res) => {
     try {
       const currentUser = req.currentUser!;
       const vacationData = insertVacationSchema.parse(req.body);
@@ -8092,7 +8092,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/vacations/:weekOf", authenticateUser(), requireAuth(), async (req, res) => {
+  app.delete("/api/vacations/:weekOf", requireAuth(), async (req, res) => {
     try {
       const currentUser = req.currentUser!;
       const params = vacationParamSchema.parse(req.params);
@@ -12822,7 +12822,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/team-goals/:id", authenticateUser(), requireAuth(), async (req, res) => {
+  app.patch("/api/team-goals/:id", requireAuth(), async (req, res) => {
     try {
       // Get existing goal to check permissions
       const existingGoal = await storage.getTeamGoal(req.orgId, req.params.id);
@@ -12859,7 +12859,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/team-goals/:id", authenticateUser(), requireAuth(), async (req, res) => {
+  app.delete("/api/team-goals/:id", requireAuth(), async (req, res) => {
     try {
       // Get existing goal to check permissions
       const existingGoal = await storage.getTeamGoal(req.orgId, req.params.id);
