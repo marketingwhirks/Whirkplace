@@ -1006,6 +1006,7 @@ export const insertVacationSchema = createInsertSchema(vacations).omit({
   id: true,
   createdAt: true,
   organizationId: true, // Set by middleware, not user-settable
+  userId: true, // Set by server from authenticated user, not user-settable
 }).extend({
   weekOf: z.coerce.date(),
   note: z.string().max(500, "Vacation note too long").optional(),
