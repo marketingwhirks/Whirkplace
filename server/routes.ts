@@ -4209,12 +4209,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         console.log('✅ Demo login successful for:', email);
         
-        // Return sanitized user data with a simple demo token
-        // The frontend expects a token to identify demo sessions
+        // Generate a proper JWT token for demo users
+        const { generateDemoToken } = await import('./demo-auth');
+        const demoToken = generateDemoToken(email);
+        
+        // Return sanitized user data with proper JWT token
         res.json({ 
           message: "Login successful",
           user: authService.getSanitizedUser(user),
-          token: `demo-${demoOrgId}-${user.id}` // Simple demo identifier token
+          token: demoToken // Proper JWT token that can be verified
         });
       } catch (sessionError) {
         console.error('Failed to create session:', sessionError);
