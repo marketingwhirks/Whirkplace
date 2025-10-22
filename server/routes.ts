@@ -13,7 +13,7 @@ import {
   insertKraRatingSchema, insertKraHistorySchema,
   insertOrganizationSchema, insertBusinessPlanSchema, insertOrganizationOnboardingSchema, insertUserInvitationSchema,
   insertDashboardConfigSchema, insertDashboardWidgetTemplateSchema, insertBugReportSchema,
-  insertPartnerApplicationSchema, insertPartnerFirmSchema, insertNotificationSchema,
+  insertPartnerApplicationSchema, insertPartnerFirmSchema, insertNotificationSchema, insertTeamGoalSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType, type Checkin, type InsertNotification,
   organizations, billingEvents
