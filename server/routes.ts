@@ -7932,7 +7932,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           tourId: req.params.tourId,
           status: status || 'in_progress',
           currentStep: currentStep || 0,
-          lastShownAt: lastShownAt || new Date(),
+          lastShownAt: lastShownAt ? new Date(lastShownAt) : new Date(),
           version: '1.0'
         });
       } else {
@@ -7940,7 +7940,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         tour = await storage.updateUserTour(req.orgId, req.userId!, req.params.tourId, {
           ...(currentStep !== undefined && { currentStep }),
           ...(status !== undefined && { status }),
-          ...(lastShownAt !== undefined && { lastShownAt })
+          ...(lastShownAt !== undefined && { lastShownAt: new Date(lastShownAt) })
         });
       }
       
