@@ -352,6 +352,7 @@ export interface IStorage {
   expireOutdatedGoals(organizationId: string): Promise<number>;
   getActiveGoalsByMetric(organizationId: string, metric: string): Promise<TeamGoal[]>;
   getDashboardGoals(organizationId: string): Promise<TeamGoal[]>;
+  incrementGoalsByMetric(organizationId: string, metric: string, teamId?: string, increment?: number): Promise<void>;
 
   // Check-in Review Methods
   getPendingCheckins(organizationId: string, managerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]>;
@@ -2282,6 +2283,30 @@ export class DatabaseStorage implements IStorage {
         eq(teamGoals.metric, metric)
       ))
       .orderBy(desc(teamGoals.createdAt));
+  }
+
+  async incrementGoalsByMetric(organizationId: string, metric: string, teamId?: string, increment: number = 1): Promise<void> {
+    try {
+      // Get all active goals for this metric
+      const activeGoals = await this.getActiveGoalsByMetric(organizationId, metric);
+      
+      // Filter goals based on team if provided
+      const relevantGoals = activeGoals.filter(goal => {
+        // If goal is org-wide (teamId is null), it applies to everyone
+        if (goal.teamId === null) return true;
+        // If goal is team-specific, only apply if it matches the team
+        if (teamId && goal.teamId === teamId) return true;
+        return false;
+      });
+
+      // Update progress for each relevant goal
+      for (const goal of relevantGoals) {
+        await this.updateTeamGoalProgress(organizationId, goal.id, increment);
+      }
+    } catch (error) {
+      console.error(`Failed to increment goals for metric ${metric}:`, error);
+      // Don't throw error to prevent disrupting the main operation
+    }
   }
 
   async getDashboardGoals(organizationId: string, userId?: string, userRole?: string): Promise<TeamGoal[]> {
