@@ -8072,22 +8072,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Log incoming request body for debugging
       console.log("POST /api/vacations - Request body:", JSON.stringify(req.body));
-      console.log("Current user:", currentUser.id);
+      console.log("Current user:", currentUser.id, "Role:", currentUser.role);
       
       const vacationData = insertVacationSchema.parse(req.body);
       
-      // Security: Always use the current user's ID, never trust client data
-      const sanitizedData = {
-        ...vacationData,
-        userId: currentUser.id,
-      };
+      // Determine the target user for vacation marking
+      let targetUserId = currentUser.id; // Default to self
+      let targetUserEmail = currentUser.email; // For audit logging
+      
+      // Check if trying to mark someone else on vacation
+      if (vacationData.targetUserId && vacationData.targetUserId !== currentUser.id) {
+        // Only admins and managers can mark others on vacation
+        if (currentUser.role !== 'admin' && currentUser.role !== 'manager') {
+          return res.status(403).json({ 
+            message: "You don't have permission to mark others on vacation" 
+          });
+        }
+        
+        // ALWAYS verify the target user exists and belongs to the same organization
+        const targetUser = await storage.getUserById(vacationData.targetUserId);
+        
+        // Critical security check: ensure target user exists and is in same organization
+        if (!targetUser || targetUser.organizationId !== req.orgId) {
+          console.warn(`Security: User ${currentUser.email} attempted to mark user ${vacationData.targetUserId} on vacation but user not found or in different org`);
+          return res.status(404).json({ message: "User not found in your organization" });
+        }
+        
+        // For managers, additionally verify the target user is on their team
+        if (currentUser.role === 'manager' && targetUser.managerId !== currentUser.id) {
+          return res.status(403).json({ 
+            message: "You can only mark your direct reports on vacation" 
+          });
+        }
+        
+        targetUserId = vacationData.targetUserId;
+        targetUserEmail = targetUser.email;
+        
+        // Audit log for marking others on vacation
+        console.log(`AUDIT: ${currentUser.email} (${currentUser.role}) marking ${targetUserEmail} (${targetUserId}) on vacation for week ${vacationData.weekOf}`);
+      }
       
       const vacation = await storage.upsertVacationWeek(
         req.orgId,
-        currentUser.id,
-        sanitizedData.weekOf,
-        sanitizedData.note
+        targetUserId,
+        vacationData.weekOf,
+        vacationData.note
       );
+      
+      // Success audit log
+      console.log(`AUDIT SUCCESS: Vacation marked for ${targetUserEmail} (${targetUserId}) by ${currentUser.email} for week ${vacationData.weekOf}`);
       
       res.status(201).json(vacation);
     } catch (error) {

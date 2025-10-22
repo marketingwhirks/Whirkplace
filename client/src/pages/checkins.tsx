@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow, startOfWeek, addWeeks, isSameWeek, format, isToday, isPast } from "date-fns";
-import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle, Smile, Flag, UserPlus, CheckCheck, Plane } from "lucide-react";
+import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle, Smile, Flag, UserPlus, CheckCheck, Plane, Users } from "lucide-react";
 import { getCheckinWeekFriday, getCheckinDueDate } from "@shared/utils/dueDates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +29,7 @@ import { useManagedTour } from "@/contexts/TourProvider";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import type { Checkin, Question, User, InsertCheckin, Vacation } from "@shared/schema";
 
@@ -92,6 +93,7 @@ export default function Checkins() {
   const [showVacationDialog, setShowVacationDialog] = useState(false);
   const [selectedVacationWeek, setSelectedVacationWeek] = useState<Date | null>(null);
   const [vacationNote, setVacationNote] = useState("");
+  const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<string>("");
   
   // Tour management
   const tourManager = useManagedTour(TOUR_IDS.CHECKINS_GUIDE);
@@ -133,11 +135,79 @@ export default function Checkins() {
     enabled: !!currentUser?.id,
   });
 
-  // Fetch user's vacations
+  // Fetch team members for managers and admins
+  const { data: teamMembers = [] } = useQuery<User[]>({
+    queryKey: currentUser?.role === 'admin' 
+      ? ["/api/users?includeInactive=false"]
+      : ["/api/users", currentUser?.id, "reports"],
+    queryFn: async () => {
+      if (!currentUser) return [];
+      
+      // Admins can see all users
+      if (currentUser.role === 'admin') {
+        const response = await apiRequest("GET", "/api/users?includeInactive=false");
+        if (!response.ok) throw new Error('Failed to fetch users');
+        const allUsers = await response.json() as User[];
+        // Filter out the current user
+        return allUsers.filter(u => u.id !== currentUser.id);
+      }
+      
+      // Managers see their direct reports
+      if (currentUser.role === 'manager') {
+        const response = await apiRequest("GET", `/api/users/${currentUser.id}/reports`);
+        if (!response.ok) throw new Error('Failed to fetch reports');
+        return response.json();
+      }
+      
+      return [];
+    },
+    enabled: !!currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager'),
+  });
+
+  // Fetch vacations - for now just fetch current user's vacations
   const { data: vacations = [], refetch: refetchVacations } = useQuery<Vacation[]>({
     queryKey: ["/api/vacations"],
     enabled: !!currentUser,
   });
+  
+  // Fetch all team member vacations for managers and admins
+  const { data: allTeamVacations = [] } = useQuery<Vacation[]>({
+    queryKey: ["/api/vacations/team", teamMembers.map(m => m.id).join(',')],
+    queryFn: async () => {
+      if (!currentUser || !teamMembers.length) return [];
+      
+      const allVacations: Vacation[] = [];
+      
+      // For admins, we can potentially fetch all at once
+      // For now, fetch individually (this could be optimized later)
+      for (const member of teamMembers) {
+        try {
+          const response = await apiRequest("GET", `/api/vacations?userId=${member.id}`);
+          if (response.ok) {
+            const memberVacations = await response.json() as Vacation[];
+            allVacations.push(...memberVacations);
+          }
+        } catch (error) {
+          console.error(`Failed to fetch vacations for ${member.name}:`, error);
+        }
+      }
+      
+      return allVacations;
+    },
+    enabled: !!currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager') && teamMembers.length > 0,
+  });
+  
+  // Combine current user vacations with team vacations
+  const allVacations = useMemo(() => {
+    if (currentUser?.role === 'admin' || currentUser?.role === 'manager') {
+      // Combine and deduplicate
+      const combined = [...vacations, ...allTeamVacations];
+      return combined.filter((v, index, self) =>
+        index === self.findIndex((t) => t.id === v.id)
+      );
+    }
+    return vacations;
+  }, [vacations, allTeamVacations, currentUser]);
 
   // Fetch current organization data for due date calculation
   const { data: currentOrganization } = useQuery({
@@ -203,30 +273,39 @@ export default function Checkins() {
 
   // Vacation management mutations
   const markVacationMutation = useMutation({
-    mutationFn: async ({ weekOf, note }: { weekOf: Date, note?: string }) => {
+    mutationFn: async ({ weekOf, note, targetUserId }: { weekOf: Date, note?: string, targetUserId?: string }) => {
       const response = await apiRequest("POST", "/api/vacations", {
         weekOf: weekOf.toISOString(),
         note: note || undefined,
+        targetUserId: targetUserId || undefined,
       });
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       refetchVacations();
       queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser?.id, "current-checkin"] });
       queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser?.id, "previous-checkin"] });
+      
+      const targetUser = variables.targetUserId && variables.targetUserId !== currentUser?.id
+        ? teamMembers.find(u => u.id === variables.targetUserId)
+        : null;
+      
       toast({
         title: "Vacation marked",
-        description: "This week has been marked as vacation.",
+        description: targetUser 
+          ? `${targetUser.name} has been marked on vacation for this week.`
+          : "This week has been marked as vacation.",
       });
       setShowVacationDialog(false);
       setVacationNote("");
+      setSelectedTeamMemberId("");
     },
     onError: (error) => {
       toast({
         variant: "destructive",
         title: "Failed to mark vacation",
-        description: "There was an error marking your vacation. Please try again.",
+        description: "There was an error marking vacation. Please try again.",
       });
     },
   });
@@ -508,6 +587,57 @@ export default function Checkins() {
                       </Button>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Team Member Vacation Management - Only for managers and admins */}
+              {currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager') && teamMembers.length > 0 && (
+                <div className="border-t pt-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Users className="w-4 h-4" />
+                    <p className="text-sm font-medium">Team Member Vacation Management</p>
+                  </div>
+                  
+                  {/* Show team members currently on vacation */}
+                  {(() => {
+                    const teamMembersOnVacation = teamMembers.filter(member => 
+                      allVacations.some(v => 
+                        v.userId === member.id && 
+                        isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 1 })
+                      )
+                    );
+                    
+                    if (teamMembersOnVacation.length > 0) {
+                      return (
+                        <div className="mb-3 p-2 bg-muted/50 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-1">Currently on vacation:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {teamMembersOnVacation.map(member => (
+                              <Badge key={member.id} variant="secondary" className="text-xs">
+                                {member.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedVacationWeek(currentWeekStart);
+                      setShowVacationDialog(true);
+                      setSelectedTeamMemberId(""); // Open dialog for team member selection
+                    }}
+                    data-testid="button-mark-team-vacation"
+                    className="w-full"
+                  >
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    Mark Team Member on Vacation
+                  </Button>
                 </div>
               )}
 
@@ -1286,7 +1416,13 @@ export default function Checkins() {
         />
 
         {/* Vacation Dialog */}
-        <Dialog open={showVacationDialog} onOpenChange={setShowVacationDialog}>
+        <Dialog open={showVacationDialog} onOpenChange={(open) => {
+          setShowVacationDialog(open);
+          if (!open) {
+            setSelectedTeamMemberId("");
+            setVacationNote("");
+          }
+        }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -1294,11 +1430,50 @@ export default function Checkins() {
                 Mark Vacation Week
               </DialogTitle>
               <DialogDescription>
-                Mark the week ending {selectedVacationWeek && format(getCheckinWeekFriday(selectedVacationWeek), 'MMMM d, yyyy')} as vacation
+                {selectedTeamMemberId && selectedTeamMemberId !== currentUser?.id
+                  ? `Mark team member on vacation for the week ending ${selectedVacationWeek && format(getCheckinWeekFriday(selectedVacationWeek), 'MMMM d, yyyy')}`
+                  : `Mark the week ending ${selectedVacationWeek && format(getCheckinWeekFriday(selectedVacationWeek), 'MMMM d, yyyy')} as vacation`
+                }
               </DialogDescription>
             </DialogHeader>
             
             <div className="space-y-4 py-4">
+              {/* Team Member Selection - Only show for managers/admins */}
+              {currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager') && teamMembers.length > 0 && (
+                <div>
+                  <Label htmlFor="team-member-select">Select Person</Label>
+                  <Select
+                    value={selectedTeamMemberId || currentUser.id}
+                    onValueChange={setSelectedTeamMemberId}
+                  >
+                    <SelectTrigger id="team-member-select" data-testid="select-team-member">
+                      <SelectValue placeholder="Select team member">
+                        {selectedTeamMemberId 
+                          ? selectedTeamMemberId === currentUser.id 
+                            ? `${currentUser.name} (Self)`
+                            : teamMembers.find(u => u.id === selectedTeamMemberId)?.name || "Unknown"
+                          : currentUser.id && `${currentUser.name} (Self)`
+                        }
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={currentUser.id} data-testid={`select-item-self`}>
+                        {currentUser.name} (Self)
+                      </SelectItem>
+                      {teamMembers.map(member => (
+                        <SelectItem 
+                          key={member.id} 
+                          value={member.id}
+                          data-testid={`select-item-${member.id}`}
+                        >
+                          {member.name} {member.role === 'manager' && '(Manager)'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
               <div>
                 <Label htmlFor="vacation-note">Note (optional)</Label>
                 <Textarea
@@ -1318,6 +1493,7 @@ export default function Checkins() {
                 onClick={() => {
                   setShowVacationDialog(false);
                   setVacationNote("");
+                  setSelectedTeamMemberId("");
                 }}
                 data-testid="button-cancel-vacation"
               >
@@ -1326,9 +1502,11 @@ export default function Checkins() {
               <Button
                 onClick={() => {
                   if (selectedVacationWeek) {
+                    const targetUserId = selectedTeamMemberId || currentUser?.id;
                     markVacationMutation.mutate({
                       weekOf: selectedVacationWeek,
                       note: vacationNote || undefined,
+                      targetUserId: targetUserId !== currentUser?.id ? targetUserId : undefined,
                     });
                   }
                 }}
@@ -1336,7 +1514,12 @@ export default function Checkins() {
                 data-testid="button-confirm-vacation"
               >
                 <Plane className="w-4 h-4 mr-2" />
-                {markVacationMutation.isPending ? "Marking..." : "Mark as Vacation"}
+                {markVacationMutation.isPending 
+                  ? "Marking..." 
+                  : selectedTeamMemberId && selectedTeamMemberId !== currentUser?.id
+                    ? `Mark ${teamMembers.find(u => u.id === selectedTeamMemberId)?.name || "Team Member"} as on Vacation`
+                    : "Mark as Vacation"
+                }
               </Button>
             </DialogFooter>
           </DialogContent>

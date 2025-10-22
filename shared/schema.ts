@@ -1010,6 +1010,7 @@ export const insertVacationSchema = createInsertSchema(vacations).omit({
 }).extend({
   weekOf: z.coerce.date(),
   note: z.string().max(500, "Vacation note too long").optional(),
+  targetUserId: z.string().optional(), // For managers/admins to mark others on vacation
 });
 
 export const insertBillingEventSchema = createInsertSchema(billingEvents).omit({
