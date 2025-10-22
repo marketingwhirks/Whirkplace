@@ -340,11 +340,10 @@ const tableDefinitions = {
   vacations: {
     columns: [
       { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
-      { name: 'user_id', def: 'VARCHAR NOT NULL' },
       { name: 'organization_id', def: 'VARCHAR NOT NULL' },
-      { name: 'start_date', def: 'DATE NOT NULL' },
-      { name: 'end_date', def: 'DATE NOT NULL' },
-      { name: 'reason', def: 'TEXT' },
+      { name: 'user_id', def: 'VARCHAR NOT NULL' },
+      { name: 'week_of', def: 'TIMESTAMP NOT NULL' },
+      { name: 'note', def: 'TEXT' },
       { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
     ]
   },
