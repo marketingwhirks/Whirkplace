@@ -480,218 +480,6 @@ export default function Checkins() {
             </AlertDescription>
           </Alert>
         )}
-
-        {/* Vacation Management Section */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plane className="w-5 h-5" />
-              Vacation Management
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {/* Current Week Vacation Status */}
-              <div className="flex items-center justify-between p-4 rounded-lg border">
-                <div>
-                  <p className="font-medium">Current Week</p>
-                  <p className="text-sm text-muted-foreground">
-                    Week ending {format(getCheckinWeekFriday(currentWeekStart), 'MMMM d, yyyy')}
-                  </p>
-                  {currentWeekVacation && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <Badge variant="secondary" className="gap-1">
-                        <Plane className="w-3 h-3" />
-                        On Vacation
-                      </Badge>
-                      {currentWeekVacation.note && (
-                        <span className="text-sm text-muted-foreground">{currentWeekVacation.note}</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  {currentWeekVacation ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => unmarkVacationMutation.mutate(currentWeekStart)}
-                      disabled={unmarkVacationMutation.isPending}
-                      data-testid="button-unmark-current-vacation"
-                    >
-                      <XCircle className="w-4 h-4 mr-2" />
-                      Remove Vacation
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedVacationWeek(currentWeekStart);
-                        setShowVacationDialog(true);
-                      }}
-                      disabled={!!currentWeekCheckin}
-                      data-testid="button-mark-current-vacation"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Mark as Vacation
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Previous Week Vacation Status (if no check-in submitted) */}
-              {!previousCheckin && (
-                <div className="flex items-center justify-between p-4 rounded-lg border">
-                  <div>
-                    <p className="font-medium">Previous Week</p>
-                    <p className="text-sm text-muted-foreground">
-                      Week ending {format(getCheckinWeekFriday(previousWeekStart), 'MMMM d, yyyy')}
-                    </p>
-                    {previousWeekVacation && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <Badge variant="secondary" className="gap-1">
-                          <Plane className="w-3 h-3" />
-                          Was on Vacation
-                        </Badge>
-                        {previousWeekVacation.note && (
-                          <span className="text-sm text-muted-foreground">{previousWeekVacation.note}</span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex gap-2">
-                    {previousWeekVacation ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => unmarkVacationMutation.mutate(previousWeekStart)}
-                        disabled={unmarkVacationMutation.isPending}
-                        data-testid="button-unmark-previous-vacation"
-                      >
-                        <XCircle className="w-4 h-4 mr-2" />
-                        Remove Vacation
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedVacationWeek(previousWeekStart);
-                          setShowVacationDialog(true);
-                        }}
-                        data-testid="button-mark-previous-vacation"
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        Mark as Vacation
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Team Member Vacation Management - Only for managers and admins */}
-              {currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager') && teamMembers.length > 0 && (
-                <div className="border-t pt-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Users className="w-4 h-4" />
-                    <p className="text-sm font-medium">Team Member Vacation Management</p>
-                  </div>
-                  
-                  {/* Show team members currently on vacation */}
-                  {(() => {
-                    const teamMembersOnVacation = teamMembers.filter(member => 
-                      allVacations.some(v => 
-                        v.userId === member.id && 
-                        isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 1 })
-                      )
-                    );
-                    
-                    if (teamMembersOnVacation.length > 0) {
-                      return (
-                        <div className="mb-3 p-2 bg-muted/50 rounded-lg">
-                          <p className="text-xs text-muted-foreground mb-1">Currently on vacation:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {teamMembersOnVacation.map(member => (
-                              <Badge key={member.id} variant="secondary" className="text-xs">
-                                {member.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-                  
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setSelectedVacationWeek(currentWeekStart);
-                      setShowVacationDialog(true);
-                      setSelectedTeamMemberId(""); // Open dialog for team member selection
-                    }}
-                    data-testid="button-mark-team-vacation"
-                    className="w-full"
-                  >
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Mark Team Member on Vacation
-                  </Button>
-                </div>
-              )}
-
-              {/* Upcoming Weeks - Allow marking future vacations */}
-              <div className="border-t pt-4">
-                <p className="text-sm font-medium mb-3">Plan Future Vacations</p>
-                <div className="space-y-2">
-                  {[1, 2, 3, 4].map(weeksAhead => {
-                    const futureWeek = addWeeks(currentWeekStart, weeksAhead);
-                    const futureVacation = vacations.find(v => 
-                      isSameWeek(new Date(v.weekOf), futureWeek, { weekStartsOn: 1 })
-                    );
-                    return (
-                      <div key={weeksAhead} className="flex items-center justify-between py-2">
-                        <div className="text-sm">
-                          Week ending {format(getCheckinWeekFriday(futureWeek), 'MMM d')}
-                          {futureVacation && (
-                            <Badge variant="secondary" className="ml-2 gap-1">
-                              <Plane className="w-3 h-3" />
-                              Vacation Planned
-                            </Badge>
-                          )}
-                        </div>
-                        {futureVacation ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => unmarkVacationMutation.mutate(futureWeek)}
-                            disabled={unmarkVacationMutation.isPending}
-                            data-testid={`button-unmark-future-vacation-${weeksAhead}`}
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setSelectedVacationWeek(futureWeek);
-                              setShowVacationDialog(true);
-                            }}
-                            data-testid={`button-mark-future-vacation-${weeksAhead}`}
-                          >
-                            <Plus className="w-4 h-4" />
-                          </Button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
         
         {/* Late Check-in Alert - Show if previous week's check-in is missing and NOT on vacation */}
         {!previousCheckin && !previousWeekVacation && activeQuestions.length > 0 && (
@@ -1134,6 +922,189 @@ export default function Checkins() {
             )}
           </TabsContent>
         </Tabs>
+
+        {/* Vacation Management Section - Compact */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Plane className="w-4 h-4" />
+              Vacation Management
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="space-y-3">
+              {/* Current and Previous Week - Compact */}
+              <div className="grid gap-2">
+                {/* Current Week */}
+                <div className="flex items-center justify-between p-2 rounded-lg border bg-background">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">Current Week</span>
+                    {currentWeekVacation && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Plane className="w-3 h-3 mr-1" />
+                        On Vacation
+                      </Badge>
+                    )}
+                  </div>
+                  {currentWeekVacation ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => unmarkVacationMutation.mutate(currentWeekStart)}
+                      disabled={unmarkVacationMutation.isPending}
+                      data-testid="button-unmark-current-vacation"
+                    >
+                      <XCircle className="w-3 h-3" />
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedVacationWeek(currentWeekStart);
+                        setShowVacationDialog(true);
+                      }}
+                      disabled={!!currentWeekCheckin}
+                      data-testid="button-mark-current-vacation"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </Button>
+                  )}
+                </div>
+
+                {/* Previous Week (if no check-in) */}
+                {!previousCheckin && (
+                  <div className="flex items-center justify-between p-2 rounded-lg border bg-background">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">Previous Week</span>
+                      {previousWeekVacation && (
+                        <Badge variant="secondary" className="text-xs">
+                          <Plane className="w-3 h-3 mr-1" />
+                          Was on Vacation
+                        </Badge>
+                      )}
+                    </div>
+                    {previousWeekVacation ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => unmarkVacationMutation.mutate(previousWeekStart)}
+                        disabled={unmarkVacationMutation.isPending}
+                        data-testid="button-unmark-previous-vacation"
+                      >
+                        <XCircle className="w-3 h-3" />
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedVacationWeek(previousWeekStart);
+                          setShowVacationDialog(true);
+                        }}
+                        data-testid="button-mark-previous-vacation"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Future Vacations - Compact Grid */}
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Future Weeks</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[1, 2, 3, 4].map(weeksAhead => {
+                    const futureWeek = addWeeks(currentWeekStart, weeksAhead);
+                    const futureVacation = vacations.find(v => 
+                      isSameWeek(new Date(v.weekOf), futureWeek, { weekStartsOn: 1 })
+                    );
+                    return (
+                      <div key={weeksAhead} className="flex items-center justify-between p-2 rounded-lg border bg-background">
+                        <span className="text-xs">
+                          {format(getCheckinWeekFriday(futureWeek), 'MMM d')}
+                          {futureVacation && (
+                            <Plane className="w-3 h-3 ml-1 inline text-muted-foreground" />
+                          )}
+                        </span>
+                        {futureVacation ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => unmarkVacationMutation.mutate(futureWeek)}
+                            disabled={unmarkVacationMutation.isPending}
+                            data-testid={`button-unmark-future-vacation-${weeksAhead}`}
+                            className="h-6 w-6 p-0"
+                          >
+                            <XCircle className="w-3 h-3" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedVacationWeek(futureWeek);
+                              setShowVacationDialog(true);
+                            }}
+                            data-testid={`button-mark-future-vacation-${weeksAhead}`}
+                            className="h-6 w-6 p-0"
+                          >
+                            <Plus className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Team Member Management - Compact */}
+              {currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager') && teamMembers.length > 0 && (
+                <div className="pt-2 border-t">
+                  {/* Show team members on vacation */}
+                  {(() => {
+                    const teamMembersOnVacation = teamMembers.filter(member => 
+                      allVacations.some(v => 
+                        v.userId === member.id && 
+                        isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 1 })
+                      )
+                    );
+                    
+                    if (teamMembersOnVacation.length > 0) {
+                      return (
+                        <div className="mb-2 text-xs">
+                          <span className="text-muted-foreground">Team on vacation: </span>
+                          {teamMembersOnVacation.map((member, index) => (
+                            <span key={member.id}>
+                              {member.name}{index < teamMembersOnVacation.length - 1 ? ', ' : ''}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedVacationWeek(currentWeekStart);
+                      setShowVacationDialog(true);
+                      setSelectedTeamMemberId("");
+                    }}
+                    data-testid="button-mark-team-vacation"
+                    className="w-full h-8 text-xs"
+                  >
+                    <UserPlus className="w-3 h-3 mr-1" />
+                    Mark Team Member on Vacation
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Late Check-in Dialog for Previous Week */}
         <Dialog open={showPreviousWeekDialog} onOpenChange={setShowPreviousWeekDialog}>
