@@ -140,7 +140,7 @@ export default function DemoLoginPage() {
       if (response.ok) {
         const data = await response.json();
         
-        // Store JWT token for API calls
+        // Store demo token and user info for API calls
         if (data.token) {
           localStorage.setItem('demo_token', data.token);
           localStorage.setItem('demo_user', JSON.stringify(data.user));
@@ -152,8 +152,8 @@ export default function DemoLoginPage() {
           description: `Logged in as ${data.user.name}` 
         });
         
-        // Redirect to dashboard with organization
-        window.location.href = '/dashboard?org=fictitious-delicious';
+        // Redirect to dashboard
+        window.location.href = '/dashboard';
       } else {
         const error = await response.json();
         toast({ 
@@ -194,7 +194,7 @@ export default function DemoLoginPage() {
       if (response.ok) {
         const data = await response.json();
         
-        // Store JWT token for API calls
+        // Store demo token and user info for API calls
         if (data.token) {
           localStorage.setItem('demo_token', data.token);
           localStorage.setItem('demo_user', JSON.stringify(data.user));
@@ -206,8 +206,8 @@ export default function DemoLoginPage() {
           description: `Logged in as ${data.user.name}` 
         });
         
-        // Redirect to dashboard with organization
-        window.location.href = '/dashboard?org=fictitious-delicious';
+        // Redirect to dashboard
+        window.location.href = '/dashboard';
       } else {
         const error = await response.json();
         toast({ 
