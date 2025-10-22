@@ -318,6 +318,7 @@ export interface IStorage {
   // Post Reactions
   addReaction(reaction: InsertPostReaction): Promise<PostReaction>;
   removeReaction(id: string): Promise<boolean>;
+  getReactionById(id: string): Promise<PostReaction | undefined>;
   getReactionsByPost(organizationId: string, postId: string, postType: 'win' | 'shoutout'): Promise<PostReaction[]>;
   getUserReactionsByPost(userId: string, postId: string, postType: 'win' | 'shoutout'): Promise<PostReaction[]>;
 
@@ -3670,6 +3671,15 @@ export class DatabaseStorage implements IStorage {
   async removeReaction(id: string): Promise<boolean> {
     const result = await db.delete(postReactions).where(eq(postReactions.id, id));
     return true;
+  }
+
+  async getReactionById(id: string): Promise<PostReaction | undefined> {
+    const [reaction] = await db
+      .select()
+      .from(postReactions)
+      .where(eq(postReactions.id, id))
+      .limit(1);
+    return reaction;
   }
 
   async getReactionsByPost(organizationId: string, postId: string, postType: 'win' | 'shoutout'): Promise<PostReaction[]> {
@@ -8135,6 +8145,10 @@ export class MemStorage implements IStorage {
 
   async removeReaction(id: string): Promise<boolean> {
     return this.reactionsMap.delete(id);
+  }
+
+  async getReactionById(id: string): Promise<PostReaction | undefined> {
+    return this.reactionsMap.get(id);
   }
 
   async getReactionsByPost(organizationId: string, postId: string, postType: 'win' | 'shoutout'): Promise<PostReaction[]> {

@@ -17,6 +17,7 @@ interface ReactionGroup {
   count: number;
   users: Array<{ id: string; name: string }>;
   hasUserReacted: boolean;
+  userReactionId: string | null; // Track the user's reaction ID for this emoji
 }
 
 interface EmojiReactionsProps {
@@ -78,6 +79,7 @@ export function EmojiReactions({
             count: 1,
             users: [{ id: currentUser.id, name: currentUser.name }],
             hasUserReacted: true,
+            userReactionId: "temp-" + Date.now(), // Temporary ID for optimistic update
           });
         }
 
@@ -110,10 +112,39 @@ export function EmojiReactions({
       return response;
     },
     onMutate: async (reactionId) => {
-      // For optimistic update, we need to find which emoji this reaction belongs to
-      // This is a simplified version - in production you'd track reaction IDs
+      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: [`/api/${postTypeForApi}/${postId}/reactions`] });
+      
+      // Snapshot previous value
       const previousReactions = queryClient.getQueryData<ReactionGroup[]>([`/api/${postTypeForApi}/${postId}/reactions`]);
+      
+      // Optimistically update by removing the user's reaction
+      if (previousReactions && currentUser) {
+        const newReactions = previousReactions.map(reaction => {
+          // Find the reaction group where user has reacted with this ID
+          if (reaction.userReactionId === reactionId) {
+            // Remove current user from the users list
+            const updatedUsers = reaction.users.filter(u => u.id !== currentUser.id);
+            
+            // If this was the last user, the reaction group should be removed
+            if (updatedUsers.length === 0) {
+              return null; // Will be filtered out
+            }
+            
+            return {
+              ...reaction,
+              count: reaction.count - 1,
+              users: updatedUsers,
+              hasUserReacted: false,
+              userReactionId: null,
+            };
+          }
+          return reaction;
+        }).filter(Boolean); // Remove null entries
+        
+        queryClient.setQueryData([`/api/${postTypeForApi}/${postId}/reactions`], newReactions);
+      }
+      
       return { previousReactions };
     },
     onError: (err, reactionId, context) => {
@@ -134,13 +165,11 @@ export function EmojiReactions({
   const handleEmojiClick = (emoji: string) => {
     const existingReaction = reactions.find(r => r.emoji === emoji && r.hasUserReacted);
     
-    if (existingReaction) {
-      // User has already reacted with this emoji - we don't have the reaction ID
-      // In a real implementation, we'd track reaction IDs properly
-      toast({
-        description: "You've already reacted with this emoji",
-      });
-    } else {
+    if (existingReaction && existingReaction.userReactionId) {
+      // User has already reacted with this emoji - remove it
+      removeReactionMutation.mutate(existingReaction.userReactionId);
+    } else if (!existingReaction) {
+      // User hasn't reacted with this emoji - add it
       addReactionMutation.mutate(emoji);
     }
     
@@ -148,13 +177,11 @@ export function EmojiReactions({
   };
 
   const handleReactionToggle = (reaction: ReactionGroup) => {
-    if (reaction.hasUserReacted) {
-      // In a real implementation, we'd have the reaction ID to remove
-      // For now, just show a message
-      toast({
-        description: "Click the emoji again to remove your reaction",
-      });
+    if (reaction.hasUserReacted && reaction.userReactionId) {
+      // User has reacted - remove their reaction
+      removeReactionMutation.mutate(reaction.userReactionId);
     } else {
+      // User hasn't reacted - add their reaction
       addReactionMutation.mutate(reaction.emoji);
     }
   };

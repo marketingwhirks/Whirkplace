@@ -7623,7 +7623,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             emoji: reaction.emoji,
             count: 0,
             users: [],
-            hasUserReacted: false
+            hasUserReacted: false,
+            userReactionId: null // Track the current user's reaction ID
           };
         }
         
@@ -7637,6 +7638,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         if (reaction.userId === req.currentUser!.id) {
           acc[reaction.emoji].hasUserReacted = true;
+          acc[reaction.emoji].userReactionId = reaction.id; // Store the reaction ID
         }
         
         acc[reaction.emoji].count++;
@@ -7679,23 +7681,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/reactions/:id", requireAuth(), async (req, res) => {
     try {
-      // First check if the reaction exists and belongs to the user
-      const reactions = await storage.getUserReactionsByPost(req.currentUser!.id, req.params.id, 'win');
-      const winReaction = reactions.find(r => r.id === req.params.id);
+      // Get the reaction to verify it exists and belongs to the user
+      const reaction = await storage.getReactionById(req.params.id);
       
-      if (!winReaction) {
-        // Check shoutouts if not found in wins
-        const shoutoutReactions = await storage.getUserReactionsByPost(req.currentUser!.id, req.params.id, 'shoutout');
-        const shoutoutReaction = shoutoutReactions.find(r => r.id === req.params.id);
-        
-        if (!shoutoutReaction) {
-          return res.status(404).json({ message: "Reaction not found or unauthorized" });
-        }
+      if (!reaction) {
+        return res.status(404).json({ message: "Reaction not found" });
       }
       
+      // Verify the reaction belongs to the current user
+      if (reaction.userId !== req.currentUser!.id) {
+        return res.status(403).json({ message: "Unauthorized to delete this reaction" });
+      }
+      
+      // Delete the reaction
       const deleted = await storage.removeReaction(req.params.id);
       if (!deleted) {
-        return res.status(404).json({ message: "Reaction not found" });
+        return res.status(404).json({ message: "Failed to delete reaction" });
       }
       
       res.status(204).send();
