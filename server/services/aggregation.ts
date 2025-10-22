@@ -377,6 +377,8 @@ export class AggregationService {
           .insert(aggregationWatermarks)
           .values({
             organizationId,
+            aggregationType: 'daily_metrics',
+            lastProcessedDate: initialDate.toISOString().split('T')[0],
             lastProcessedAt: initialDate
           })
           .returning();

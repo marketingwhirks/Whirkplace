@@ -47,6 +47,7 @@ import Header from "@/components/layout/header";
 import { BrandGuideViewer } from "@/components/BrandGuideViewer";
 import { ThemeCustomizer } from "@/components/ThemeCustomizer";
 import { TourProvider } from "@/contexts/TourProvider";
+import { LogoTestPage } from "@/pages/logo-test";
 
 function Router() {
   return (
@@ -82,6 +83,7 @@ function Router() {
             <Route path="/select-organization" component={SelectOrganizationPage} />
             <Route path="/brand-guide" component={BrandGuideViewer} />
             <Route path="/theme-customizer" component={ThemeCustomizer} />
+            <Route path="/logo-test" component={LogoTestPage} />
             <Route component={NotFound} />
           </Switch>
         </main>
