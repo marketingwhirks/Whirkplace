@@ -51,11 +51,20 @@ import {
   Trash2,
   Gift,
   TrendingUp,
+  CalendarIcon,
+  ArrowUp,
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { format, differenceInDays } from "date-fns";
+import { format, differenceInDays, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfQuarter, endOfQuarter } from "date-fns";
+import { cn } from "@/lib/utils";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 // Validation schema for team goal form
 const teamGoalSchema = z.object({
@@ -63,11 +72,17 @@ const teamGoalSchema = z.object({
   description: z.string().max(1000, "Description too long").optional(),
   teamId: z.string().optional(),
   targetValue: z.coerce.number().int().min(1, "Target value must be at least 1"),
-  goalType: z.enum(["weekly", "monthly", "quarterly"]),
+  goalType: z.enum(["weekly", "monthly", "quarterly", "custom"]),
   metric: z.string().min(1, "Metric is required").max(100, "Metric too long"),
   prize: z.string().max(500, "Prize description too long").optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
+});
+
+// Schema for progress update
+const progressUpdateSchema = z.object({
+  currentValue: z.coerce.number().int().min(0, "Progress value must be at least 0"),
+  note: z.string().max(500, "Note too long").optional(),
 });
 
 type TeamGoalFormData = z.infer<typeof teamGoalSchema>;
@@ -104,8 +119,11 @@ export default function TeamGoals() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [celebrationOpen, setCelebrationOpen] = useState(false);
+  const [progressDialogOpen, setProgressDialogOpen] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<TeamGoal | null>(null);
   const [completedGoal, setCompletedGoal] = useState<TeamGoal | null>(null);
+  const [startDate, setStartDate] = useState<Date>();
+  const [endDate, setEndDate] = useState<Date>();
   
   // Add error handling wrapper
   const safeOpenDialog = () => {
@@ -200,6 +218,28 @@ export default function TeamGoals() {
     },
   });
 
+  // Update progress mutation
+  const updateProgressMutation = useMutation({
+    mutationFn: ({ id, progress }: { id: string; progress: number }) =>
+      apiRequest("POST", `/api/team-goals/${id}/progress`, { increment: progress }),
+    onSuccess: () => {
+      toast({
+        title: "Success",
+        description: "Progress updated successfully!",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/team-goals"] });
+      setProgressDialogOpen(false);
+      progressForm.reset();
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to update progress",
+        variant: "destructive",
+      });
+    },
+  });
+
   // Delete goal mutation
   const deleteGoalMutation = useMutation({
     mutationFn: (id: string) =>
@@ -235,6 +275,14 @@ export default function TeamGoals() {
 
   const editForm = useForm<TeamGoalFormData>({
     resolver: zodResolver(teamGoalSchema),
+  });
+
+  const progressForm = useForm<z.infer<typeof progressUpdateSchema>>({
+    resolver: zodResolver(progressUpdateSchema),
+    defaultValues: {
+      currentValue: 0,
+      note: "",
+    },
   });
 
   // Group goals by status
@@ -323,10 +371,34 @@ export default function TeamGoals() {
   const onCreateSubmit = (data: TeamGoalFormData) => {
     console.log("Submitting team goal data:", data);
     
+    let startDate = data.startDate;
+    let endDate = data.endDate;
+    
+    // Calculate dates based on goal type if not custom
+    if (data.goalType !== "custom") {
+      const now = new Date();
+      switch (data.goalType) {
+        case "weekly":
+          startDate = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
+          endDate = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
+          break;
+        case "monthly":
+          startDate = startOfMonth(now).toISOString();
+          endDate = endOfMonth(now).toISOString();
+          break;
+        case "quarterly":
+          startDate = startOfQuarter(now).toISOString();
+          endDate = endOfQuarter(now).toISOString();
+          break;
+      }
+    }
+    
     // Handle "organization" value as no team (organization-wide)
     const submissionData = {
       ...data,
-      teamId: data.teamId === "organization" ? undefined : data.teamId
+      teamId: data.teamId === "organization" ? undefined : data.teamId,
+      startDate,
+      endDate
     };
     
     console.log("Processed submission data:", submissionData);
@@ -372,24 +444,41 @@ export default function TeamGoals() {
                 {goal.description}
               </CardDescription>
             </div>
-            {isTeamLeader && (isAdmin || goal.createdBy === user?.id) && !isCompleted && !isExpired && (
+            {isTeamLeader && !isCompleted && !isExpired && (
               <div className="flex gap-1">
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={() => handleEditGoal(goal)}
-                  data-testid={`button-edit-goal-${goal.id}`}
+                  onClick={() => {
+                    setSelectedGoal(goal);
+                    progressForm.setValue('currentValue', goal.currentValue);
+                    setProgressDialogOpen(true);
+                  }}
+                  title="Update Progress"
+                  data-testid={`button-update-progress-${goal.id}`}
                 >
-                  <Edit className="h-4 w-4" />
+                  <ArrowUp className="h-4 w-4" />
                 </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => deleteGoalMutation.mutate(goal.id)}
-                  data-testid={`button-delete-goal-${goal.id}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                {(isAdmin || goal.createdBy === user?.id) && (
+                  <>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => handleEditGoal(goal)}
+                      data-testid={`button-edit-goal-${goal.id}`}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => deleteGoalMutation.mutate(goal.id)}
+                      data-testid={`button-delete-goal-${goal.id}`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -701,6 +790,7 @@ export default function TeamGoals() {
                           <SelectItem value="weekly">Weekly</SelectItem>
                           <SelectItem value="monthly">Monthly</SelectItem>
                           <SelectItem value="quarterly">Quarterly</SelectItem>
+                          <SelectItem value="custom">Custom Period</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -785,6 +875,100 @@ export default function TeamGoals() {
                   )}
                 />
               </div>
+
+              {/* Date Selection for Custom Period */}
+              {createForm.watch("goalType") === "custom" && (
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={createForm.control}
+                    name="startDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Start Date</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full pl-3 text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value ? (
+                                  format(new Date(field.value), "PPP")
+                                ) : (
+                                  <span>Pick a date</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <CalendarComponent
+                              mode="single"
+                              selected={field.value ? new Date(field.value) : undefined}
+                              onSelect={(date) => field.onChange(date?.toISOString())}
+                              disabled={(date) => date < new Date()}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormDescription>
+                          When the goal period starts
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={createForm.control}
+                    name="endDate"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>End Date</FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full pl-3 text-left font-normal",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value ? (
+                                  format(new Date(field.value), "PPP")
+                                ) : (
+                                  <span>Pick a date</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <CalendarComponent
+                              mode="single"
+                              selected={field.value ? new Date(field.value) : undefined}
+                              onSelect={(date) => field.onChange(date?.toISOString())}
+                              disabled={(date) => {
+                                const startDateValue = createForm.getValues("startDate");
+                                return date < new Date() || (startDateValue ? date < new Date(startDateValue) : false);
+                              }}
+                              initialFocus
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormDescription>
+                          When the goal period ends
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              )}
 
               <FormField
                 control={createForm.control}
@@ -914,6 +1098,104 @@ export default function TeamGoals() {
                   disabled={updateGoalMutation.isPending}
                 >
                   {updateGoalMutation.isPending ? "Updating..." : "Update Goal"}
+                </Button>
+              </div>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Progress Update Dialog */}
+      <Dialog open={progressDialogOpen} onOpenChange={setProgressDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Goal Progress</DialogTitle>
+            <DialogDescription>
+              Update the current progress for "{selectedGoal?.title}"
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedGoal && (
+            <div className="mb-4 p-3 bg-muted rounded-lg">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Current Progress</span>
+                <span className="font-semibold">
+                  {selectedGoal.currentValue} / {selectedGoal.targetValue} {selectedGoal.metric}
+                </span>
+              </div>
+              <Progress value={getProgressPercentage(selectedGoal)} className="h-2 mt-2" />
+            </div>
+          )}
+
+          <Form {...progressForm}>
+            <form
+              onSubmit={progressForm.handleSubmit((data) => {
+                if (selectedGoal) {
+                  const newValue = data.currentValue - selectedGoal.currentValue;
+                  updateProgressMutation.mutate({ 
+                    id: selectedGoal.id, 
+                    progress: newValue 
+                  });
+                }
+              })}
+              className="space-y-4"
+            >
+              <FormField
+                control={progressForm.control}
+                name="currentValue"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>New Progress Value</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="0"
+                        max={selectedGoal?.targetValue}
+                        {...field}
+                        placeholder={`Enter value (0-${selectedGoal?.targetValue})`}
+                        data-testid="input-progress-value"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Enter the new total progress value
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={progressForm.control}
+                name="note"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Note (Optional)</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Add a note about this update..."
+                        {...field}
+                        data-testid="input-progress-note"
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setProgressDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={updateProgressMutation.isPending}
+                  data-testid="button-submit-progress"
+                >
+                  {updateProgressMutation.isPending ? "Updating..." : "Update Progress"}
                 </Button>
               </div>
             </form>
