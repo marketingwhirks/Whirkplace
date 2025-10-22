@@ -328,7 +328,8 @@ const tableDefinitions = {
     columns: [
       { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
       { name: 'from_user_id', def: 'VARCHAR NOT NULL' },
-      { name: 'to_user_id', def: 'VARCHAR NOT NULL' },
+      { name: 'to_user_id', def: 'VARCHAR' },  // Nullable for team shoutouts
+      { name: 'to_team_id', def: 'VARCHAR' },  // Nullable for individual shoutouts
       { name: 'organization_id', def: 'VARCHAR NOT NULL' },
       { name: 'message', def: 'TEXT NOT NULL' },
       { name: 'values', def: "TEXT[] NOT NULL DEFAULT '{}'" },
