@@ -1382,7 +1382,33 @@ export default function Dashboard() {
                   <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400">
                     <AlertCircle className="w-5 h-5" />
                     <p className="text-sm font-medium">
-                      Your weekly check-in is due. Take a moment to share how you're feeling.
+                      {(() => {
+                        // Calculate due date for bottom notification
+                        const currentDueDate = currentOrganization ? getCheckinDueDate(new Date(), currentOrganization) : null;
+                        
+                        if (!currentDueDate) {
+                          return "Your weekly check-in is due. Take a moment to share how you're feeling.";
+                        }
+                        
+                        if (isToday(currentDueDate)) {
+                          // Due today
+                          return `Due today by ${format(currentDueDate, 'h:mm a')}. Take a moment to share how you're feeling.`;
+                        } else if (isPast(currentDueDate)) {
+                          // Past due
+                          return `Was due ${format(currentDueDate, 'MMMM d')} at ${format(currentDueDate, 'h:mm a')}. You can still submit it.`;
+                        } else {
+                          // Upcoming
+                          const daysUntilDue = Math.ceil((currentDueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                          
+                          if (daysUntilDue === 1) {
+                            return `Due tomorrow at ${format(currentDueDate, 'h:mm a')}. Take a moment to share how you're feeling.`;
+                          } else if (daysUntilDue <= 7) {
+                            return `Due ${format(currentDueDate, 'EEEE')} at ${format(currentDueDate, 'h:mm a')}. Take a moment to share how you're feeling.`;
+                          } else {
+                            return `Due ${format(currentDueDate, 'MMMM d')} at ${format(currentDueDate, 'h:mm a')}. Take a moment to share how you're feeling.`;
+                          }
+                        }
+                      })()}
                     </p>
                   </div>
                   <p className="text-sm text-muted-foreground">
