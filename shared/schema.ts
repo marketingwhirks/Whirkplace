@@ -89,6 +89,7 @@ export const GoalType = {
   WEEKLY: "weekly",
   MONTHLY: "monthly",
   QUARTERLY: "quarterly",
+  CUSTOM: "custom",
 } as const;
 
 export type GoalTypeValue = typeof GoalType[keyof typeof GoalType];
