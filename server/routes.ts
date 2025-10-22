@@ -8069,6 +8069,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/vacations", requireAuth(), async (req, res) => {
     try {
       const currentUser = req.currentUser!;
+      
+      // Log incoming request body for debugging
+      console.log("POST /api/vacations - Request body:", JSON.stringify(req.body));
+      console.log("Current user:", currentUser.id);
+      
       const vacationData = insertVacationSchema.parse(req.body);
       
       // Security: Always use the current user's ID, never trust client data
@@ -8087,6 +8092,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(201).json(vacation);
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.error("Vacation validation error:", JSON.stringify(error.errors, null, 2));
+        console.error("Received body:", JSON.stringify(req.body, null, 2));
         return res.status(400).json({ 
           message: "Invalid vacation data",
           details: error.errors
