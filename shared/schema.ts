@@ -1881,7 +1881,7 @@ export const insertTeamGoalSchema = createInsertSchema(teamGoals).omit({
   title: z.string().min(1, "Title is required").max(200, "Title too long"),
   description: z.string().max(1000, "Description too long").optional(),
   targetValue: z.number().int().min(1, "Target value must be at least 1"),
-  goalType: z.enum(["weekly", "monthly", "quarterly"]),
+  goalType: z.enum(["weekly", "monthly", "quarterly", "custom"]),
   metric: z.string().min(1, "Metric is required").max(100, "Metric too long"),
   prize: z.string().max(500, "Prize description too long").optional(),
   startDate: z.date().optional(),
