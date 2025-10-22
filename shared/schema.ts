@@ -1881,8 +1881,8 @@ export const insertTeamGoalSchema = createInsertSchema(teamGoals).omit({
   goalType: z.enum(["weekly", "monthly", "quarterly"]),
   metric: z.string().min(1, "Metric is required").max(100, "Metric too long"),
   prize: z.string().max(500, "Prize description too long").optional(),
-  startDate: z.date(),
-  endDate: z.date(),
+  startDate: z.date().optional(),
+  endDate: z.date().optional(),
 });
 export type InsertTeamGoal = z.infer<typeof insertTeamGoalSchema>;
 export type TeamGoal = typeof teamGoals.$inferSelect;
