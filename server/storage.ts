@@ -3664,7 +3664,13 @@ export class DatabaseStorage implements IStorage {
       return existing[0];
     }
 
-    const [newReaction] = await db.insert(postReactions).values(reaction).returning();
+    // Explicitly generate ID to ensure it's not null
+    const reactionWithId = {
+      ...reaction,
+      id: randomUUID(),
+    };
+
+    const [newReaction] = await db.insert(postReactions).values(reactionWithId).returning();
     return newReaction;
   }
 
