@@ -1369,7 +1369,7 @@ export const oneOnOnes = pgTable("one_on_ones", {
   participantOneId: varchar("participant_one_id").notNull(), // Usually manager
   participantTwoId: varchar("participant_two_id").notNull(), // Usually direct report
   scheduledAt: timestamp("scheduled_at").notNull(),
-  status: text("status").notNull().default("scheduled"), // scheduled, completed, cancelled, rescheduled
+  status: text("status").notNull().default("scheduled"), // scheduled, completed, cancelled, rescheduled, skipped
   agenda: text("agenda"),
   notes: text("notes"),
   actionItems: jsonb("action_items").notNull().default([]), // Array of action items

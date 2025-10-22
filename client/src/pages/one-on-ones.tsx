@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare, CalendarDays, MapPin, Repeat, Star, Target, AlertCircle, FileText, CheckCircle2, Download } from "lucide-react";
+import { Calendar, Plus, Clock, CheckSquare, User, Filter, Search, ChevronDown, MessageSquare, CalendarDays, MapPin, Repeat, Star, Target, AlertCircle, FileText, CheckCircle2, Download, MoreVertical, Edit, SkipForward, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,8 @@ import {
   DropdownMenu, 
   DropdownMenuContent, 
   DropdownMenuItem, 
-  DropdownMenuTrigger 
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
 import { 
   Dialog, 
@@ -1248,10 +1249,12 @@ function ScheduleMeetingDialog({ trigger }: { trigger: React.ReactNode }) {
 function MeetingCard({ meeting }: { meeting: OneOnOneMeeting }) {
   const { toast } = useToast();
   const [detailOpen, setDetailOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
   const scheduledDate = typeof meeting.scheduledAt === 'string' 
     ? parseISO(meeting.scheduledAt) 
     : new Date(meeting.scheduledAt);
   const isUpcoming = scheduledDate > new Date();
+  const isSkipped = meeting.status === "skipped";
   
   // Mutation for sending meeting report to Slack
   const sendToSlackMutation = useMutation({
@@ -1270,6 +1273,159 @@ function MeetingCard({ meeting }: { meeting: OneOnOneMeeting }) {
       });
     },
   });
+  
+  // Mutation for canceling meeting
+  const cancelMeetingMutation = useMutation({
+    mutationFn: () => apiRequest("DELETE", `/api/one-on-ones/${meeting.id}`),
+    onSuccess: () => {
+      toast({
+        title: "Meeting cancelled",
+        description: "The meeting has been cancelled and removed.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/one-on-ones"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to cancel meeting",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Mutation for skipping meeting
+  const skipMeetingMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/one-on-ones/${meeting.id}/skip`),
+    onSuccess: () => {
+      toast({
+        title: "Meeting skipped",
+        description: "The meeting has been marked as skipped.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/one-on-ones"] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to skip meeting",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Mutation for updating meeting
+  const updateMeetingMutation = useMutation({
+    mutationFn: (data: Partial<OneOnOne>) => 
+      apiRequest("PUT", `/api/one-on-ones/${meeting.id}`, data),
+    onSuccess: () => {
+      toast({
+        title: "Meeting updated",
+        description: "The meeting details have been updated successfully.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/one-on-ones"] });
+      setEditDialogOpen(false);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Failed to update meeting",
+        description: error.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Edit Meeting Dialog Component
+  const EditMeetingDialog = () => {
+    const [editForm, setEditForm] = useState({
+      agenda: meeting.agenda || "",
+      notes: meeting.notes || "",
+      location: meeting.location || "",
+      duration: meeting.duration || 30,
+    });
+    
+    const handleUpdateMeeting = () => {
+      updateMeetingMutation.mutate(editForm);
+    };
+    
+    return (
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Edit Meeting Details</DialogTitle>
+            <DialogDescription>
+              Update the details for this one-on-one meeting.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-agenda">Agenda</Label>
+              <Textarea
+                id="edit-agenda"
+                placeholder="What topics will be discussed?"
+                value={editForm.agenda}
+                onChange={(e) => setEditForm({ ...editForm, agenda: e.target.value })}
+                className="min-h-[80px]"
+                data-testid="textarea-edit-agenda"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="edit-notes">Meeting Notes</Label>
+              <Textarea
+                id="edit-notes"
+                placeholder="Add meeting notes, outcomes, and decisions..."
+                value={editForm.notes}
+                onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                className="min-h-[100px]"
+                data-testid="textarea-edit-notes"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="edit-location">Location</Label>
+              <Input
+                id="edit-location"
+                placeholder="Meeting room, virtual link, or location"
+                value={editForm.location}
+                onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                data-testid="input-edit-location"
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="edit-duration">Duration (minutes)</Label>
+              <Input
+                id="edit-duration"
+                type="number"
+                min="15"
+                max="240"
+                value={editForm.duration}
+                onChange={(e) => setEditForm({ ...editForm, duration: parseInt(e.target.value) || 30 })}
+                data-testid="input-edit-duration"
+              />
+            </div>
+          </div>
+          
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+              disabled={updateMeetingMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleUpdateMeeting}
+              disabled={updateMeetingMutation.isPending}
+              data-testid="button-save-meeting-edit"
+            >
+              {updateMeetingMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  };
   
   return (
     <>
@@ -1305,12 +1461,76 @@ function MeetingCard({ meeting }: { meeting: OneOnOneMeeting }) {
                 )}
               </div>
             </div>
-            <Badge 
-              variant={isUpcoming ? "default" : "secondary"} 
-              className={isUpcoming ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400" : ""}
-            >
-              {isUpcoming ? "Upcoming" : "Completed"}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <Badge 
+                variant={
+                  isSkipped ? "outline" : 
+                  isUpcoming ? "default" : 
+                  "secondary"
+                } 
+                className={
+                  isSkipped ? "border-yellow-500 text-yellow-700 dark:text-yellow-400" :
+                  isUpcoming ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400" : 
+                  ""
+                }
+              >
+                {isSkipped ? "Skipped" : isUpcoming ? "Upcoming" : "Completed"}
+              </Badge>
+              
+              {/* Actions Dropdown Menu */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <Button variant="ghost" size="icon" data-testid={`button-actions-${meeting.id}`}>
+                    <MoreVertical className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditDialogOpen(true);
+                    }}
+                    data-testid={`menu-edit-${meeting.id}`}
+                  >
+                    <Edit className="w-4 h-4 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                  
+                  {isUpcoming && !isSkipped && (
+                    <>
+                      <DropdownMenuItem 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          skipMeetingMutation.mutate();
+                        }}
+                        disabled={skipMeetingMutation.isPending}
+                        data-testid={`menu-skip-${meeting.id}`}
+                      >
+                        <SkipForward className="w-4 h-4 mr-2" />
+                        Skip
+                      </DropdownMenuItem>
+                      
+                      <DropdownMenuSeparator />
+                      
+                      <DropdownMenuItem 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm("Are you sure you want to cancel this meeting? This action cannot be undone.")) {
+                            cancelMeetingMutation.mutate();
+                          }
+                        }}
+                        disabled={cancelMeetingMutation.isPending}
+                        className="text-destructive"
+                        data-testid={`menu-cancel-${meeting.id}`}
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Cancel
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </CardHeader>
         
@@ -1393,6 +1613,9 @@ function MeetingCard({ meeting }: { meeting: OneOnOneMeeting }) {
         open={detailOpen}
         onOpenChange={setDetailOpen}
       />
+      
+      {/* Edit Meeting Dialog */}
+      <EditMeetingDialog />
     </>
   );
 }

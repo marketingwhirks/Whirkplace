@@ -11040,6 +11040,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Skip a one-on-one meeting (mark as skipped but keep the record)
+  app.patch("/api/one-on-ones/:id/skip", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
+    try {
+      // Get existing meeting to verify permissions
+      const existingMeeting = await storage.getOneOnOne(req.orgId, req.params.id);
+      if (!existingMeeting) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      // Check if user has access to update this meeting
+      const hasAccess = await canAccessOneOnOne(
+        req.orgId!, 
+        req.userId!, 
+        req.currentUser!.role, 
+        req.currentUser!.teamId, 
+        existingMeeting
+      );
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Update the meeting status to skipped
+      const updatedOneOnOne = await storage.updateOneOnOne(req.orgId, req.params.id, {
+        status: "skipped"
+      });
+      
+      if (!updatedOneOnOne) {
+        return res.status(404).json({ message: "One-on-one not found" });
+      }
+      
+      res.json(updatedOneOnOne);
+    } catch (error) {
+      console.error("PATCH /api/one-on-ones/:id/skip - Error:", error);
+      res.status(500).json({ message: "Failed to skip one-on-one" });
+    }
+  });
+
   // Recurring meeting series management endpoints
   app.get("/api/one-on-ones/series/:seriesId", requireAuth(), requireFeatureAccess('one_on_ones'), async (req, res) => {
     try {
