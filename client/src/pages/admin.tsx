@@ -144,6 +144,11 @@ export default function Admin() {
   
   // Announcement state
   const [showAnnouncementDialog, setShowAnnouncementDialog] = useState(false);
+  
+  // Slack testing state
+  const [slackTestUser, setSlackTestUser] = useState<string>("");
+  const [slackConnectionStatus, setSlackConnectionStatus] = useState<any>(null);
+  const [testingSlack, setTestingSlack] = useState(false);
 
   const { data: currentUser, actualUser, canSwitchRoles } = useViewAsRole();
 
@@ -725,6 +730,83 @@ export default function Admin() {
         variant: "destructive",
         title: "Failed to seed question bank",
         description: error.message || "An error occurred while seeding the question bank.",
+      });
+    },
+  });
+
+  // Slack testing mutations
+  const testSlackConnectionMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("GET", "/api/slack/test-connection");
+      if (!response.ok) {
+        const error = await response.json();
+        throw error;
+      }
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      setSlackConnectionStatus(data);
+      toast({
+        title: data.success ? "Slack Connected" : "Connection Issues",
+        description: data.message || "Slack connection test completed",
+        variant: data.success ? "default" : "destructive",
+      });
+    },
+    onError: (error: any) => {
+      setSlackConnectionStatus({ success: false, message: error.message });
+      toast({
+        variant: "destructive",
+        title: "Connection Test Failed",
+        description: error.message || "Failed to test Slack connection",
+      });
+    },
+  });
+
+  const testWeeklyRemindersMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/slack/test-weekly-reminders", {});
+      if (!response.ok) {
+        const error = await response.json();
+        throw error;
+      }
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Test Reminders Sent",
+        description: `Sent ${data.remindersSent || 0} reminders, ${data.errors || 0} errors`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to send test reminders",
+        description: error.message || "An error occurred while sending test reminders",
+      });
+    },
+  });
+
+  const testWelcomeMessageMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const response = await apiRequest("POST", "/api/slack/test-welcome-message", { userId });
+      if (!response.ok) {
+        const error = await response.json();
+        throw error;
+      }
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Test Welcome Message Sent",
+        description: data.message || "Welcome message sent successfully via Slack",
+      });
+      setSlackTestUser("");
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to send welcome message",
+        description: error.message || "Failed to send test welcome message",
       });
     },
   });
@@ -1542,6 +1624,171 @@ export default function Admin() {
             </CardContent>
           </Card>
         )}
+
+        {/* Slack Integration Testing */}
+        <Card data-testid="card-slack-testing">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Slack className="w-5 h-5" />
+              Slack Integration Testing
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Test your Slack integration and verify that reminders are working correctly. Use these tools to diagnose connection issues and test notifications.
+              </p>
+              
+              {/* Connection Status */}
+              {slackConnectionStatus && (
+                <div className={`border rounded-lg p-4 ${slackConnectionStatus.success ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'}`}>
+                  <div className="flex items-start gap-2">
+                    {slackConnectionStatus.success ? (
+                      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 mt-0.5" />
+                    )}
+                    <div className="flex-1">
+                      <p className={`font-medium ${slackConnectionStatus.success ? 'text-green-800 dark:text-green-200' : 'text-red-800 dark:text-red-200'}`}>
+                        {slackConnectionStatus.success ? 'Slack Connection Active' : 'Connection Issues Detected'}
+                      </p>
+                      <p className={`text-sm mt-1 ${slackConnectionStatus.success ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'}`}>
+                        {slackConnectionStatus.message}
+                      </p>
+                      {slackConnectionStatus.organization && (
+                        <div className="mt-2 text-xs space-y-1">
+                          <p>Organization: {slackConnectionStatus.organization.name}</p>
+                          <p>Slack Integration: {slackConnectionStatus.organization.enable_slack_integration ? 'Enabled' : 'Disabled'}</p>
+                          {slackConnectionStatus.organization.slack_wins_channel_id && (
+                            <p>Wins Channel: {slackConnectionStatus.organization.slack_wins_channel_id}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Test Connection Button */}
+              <div className="border rounded-lg p-4 space-y-3">
+                <div>
+                  <h4 className="font-medium">Test Slack Connection</h4>
+                  <p className="text-sm text-muted-foreground">Verify that your Slack bot token is valid and the integration is working.</p>
+                </div>
+                <Button
+                  onClick={() => testSlackConnectionMutation.mutate()}
+                  disabled={testSlackConnectionMutation.isPending}
+                  data-testid="button-test-slack-connection"
+                >
+                  {testSlackConnectionMutation.isPending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Testing Connection...
+                    </>
+                  ) : (
+                    <>
+                      <Slack className="w-4 h-4 mr-2" />
+                      Test Connection
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Test Weekly Reminders */}
+              <div className="border rounded-lg p-4 space-y-3">
+                <div>
+                  <h4 className="font-medium">Test Weekly Reminders</h4>
+                  <p className="text-sm text-muted-foreground">Send test check-in reminders to all users who haven't completed their check-ins this week.</p>
+                </div>
+                <Button
+                  onClick={() => testWeeklyRemindersMutation.mutate()}
+                  disabled={testWeeklyRemindersMutation.isPending}
+                  variant="outline"
+                  data-testid="button-test-weekly-reminders"
+                >
+                  {testWeeklyRemindersMutation.isPending ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Sending Reminders...
+                    </>
+                  ) : (
+                    <>
+                      <Bell className="w-4 h-4 mr-2" />
+                      Send Test Reminders
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {/* Test Welcome Message */}
+              <div className="border rounded-lg p-4 space-y-3">
+                <div>
+                  <h4 className="font-medium">Test Welcome Message</h4>
+                  <p className="text-sm text-muted-foreground">Send a test welcome message to a specific user via Slack direct message.</p>
+                </div>
+                <div className="flex gap-2">
+                  <Select value={slackTestUser} onValueChange={setSlackTestUser}>
+                    <SelectTrigger className="flex-1" data-testid="select-slack-test-user">
+                      <SelectValue placeholder="Select a user to test" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users
+                        .filter(u => u.slackUserId && u.isActive)
+                        .map((user) => (
+                          <SelectItem 
+                            key={user.id} 
+                            value={user.id}
+                            data-testid={`option-slack-test-${user.id}`}
+                          >
+                            {user.name} ({user.email})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={() => slackTestUser && testWelcomeMessageMutation.mutate(slackTestUser)}
+                    disabled={!slackTestUser || testWelcomeMessageMutation.isPending}
+                    variant="outline"
+                    data-testid="button-send-test-welcome"
+                  >
+                    {testWelcomeMessageMutation.isPending ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Send Welcome
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {/* Reminder Scheduler Info */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-blue-800 dark:text-blue-200">
+                      Automatic Reminder Schedule
+                    </p>
+                    <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                      Reminders are automatically sent every hour to organizations with scheduled check-ins. The system checks at the top of each hour and sends reminders based on each organization's timezone and schedule settings.
+                    </p>
+                    <ul className="text-sm text-blue-700 dark:text-blue-300 mt-2 list-disc list-inside space-y-1">
+                      <li>Check-in reminders are sent via Slack DM</li>
+                      <li>Users can complete check-ins directly in Slack</li>
+                      <li>Tokens are automatically refreshed every 6 hours</li>
+                      <li>Win announcements are posted to the configured channel</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Sync Confirmation Dialog */}
         <Dialog open={showSyncDialog} onOpenChange={setShowSyncDialog}>
