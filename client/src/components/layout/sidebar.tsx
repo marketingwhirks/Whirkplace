@@ -44,7 +44,7 @@ const baseNavigation = [
   { name: "Team Management", href: "/team-management", icon: Users, roles: ["manager", "admin"] },
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },
-  { name: "Admin Dashboard", href: "/admin-dashboard", icon: Activity, roles: ["admin"], description: "Organization analytics" },
+  { name: "Admin Dashboard", href: "/admin-dashboard", icon: Activity, roles: ["admin"], description: "Organization analytics", isNew: true },
   { name: "Billing", href: "/billing", icon: CreditCard, roles: ["admin"] },
   { name: "Admin Panel", href: "/admin", icon: Shield, roles: ["admin"] },
   { name: "Super Admin", href: "/super-admin", icon: Lock, roles: [] as ("member" | "manager" | "admin")[], isSuperAdminOnly: true },
