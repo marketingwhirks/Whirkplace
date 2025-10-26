@@ -293,6 +293,39 @@ export const users = pgTable("users", {
   // Personal review reminder preferences (for managers and admins)
   personalReviewReminderDay: text("personal_review_reminder_day"), // Override org default for personal review reminders
   personalReviewReminderTime: text("personal_review_reminder_time"), // Override org default for personal review time
+  // Notification Preferences
+  notificationPreferences: jsonb("notification_preferences").notNull().default({
+    email: {
+      checkinReminders: true,
+      checkinSubmissions: true,
+      winAnnouncements: true,
+      shoutouts: true,
+      teamUpdates: true,
+      weeklyDigest: true
+    },
+    slack: {
+      checkinReminders: true,
+      checkinSubmissions: true,
+      winAnnouncements: true,
+      shoutouts: true,
+      directMessages: true
+    },
+    inApp: {
+      checkinReminders: true,
+      checkinSubmissions: true,
+      winAnnouncements: true,
+      shoutouts: true,
+      teamUpdates: true,
+      systemAlerts: true
+    }
+  }),
+  notificationSchedule: jsonb("notification_schedule").notNull().default({
+    doNotDisturb: false,
+    doNotDisturbStart: "18:00",
+    doNotDisturbEnd: "09:00",
+    weekendNotifications: false,
+    timezone: "America/Chicago"
+  }),
   // Permission to view check-ins across all teams (granted by admins only)
   canViewAllTeams: boolean("can_view_all_teams").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
