@@ -16,9 +16,9 @@ import {
   insertPartnerApplicationSchema, insertPartnerFirmSchema, insertNotificationSchema, insertTeamGoalSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType, type Checkin, type InsertNotification,
-  organizations, billingEvents
+  organizations, billingEvents, checkins, users
 } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, gte, or, sql, sum, count, avg, lt, lte, inArray, isNull } from "drizzle-orm";
 import Stripe from "stripe";
 import { WebClient } from "@slack/web-api";
 import { sendCheckinReminder, announceWin, sendPrivateWinNotification, sendTeamHealthUpdate, announceShoutout, notifyCheckinSubmitted, notifyCheckinReviewed, generateOAuthURL, validateOAuthState, exchangeOIDCCode, validateOIDCToken, getSlackUserInfo, sendPasswordSetupViaSlackDM, testSlackConnection } from "./services/slack";
@@ -42,6 +42,7 @@ import { sendWelcomeEmail, sendSlackPasswordSetupEmail } from "./services/emailS
 import { sanitizeUser, sanitizeUsers } from "./utils/sanitizeUser";
 import { getWeekStartCentral } from "@shared/utils/dueDates";
 import { WeeklySummaryService } from "./services/weeklySummaryService";
+import { format } from "date-fns";
 
 // Initialize Stripe with appropriate keys based on environment
 let stripe: Stripe | null = null;
@@ -8972,6 +8973,323 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to generate leadership summary" });
     }
   });
+
+  // Comprehensive Admin Analytics Endpoint - Single API call for dashboard data
+  app.get("/api/admin/analytics", 
+    requireAuth(), 
+    requireOrganization(),
+    requireRole(['admin', 'super_admin']),
+    async (req, res) => {
+      try {
+        const user = (req as any).currentUser;
+        const organizationId = req.orgId;
+        
+        // Parse query parameters
+        const viewMode = (req.query.viewMode as string) || 'all'; // 'all' or 'direct'
+        const teamId = req.query.teamId as string;
+        const startDateParam = req.query.startDate as string;
+        const endDateParam = req.query.endDate as string;
+        
+        // Default to last 8 weeks if no dates provided
+        const endDate = endDateParam ? new Date(endDateParam) : new Date();
+        const startDate = startDateParam 
+          ? new Date(startDateParam) 
+          : new Date(endDate.getTime() - (8 * 7 * 24 * 60 * 60 * 1000)); // 8 weeks ago
+        
+        // Build filter conditions
+        let userFilter: string[] = [];
+        
+        // Handle viewMode filtering
+        if (viewMode === 'direct') {
+          // Get direct reports only
+          const directReports = await storage.getUsersByManager(organizationId, user.id, false);
+          userFilter = directReports.map(u => u.id);
+          
+          // If filtering by team, further filter the users
+          if (teamId && teamId !== 'all') {
+            userFilter = userFilter.filter(userId => {
+              const userObj = directReports.find(u => u.id === userId);
+              return userObj?.teamId === teamId;
+            });
+          }
+        } else if (teamId && teamId !== 'all') {
+          // Get all users from specific team
+          const teamUsers = await storage.getUsersByTeam(organizationId, teamId, false);
+          userFilter = teamUsers.map(u => u.id);
+        }
+        
+        // Fetch all required data in parallel for efficiency
+        const [
+          allUsers,
+          allTeams,
+          allCheckins,
+          pendingReviews,
+          missingCheckins,
+          complianceMetrics,
+          analyticsOverview,
+          pulseMetrics,
+          topPerformers,
+          recentActivity
+        ] = await Promise.all([
+          // Get all users (or filtered users)
+          userFilter.length > 0 
+            ? Promise.all(userFilter.map(id => storage.getUser(organizationId, id))).then(users => users.filter(Boolean))
+            : storage.getAllUsers(organizationId, false),
+          
+          // Get all teams
+          storage.getAllTeams(organizationId),
+          
+          // Get check-ins for date range
+          db.select()
+            .from(checkins)
+            .where(and(
+              eq(checkins.organizationId, organizationId),
+              gte(checkins.createdAt, startDate),
+              lte(checkins.createdAt, endDate),
+              userFilter.length > 0 ? inArray(checkins.userId, userFilter) : undefined
+            ).filter(Boolean)),
+          
+          // Get pending reviews
+          storage.getPendingReviews(
+            organizationId, 
+            viewMode === 'direct' ? user.id : undefined,
+            teamId && teamId !== 'all' ? teamId : undefined
+          ),
+          
+          // Get missing check-ins
+          storage.getMissingCheckins(
+            organizationId,
+            undefined,
+            teamId && teamId !== 'all' ? teamId : undefined
+          ),
+          
+          // Get compliance metrics for teams
+          storage.getTeamComplianceMetrics(organizationId, {
+            from: startDate,
+            to: endDate
+          }),
+          
+          // Get analytics overview
+          storage.getAnalyticsOverview(organizationId, 'custom', startDate, endDate),
+          
+          // Get pulse metrics for trend data
+          storage.getPulseMetrics(organizationId, {
+            scope: 'organization',
+            period: 'week',
+            from: startDate,
+            to: endDate
+          }),
+          
+          // Get top performers (users with highest average mood)
+          db.select({
+            userId: checkins.userId,
+            userName: users.name,
+            userEmail: users.email,
+            teamId: users.teamId,
+            averageMood: sql<number>`AVG(${checkins.overallMood})::float`,
+            totalCheckins: count(checkins.id)
+          })
+          .from(checkins)
+          .leftJoin(users, eq(checkins.userId, users.id))
+          .where(and(
+            eq(checkins.organizationId, organizationId),
+            eq(checkins.isComplete, true),
+            gte(checkins.createdAt, startDate),
+            lte(checkins.createdAt, endDate),
+            userFilter.length > 0 ? inArray(checkins.userId, userFilter) : undefined
+          ).filter(Boolean))
+          .groupBy(checkins.userId, users.name, users.email, users.teamId)
+          .orderBy(desc(sql`AVG(${checkins.overallMood})`))
+          .limit(10),
+          
+          // Get recent activity
+          db.select({
+            id: checkins.id,
+            userId: checkins.userId,
+            userName: users.name,
+            userEmail: users.email,
+            teamId: users.teamId,
+            overallMood: checkins.overallMood,
+            submittedAt: checkins.createdAt,
+            reviewStatus: checkins.reviewStatus,
+            reviewedBy: checkins.reviewedBy
+          })
+          .from(checkins)
+          .leftJoin(users, eq(checkins.userId, users.id))
+          .where(and(
+            eq(checkins.organizationId, organizationId),
+            gte(checkins.createdAt, startDate),
+            lte(checkins.createdAt, endDate),
+            userFilter.length > 0 ? inArray(checkins.userId, userFilter) : undefined
+          ).filter(Boolean))
+          .orderBy(desc(checkins.createdAt))
+          .limit(20)
+        ]);
+        
+        // Calculate organization-wide statistics
+        const totalCheckins = allCheckins.length;
+        const completedCheckins = allCheckins.filter(c => c.isComplete).length;
+        const pendingReviewCount = pendingReviews.length;
+        const averageMood = totalCheckins > 0
+          ? allCheckins.reduce((sum, c) => sum + (c.overallMood || 0), 0) / totalCheckins
+          : 0;
+        
+        // Calculate expected check-ins based on weeks and active users
+        const weeksDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (7 * 24 * 60 * 60 * 1000));
+        const expectedCheckins = allUsers.length * weeksDiff;
+        const complianceRate = expectedCheckins > 0 
+          ? (completedCheckins / expectedCheckins) * 100 
+          : 0;
+        
+        // Process weekly mood trends
+        const weeklyTrends = pulseMetrics.map(metric => ({
+          week: metric.periodStart?.toISOString() || new Date().toISOString(),
+          weekLabel: format(new Date(metric.periodStart || new Date()), 'MMM d'),
+          averageMood: metric.averageMood || 0,
+          totalSubmissions: metric.totalCount || 0,
+          uniqueUsers: metric.uniqueUsers || 0
+        }));
+        
+        // Process team compliance data
+        const teamCompliance = allTeams.map(team => {
+          const teamUsers = allUsers.filter(u => u.teamId === team.id);
+          const teamCheckins = allCheckins.filter(c => {
+            const user = allUsers.find(u => u.id === c.userId);
+            return user?.teamId === team.id;
+          });
+          
+          const teamPending = pendingReviews.filter(p => p.teamId === team.id);
+          const teamMissing = missingCheckins.filter(m => 
+            m.users?.some(u => u.teamId === team.id)
+          );
+          
+          const avgMood = teamCheckins.length > 0
+            ? teamCheckins.reduce((sum, c) => sum + (c.overallMood || 0), 0) / teamCheckins.length
+            : 0;
+          
+          const teamExpected = teamUsers.length * weeksDiff;
+          const submissionRate = teamExpected > 0
+            ? (teamCheckins.filter(c => c.isComplete).length / teamExpected) * 100
+            : 0;
+          
+          return {
+            teamId: team.id,
+            teamName: team.name,
+            totalMembers: teamUsers.length,
+            submittedCount: teamCheckins.filter(c => c.isComplete).length,
+            submissionRate: Math.min(100, submissionRate),
+            pendingReviews: teamPending.length,
+            missingCount: teamMissing.length,
+            averageMood: avgMood,
+            status: submissionRate >= 80 ? 'good' : submissionRate >= 60 ? 'warning' : 'critical'
+          };
+        }).sort((a, b) => b.submissionRate - a.submissionRate);
+        
+        // Find teams needing attention (lowest compliance or mood)
+        const teamsNeedingAttention = teamCompliance
+          .filter(tc => tc.submissionRate < 70 || tc.averageMood < 3)
+          .slice(0, 5)
+          .map(tc => ({
+            ...tc,
+            issues: [
+              ...(tc.submissionRate < 70 ? [`Low submission rate: ${tc.submissionRate.toFixed(1)}%`] : []),
+              ...(tc.averageMood < 3 ? [`Low team mood: ${tc.averageMood.toFixed(1)}`] : []),
+              ...(tc.pendingReviews > 5 ? [`${tc.pendingReviews} pending reviews`] : [])
+            ]
+          }));
+        
+        // Format top performers with team names
+        const topPerformersWithTeams = topPerformers.map(p => {
+          const team = allTeams.find(t => t.id === p.teamId);
+          return {
+            userId: p.userId,
+            userName: p.userName,
+            userEmail: p.userEmail,
+            teamName: team?.name || 'No Team',
+            averageMood: Number(p.averageMood || 0),
+            totalCheckins: Number(p.totalCheckins || 0)
+          };
+        });
+        
+        // Format recent activity with additional context
+        const formattedRecentActivity = recentActivity.map(activity => {
+          const team = allTeams.find(t => t.id === activity.teamId);
+          const reviewer = activity.reviewedBy 
+            ? allUsers.find(u => u.id === activity.reviewedBy)
+            : null;
+          
+          return {
+            id: activity.id,
+            userId: activity.userId,
+            userName: activity.userName,
+            userEmail: activity.userEmail,
+            teamName: team?.name || 'No Team',
+            overallMood: activity.overallMood,
+            submittedAt: activity.submittedAt,
+            reviewStatus: activity.reviewStatus || 'pending',
+            reviewerName: reviewer?.name || null,
+            daysAgo: Math.floor((Date.now() - new Date(activity.submittedAt).getTime()) / (24 * 60 * 60 * 1000))
+          };
+        });
+        
+        // Compile comprehensive analytics response
+        const analyticsData = {
+          // Overview Statistics
+          overview: {
+            totalCheckins,
+            completedCheckins,
+            pendingReviews: pendingReviewCount,
+            missingCheckins: missingCheckins.length,
+            averageMood: parseFloat(averageMood.toFixed(2)),
+            complianceRate: parseFloat(complianceRate.toFixed(2)),
+            activeUsers: new Set(allCheckins.map(c => c.userId)).size,
+            totalUsers: allUsers.length,
+            dateRange: {
+              start: startDate.toISOString(),
+              end: endDate.toISOString(),
+              weeks: weeksDiff
+            }
+          },
+          
+          // Comparison with previous period (from analyticsOverview)
+          comparison: {
+            moodChange: analyticsOverview.pulseAvg.change,
+            checkinsChange: analyticsOverview.completedCheckins.change,
+            activeUsersChange: analyticsOverview.activeUsers.change
+          },
+          
+          // Weekly mood trends for charts
+          weeklyTrends,
+          
+          // Team-level metrics
+          teamCompliance,
+          teamsNeedingAttention,
+          
+          // Individual performance metrics
+          topPerformers: topPerformersWithTeams,
+          
+          // Recent activity feed
+          recentActivity: formattedRecentActivity,
+          
+          // Filter context
+          filters: {
+            viewMode,
+            teamId: teamId || 'all',
+            startDate: startDate.toISOString(),
+            endDate: endDate.toISOString()
+          }
+        };
+        
+        res.json(analyticsData);
+      } catch (error) {
+        console.error('Error fetching admin analytics:', error);
+        res.status(500).json({ 
+          message: 'Failed to fetch analytics data',
+          error: process.env.NODE_ENV === 'development' ? error.message : undefined 
+        });
+      }
+    }
+  );
 
   // Slack Integration
   app.post("/api/slack/send-checkin-reminder", requireOrganization(), requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
