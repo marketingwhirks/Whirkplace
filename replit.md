@@ -54,6 +54,20 @@ The application adopts a multi-tenant architecture to support multiple organizat
 
 **Result**: Aggregation service now processes metrics successfully without errors
 
+## Recent Updates (October 26, 2025)
+
+### Team Check-in Status Integration
+**Enhancement**: Consolidated team check-in monitoring into the Reviews page for a unified management interface
+
+**Changes Made**:
+1. Integrated Team Check-in Status grid view directly into the Reviews page
+2. Added comprehensive filtering (by team, status, and week) with CSV export
+3. Color-coded status indicators: green (submitted), yellow (pending), red (overdue), blue (vacation)
+4. Displays mood ratings, submission times, and days overdue
+5. Removed separate Team Check-in Status page to streamline navigation
+
+**Result**: Managers and admins now have a single comprehensive page at `/reviews` to manage both pending reviews and monitor team submission status
+
 ## Critical Issues & Resolutions
 
 ### Production Response Timeout Issue (October 15, 2025 - RESOLVED October 16, 2025)
