@@ -183,6 +183,8 @@ export interface IStorage {
   updateCheckin(organizationId: string, id: string, checkin: Partial<InsertCheckin>): Promise<Checkin | undefined>;
   getCheckinsByUser(organizationId: string, userId: string): Promise<Checkin[]>;
   getCheckinsByManager(organizationId: string, managerId: string): Promise<Checkin[]>;
+  getCheckinsByTeam(organizationId: string, teamId: string, from: Date, to: Date): Promise<Checkin[]>;
+  getCheckinsByOrganization(organizationId: string, from: Date, to: Date): Promise<Checkin[]>;
   getCurrentWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined>;
   getPreviousWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined>;
   getCheckinForWeek(organizationId: string, userId: string, weekStart: Date): Promise<Checkin | undefined>;
@@ -380,6 +382,9 @@ export interface IStorage {
 
   // Vacations
   getUserVacationsByRange(organizationId: string, userId: string, from?: Date, to?: Date): Promise<Vacation[]>;
+  getVacationsByUser(organizationId: string, userId: string): Promise<Vacation[]>;
+  getVacationsByTeam(organizationId: string, teamId: string, from: Date, to: Date): Promise<Vacation[]>;
+  getVacationsByOrganization(organizationId: string, from: Date, to: Date): Promise<Vacation[]>;
   upsertVacationWeek(organizationId: string, userId: string, weekOf: Date, note?: string): Promise<Vacation>;
   deleteVacationWeek(organizationId: string, userId: string, weekOf: Date): Promise<boolean>;
   isUserOnVacation(organizationId: string, userId: string, weekOf: Date): Promise<boolean>;
@@ -1896,6 +1901,37 @@ export class DatabaseStorage implements IStorage {
       .from(checkins)
       .where(and(...conditions))
       .orderBy(desc(checkins.createdAt));
+  }
+
+  async getCheckinsByTeam(organizationId: string, teamId: string, from: Date, to: Date): Promise<Checkin[]> {
+    // Get team members
+    const teamMembers = await this.getUsersByTeam(organizationId, teamId, false);
+    const userIds = teamMembers.map(u => u.id);
+    
+    if (userIds.length === 0) return [];
+    
+    return await db
+      .select()
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        inArray(checkins.userId, userIds),
+        gte(checkins.weekOf, from),
+        lte(checkins.weekOf, to)
+      ))
+      .orderBy(desc(checkins.weekOf));
+  }
+
+  async getCheckinsByOrganization(organizationId: string, from: Date, to: Date): Promise<Checkin[]> {
+    return await db
+      .select()
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        gte(checkins.weekOf, from),
+        lte(checkins.weekOf, to)
+      ))
+      .orderBy(desc(checkins.weekOf));
   }
 
   // Super Admin Check-in Management
@@ -5042,6 +5078,48 @@ export class DatabaseStorage implements IStorage {
     return !!vacation;
   }
 
+  async getVacationsByUser(organizationId: string, userId: string): Promise<Vacation[]> {
+    return await db
+      .select()
+      .from(vacations)
+      .where(and(
+        eq(vacations.organizationId, organizationId),
+        eq(vacations.userId, userId)
+      ))
+      .orderBy(desc(vacations.weekOf));
+  }
+
+  async getVacationsByTeam(organizationId: string, teamId: string, from: Date, to: Date): Promise<Vacation[]> {
+    // Get team members
+    const teamMembers = await this.getUsersByTeam(organizationId, teamId, false);
+    const userIds = teamMembers.map(u => u.id);
+    
+    if (userIds.length === 0) return [];
+    
+    return await db
+      .select()
+      .from(vacations)
+      .where(and(
+        eq(vacations.organizationId, organizationId),
+        inArray(vacations.userId, userIds),
+        gte(vacations.startDate, from),
+        lte(vacations.endDate, to)
+      ))
+      .orderBy(desc(vacations.startDate));
+  }
+
+  async getVacationsByOrganization(organizationId: string, from: Date, to: Date): Promise<Vacation[]> {
+    return await db
+      .select()
+      .from(vacations)
+      .where(and(
+        eq(vacations.organizationId, organizationId),
+        gte(vacations.startDate, from),
+        lte(vacations.endDate, to)
+      ))
+      .orderBy(desc(vacations.startDate));
+  }
+
   // One-on-One Meetings
   async getOneOnOne(organizationId: string, id: string): Promise<OneOnOne | undefined> {
     try {
@@ -7604,6 +7682,51 @@ export class MemStorage implements IStorage {
       .slice(0, limit);
   }
 
+  async getCheckinsForWeek(organizationId: string, weekStart: Date, userIds?: string[]): Promise<Checkin[]> {
+    const normalizedWeekStart = getWeekStartCentral(weekStart);
+    const weekEnd = new Date(normalizedWeekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    
+    let checkins = Array.from(this.checkins.values())
+      .filter(checkin => 
+        checkin.organizationId === organizationId &&
+        checkin.weekOf >= normalizedWeekStart &&
+        checkin.weekOf < weekEnd
+      );
+    
+    if (userIds && userIds.length > 0) {
+      checkins = checkins.filter(c => userIds.includes(c.userId));
+    }
+    
+    return checkins.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
+  async getCheckinsByTeam(organizationId: string, teamId: string, from: Date, to: Date): Promise<Checkin[]> {
+    const teamMembers = await this.getUsersByTeam(organizationId, teamId, false);
+    const userIds = teamMembers.map(u => u.id);
+    
+    if (userIds.length === 0) return [];
+    
+    return Array.from(this.checkins.values())
+      .filter(checkin => 
+        checkin.organizationId === organizationId &&
+        userIds.includes(checkin.userId) &&
+        checkin.weekOf >= from &&
+        checkin.weekOf <= to
+      )
+      .sort((a, b) => b.weekOf.getTime() - a.weekOf.getTime());
+  }
+
+  async getCheckinsByOrganization(organizationId: string, from: Date, to: Date): Promise<Checkin[]> {
+    return Array.from(this.checkins.values())
+      .filter(checkin => 
+        checkin.organizationId === organizationId &&
+        checkin.weekOf >= from &&
+        checkin.weekOf <= to
+      )
+      .sort((a, b) => b.weekOf.getTime() - a.weekOf.getTime());
+  }
+
   // Check-in Review Methods
   async getPendingCheckins(organizationId: string, managerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]> {
     let checkins = Array.from(this.checkins.values())
@@ -9179,6 +9302,41 @@ export class MemStorage implements IStorage {
       );
 
     return !!vacation;
+  }
+
+  async getVacationsByUser(organizationId: string, userId: string): Promise<Vacation[]> {
+    return Array.from(this.vacations.values())
+      .filter(vacation => 
+        vacation.organizationId === organizationId && 
+        vacation.userId === userId
+      )
+      .sort((a, b) => b.weekOf.getTime() - a.weekOf.getTime());
+  }
+
+  async getVacationsByTeam(organizationId: string, teamId: string, from: Date, to: Date): Promise<Vacation[]> {
+    const teamMembers = await this.getUsersByTeam(organizationId, teamId, false);
+    const userIds = teamMembers.map(u => u.id);
+    
+    if (userIds.length === 0) return [];
+    
+    return Array.from(this.vacations.values())
+      .filter(vacation => 
+        vacation.organizationId === organizationId && 
+        userIds.includes(vacation.userId) &&
+        vacation.startDate >= from &&
+        vacation.endDate <= to
+      )
+      .sort((a, b) => b.startDate.getTime() - a.startDate.getTime());
+  }
+
+  async getVacationsByOrganization(organizationId: string, from: Date, to: Date): Promise<Vacation[]> {
+    return Array.from(this.vacations.values())
+      .filter(vacation => 
+        vacation.organizationId === organizationId &&
+        vacation.startDate >= from &&
+        vacation.endDate <= to
+      )
+      .sort((a, b) => b.startDate.getTime() - a.startDate.getTime());
   }
 
   // Super Admin - System Settings (MemStorage implementation) - COMMENTED OUT: Tables don't exist in production

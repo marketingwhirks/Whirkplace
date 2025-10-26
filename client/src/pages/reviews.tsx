@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow, formatDistance, format, startOfWeek, addWeeks, differenceInDays, endOfWeek } from "date-fns";
 import { 
   CheckCircle, XCircle, Clock, Eye, MessageSquare, Filter, Calendar, User, AlertCircle, Send, UserMinus, Bell,
-  Plane, Download, Users, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, Activity, BellRing, Info, CheckCheck
+  Plane, Download, Users, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, Activity, BellRing, Info, CheckCheck,
+  ChevronDown, ChevronUp, BarChart3, Target, Award, AlertTriangle, Sparkles, Shield, Zap, TrendingUp as TrendUp, TrendingDown as TrendDown
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { 
   AlertDialog, 
   AlertDialogAction, 
@@ -25,13 +30,18 @@ import {
   AlertDialogHeader, 
   AlertDialogTitle 
 } from "@/components/ui/alert-dialog";
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import RatingStars from "@/components/checkin/rating-stars";
 import { cn } from "@/lib/utils";
 import Papa from "papaparse";
-import { Progress } from "@/components/ui/progress";
 import { getCheckinDueDate, getWeekStartCentral, getDueDateString } from "@shared/utils/dueDates";
 import type { Checkin, User as UserType, Question, ReviewCheckin, Team, Vacation, Organization } from "@shared/schema";
 
@@ -63,15 +73,176 @@ interface UserWithoutCheckin {
   lastReminderSent: Date | null;
 }
 
-interface TeamMemberStatus {
-  user: UserType;
-  checkin: Checkin | null;
-  vacation: Vacation | null;
-  status: 'submitted' | 'missing' | 'on-vacation' | 'overdue';
+interface TeamMemberComplianceStatus {
+  userId: string;
+  userName: string;
+  email: string;
+  status: 'submitted' | 'missing' | 'overdue' | 'on-vacation';
   submittedAt?: Date;
   daysOverdue?: number;
-  moodRating?: number;
-  teamName?: string;
+  moodRating?: number | null;
+  compliance: {
+    rate: number;
+    streak: number;
+    onTimeRate: number;
+    recentText: string;
+    totalSubmitted: number;
+    totalExpected: number;
+  };
+}
+
+interface TeamComplianceData {
+  teamId: string;
+  teamName: string;
+  metrics: {
+    submissionRate: number;
+    onTimeRate: number;
+    averageMood: number | null;
+    submitted: number;
+    expected: number;
+    onVacation: number;
+  };
+  members: TeamMemberComplianceStatus[];
+}
+
+interface TeamHistoricalMetrics {
+  teamId: string;
+  teamName: string;
+  currentWeek: {
+    submissionRate: number;
+    onTimeRate: number;
+    averageMood: number | null;
+  };
+  historical: Array<{
+    weekStart: string;
+    submissionRate: number;
+  }>;
+  memberBreakdown: {
+    total: number;
+    consistent: number;
+    struggling: number;
+    average: number;
+  };
+}
+
+interface OrganizationSummary {
+  overall: {
+    submissionRate: number;
+    submitted: number;
+    expected: number;
+    onVacation: number;
+    totalActive: number;
+  };
+  teams: {
+    all: Array<{
+      teamId: string;
+      teamName: string;
+      submissionRate: number;
+      submitted: number;
+      expected: number;
+      members: number;
+    }>;
+    topPerforming: Array<{
+      teamId: string;
+      teamName: string;
+      submissionRate: number;
+    }>;
+    needingAttention: Array<{
+      teamId: string;
+      teamName: string;
+      submissionRate: number;
+    }>;
+  };
+  individuals: {
+    topPerformers: Array<{
+      userId: string;
+      userName: string;
+      complianceRate: number;
+    }>;
+    needingAttention: Array<{
+      userId: string;
+      userName: string;
+      complianceRate: number;
+    }>;
+  };
+}
+
+// Helper function to get compliance color based on percentage
+function getComplianceColor(rate: number): string {
+  if (rate >= 80) return "text-green-600 dark:text-green-400";
+  if (rate >= 50) return "text-yellow-600 dark:text-yellow-400";
+  return "text-red-600 dark:text-red-400";
+}
+
+function getComplianceBadgeColor(rate: number): string {
+  if (rate >= 80) return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200";
+  if (rate >= 50) return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
+  return "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200";
+}
+
+function getComplianceBackground(rate: number): string {
+  if (rate >= 80) return "bg-green-50 dark:bg-green-950";
+  if (rate >= 50) return "bg-yellow-50 dark:bg-yellow-950";
+  return "bg-red-50 dark:bg-red-950";
+}
+
+function getStatusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+  switch (status) {
+    case 'submitted':
+      return 'default';
+    case 'on-vacation':
+      return 'secondary';
+    case 'overdue':
+      return 'destructive';
+    default:
+      return 'outline';
+  }
+}
+
+// Simple sparkline component for historical trends
+function Sparkline({ data, color = "currentColor" }: { data: number[]; color?: string }) {
+  if (!data || data.length === 0) return null;
+  
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  
+  const points = data.map((value, index) => {
+    const x = (index / (data.length - 1)) * 100;
+    const y = 100 - ((value - min) / range) * 100;
+    return `${x},${y}`;
+  }).join(' ');
+  
+  return (
+    <svg className="w-16 h-8" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <polyline
+        fill="none"
+        stroke={color}
+        strokeWidth="3"
+        points={points}
+      />
+    </svg>
+  );
+}
+
+// Trend arrow component
+function TrendArrow({ current, previous }: { current: number; previous: number }) {
+  if (current > previous) {
+    return (
+      <span className="flex items-center text-green-600 dark:text-green-400 text-sm">
+        <TrendUp className="h-3 w-3 mr-1" />
+        +{Math.round(current - previous)}%
+      </span>
+    );
+  } else if (current < previous) {
+    return (
+      <span className="flex items-center text-red-600 dark:text-red-400 text-sm">
+        <TrendDown className="h-3 w-3 mr-1" />
+        {Math.round(current - previous)}%
+      </span>
+    );
+  }
+  return null;
 }
 
 export default function Reviews() {
@@ -90,6 +261,8 @@ export default function Reviews() {
   const [selectedWeek, setSelectedWeek] = useState(0); // 0 = current week, -1 = last week, etc.
   const [selectedTeam, setSelectedTeam] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [expandedTeams, setExpandedTeams] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'all' | 'my-team'>('all'); // For admins
   
   // Reminder state
   const [showBulkReminderDialog, setShowBulkReminderDialog] = useState(false);
@@ -99,42 +272,17 @@ export default function Reviews() {
   // Calculate the week we're viewing
   const viewingWeekStart = useMemo(() => {
     const weekStart = addWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), selectedWeek);
-    // Debug logging
-    console.log('[DEBUG] Week calculation:', {
-      selectedWeek,
-      currentDate: new Date().toISOString(),
-      calculatedWeekStart: weekStart.toISOString(),
-      weekStartDay: format(weekStart, 'EEEE'),
-      weekStartDate: format(weekStart, 'MMM dd, yyyy')
-    });
     return weekStart;
   }, [selectedWeek]);
   
   const viewingWeekEnd = useMemo(() => {
     const weekEnd = endOfWeek(viewingWeekStart, { weekStartsOn: 1 });
-    console.log('[DEBUG] Week end:', {
-      viewingWeekEnd: weekEnd.toISOString(),
-      weekEndDay: format(weekEnd, 'EEEE'),
-      weekEndDate: format(weekEnd, 'MMM dd, yyyy')
-    });
     return weekEnd;
   }, [viewingWeekStart]);
 
   // Fetch organization data
   const { data: organization } = useQuery<Organization>({
     queryKey: ["/api/organizations", currentUser?.organizationId],
-    enabled: !!currentUser?.organizationId,
-  });
-
-  // Fetch organization checkin schedule settings
-  const { data: orgSettings } = useQuery({
-    queryKey: ["/api/organizations", currentUser?.organizationId, "checkin-schedule"],
-    queryFn: async () => {
-      if (!currentUser?.organizationId) return null;
-      const response = await apiRequest("GET", `/api/organizations/${currentUser.organizationId}/checkin-schedule`);
-      if (!response.ok) throw new Error('Failed to fetch organization settings');
-      return response.json();
-    },
     enabled: !!currentUser?.organizationId,
   });
 
@@ -156,1436 +304,1040 @@ export default function Reviews() {
     enabled: !userLoading && !!currentUser && (currentUser.role === "manager" || currentUser.role === "admin"),
   });
 
-  // Fetch users without check-ins  
-  const { data: missingCheckins = [], isLoading: missingLoading } = useQuery<UserWithoutCheckin[]>({
-    queryKey: ["/api/checkins/missing"],
-    enabled: !userLoading && !!currentUser && (currentUser.role === "manager" || currentUser.role === "admin"),
-  });
-
-  // Fetch questions for display context
-  const { data: questions = [] } = useQuery<Question[]>({
-    queryKey: ["/api/questions"],
-  });
-
-  // Fetch team members for filtering
-  const { data: teamMembers = [] } = useQuery<UserType[]>({
-    queryKey: ["/api/users"],
-    enabled: !!currentUser,
-  });
-
-  // Fetch all users (for admins) or team members (for managers)
-  const { data: allUsers = [], isLoading: usersLoading } = useQuery<UserType[]>({
-    queryKey: currentUser?.role === 'admin' 
-      ? ["/api/users?includeInactive=false"]
-      : ["/api/users", currentUser?.id, "reports"],
+  // Fetch organization compliance summary
+  const { data: orgSummary, isLoading: summaryLoading } = useQuery<OrganizationSummary>({
+    queryKey: ["/api/compliance/organization-summary", viewingWeekStart.toISOString()],
     queryFn: async () => {
-      if (!currentUser) return [];
-      
-      if (currentUser.role === 'admin') {
-        const response = await apiRequest("GET", "/api/users?includeInactive=false");
-        if (!response.ok) throw new Error('Failed to fetch users');
-        return response.json();
+      const response = await apiRequest("GET", `/api/compliance/organization-summary?weekStart=${viewingWeekStart.toISOString()}`);
+      if (!response.ok) throw new Error('Failed to fetch organization summary');
+      return response.json();
+    },
+    enabled: !!currentUser && currentUser.role === 'admin',
+  });
+
+  // Fetch team members compliance status
+  const { data: teamComplianceData = [], isLoading: complianceLoading } = useQuery<TeamComplianceData[]>({
+    queryKey: ["/api/compliance/team-members-status", selectedTeam, viewingWeekStart.toISOString()],
+    queryFn: async () => {
+      let url = `/api/compliance/team-members-status?weekStart=${viewingWeekStart.toISOString()}`;
+      if (selectedTeam && selectedTeam !== 'all') {
+        url += `&teamId=${selectedTeam}`;
       }
-      
-      // Managers see their direct reports
-      if (currentUser.role === 'manager') {
-        const response = await apiRequest("GET", `/api/users/${currentUser.id}/reports`);
-        if (!response.ok) throw new Error('Failed to fetch reports');
-        return response.json();
-      }
-      
-      return [];
+      const response = await apiRequest("GET", url);
+      if (!response.ok) throw new Error('Failed to fetch team compliance data');
+      return response.json();
     },
     enabled: !!currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager'),
   });
 
-  // Fetch check-ins for the selected week
-  const { data: weekCheckins = [], isLoading: checkinsLoading } = useQuery<Checkin[]>({
-    queryKey: ["/api/checkins", "week", viewingWeekStart.toISOString()],
+  // Fetch team metrics with historical data
+  const { data: teamMetrics = [] } = useQuery<TeamHistoricalMetrics[]>({
+    queryKey: ["/api/compliance/team-metrics", selectedTeam, viewingWeekStart.toISOString()],
     queryFn: async () => {
-      if (!currentUser || allUsers.length === 0) return [];
-      
-      console.log('[DEBUG] Fetching check-ins for week:', {
-        weekStart: viewingWeekStart.toISOString(),
-        weekStartFormatted: format(viewingWeekStart, 'MMM dd, yyyy'),
-        userCount: allUsers.length
-      });
-      
-      // Fetch check-ins for all visible users for this specific week
-      const response = await apiRequest("GET", `/api/checkins?weekStart=${viewingWeekStart.toISOString()}`);
-      if (response.ok) {
-        const checkins = await response.json();
-        // Filter to only include check-ins from users we can see
-        const userIds = new Set(allUsers.map(u => u.id));
-        const filtered = checkins.filter((c: Checkin) => userIds.has(c.userId));
-        
-        console.log('[DEBUG] Check-ins fetched:', {
-          totalFetched: checkins.length,
-          afterUserFilter: filtered.length,
-          checkinsWeekOf: filtered.map((c: Checkin) => ({
-            userId: c.userId,
-            weekOf: c.weekOf,
-            weekOfFormatted: format(new Date(c.weekOf), 'MMM dd, yyyy'),
-            isComplete: c.isComplete
-          }))
-        });
-        
-        return filtered;
+      let url = `/api/compliance/team-metrics?weekStart=${viewingWeekStart.toISOString()}`;
+      if (selectedTeam && selectedTeam !== 'all') {
+        url += `&teamId=${selectedTeam}`;
       }
-      
-      return [];
+      const response = await apiRequest("GET", url);
+      if (!response.ok) throw new Error('Failed to fetch team metrics');
+      return response.json();
     },
-    enabled: !!currentUser && allUsers.length > 0,
+    enabled: !!currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager'),
   });
 
-  // Fetch vacations for all team members
-  const { data: allVacations = [], isLoading: vacationsLoading } = useQuery<Vacation[]>({
-    queryKey: ["/api/vacations/team", allUsers.map(u => u.id).join(','), viewingWeekStart.toISOString()],
-    queryFn: async () => {
-      if (!currentUser || allUsers.length === 0) return [];
-      
-      const vacations: Vacation[] = [];
-      
-      // Batch fetch vacations
-      for (const user of allUsers) {
-        try {
-          const response = await apiRequest("GET", `/api/vacations?userId=${user.id}`);
-          if (response.ok) {
-            const userVacations = await response.json();
-            vacations.push(...userVacations);
-          }
-        } catch (error) {
-          console.error(`Failed to fetch vacations for ${user.name}:`, error);
-        }
-      }
-      
-      return vacations;
-    },
-    enabled: !!currentUser && allUsers.length > 0,
-  });
-
-  // Add debugging effect for week changes
-  useEffect(() => {
-    console.log('[DEBUG] Week Changed:', {
-      selectedWeek,
-      weekStart: viewingWeekStart.toISOString(),
-      weekEnd: viewingWeekEnd.toISOString(),
-      weekStartFormatted: format(viewingWeekStart, 'EEEE, MMM dd, yyyy HH:mm'),
-      weekEndFormatted: format(viewingWeekEnd, 'EEEE, MMM dd, yyyy HH:mm'),
-      isCurrentWeek: selectedWeek === 0,
-      organizationSettings: orgSettings,
-      dueDate: organization ? getCheckinDueDate(viewingWeekStart, organization) : null
-    });
-  }, [selectedWeek, viewingWeekStart, viewingWeekEnd, organization, orgSettings]);
-
-  // Log checkin data when it changes
-  useEffect(() => {
-    if (weekCheckins.length > 0) {
-      console.log('[DEBUG] Week Checkins Loaded:', {
-        count: weekCheckins.length,
-        weekOf: viewingWeekStart.toISOString(),
-        checkins: weekCheckins.map(c => ({
-          userId: c.userId,
-          weekOf: c.weekOf,
-          normalizedWeekOf: getWeekStartCentral(new Date(c.weekOf), organization),
-          isComplete: c.isComplete,
-          submittedAt: c.submittedAt,
-          status: c.reviewStatus
-        }))
-      });
+  // Filter data based on view mode and role
+  const filteredTeamData = useMemo(() => {
+    if (!teamComplianceData || teamComplianceData.length === 0) return [];
+    
+    // For managers, always show only their team
+    if (currentUser?.role === 'manager') {
+      return teamComplianceData;
     }
-  }, [weekCheckins, viewingWeekStart, organization]);
-
-  // Process team member statuses
-  const teamMemberStatuses = useMemo((): TeamMemberStatus[] => {
-    if (!allUsers.length) return [];
     
-    const dueDate = organization ? getCheckinDueDate(viewingWeekStart, organization) : new Date();
-    const now = new Date();
-    
-    console.log('[DEBUG] Processing Team Member Statuses:', {
-      userCount: allUsers.length,
-      checkinCount: weekCheckins.length,
-      vacationCount: allVacations.length,
-      weekStart: viewingWeekStart.toISOString(),
-      dueDate: dueDate.toISOString()
-    });
-    
-    return allUsers.map(user => {
-      // Find check-in for this week
-      const checkin = weekCheckins.find(c => 
-        c.userId === user.id && 
-        new Date(c.weekOf) >= viewingWeekStart && 
-        new Date(c.weekOf) < viewingWeekEnd
+    // For admins with "My Team" mode
+    if (currentUser?.role === 'admin' && viewMode === 'my-team') {
+      return teamComplianceData.filter(team => 
+        team.members.some(m => m.userId === currentUser.id) ||
+        teams.find(t => t.id === team.teamId)?.leaderId === currentUser.id
       );
-      
-      // Check if user is on vacation this week
-      const vacation = allVacations.find(v => 
-        v.userId === user.id && 
-        new Date(v.weekOf).getTime() === viewingWeekStart.getTime()
-      );
-      
-      // Find team name
-      const team = teams.find(t => t.id === user.teamId);
-      
-      // Determine status
-      let status: TeamMemberStatus['status'] = 'missing';
-      let daysOverdue: number | undefined;
-      
-      if (vacation) {
-        status = 'on-vacation';
-      } else if (checkin) {
-        status = 'submitted';
-      } else if (selectedWeek === 0 && now > dueDate) {
-        // Only show overdue for current week
-        status = 'overdue';
-        daysOverdue = Math.floor(differenceInDays(now, dueDate));
-      }
-      
-      return {
-        user,
-        checkin,
-        vacation,
-        status,
-        submittedAt: checkin ? new Date(checkin.createdAt) : undefined,
-        daysOverdue,
-        moodRating: checkin?.overallMood,
-        teamName: team?.name,
-      };
-    });
-  }, [allUsers, weekCheckins, allVacations, teams, organization, viewingWeekStart, viewingWeekEnd, selectedWeek]);
-
-  // Apply filters for team status
-  const filteredStatuses = useMemo(() => {
-    let filtered = [...teamMemberStatuses];
-    
-    // Team filter
-    if (selectedTeam !== "all") {
-      filtered = filtered.filter(s => s.user.teamId === selectedTeam);
     }
     
-    // Status filter
-    if (statusFilter !== "all") {
-      switch (statusFilter) {
-        case "submitted":
-          filtered = filtered.filter(s => s.status === 'submitted');
-          break;
-        case "missing":
-          filtered = filtered.filter(s => s.status === 'missing' || s.status === 'overdue');
-          break;
-        case "on-vacation":
-          filtered = filtered.filter(s => s.status === 'on-vacation');
-          break;
-      }
+    // For admins with "All Teams" mode
+    return teamComplianceData;
+  }, [teamComplianceData, currentUser, viewMode, teams]);
+
+  // Auto-expand teams with issues
+  useEffect(() => {
+    const teamsWithIssues = filteredTeamData
+      .filter(team => team.metrics.submissionRate < 50)
+      .map(team => team.teamId);
+    
+    if (teamsWithIssues.length > 0 && expandedTeams.size === 0) {
+      setExpandedTeams(new Set(teamsWithIssues));
     }
-    
-    // Sort by status (overdue first, then missing, then vacation, then submitted)
-    filtered.sort((a, b) => {
-      const statusOrder = { overdue: 0, missing: 1, 'on-vacation': 2, submitted: 3 };
-      return statusOrder[a.status] - statusOrder[b.status];
+  }, [filteredTeamData]);
+
+  // Toggle team expansion
+  const toggleTeamExpansion = (teamId: string) => {
+    setExpandedTeams(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(teamId)) {
+        newSet.delete(teamId);
+      } else {
+        newSet.add(teamId);
+      }
+      return newSet;
     });
-    
-    return filtered;
-  }, [teamMemberStatuses, selectedTeam, statusFilter]);
+  };
 
-  // Calculate statistics
-  const stats = useMemo(() => {
-    const total = filteredStatuses.length;
-    const submitted = filteredStatuses.filter(s => s.status === 'submitted').length;
-    const missing = filteredStatuses.filter(s => s.status === 'missing').length;
-    const overdue = filteredStatuses.filter(s => s.status === 'overdue').length;
-    const onVacation = filteredStatuses.filter(s => s.status === 'on-vacation').length;
-    
-    const submissionRate = total > 0 ? Math.round((submitted / (total - onVacation)) * 100) : 0;
-    
-    return { total, submitted, missing, overdue, onVacation, submissionRate };
-  }, [filteredStatuses]);
+  // Expand/collapse all teams
+  const toggleAllTeams = (expand: boolean) => {
+    if (expand) {
+      setExpandedTeams(new Set(filteredTeamData.map(t => t.teamId)));
+    } else {
+      setExpandedTeams(new Set());
+    }
+  };
 
-  // Review mutation
+  // Review checkin mutation
   const reviewMutation = useMutation({
     mutationFn: async ({ checkinId, reviewData }: { checkinId: string; reviewData: ReviewCheckin }) => {
       const response = await apiRequest("PATCH", `/api/checkins/${checkinId}/review`, reviewData);
-      return await response.json();
+      if (!response.ok) throw new Error("Failed to review check-in");
+      return response.json();
     },
     onSuccess: () => {
+      toast({ title: "Review submitted successfully" });
       queryClient.invalidateQueries({ queryKey: ["/api/checkins/pending"] });
       queryClient.invalidateQueries({ queryKey: ["/api/checkins/review-status"] });
-      toast({
-        title: "Review submitted",
-        description: "Check-in has been reviewed successfully.",
-      });
       setReviewModal(null);
       setReviewComment("");
       setResponseComments({});
       setAddToOneOnOne(false);
       setFlagForFollowUp(false);
     },
-    onError: (error: any) => {
-      toast({
-        variant: "destructive",
-        title: "Review failed",
-        description: error.message || "Failed to submit review",
+    onError: () => {
+      toast({ 
+        title: "Failed to submit review", 
+        variant: "destructive" 
       });
-    },
+    }
   });
 
-  // Reminder mutation
-  const reminderMutation = useMutation({
-    mutationFn: async ({ userIds, weekStart }: { userIds: string | string[]; weekStart?: string }) => {
-      const response = await apiRequest("POST", "/api/checkins/send-reminder", { 
-        userIds: Array.isArray(userIds) ? userIds : [userIds],
-        weekStart: weekStart || viewingWeekStart.toISOString()
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to send reminders');
-      }
-      return await response.json();
+  // Send reminder mutation
+  const sendReminderMutation = useMutation({
+    mutationFn: async (userIds: string[]) => {
+      const response = await apiRequest("POST", "/api/checkins/send-reminder", { userIds });
+      if (!response.ok) throw new Error("Failed to send reminders");
+      return response.json();
     },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/checkins/missing"] });
-      const { results } = data;
-      if (results?.sent?.length > 0) {
-        toast({
-          title: "Reminders sent",
-          description: `Successfully sent ${results.sent.length} reminder${results.sent.length === 1 ? '' : 's'}.`,
-        });
-        // Track which reminders were sent
-        const newRemindersSent = new Set(remindersSent);
-        results.sent.forEach((userName: string) => {
-          // Find user ID from name
-          const user = filteredStatuses.find(s => s.user.name === userName)?.user;
-          if (user) {
-            newRemindersSent.add(`${user.id}-${viewingWeekStart.toISOString()}`);
-          }
-        });
-        setRemindersSent(newRemindersSent);
-      }
-      if (results?.failed?.length > 0) {
-        const failedReasons = results.failed.map((f: any) => f.reason).slice(0, 3).join(', ');
-        toast({
-          variant: "destructive",
-          title: "Some reminders failed",
-          description: failedReasons + (results.failed.length > 3 ? '...' : ''),
-        });
-      }
+    onSuccess: (data, userIds) => {
+      toast({ 
+        title: `Reminder${userIds.length > 1 ? 's' : ''} sent successfully`,
+        description: `Sent to ${userIds.length} user${userIds.length > 1 ? 's' : ''}`
+      });
+      
+      userIds.forEach(id => remindersSent.add(id));
+      setRemindersSent(new Set(remindersSent));
       setSelectedReminders(new Set());
       setSendingReminder(null);
+      setShowBulkReminderDialog(false);
     },
-    onError: (error: any) => {
-      toast({
-        variant: "destructive",
-        title: "Failed to send reminders",
-        description: error.message || "An error occurred while sending reminders",
+    onError: (error) => {
+      toast({ 
+        title: "Failed to send reminders", 
+        description: error.message,
+        variant: "destructive" 
       });
       setSendingReminder(null);
-    },
+    }
   });
 
-  // Handle review submission
-  const handleReview = async () => {
-    if (!reviewModal) return;
-
-    // Filter out empty response comments
-    const filteredResponseComments = Object.fromEntries(
-      Object.entries(responseComments).filter(([_, comment]) => comment.trim() !== "")
+  // Export to CSV function
+  const exportToCSV = () => {
+    const csvData = filteredTeamData.flatMap(team => 
+      team.members.map(member => ({
+        Team: team.teamName,
+        Name: member.userName,
+        Email: member.email,
+        Status: member.status,
+        'Submission Time': member.submittedAt ? format(new Date(member.submittedAt), 'MMM dd, yyyy h:mm a') : '',
+        'Days Overdue': member.daysOverdue || '',
+        'Mood Rating': member.moodRating || '',
+        'Compliance Rate': `${member.compliance.rate}%`,
+        'Streak': member.compliance.streak,
+        'On-Time Rate': `${member.compliance.onTimeRate}%`,
+        'Recent Compliance': member.compliance.recentText
+      }))
     );
-
-    const reviewData: ReviewCheckin = {
-      reviewStatus: "reviewed",
-      reviewComments: reviewComment.trim() || undefined,
-      responseComments: Object.keys(filteredResponseComments).length > 0 ? filteredResponseComments : undefined,
-      addToOneOnOne: addToOneOnOne,
-      flagForFollowUp: flagForFollowUp,
-    };
-
-    reviewMutation.mutate({
-      checkinId: reviewModal.checkin.id,
-      reviewData,
-    });
-  };
-
-  // Handle sending individual reminder
-  const handleSendIndividualReminder = (userId: string) => {
-    setSendingReminder(userId);
-    reminderMutation.mutate({ userIds: userId });
-  };
-
-  // Handle sending bulk reminders
-  const handleSendBulkReminders = () => {
-    const userIdsToRemind = filteredStatuses
-      .filter(s => s.status === 'missing' || s.status === 'overdue')
-      .map(s => s.user.id);
-    
-    if (userIdsToRemind.length === 0) {
-      toast({
-        title: "No reminders to send",
-        description: "All team members have submitted their check-ins.",
-      });
-      return;
-    }
-    
-    setSendingReminder('bulk');
-    reminderMutation.mutate({ userIds: userIdsToRemind });
-    setShowBulkReminderDialog(false);
-  };
-
-  // Check if reminder was already sent
-  const wasReminderSent = (userId: string) => {
-    return remindersSent.has(`${userId}-${viewingWeekStart.toISOString()}`);
-  };
-
-  // Handle sending reminders
-  const handleSendReminders = () => {
-    const userIds = Array.from(selectedReminders);
-    if (userIds.length === 0) {
-      toast({
-        variant: "destructive",
-        title: "No users selected",
-        description: "Please select at least one user to send reminders to.",
-      });
-      return;
-    }
-    reminderMutation.mutate(userIds);
-  };
-
-  // Toggle reminder selection
-  const toggleReminderSelection = (userId: string) => {
-    const newSet = new Set(selectedReminders);
-    if (newSet.has(userId)) {
-      newSet.delete(userId);
-    } else {
-      newSet.add(userId);
-    }
-    setSelectedReminders(newSet);
-  };
-
-  // Toggle select all reminders
-  const toggleSelectAllReminders = () => {
-    if (selectedReminders.size === missingCheckins.length) {
-      setSelectedReminders(new Set());
-    } else {
-      setSelectedReminders(new Set(missingCheckins.map(item => item.user.id)));
-    }
-  };
-
-  // Export to CSV
-  const handleExportCSV = () => {
-    const csvData = filteredStatuses.map(status => ({
-      'Team Member': status.user.name,
-      'Email': status.user.email,
-      'Team': status.teamName || 'No Team',
-      'Status': status.status === 'on-vacation' ? 'On Vacation' : 
-                status.status === 'submitted' ? 'Submitted' : 
-                status.status === 'overdue' ? 'Overdue' : 'Not Submitted',
-      'Submitted At': status.submittedAt ? format(status.submittedAt, 'MMM dd, yyyy HH:mm') : '',
-      'Mood Rating': status.moodRating || '',
-      'Days Overdue': status.daysOverdue || '',
-      'Vacation Note': status.vacation?.note || '',
-    }));
     
     const csv = Papa.unparse(csvData);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `team-checkin-status-${format(viewingWeekStart, 'yyyy-MM-dd')}.csv`;
-    link.click();
-    
-    toast({
-      title: "Export successful",
-      description: "Team check-in status has been exported to CSV.",
-    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `compliance-report-${format(viewingWeekStart, 'yyyy-MM-dd')}.csv`;
+    a.click();
   };
-
-  // Filter checkins based on selected filters
-  const filterCheckins = (checkins: EnhancedCheckin[]) => {
-    return checkins.filter(checkin => {
-      if (selectedUser !== "all" && checkin.user?.id !== selectedUser) {
-        return false;
-      }
-      return true;
-    });
-  };
-
-  const filteredPending = filterCheckins(pendingCheckins);
-  const filteredReviewed = filterCheckins(reviewedCheckins);
-
-  // Show access denied for non-managers/admins
-  if (!userLoading && currentUser && currentUser.role === "member") {
-    return (
-      <main className="flex-1 overflow-auto p-6">
-        <Card>
-          <CardContent className="p-6 text-center">
-            <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Access Denied</h3>
-            <p className="text-muted-foreground">
-              You need manager or admin privileges to access the review interface.
-            </p>
-          </CardContent>
-        </Card>
-      </main>
-    );
-  }
-
-  if (userLoading) {
-    return (
-      <main className="flex-1 overflow-auto p-6">
-        <div className="space-y-6">
-          <Skeleton className="h-32 w-full" />
-          <Skeleton className="h-48 w-full" />
-        </div>
-      </main>
-    );
-  }
 
   return (
-    <>
-      <main className="flex-1 overflow-auto p-6 space-y-8">
-        {/* REVIEWS SECTION */}
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-2xl font-bold mb-2">Reviews & Team Status</h2>
-            <p className="text-muted-foreground">Review check-ins and monitor team submission status</p>
-          </div>
+    <div className="container mx-auto p-4 space-y-6">
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold">Reviews & Compliance</h1>
+          <p className="text-muted-foreground mt-1">Monitor team check-in compliance and review submissions</p>
+        </div>
+        
+        {/* Export button */}
+        <Button 
+          onClick={exportToCSV} 
+          variant="outline"
+          data-testid="button-export"
+        >
+          <Download className="mr-2 h-4 w-4" />
+          Export CSV
+        </Button>
+      </div>
 
-          {/* Stats Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-muted-foreground">Pending Reviews</p>
-                    <p className="text-2xl font-bold text-orange-600" data-testid="text-pending-count">
-                      {pendingCheckins.length}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Awaiting your review
-                    </p>
+      {/* Organization Summary Dashboard (Admin only) */}
+      {currentUser?.role === 'admin' && orgSummary && (
+        <Card className="border-2 border-primary/20">
+          <CardHeader className="pb-3 bg-gradient-to-r from-primary/5 to-primary/10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-primary" />
+                <CardTitle>Organization Compliance Dashboard</CardTitle>
+              </div>
+              <Badge variant="outline" className="text-lg px-3 py-1">
+                Week of {format(viewingWeekStart, 'MMM dd, yyyy')}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6 pt-6">
+            {/* Overall metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card className={cn(getComplianceBackground(orgSummary.overall.submissionRate), "border")}>
+                <CardHeader className="pb-2">
+                  <CardDescription>Overall Submission Rate</CardDescription>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className={cn("text-3xl", getComplianceColor(orgSummary.overall.submissionRate))}>
+                      {orgSummary.overall.submissionRate}%
+                    </CardTitle>
+                    <Target className="h-5 w-5 text-muted-foreground" />
                   </div>
-                  <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                    <Clock className="w-6 h-6 text-orange-600" />
+                </CardHeader>
+                <CardContent className="pt-2">
+                  <Progress value={orgSummary.overall.submissionRate} className="h-2" />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {orgSummary.overall.submitted} of {orgSummary.overall.expected} submitted
+                  </p>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardDescription>Active Users</CardDescription>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-3xl">{orgSummary.overall.totalActive}</CardTitle>
+                    <Users className="h-5 w-5 text-muted-foreground" />
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardHeader>
+                <CardContent className="pt-2">
+                  <p className="text-xs text-muted-foreground">
+                    {orgSummary.overall.onVacation} on vacation
+                  </p>
+                </CardContent>
+              </Card>
+              
+              <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-950 dark:to-green-900 border-green-200 dark:border-green-800">
+                <CardHeader className="pb-2">
+                  <CardDescription>Top Performing Team</CardDescription>
+                  {orgSummary.teams.topPerforming[0] && (
+                    <>
+                      <CardTitle className="text-lg">{orgSummary.teams.topPerforming[0].teamName}</CardTitle>
+                      <Badge className={cn("w-fit", getComplianceBadgeColor(orgSummary.teams.topPerforming[0].submissionRate))}>
+                        <Award className="mr-1 h-3 w-3" />
+                        {orgSummary.teams.topPerforming[0].submissionRate}% compliance
+                      </Badge>
+                    </>
+                  )}
+                </CardHeader>
+              </Card>
+              
+              <Card className={orgSummary.teams.needingAttention.length > 0 ? "bg-gradient-to-br from-red-50 to-red-100 dark:from-red-950 dark:to-red-900 border-red-200 dark:border-red-800" : ""}>
+                <CardHeader className="pb-2">
+                  <CardDescription>Teams Needing Attention</CardDescription>
+                  <CardTitle className="text-3xl text-red-600 dark:text-red-400">
+                    {orgSummary.teams.needingAttention.length}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-2">
+                  <p className="text-xs text-muted-foreground">
+                    Below 50% compliance
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
 
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-muted-foreground">Reviewed This Week</p>
-                    <p className="text-2xl font-bold text-blue-600" data-testid="text-reviewed-count">
-                      {reviewedCheckins.filter(c => 
-                        new Date(c.reviewedAt!).getTime() > Date.now() - 7 * 24 * 60 * 60 * 1000
-                      ).length}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Last 7 days
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <CheckCircle className="w-6 h-6 text-blue-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Team breakdown */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Team Performance Overview
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {orgSummary.teams.all.map(team => {
+                  const teamHistorical = teamMetrics.find(m => m.teamId === team.teamId);
+                  const sparklineData = teamHistorical?.historical.map(h => h.submissionRate) || [];
+                  
+                  return (
+                    <div key={team.teamId} className="flex items-center justify-between p-3 border rounded-lg hover:shadow-md transition-shadow">
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{team.teamName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {team.submitted}/{team.expected} submitted ({team.members} members)
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {sparklineData.length > 0 && (
+                          <Sparkline data={sparklineData} color={getComplianceColor(team.submissionRate).includes('green') ? '#10b981' : getComplianceColor(team.submissionRate).includes('yellow') ? '#f59e0b' : '#ef4444'} />
+                        )}
+                        <div className="text-right">
+                          <Badge variant="outline" className={cn(getComplianceBadgeColor(team.submissionRate))}>
+                            {team.submissionRate}%
+                          </Badge>
+                          <Progress value={team.submissionRate} className="w-20 h-2 mt-1" />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center">
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-muted-foreground">Team Members</p>
-                    <p className="text-2xl font-bold text-blue-600" data-testid="text-team-members-count">
-                      {teamMembers.length}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Under your review
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <User className="w-6 h-6 text-blue-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+            {/* Top performers and those needing attention */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Award className="h-4 w-4 text-green-600" />
+                    Top Performers
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {orgSummary.individuals.topPerformers.slice(0, 5).map((person, index) => (
+                    <div key={person.userId} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50">
+                      <span className="text-sm flex items-center gap-2">
+                        {index === 0 && <span className="text-lg">🥇</span>}
+                        {index === 1 && <span className="text-lg">🥈</span>}
+                        {index === 2 && <span className="text-lg">🥉</span>}
+                        {person.userName}
+                      </span>
+                      <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                        <Zap className="mr-1 h-3 w-3" />
+                        {person.complianceRate}%
+                      </Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-orange-600" />
+                    Needs Attention
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {orgSummary.individuals.needingAttention.slice(0, 5).map(person => (
+                    <div key={person.userId} className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/50">
+                      <span className="text-sm">{person.userName}</span>
+                      <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                        {person.complianceRate}%
+                      </Badge>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-          {/* Filters */}
+      {/* Main Tabs */}
+      <Tabs defaultValue="team-status" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="team-status" data-testid="tab-team-status">
+            <Users className="mr-2 h-4 w-4" />
+            Team Compliance
+          </TabsTrigger>
+          <TabsTrigger value="pending" data-testid="tab-pending">
+            <Clock className="mr-2 h-4 w-4" />
+            Pending Reviews
+            {pendingCheckins.length > 0 && (
+              <Badge className="ml-2" variant="destructive">
+                {pendingCheckins.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="reviewed" data-testid="tab-reviewed">
+            <CheckCircle className="mr-2 h-4 w-4" />
+            Recently Reviewed
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Team Compliance Tab */}
+        <TabsContent value="team-status" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Filter className="w-5 h-5" />
-                Filters
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-4">
-                <div className="flex-1 min-w-48">
-                  <Select value={selectedUser} onValueChange={setSelectedUser}>
-                    <SelectTrigger data-testid="select-user-filter">
-                      <SelectValue placeholder="Filter by team member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Team Members</SelectItem>
-                      {teamMembers.map((member) => (
-                        <SelectItem key={member.id} value={member.id}>
-                          {member.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Tabs for different review states */}
-          <Tabs defaultValue="pending" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="pending" data-testid="tab-pending">
-                Pending ({filteredPending.length})
-              </TabsTrigger>
-              <TabsTrigger value="reviewed" data-testid="tab-reviewed">
-                Reviewed ({filteredReviewed.length})
-              </TabsTrigger>
-              <TabsTrigger value="missing" data-testid="tab-missing">
-                Missing ({missingCheckins.length})
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="pending">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Pending Reviews</CardTitle>
-                  <CardDescription>
-                    Check-ins waiting for your review and approval
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {pendingLoading ? (
-                    <div className="space-y-4">
-                      {[...Array(3)].map((_, i) => (
-                        <Skeleton key={i} className="h-32 w-full" />
-                      ))}
-                    </div>
-                  ) : filteredPending.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Clock className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">No Pending Reviews</h3>
-                      <p className="text-muted-foreground">
-                        All check-ins have been reviewed. Great job!
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {filteredPending.map((checkin) => (
-                        <CheckinReviewCard
-                          key={checkin.id}
-                          checkin={checkin}
-                          questions={questions}
-                          onReview={() => setReviewModal({ checkin })}
-                          isPending
-                        />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="reviewed">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Reviewed Check-ins</CardTitle>
-                  <CardDescription>
-                    Previously reviewed check-ins from your team
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {reviewedLoading ? (
-                    <div className="space-y-4">
-                      {[...Array(3)].map((_, i) => (
-                        <Skeleton key={i} className="h-32 w-full" />
-                      ))}
-                    </div>
-                  ) : filteredReviewed.length === 0 ? (
-                    <div className="text-center py-8">
-                      <CheckCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">No Reviewed Check-ins</h3>
-                      <p className="text-muted-foreground">
-                        No check-ins have been reviewed yet.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {filteredReviewed.slice(0, 10).map((checkin) => (
-                        <CheckinReviewCard
-                          key={checkin.id}
-                          checkin={checkin}
-                          questions={questions}
-                          onReview={() => {}}
-                          isPending={false}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="missing">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Missing Check-ins</CardTitle>
-                  <CardDescription>
-                    Team members who haven't submitted their check-ins for this week
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {missingLoading ? (
-                    <div className="space-y-4">
-                      {[...Array(3)].map((_, i) => (
-                        <Skeleton key={i} className="h-20 w-full" />
-                      ))}
-                    </div>
-                  ) : missingCheckins.length === 0 ? (
-                    <div className="text-center py-8">
-                      <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
-                      <h3 className="text-lg font-semibold mb-2">All Check-ins Submitted</h3>
-                      <p className="text-muted-foreground">
-                        Great job! All team members have submitted their check-ins this week.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {/* Select All and Send Reminders Button */}
-                      <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-                        <label className="flex items-center gap-2">
-                          <Checkbox
-                            checked={selectedReminders.size === missingCheckins.length && missingCheckins.length > 0}
-                            onCheckedChange={toggleSelectAllReminders}
-                            data-testid="checkbox-select-all-reminders"
-                          />
-                          <span className="text-sm font-medium">
-                            Select All ({missingCheckins.length})
-                          </span>
-                        </label>
+              <div className="flex flex-col md:flex-row justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <CardTitle>Team Check-in Compliance</CardTitle>
+                  
+                  {/* View mode toggle for admins */}
+                  {currentUser?.role === 'admin' && (
+                    <div className="flex items-center gap-2 p-2 bg-muted rounded-lg">
+                      <Label htmlFor="view-mode" className="text-sm font-medium">View:</Label>
+                      <div className="flex items-center gap-2">
                         <Button
-                          onClick={handleSendReminders}
-                          disabled={selectedReminders.size === 0 || reminderMutation.isPending}
+                          variant={viewMode === 'all' ? 'default' : 'outline'}
                           size="sm"
-                          className="gap-2"
-                          data-testid="button-send-reminders"
+                          onClick={() => setViewMode('all')}
                         >
-                          <Send className="w-4 h-4" />
-                          {reminderMutation.isPending 
-                            ? "Sending..." 
-                            : `Send Reminders (${selectedReminders.size})`}
+                          All Teams
+                        </Button>
+                        <Button
+                          variant={viewMode === 'my-team' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setViewMode('my-team')}
+                        >
+                          My Team
                         </Button>
                       </div>
-
-                      {/* Missing Check-ins List */}
-                      {missingCheckins.map((item) => (
-                        <div 
-                          key={item.user.id} 
-                          className="border border-border rounded-lg p-4 hover:bg-muted/30 transition-colors"
-                          data-testid={`missing-checkin-${item.user.id}`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <Checkbox
-                              checked={selectedReminders.has(item.user.id)}
-                              onCheckedChange={() => toggleReminderSelection(item.user.id)}
-                              className="mt-1"
-                              data-testid={`checkbox-reminder-${item.user.id}`}
-                            />
-                            
-                            <div className="flex-1 space-y-2">
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  {/* Week navigation */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedWeek(selectedWeek - 1)}
+                    data-testid="button-prev-week"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  
+                  <div className="px-3 py-1 border rounded-md min-w-[200px] text-center">
+                    <p className="text-sm font-medium">
+                      {format(viewingWeekStart, 'MMM dd')} - {format(viewingWeekEnd, 'MMM dd, yyyy')}
+                    </p>
+                    {selectedWeek === 0 && (
+                      <Badge variant="default" className="mt-1">Current Week</Badge>
+                    )}
+                  </div>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedWeek(selectedWeek + 1)}
+                    disabled={selectedWeek >= 0}
+                    data-testid="button-next-week"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  
+                  {/* Expand/Collapse all */}
+                  <div className="flex gap-1 ml-4">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleAllTeams(true)}
+                      data-testid="button-expand-all"
+                    >
+                      Expand All
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => toggleAllTeams(false)}
+                      data-testid="button-collapse-all"
+                    >
+                      Collapse All
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            
+            <CardContent>
+              {complianceLoading ? (
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-24 w-full" />
+                  ))}
+                </div>
+              ) : filteredTeamData.length === 0 ? (
+                <div className="text-center py-12">
+                  <Users className="mx-auto h-12 w-12 text-gray-400" />
+                  <p className="mt-2 text-gray-500">No team data available</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredTeamData.map((team) => {
+                    const isExpanded = expandedTeams.has(team.teamId);
+                    const hasIssues = team.metrics.submissionRate < 50;
+                    const teamHistorical = teamMetrics.find(m => m.teamId === team.teamId);
+                    const sparklineData = teamHistorical?.historical.map(h => h.submissionRate) || [];
+                    const previousWeekRate = sparklineData.length > 1 ? sparklineData[1] : sparklineData[0];
+                    
+                    return (
+                      <Card key={team.teamId} className={cn(
+                        "transition-all overflow-hidden",
+                        hasIssues && "border-orange-500 dark:border-orange-700"
+                      )}>
+                        <Collapsible open={isExpanded} onOpenChange={() => toggleTeamExpansion(team.teamId)}>
+                          <CollapsibleTrigger className="w-full" data-testid={`team-header-${team.teamId}`}>
+                            <div className={cn(
+                              "p-4 cursor-pointer hover:bg-muted/50 transition-colors",
+                              hasIssues && "bg-orange-50 dark:bg-orange-950/30"
+                            )}>
                               <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="font-medium" data-testid={`text-user-name-${item.user.id}`}>
-                                    {item.user.name}
-                                  </p>
-                                  <p className="text-sm text-muted-foreground">
-                                    {item.user.teamName || "No Team"} • {item.user.email}
-                                  </p>
+                                <div className="flex items-center gap-3">
+                                  {isExpanded ? (
+                                    <ChevronUp className="h-5 w-5" />
+                                  ) : (
+                                    <ChevronDown className="h-5 w-5" />
+                                  )}
+                                  
+                                  <div className="flex items-center gap-3">
+                                    <h3 className="font-semibold text-lg flex items-center gap-2">
+                                      {team.teamName}
+                                      {team.metrics.submissionRate >= 90 && <span>⭐</span>}
+                                    </h3>
+                                    <Badge variant="outline" className="font-normal">
+                                      {team.metrics.submitted}/{team.metrics.expected} members
+                                    </Badge>
+                                    {team.metrics.onVacation > 0 && (
+                                      <Badge variant="secondary">
+                                        <Plane className="mr-1 h-3 w-3" />
+                                        {team.metrics.onVacation} on vacation
+                                      </Badge>
+                                    )}
+                                    {hasIssues && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger>
+                                            <Badge variant="destructive">
+                                              <AlertTriangle className="mr-1 h-3 w-3" />
+                                              Needs Attention
+                                            </Badge>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            <p>Submission rate below 50%</p>
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </div>
                                 </div>
                                 
-                                {/* Warning icon if no Slack connected */}
-                                {!item.user.slackUserId && (
-                                  <div className="flex items-center gap-1 text-yellow-600">
-                                    <AlertCircle className="w-4 h-4" />
-                                    <span className="text-xs">No Slack</span>
+                                <div className="flex items-center gap-6">
+                                  {/* Historical sparkline */}
+                                  {sparklineData.length > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs text-muted-foreground">4 weeks:</span>
+                                      <Sparkline 
+                                        data={sparklineData} 
+                                        color={getComplianceColor(team.metrics.submissionRate).includes('green') ? '#10b981' : getComplianceColor(team.metrics.submissionRate).includes('yellow') ? '#f59e0b' : '#ef4444'} 
+                                      />
+                                    </div>
+                                  )}
+                                  
+                                  {/* Team metrics summary */}
+                                  <div className="flex items-center gap-4 text-sm">
+                                    <div className="text-right">
+                                      <p className="text-muted-foreground">Submission</p>
+                                      <div className="flex items-center gap-1">
+                                        <p className={cn("font-semibold text-lg", getComplianceColor(team.metrics.submissionRate))}>
+                                          {team.metrics.submissionRate}%
+                                        </p>
+                                        {sparklineData.length > 1 && (
+                                          <TrendArrow current={team.metrics.submissionRate} previous={previousWeekRate} />
+                                        )}
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="text-right">
+                                      <p className="text-muted-foreground">On-Time</p>
+                                      <p className={cn("font-semibold text-lg", getComplianceColor(team.metrics.onTimeRate))}>
+                                        {team.metrics.onTimeRate}%
+                                      </p>
+                                    </div>
+                                    
+                                    {team.metrics.averageMood !== null && (
+                                      <div className="text-right">
+                                        <p className="text-muted-foreground">Mood</p>
+                                        <div className="flex items-center justify-end">
+                                          <RatingStars rating={team.metrics.averageMood} size="sm" />
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                )}
+                                  
+                                  <Progress 
+                                    value={team.metrics.submissionRate} 
+                                    className="w-24 h-3"
+                                  />
+                                </div>
                               </div>
                               
-                              <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                {item.lastCheckin ? (
-                                  <>
-                                    <span className="flex items-center gap-1">
-                                      <Clock className="w-3 h-3" />
-                                      Last check-in: {item.daysSinceLastCheckin} days ago
-                                    </span>
-                                  </>
-                                ) : (
-                                  <span className="flex items-center gap-1 text-orange-600">
-                                    <UserMinus className="w-3 h-3" />
-                                    Never submitted a check-in
-                                  </span>
-                                )}
-                                
-                                {item.lastReminderSent && (
+                              {/* Team summary stats */}
+                              {teamHistorical && (
+                                <div className="flex items-center gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
                                   <span className="flex items-center gap-1">
-                                    <Bell className="w-3 h-3" />
-                                    Reminded: {formatDistanceToNow(new Date(item.lastReminderSent))} ago
+                                    <Users className="h-3 w-3" />
+                                    {teamHistorical.memberBreakdown.total} members
                                   </span>
-                                )}
-                              </div>
+                                  <span className="flex items-center gap-1">
+                                    <CheckCircle className="h-3 w-3 text-green-600" />
+                                    {teamHistorical.memberBreakdown.consistent} consistent
+                                  </span>
+                                  {teamHistorical.memberBreakdown.struggling > 0 && (
+                                    <span className="flex items-center gap-1">
+                                      <AlertCircle className="h-3 w-3 text-orange-600" />
+                                      {teamHistorical.memberBreakdown.struggling} struggling
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </div>
-
-        <Separator className="my-8" />
-
-        {/* TEAM CHECK-IN STATUS SECTION */}
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Activity className="w-5 h-5" />
-            <h2 className="text-xl font-bold">Team Check-in Status</h2>
-          </div>
-
-          {/* Enhanced Week Navigation with Due Dates */}
-          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between mb-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setSelectedWeek(selectedWeek - 1)}
-                  disabled={selectedWeek <= -12} // Limit to 12 weeks back
-                  className="flex items-center gap-2"
-                  data-testid="button-prev-week"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Previous Week
-                </Button>
-                
-                <div className="text-center flex-1 max-w-2xl mx-4">
-                  <h3 className="font-bold text-2xl mb-1">
-                    {format(viewingWeekStart, 'MMM d')} - {format(viewingWeekEnd, 'MMM d, yyyy')}
-                  </h3>
-                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                    <Calendar className="w-4 h-4" />
-                    <span>
-                      {selectedWeek === 0 ? (
-                        <Badge variant="default" className="bg-green-600">Current Week</Badge>
-                      ) : selectedWeek === -1 ? (
-                        <Badge variant="secondary">Last Week</Badge>
-                      ) : (
-                        <Badge variant="outline">
-                          {Math.abs(selectedWeek)} weeks {selectedWeek < 0 ? 'ago' : 'ahead'}
-                        </Badge>
-                      )}
-                    </span>
-                  </div>
-                  {orgSettings && (
-                    <div className="mt-2 text-sm">
-                      <div className="flex items-center justify-center gap-2 text-muted-foreground">
-                        <Clock className="w-4 h-4" />
-                        <span className="font-medium">
-                          Due: {orgSettings.checkinDueDayName}, {format(getCheckinDueDate(viewingWeekStart, organization), 'MMM d')} 
-                          {' '}by {orgSettings.checkinDueTime}
-                          {orgSettings.timezone && ` ${orgSettings.timezone.split('/')[1].replace('_', ' ')}`}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                
-                <Button
-                  variant="outline"
-                  onClick={() => setSelectedWeek(selectedWeek + 1)}
-                  disabled={selectedWeek >= 0} // Can't go to future
-                  className="flex items-center gap-2"
-                  data-testid="button-next-week"
-                >
-                  Next Week
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Comprehensive Weekly Summary Card */}
-          <Card className="border-2 border-primary/20">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <CheckCheck className="w-5 h-5 text-primary" />
-                  <CardTitle>Weekly Submission Summary</CardTitle>
-                </div>
-                <Badge variant={stats.submissionRate >= 80 ? "default" : stats.submissionRate >= 50 ? "secondary" : "destructive"}>
-                  {stats.submissionRate}% Complete
-                </Badge>
-              </div>
-              <CardDescription>
-                Check-in submissions for the week of {format(viewingWeekStart, 'MMMM d, yyyy')}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Progress Bar */}
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Completion Rate</span>
-                  <span className="font-medium">{stats.submitted} of {stats.total - stats.onVacation} submitted</span>
-                </div>
-                <Progress 
-                  value={stats.submissionRate} 
-                  className="h-3"
-                />
-              </div>
-
-              {/* Detailed Statistics */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">Total Team</p>
-                  </div>
-                  <p className="text-2xl font-bold">{stats.total}</p>
-                  <p className="text-xs text-muted-foreground">members expected</p>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <p className="text-sm text-muted-foreground">Submitted</p>
-                  </div>
-                  <p className="text-2xl font-bold text-green-600">{stats.submitted}</p>
-                  <p className="text-xs text-muted-foreground">completed on time</p>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 text-red-600" />
-                    <p className="text-sm text-muted-foreground">Missing/Overdue</p>
-                  </div>
-                  <p className="text-2xl font-bold text-red-600">{stats.missing + stats.overdue}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {stats.overdue > 0 && `${stats.overdue} overdue`}
-                    {stats.overdue > 0 && stats.missing > 0 && ', '}
-                    {stats.missing > 0 && `${stats.missing} missing`}
-                  </p>
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Plane className="w-4 h-4 text-blue-600" />
-                    <p className="text-sm text-muted-foreground">On Vacation</p>
-                  </div>
-                  <p className="text-2xl font-bold text-blue-600">{stats.onVacation}</p>
-                  <p className="text-xs text-muted-foreground">excused</p>
-                </div>
-              </div>
-
-              {/* Configuration Info */}
-              {orgSettings && (
-                <div className="border-t pt-4">
-                  <div className="flex items-start gap-2">
-                    <Info className="w-4 h-4 text-muted-foreground mt-0.5" />
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      <p>Check-ins are due every <strong>{orgSettings.checkinDueDayName}</strong> at <strong>{orgSettings.checkinDueTime}</strong></p>
-                      {orgSettings.checkinReminderDayName && (
-                        <p>Reminders are sent on <strong>{orgSettings.checkinReminderDayName}</strong> at <strong>{orgSettings.checkinReminderTime}</strong></p>
-                      )}
-                      <p>Timezone: <strong>{orgSettings.timezone}</strong></p>
-                    </div>
-                  </div>
+                          </CollapsibleTrigger>
+                          
+                          <CollapsibleContent>
+                            <Separator />
+                            <div className="p-4 bg-muted/20">
+                              <div className="space-y-2">
+                                {team.members.map((member) => (
+                                  <div 
+                                    key={member.userId} 
+                                    className={cn(
+                                      "flex items-center justify-between p-3 rounded-lg transition-all",
+                                      "bg-background border hover:shadow-sm",
+                                      member.status === 'overdue' && "border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20",
+                                      member.status === 'submitted' && "border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20"
+                                    )}
+                                    data-testid={`member-row-${member.userId}`}
+                                  >
+                                    <div className="flex items-center gap-3 flex-1">
+                                      <Checkbox 
+                                        checked={selectedReminders.has(member.userId)}
+                                        onCheckedChange={(checked) => {
+                                          const newSet = new Set(selectedReminders);
+                                          if (checked) {
+                                            newSet.add(member.userId);
+                                          } else {
+                                            newSet.delete(member.userId);
+                                          }
+                                          setSelectedReminders(newSet);
+                                        }}
+                                        disabled={member.status === 'submitted' || member.status === 'on-vacation' || remindersSent.has(member.userId)}
+                                      />
+                                      
+                                      <Avatar className="h-8 w-8">
+                                        <AvatarFallback className={cn(
+                                          member.compliance.rate >= 80 && "bg-green-100 text-green-800",
+                                          member.compliance.rate < 50 && "bg-red-100 text-red-800"
+                                        )}>
+                                          {member.userName.split(' ').map(n => n[0]).join('').toUpperCase()}
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      
+                                      <div className="flex-1">
+                                        <p className="font-medium flex items-center gap-2">
+                                          {member.userName}
+                                          {member.compliance.streak >= 5 && (
+                                            <TooltipProvider>
+                                              <Tooltip>
+                                                <TooltipTrigger>
+                                                  <Badge variant="outline" className="text-xs">
+                                                    <Sparkles className="mr-1 h-3 w-3 text-yellow-500" />
+                                                    {member.compliance.streak} week streak
+                                                  </Badge>
+                                                </TooltipTrigger>
+                                                <TooltipContent>
+                                                  <p>Submitted {member.compliance.streak} weeks in a row!</p>
+                                                </TooltipContent>
+                                              </Tooltip>
+                                            </TooltipProvider>
+                                          )}
+                                        </p>
+                                        <p className="text-sm text-muted-foreground">{member.email}</p>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-3">
+                                      {/* Status badge */}
+                                      <Badge variant={getStatusBadgeVariant(member.status)}>
+                                        {member.status === 'submitted' && <CheckCircle className="mr-1 h-3 w-3" />}
+                                        {member.status === 'overdue' && <AlertCircle className="mr-1 h-3 w-3" />}
+                                        {member.status === 'on-vacation' && <Plane className="mr-1 h-3 w-3" />}
+                                        {member.status === 'missing' && <Clock className="mr-1 h-3 w-3" />}
+                                        {member.status}
+                                        {member.daysOverdue && member.daysOverdue > 0 && (
+                                          <span className="ml-1 text-xs">({member.daysOverdue}d)</span>
+                                        )}
+                                      </Badge>
+                                      
+                                      {/* Submission details */}
+                                      {member.submittedAt && (
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger>
+                                              <p className="text-sm text-muted-foreground">
+                                                {format(new Date(member.submittedAt), 'h:mm a')}
+                                              </p>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p>{format(new Date(member.submittedAt), 'MMM dd, yyyy h:mm a')}</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
+                                      
+                                      {/* Mood rating */}
+                                      {member.moodRating !== null && member.moodRating !== undefined && (
+                                        <RatingStars rating={member.moodRating} size="sm" />
+                                      )}
+                                      
+                                      {/* Compliance metrics */}
+                                      <div className="flex items-center gap-3 text-sm">
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger>
+                                              <div className="text-center cursor-help">
+                                                <p className="text-muted-foreground text-xs">Compliance</p>
+                                                <p className={cn("font-semibold", getComplianceColor(member.compliance.rate))}>
+                                                  {member.compliance.rate}%
+                                                </p>
+                                              </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p>{member.compliance.totalSubmitted} of {member.compliance.totalExpected} expected check-ins</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                        
+                                        <div className="text-center">
+                                          <p className="text-muted-foreground text-xs">On-Time</p>
+                                          <p className={cn("font-semibold", getComplianceColor(member.compliance.onTimeRate))}>
+                                            {member.compliance.onTimeRate}%
+                                          </p>
+                                        </div>
+                                      </div>
+                                      
+                                      {/* Recent compliance text */}
+                                      <Badge variant="outline" className="text-xs">
+                                        {member.compliance.recentText}
+                                      </Badge>
+                                      
+                                      {/* Individual reminder button */}
+                                      {(member.status === 'missing' || member.status === 'overdue') && 
+                                       !remindersSent.has(member.userId) && (
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => {
+                                                  setSendingReminder(member.userId);
+                                                  sendReminderMutation.mutate([member.userId]);
+                                                }}
+                                                disabled={sendingReminder === member.userId}
+                                                data-testid={`button-remind-${member.userId}`}
+                                              >
+                                                {sendingReminder === member.userId ? (
+                                                  <Clock className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                  <Bell className="h-4 w-4" />
+                                                )}
+                                              </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              <p>Send reminder</p>
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
+                                      
+                                      {remindersSent.has(member.userId) && (
+                                        <Badge variant="secondary" className="text-xs">
+                                          <CheckCheck className="mr-1 h-3 w-3" />
+                                          Reminded
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                              
+                              {/* Bulk reminder button for team */}
+                              {selectedReminders.size > 0 && (
+                                <div className="mt-4 flex justify-end">
+                                  <Button
+                                    onClick={() => setShowBulkReminderDialog(true)}
+                                    disabled={selectedReminders.size === 0}
+                                    data-testid="button-bulk-remind"
+                                  >
+                                    <Bell className="mr-2 h-4 w-4" />
+                                    Send Reminders ({selectedReminders.size})
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
           </Card>
+        </TabsContent>
 
-
-          {/* Filters and Export */}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <Select value={selectedTeam} onValueChange={setSelectedTeam}>
-              <SelectTrigger className="w-full sm:w-48" data-testid="select-team-filter">
-                <SelectValue placeholder="Filter by team" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Teams</SelectItem>
-                {teams.map(team => (
-                  <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-full sm:w-48" data-testid="select-status-filter">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="submitted">Submitted</SelectItem>
-                <SelectItem value="missing">Not Submitted</SelectItem>
-                <SelectItem value="on-vacation">On Vacation</SelectItem>
-              </SelectContent>
-            </Select>
-            
-            <div className="flex-1" />
-            
-            {/* Only show reminder button for current week and if Slack is enabled */}
-            {selectedWeek === 0 && organization?.enableSlackIntegration && (
-              filteredStatuses.some(s => s.status === 'missing' || s.status === 'overdue') && (
-                <Button
-                  onClick={() => setShowBulkReminderDialog(true)}
-                  variant="default"
-                  className="flex items-center gap-2"
-                  disabled={sendingReminder === 'bulk'}
-                  data-testid="button-send-all-reminders"
-                >
-                  <BellRing className="w-4 h-4" />
-                  {sendingReminder === 'bulk' ? 'Sending...' : 'Send All Reminders'}
-                </Button>
-              )
-            )}
-            
-            <Button
-              onClick={handleExportCSV}
-              variant="outline"
-              className="flex items-center gap-2"
-              data-testid="button-export-csv"
-            >
-              <Download className="w-4 h-4" />
-              Export CSV
-            </Button>
-          </div>
-
-          {/* Team Member Grid */}
-          {usersLoading || checkinsLoading || vacationsLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {[1, 2, 3, 4, 5, 6].map(i => (
-                <Skeleton key={i} className="h-32" />
-              ))}
-            </div>
-          ) : filteredStatuses.length === 0 ? (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <Users className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No team members found</h3>
-                <p className="text-muted-foreground">
-                  Adjust your filters to see team members.
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {filteredStatuses.map(status => (
-                <Card 
-                  key={status.user.id} 
-                  className={cn(
-                    "transition-all hover:shadow-lg",
-                    status.status === 'overdue' && "border-red-500 dark:border-red-600",
-                    status.status === 'missing' && "border-yellow-500 dark:border-yellow-600",
-                    status.status === 'submitted' && "border-green-500 dark:border-green-600",
-                    status.status === 'on-vacation' && "border-blue-500 dark:border-blue-600"
-                  )}
-                  data-testid={`card-member-${status.user.id}`}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar>
-                          <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${status.user.name}`} />
-                          <AvatarFallback>
-                            {status.user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <h4 className="font-semibold text-sm">{status.user.name}</h4>
-                          {status.teamName && (
-                            <p className="text-xs text-muted-foreground">{status.teamName}</p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {status.status === 'submitted' && (
-                        <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
-                      )}
-                      {status.status === 'missing' && (
-                        <Clock className="w-5 h-5 text-yellow-600 flex-shrink-0" />
-                      )}
-                      {status.status === 'overdue' && (
-                        <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
-                      )}
-                      {status.status === 'on-vacation' && (
-                        <Plane className="w-5 h-5 text-blue-600 flex-shrink-0" />
-                      )}
-                    </div>
-                    
-                    <div className="space-y-2">
+        {/* Pending Reviews Tab */}
+        <TabsContent value="pending" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Pending Check-in Reviews</CardTitle>
+              <CardDescription>
+                Review and provide feedback on submitted check-ins
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {pendingLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+              ) : pendingCheckins.length === 0 ? (
+                <div className="text-center py-12">
+                  <CheckCircle className="mx-auto h-12 w-12 text-green-500" />
+                  <p className="mt-2 text-gray-500">All check-ins have been reviewed!</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pendingCheckins.map((checkin) => (
+                    <div key={checkin.id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium text-muted-foreground">Status</span>
-                        <Badge 
-                          variant={
-                            status.status === 'submitted' ? 'default' :
-                            status.status === 'on-vacation' ? 'secondary' :
-                            status.status === 'overdue' ? 'destructive' : 'outline'
-                          }
-                          className={cn(
-                            "text-xs",
-                            status.status === 'submitted' && "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
-                            status.status === 'missing' && "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
-                            status.status === 'overdue' && "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-                            status.status === 'on-vacation' && "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarFallback>
+                              {checkin.user?.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{checkin.user?.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {checkin.user?.teamName || "No team"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Submitted {formatDistanceToNow(new Date(checkin.submittedAt))} ago
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                          {checkin.overallMood && (
+                            <RatingStars rating={checkin.overallMood} size="sm" />
                           )}
-                        >
-                          {status.status === 'on-vacation' ? 'On Vacation' :
-                           status.status === 'submitted' ? 'Submitted' :
-                           status.status === 'overdue' ? 'Overdue' : 'Not Submitted'}
-                        </Badge>
+                          
+                          <Button
+                            onClick={() => setReviewModal({ checkin })}
+                            data-testid={`button-review-${checkin.id}`}
+                          >
+                            <Eye className="mr-2 h-4 w-4" />
+                            Review
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Recently Reviewed Tab */}
+        <TabsContent value="reviewed" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Recently Reviewed</CardTitle>
+              <CardDescription>
+                Check-ins you've reviewed in the past week
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {reviewedLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <Skeleton key={i} className="h-20 w-full" />
+                  ))}
+                </div>
+              ) : reviewedCheckins.length === 0 ? (
+                <div className="text-center py-12">
+                  <Clock className="mx-auto h-12 w-12 text-gray-400" />
+                  <p className="mt-2 text-gray-500">No recently reviewed check-ins</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {reviewedCheckins.map((checkin) => (
+                    <div key={checkin.id} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Avatar>
+                            <AvatarFallback>
+                              {checkin.user?.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <p className="font-medium">{checkin.user?.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {checkin.user?.teamName || "No team"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Reviewed {checkin.reviewedAt && formatDistanceToNow(new Date(checkin.reviewedAt))} ago
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3">
+                          <Badge variant="secondary">
+                            <CheckCheck className="mr-1 h-3 w-3" />
+                            Reviewed
+                          </Badge>
+                          {checkin.flagForFollowUp && (
+                            <Badge variant="destructive">
+                              Follow-up needed
+                            </Badge>
+                          )}
+                        </div>
                       </div>
                       
-                      {status.status === 'submitted' && status.submittedAt && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-muted-foreground">Submitted</span>
-                          <span className="text-xs">
-                            {format(status.submittedAt, 'MMM d, h:mm a')}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {status.moodRating && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-muted-foreground">Mood</span>
-                          <RatingStars rating={status.moodRating} size="xs" />
-                        </div>
-                      )}
-                      
-                      {status.daysOverdue !== undefined && status.daysOverdue > 0 && (
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium text-muted-foreground">Overdue</span>
-                          <span className="text-xs text-red-600 font-medium">
-                            {status.daysOverdue} {status.daysOverdue === 1 ? 'day' : 'days'}
-                          </span>
-                        </div>
-                      )}
-                      
-                      {status.vacation?.note && (
-                        <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-950/20 rounded text-xs">
-                          {status.vacation.note}
-                        </div>
-                      )}
-                      
-                      {/* Send Reminder button for missing/overdue check-ins */}
-                      {selectedWeek === 0 && organization?.enableSlackIntegration && 
-                       (status.status === 'missing' || status.status === 'overdue') && (
-                        <div className="mt-3 pt-3 border-t">
-                          {wasReminderSent(status.user.id) ? (
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <CheckCircle className="w-3 h-3" />
-                              Reminder sent
-                            </div>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleSendIndividualReminder(status.user.id)}
-                              disabled={sendingReminder === status.user.id || sendingReminder === 'bulk'}
-                              className="w-full flex items-center gap-2"
-                              data-testid={`button-send-reminder-${status.user.id}`}
-                            >
-                              <Bell className="w-3 h-3" />
-                              {sendingReminder === status.user.id ? 'Sending...' : 'Send Reminder'}
-                            </Button>
-                          )}
+                      {checkin.reviewComments && (
+                        <div className="mt-3 p-3 bg-muted rounded-md">
+                          <p className="text-sm font-medium mb-1">Review comments:</p>
+                          <p className="text-sm text-muted-foreground">{checkin.reviewComments}</p>
                         </div>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Review Modal */}
+      {reviewModal && (
+        <AlertDialog open={!!reviewModal} onOpenChange={(open) => !open && setReviewModal(null)}>
+          <AlertDialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Review Check-in</AlertDialogTitle>
+              <AlertDialogDescription>
+                Review {reviewModal.checkin.user?.name}'s check-in for week of{' '}
+                {format(new Date(reviewModal.checkin.weekStartDate), 'MMM dd, yyyy')}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            
+            <div className="space-y-4 py-4">
+              {/* Check-in content would go here */}
+              <div className="space-y-3">
+                <div>
+                  <Label>Overall Review Comments</Label>
+                  <textarea
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    className="w-full min-h-[100px] p-2 border rounded-md"
+                    placeholder="Add your review comments..."
+                  />
+                </div>
+                
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="add-one-on-one"
+                      checked={addToOneOnOne}
+                      onCheckedChange={(checked) => setAddToOneOnOne(checked as boolean)}
+                    />
+                    <Label htmlFor="add-one-on-one">Add to 1:1 agenda</Label>
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="flag-follow-up"
+                      checked={flagForFollowUp}
+                      onCheckedChange={(checked) => setFlagForFollowUp(checked as boolean)}
+                    />
+                    <Label htmlFor="flag-follow-up">Flag for follow-up</Label>
+                  </div>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
-      </main>
+            
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  if (reviewModal) {
+                    reviewMutation.mutate({
+                      checkinId: reviewModal.checkin.id,
+                      reviewData: {
+                        reviewStatus: 'reviewed',
+                        reviewComments: reviewComment,
+                        responseComments,
+                        addToOneOnOne,
+                        flagForFollowUp
+                      }
+                    });
+                  }
+                }}
+              >
+                Submit Review
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
       {/* Bulk Reminder Confirmation Dialog */}
       <AlertDialog open={showBulkReminderDialog} onOpenChange={setShowBulkReminderDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Send Reminders to All</AlertDialogTitle>
+            <AlertDialogTitle>Send Reminders</AlertDialogTitle>
             <AlertDialogDescription>
-              You're about to send check-in reminders to {
-                filteredStatuses.filter(s => s.status === 'missing' || s.status === 'overdue').length
-              } team members who haven't submitted their check-ins for the week of {
-                format(viewingWeekStart, 'MMMM d, yyyy')
-              }.
-              <br /><br />
-              Each person will receive a personalized Slack message with instructions to complete their check-in.
+              Are you sure you want to send reminders to {selectedReminders.size} team member{selectedReminders.size > 1 ? 's' : ''}?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleSendBulkReminders}>
-              Send All Reminders
+            <AlertDialogAction
+              onClick={() => {
+                sendReminderMutation.mutate(Array.from(selectedReminders));
+              }}
+            >
+              Send Reminders
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Review Modal */}
-      {reviewModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Eye className="w-5 h-5 text-blue-600" />
-                Review Check-in
-              </CardTitle>
-              <CardDescription>
-                Review check-in from {reviewModal.checkin.user?.name}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Check-in Details */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">Overall Mood:</span>
-                  <RatingStars rating={reviewModal.checkin.overallMood} readonly size="sm" />
-                </div>
-                
-                <div className="space-y-4">
-                  <span className="text-sm font-medium">Responses & Feedback:</span>
-                  {Object.entries(reviewModal.checkin.responses as Record<string, string>).map(([questionId, response]) => {
-                    const question = questions.find(q => q.id === questionId);
-                    return (
-                      <div key={questionId} className="border border-muted rounded-lg p-4 space-y-3">
-                        <div>
-                          <p className="text-sm font-medium mb-2 text-blue-600">
-                            {question?.text || "Question"}
-                          </p>
-                          <div className="bg-muted p-3 rounded-md">
-                            <p className="text-sm">{response}</p>
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-xs font-medium text-muted-foreground">
-                            Your feedback on this response:
-                          </label>
-                          <textarea
-                            value={responseComments[questionId] || ""}
-                            onChange={(e) => setResponseComments(prev => ({
-                              ...prev,
-                              [questionId]: e.target.value
-                            }))}
-                            placeholder="Add feedback, ask follow-up questions, or provide guidance..."
-                            className="w-full min-h-[60px] p-2 text-sm border border-input rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                            data-testid={`textarea-response-comment-${questionId}`}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            {500 - (responseComments[questionId]?.length || 0)} characters remaining
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                
-                <div className="text-sm text-muted-foreground">
-                  Submitted {formatDistanceToNow(new Date(reviewModal.checkin.createdAt))} ago
-                </div>
-              </div>
-
-              {/* Review Options */}
-              <div className="space-y-4">
-                <div className="space-y-3">
-                  <label className="text-sm font-medium">Review Actions</label>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={addToOneOnOne}
-                        onChange={(e) => setAddToOneOnOne(e.target.checked)}
-                        className="rounded border-gray-300"
-                        data-testid="checkbox-add-to-one-on-one"
-                      />
-                      <span className="text-sm">Add to 1-on-1 agenda</span>
-                    </label>
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={flagForFollowUp}
-                        onChange={(e) => setFlagForFollowUp(e.target.checked)}
-                        className="rounded border-gray-300"
-                        data-testid="checkbox-flag-for-follow-up"
-                      />
-                      <span className="text-sm">Flag for follow-up</span>
-                    </label>
-                  </div>
-                </div>
-                
-                <div className="space-y-2 border-t pt-4">
-                  <label className="text-sm font-medium">Overall Review Comments</label>
-                  <textarea
-                    className="w-full p-3 border rounded-lg resize-none"
-                    rows={3}
-                    placeholder="Add general feedback, overall observations, or team-level notes..."
-                    value={reviewComment}
-                    onChange={(e) => setReviewComment(e.target.value)}
-                    data-testid="textarea-review-comment"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Optional: Use this for overall feedback that applies to the entire check-in
-                  </p>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 justify-end">
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setReviewModal(null);
-                    setReviewComment("");
-                    setResponseComments({});
-                    setAddToOneOnOne(false);
-                    setFlagForFollowUp(false);
-                  }}
-                  data-testid="button-cancel-review"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleReview}
-                  disabled={reviewMutation.isPending}
-                  className="bg-blue-600 hover:bg-blue-700"
-                  data-testid="button-confirm-review"
-                >
-                  {reviewMutation.isPending ? "Submitting..." : "Mark as Reviewed"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-    </>
-  );
-}
-
-// Checkin Review Card Component
-interface CheckinReviewCardProps {
-  checkin: EnhancedCheckin;
-  questions: Question[];
-  onReview: () => void;
-  isPending: boolean;
-}
-
-function CheckinReviewCard({ checkin, questions, onReview, isPending }: CheckinReviewCardProps) {
-  const [showDetails, setShowDetails] = useState(false);
-
-  return (
-    <div className="border border-border rounded-lg p-4 space-y-4" data-testid={`checkin-card-${checkin.id}`}>
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground font-medium">
-              {checkin.user?.name?.[0] || "?"}
-            </span>
-          </div>
-          <div>
-            <p className="font-medium" data-testid={`text-user-name-${checkin.id}`}>
-              {checkin.user?.name || "Unknown User"}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {checkin.user?.teamName || "No Team"} • {formatDistanceToNow(new Date(checkin.createdAt))} ago
-            </p>
-          </div>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          <Badge 
-            variant={checkin.reviewStatus === "pending" ? "secondary" : "default"}
-            data-testid={`badge-status-${checkin.id}`}
-          >
-            {checkin.reviewStatus}
-          </Badge>
-          <RatingStars rating={checkin.overallMood} readonly size="sm" />
-        </div>
-      </div>
-
-      {/* Quick Preview */}
-      <div className="bg-muted p-3 rounded-lg">
-        <p className="text-sm">
-          {Object.values(checkin.responses as Record<string, string>)[0] || "No responses provided"}
-        </p>
-      </div>
-
-      {/* Review Info for reviewed items */}
-      {!isPending && checkin.reviewer && (
-        <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-          Reviewed by {checkin.reviewer.name} {checkin.reviewedAt && formatDistanceToNow(new Date(checkin.reviewedAt))} ago
-          {checkin.reviewComments && (
-            <div className="mt-1">
-              <MessageSquare className="w-3 h-3 inline mr-1" />
-              {checkin.reviewComments}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Actions */}
-      <div className="flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowDetails(!showDetails)}
-          data-testid={`button-toggle-details-${checkin.id}`}
-        >
-          <Eye className="w-4 h-4 mr-2" />
-          {showDetails ? "Hide" : "Show"} Details
-        </Button>
-        
-        {isPending && (
-          <Button
-            size="sm"
-            onClick={() => onReview()}
-            className="bg-blue-600 hover:bg-blue-700"
-            data-testid={`button-review-${checkin.id}`}
-          >
-            <Eye className="w-4 h-4 mr-2" />
-            Review
-          </Button>
-        )}
-      </div>
-
-      {/* Expanded Details */}
-      {showDetails && (
-        <div className="border-t pt-4 space-y-3">
-          {Object.entries(checkin.responses as Record<string, string>).map(([questionId, response]) => {
-            const question = questions.find(q => q.id === questionId);
-            return (
-              <div key={questionId} className="space-y-1">
-                <p className="text-sm font-medium">
-                  {question?.text || "Question"}
-                </p>
-                <p className="text-sm text-muted-foreground bg-muted p-2 rounded">
-                  {response}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
