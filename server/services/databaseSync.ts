@@ -300,6 +300,26 @@ const tableDefinitions = {
       { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
     ]
   },
+  organization_question_settings: {
+    columns: [
+      { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
+      { name: 'organization_id', def: 'VARCHAR NOT NULL UNIQUE' },
+      { name: 'minimum_questions_per_week', def: 'INTEGER NOT NULL DEFAULT 3' },
+      { name: 'maximum_questions_per_week', def: 'INTEGER NOT NULL DEFAULT 5' },
+      { name: 'auto_select_enabled', def: 'BOOLEAN NOT NULL DEFAULT FALSE' },
+      { name: 'selection_strategy', def: 'TEXT NOT NULL DEFAULT \'rotating\'' },
+      { name: 'avoid_recently_asked_days', def: 'INTEGER NOT NULL DEFAULT 30' },
+      { name: 'prioritize_categories', def: 'TEXT[] NOT NULL DEFAULT \'{}\'' },
+      { name: 'include_team_specific', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+      { name: 'include_user_kra_related', def: 'BOOLEAN NOT NULL DEFAULT TRUE' },
+      { name: 'rotation_sequence', def: 'JSONB NOT NULL DEFAULT \'{}\'::jsonb' },
+      { name: 'last_auto_select_date', def: 'TIMESTAMP' },
+      { name: 'created_by', def: 'VARCHAR NOT NULL' },
+      { name: 'updated_by', def: 'VARCHAR' },
+      { name: 'created_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' },
+      { name: 'updated_at', def: 'TIMESTAMP NOT NULL DEFAULT now()' }
+    ]
+  },
   wins: {
     columns: [
       { name: 'id', def: 'VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()' },
