@@ -1,5 +1,7 @@
 // Email service using SendGrid integration from Replit blueprint
 import { MailService } from '@sendgrid/mail';
+import { isNotificationEnabled, shouldSendNotification } from './notificationPreferences';
+import { storage } from '../storage';
 
 // Configuration
 const isEmailEnabled = process.env.EMAIL_ENABLED !== 'false';

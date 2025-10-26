@@ -7,6 +7,7 @@ import { resolveRedirectUri } from '../utils/redirect-uri';
 import { billingService } from './billing';
 import { getWeekStartCentral, getCheckinDueDate } from '@shared/utils/dueDates';
 import { storage } from '../storage';
+import { isNotificationEnabled, shouldSendNotification, filterUsersWithNotificationEnabled } from './notificationPreferences';
 
 if (!process.env.SLACK_BOT_TOKEN) {
   console.warn("SLACK_BOT_TOKEN environment variable not set. Slack integration will be disabled.");
@@ -1220,6 +1221,23 @@ export async function sendPersonalizedCheckinReminder(
 ) {
   if (!slack) return;
 
+  // Check if user has check-in reminders enabled for Slack
+  const organizationId = organization?.id;
+  if (organizationId) {
+    const shouldSend = await shouldSendNotification(
+      userId,
+      'slack',
+      'checkinReminders',
+      organizationId,
+      true // Respect DND and working hours
+    );
+    
+    if (!shouldSend) {
+      console.log(`Skipping check-in reminder for ${userName} - notifications disabled or outside schedule`);
+      return;
+    }
+  }
+
   const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
   const checkinUrl = `${appUrl}/#/checkins`;
 
@@ -1549,7 +1567,8 @@ export async function announceWin(
   userName: string, 
   nominatedBy?: string,
   channelId?: string,
-  organizationId?: string
+  organizationId?: string,
+  recipientUserId?: string
 ) {
   console.log('🎯 announceWin called with:', {
     winTitle,
@@ -1557,9 +1576,26 @@ export async function announceWin(
     nominatedBy,
     channelId,
     organizationId,
+    recipientUserId,
     hasBotToken: !!process.env.SLACK_BOT_TOKEN,
     globalSlackClientExists: !!slack
   });
+  
+  // Check if recipient has win announcements enabled for Slack
+  // Note: For public wins, we check if the recipient wants to see their wins announced publicly
+  if (organizationId && recipientUserId) {
+    const isEnabled = await isNotificationEnabled(
+      recipientUserId,
+      'slack',
+      'winAnnouncements',
+      organizationId
+    );
+    
+    if (!isEnabled) {
+      console.log(`Skipping win announcement for ${userName} - win announcements disabled`);
+      return;
+    }
+  }
 
   // Get organization-specific token if available
   let slackClient: WebClient | null = slack;
@@ -1662,11 +1698,28 @@ export async function sendPrivateWinNotification(
   recipientName: string,
   senderName: string,
   nominatedBy?: string,
-  organizationId?: string
+  organizationId?: string,
+  recipientUserId?: string
 ) {
   if (!recipientSlackId) {
     console.log(`No Slack ID for recipient ${recipientName}, skipping DM`);
     return;
+  }
+  
+  // Check if recipient has direct messages enabled for Slack
+  if (organizationId && recipientUserId) {
+    const shouldSend = await shouldSendNotification(
+      recipientUserId,
+      'slack',
+      'directMessages',
+      organizationId,
+      false // Don't respect DND for direct messages about wins (they're important)
+    );
+    
+    if (!shouldSend) {
+      console.log(`Skipping private win notification for ${recipientName} - direct messages disabled`);
+      return;
+    }
   }
 
   const sender = nominatedBy || senderName;
@@ -1749,8 +1802,23 @@ export async function announceShoutout(
   toUserName: string, 
   companyValues: string[] = [],
   channelId?: string,
-  organizationId?: string
+  organizationId?: string,
+  toUserId?: string
 ) {
+  // Check if recipient has shoutouts enabled for Slack
+  if (organizationId && toUserId) {
+    const isEnabled = await isNotificationEnabled(
+      toUserId,
+      'slack',
+      'shoutouts',
+      organizationId
+    );
+    
+    if (!isEnabled) {
+      console.log(`Skipping shoutout announcement for ${toUserName} - shoutouts disabled`);
+      return;
+    }
+  }
   // Get organization-specific token if available
   let slackClient: WebClient | null = slack;
   
@@ -2894,9 +2962,27 @@ export async function notifyCheckinSubmitted(
   userName: string, 
   teamLeaderName: string, 
   overallMood: number, 
-  submissionSummary?: string
+  submissionSummary?: string,
+  organizationId?: string,
+  teamLeaderUserId?: string
 ) {
   if (!slack) return;
+  
+  // Check if team leader has check-in submission notifications enabled
+  if (organizationId && teamLeaderUserId) {
+    const shouldSend = await shouldSendNotification(
+      teamLeaderUserId,
+      'slack',
+      'checkinSubmissions',
+      organizationId,
+      false // Important notifications - don't respect DND
+    );
+    
+    if (!shouldSend) {
+      console.log(`Skipping check-in submission notification for ${teamLeaderName} - notifications disabled`);
+      return;
+    }
+  }
 
   // Use private channel for sensitive check-in notifications
   const channel = process.env.SLACK_PRIVATE_CHANNEL_ID;
