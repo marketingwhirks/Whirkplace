@@ -13757,6 +13757,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get organization check-in schedule settings
+  app.get("/api/organizations/:id/checkin-schedule", requireAuth(), async (req, res) => {
+    try {
+      // Verify the organization ID matches the authenticated user's organization
+      if (req.params.id !== req.orgId) {
+        return res.status(403).json({ message: "You can only access your own organization's schedule" });
+      }
+      
+      const organization = await storage.getOrganization(req.params.id);
+      if (!organization) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+      
+      // Day names for display
+      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      
+      res.json({ 
+        checkinDueDay: organization.checkinDueDay,
+        checkinDueDayName: dayNames[organization.checkinDueDay],
+        checkinDueTime: organization.checkinDueTime,
+        checkinReminderDay: organization.checkinReminderDay,
+        checkinReminderDayName: organization.checkinReminderDay ? dayNames[organization.checkinReminderDay] : null,
+        checkinReminderTime: organization.checkinReminderTime,
+        timezone: organization.timezone
+      });
+    } catch (error) {
+      console.error("GET /api/organizations/:id/checkin-schedule - Error:", error);
+      res.status(500).json({ message: "Failed to fetch check-in schedule" });
+    }
+  });
+
   // Update organization check-in schedule settings
   app.put("/api/organizations/:id/checkin-schedule", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {

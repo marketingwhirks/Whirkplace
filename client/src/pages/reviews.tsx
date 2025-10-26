@@ -1,9 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { formatDistanceToNow, formatDistance, format, startOfWeek, addWeeks, differenceInDays } from "date-fns";
+import { formatDistanceToNow, formatDistance, format, startOfWeek, addWeeks, differenceInDays, endOfWeek } from "date-fns";
 import { 
   CheckCircle, XCircle, Clock, Eye, MessageSquare, Filter, Calendar, User, AlertCircle, Send, UserMinus, Bell,
-  Plane, Download, Users, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, Activity, BellRing
+  Plane, Download, Users, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, Activity, BellRing, Info, CheckCheck
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import RatingStars from "@/components/checkin/rating-stars";
 import { cn } from "@/lib/utils";
 import Papa from "papaparse";
-import { getCheckinDueDate, getWeekStartCentral } from "@shared/utils/dueDates";
+import { Progress } from "@/components/ui/progress";
+import { getCheckinDueDate, getWeekStartCentral, getDueDateString } from "@shared/utils/dueDates";
 import type { Checkin, User as UserType, Question, ReviewCheckin, Team, Vacation, Organization } from "@shared/schema";
 
 interface EnhancedCheckin extends Checkin {
@@ -97,16 +98,43 @@ export default function Reviews() {
   
   // Calculate the week we're viewing
   const viewingWeekStart = useMemo(() => {
-    return addWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), selectedWeek);
+    const weekStart = addWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), selectedWeek);
+    // Debug logging
+    console.log('[DEBUG] Week calculation:', {
+      selectedWeek,
+      currentDate: new Date().toISOString(),
+      calculatedWeekStart: weekStart.toISOString(),
+      weekStartDay: format(weekStart, 'EEEE'),
+      weekStartDate: format(weekStart, 'MMM dd, yyyy')
+    });
+    return weekStart;
   }, [selectedWeek]);
   
   const viewingWeekEnd = useMemo(() => {
-    return addWeeks(viewingWeekStart, 1);
+    const weekEnd = endOfWeek(viewingWeekStart, { weekStartsOn: 1 });
+    console.log('[DEBUG] Week end:', {
+      viewingWeekEnd: weekEnd.toISOString(),
+      weekEndDay: format(weekEnd, 'EEEE'),
+      weekEndDate: format(weekEnd, 'MMM dd, yyyy')
+    });
+    return weekEnd;
   }, [viewingWeekStart]);
 
   // Fetch organization data
   const { data: organization } = useQuery<Organization>({
     queryKey: ["/api/organizations", currentUser?.organizationId],
+    enabled: !!currentUser?.organizationId,
+  });
+
+  // Fetch organization checkin schedule settings
+  const { data: orgSettings } = useQuery({
+    queryKey: ["/api/organizations", currentUser?.organizationId, "checkin-schedule"],
+    queryFn: async () => {
+      if (!currentUser?.organizationId) return null;
+      const response = await apiRequest("GET", `/api/organizations/${currentUser.organizationId}/checkin-schedule`);
+      if (!response.ok) throw new Error('Failed to fetch organization settings');
+      return response.json();
+    },
     enabled: !!currentUser?.organizationId,
   });
 
@@ -177,13 +205,32 @@ export default function Reviews() {
     queryFn: async () => {
       if (!currentUser || allUsers.length === 0) return [];
       
+      console.log('[DEBUG] Fetching check-ins for week:', {
+        weekStart: viewingWeekStart.toISOString(),
+        weekStartFormatted: format(viewingWeekStart, 'MMM dd, yyyy'),
+        userCount: allUsers.length
+      });
+      
       // Fetch check-ins for all visible users for this specific week
       const response = await apiRequest("GET", `/api/checkins?weekStart=${viewingWeekStart.toISOString()}`);
       if (response.ok) {
         const checkins = await response.json();
         // Filter to only include check-ins from users we can see
         const userIds = new Set(allUsers.map(u => u.id));
-        return checkins.filter((c: Checkin) => userIds.has(c.userId));
+        const filtered = checkins.filter((c: Checkin) => userIds.has(c.userId));
+        
+        console.log('[DEBUG] Check-ins fetched:', {
+          totalFetched: checkins.length,
+          afterUserFilter: filtered.length,
+          checkinsWeekOf: filtered.map((c: Checkin) => ({
+            userId: c.userId,
+            weekOf: c.weekOf,
+            weekOfFormatted: format(new Date(c.weekOf), 'MMM dd, yyyy'),
+            isComplete: c.isComplete
+          }))
+        });
+        
+        return filtered;
       }
       
       return [];
@@ -217,12 +264,52 @@ export default function Reviews() {
     enabled: !!currentUser && allUsers.length > 0,
   });
 
+  // Add debugging effect for week changes
+  useEffect(() => {
+    console.log('[DEBUG] Week Changed:', {
+      selectedWeek,
+      weekStart: viewingWeekStart.toISOString(),
+      weekEnd: viewingWeekEnd.toISOString(),
+      weekStartFormatted: format(viewingWeekStart, 'EEEE, MMM dd, yyyy HH:mm'),
+      weekEndFormatted: format(viewingWeekEnd, 'EEEE, MMM dd, yyyy HH:mm'),
+      isCurrentWeek: selectedWeek === 0,
+      organizationSettings: orgSettings,
+      dueDate: organization ? getCheckinDueDate(viewingWeekStart, organization) : null
+    });
+  }, [selectedWeek, viewingWeekStart, viewingWeekEnd, organization, orgSettings]);
+
+  // Log checkin data when it changes
+  useEffect(() => {
+    if (weekCheckins.length > 0) {
+      console.log('[DEBUG] Week Checkins Loaded:', {
+        count: weekCheckins.length,
+        weekOf: viewingWeekStart.toISOString(),
+        checkins: weekCheckins.map(c => ({
+          userId: c.userId,
+          weekOf: c.weekOf,
+          normalizedWeekOf: getWeekStartCentral(new Date(c.weekOf), organization),
+          isComplete: c.isComplete,
+          submittedAt: c.submittedAt,
+          status: c.reviewStatus
+        }))
+      });
+    }
+  }, [weekCheckins, viewingWeekStart, organization]);
+
   // Process team member statuses
   const teamMemberStatuses = useMemo((): TeamMemberStatus[] => {
     if (!allUsers.length) return [];
     
-    const dueDate = organization ? getCheckinDueDate(organization) : new Date();
+    const dueDate = organization ? getCheckinDueDate(viewingWeekStart, organization) : new Date();
     const now = new Date();
+    
+    console.log('[DEBUG] Processing Team Member Statuses:', {
+      userCount: allUsers.length,
+      checkinCount: weekCheckins.length,
+      vacationCount: allVacations.length,
+      weekStart: viewingWeekStart.toISOString(),
+      dueDate: dueDate.toISOString()
+    });
     
     return allUsers.map(user => {
       // Find check-in for this week
@@ -875,10 +962,10 @@ export default function Reviews() {
             <h2 className="text-xl font-bold">Team Check-in Status</h2>
           </div>
 
-          {/* Week Navigation */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
+          {/* Enhanced Week Navigation with Due Dates */}
+          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-4">
                 <Button
                   variant="outline"
                   onClick={() => setSelectedWeek(selectedWeek - 1)}
@@ -890,15 +977,36 @@ export default function Reviews() {
                   Previous Week
                 </Button>
                 
-                <div className="text-center">
-                  <h3 className="font-semibold text-lg">
-                    Week of {format(viewingWeekStart, 'MMMM d, yyyy')}
+                <div className="text-center flex-1 max-w-2xl mx-4">
+                  <h3 className="font-bold text-2xl mb-1">
+                    {format(viewingWeekStart, 'MMM d')} - {format(viewingWeekEnd, 'MMM d, yyyy')}
                   </h3>
-                  <p className="text-sm text-muted-foreground">
-                    {selectedWeek === 0 ? 'Current Week' : 
-                     selectedWeek === -1 ? 'Last Week' : 
-                     `${Math.abs(selectedWeek)} weeks ${selectedWeek < 0 ? 'ago' : 'ahead'}`}
-                  </p>
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <Calendar className="w-4 h-4" />
+                    <span>
+                      {selectedWeek === 0 ? (
+                        <Badge variant="default" className="bg-green-600">Current Week</Badge>
+                      ) : selectedWeek === -1 ? (
+                        <Badge variant="secondary">Last Week</Badge>
+                      ) : (
+                        <Badge variant="outline">
+                          {Math.abs(selectedWeek)} weeks {selectedWeek < 0 ? 'ago' : 'ahead'}
+                        </Badge>
+                      )}
+                    </span>
+                  </div>
+                  {orgSettings && (
+                    <div className="mt-2 text-sm">
+                      <div className="flex items-center justify-center gap-2 text-muted-foreground">
+                        <Clock className="w-4 h-4" />
+                        <span className="font-medium">
+                          Due: {orgSettings.checkinDueDayName}, {format(getCheckinDueDate(viewingWeekStart, organization), 'MMM d')} 
+                          {' '}by {orgSettings.checkinDueTime}
+                          {orgSettings.timezone && ` ${orgSettings.timezone.split('/')[1].replace('_', ' ')}`}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 
                 <Button
@@ -915,74 +1023,96 @@ export default function Reviews() {
             </CardContent>
           </Card>
 
-          {/* Statistics Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Total</p>
-                    <p className="text-2xl font-bold">{stats.total}</p>
-                  </div>
-                  <Users className="w-8 h-8 text-muted-foreground" />
+          {/* Comprehensive Weekly Summary Card */}
+          <Card className="border-2 border-primary/20">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCheck className="w-5 h-5 text-primary" />
+                  <CardTitle>Weekly Submission Summary</CardTitle>
                 </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Submitted</p>
-                    <p className="text-2xl font-bold text-green-600">{stats.submitted}</p>
-                  </div>
-                  <CheckCircle className="w-8 h-8 text-green-600" />
+                <Badge variant={stats.submissionRate >= 80 ? "default" : stats.submissionRate >= 50 ? "secondary" : "destructive"}>
+                  {stats.submissionRate}% Complete
+                </Badge>
+              </div>
+              <CardDescription>
+                Check-in submissions for the week of {format(viewingWeekStart, 'MMMM d, yyyy')}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Progress Bar */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Completion Rate</span>
+                  <span className="font-medium">{stats.submitted} of {stats.total - stats.onVacation} submitted</span>
                 </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Missing</p>
-                    <p className="text-2xl font-bold text-yellow-600">{stats.missing}</p>
+                <Progress 
+                  value={stats.submissionRate} 
+                  className="h-3"
+                />
+              </div>
+
+              {/* Detailed Statistics */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">Total Team</p>
                   </div>
-                  <Clock className="w-8 h-8 text-yellow-600" />
+                  <p className="text-2xl font-bold">{stats.total}</p>
+                  <p className="text-xs text-muted-foreground">members expected</p>
                 </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Overdue</p>
-                    <p className="text-2xl font-bold text-red-600">{stats.overdue}</p>
+
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                    <p className="text-sm text-muted-foreground">Submitted</p>
                   </div>
-                  <AlertCircle className="w-8 h-8 text-red-600" />
+                  <p className="text-2xl font-bold text-green-600">{stats.submitted}</p>
+                  <p className="text-xs text-muted-foreground">completed on time</p>
                 </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Rate</p>
-                    <p className="text-2xl font-bold">
-                      {stats.submissionRate}%
-                    </p>
+
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600" />
+                    <p className="text-sm text-muted-foreground">Missing/Overdue</p>
                   </div>
-                  {stats.submissionRate >= 80 ? (
-                    <TrendingUp className="w-8 h-8 text-green-600" />
-                  ) : (
-                    <TrendingDown className="w-8 h-8 text-red-600" />
-                  )}
+                  <p className="text-2xl font-bold text-red-600">{stats.missing + stats.overdue}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {stats.overdue > 0 && `${stats.overdue} overdue`}
+                    {stats.overdue > 0 && stats.missing > 0 && ', '}
+                    {stats.missing > 0 && `${stats.missing} missing`}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <Plane className="w-4 h-4 text-blue-600" />
+                    <p className="text-sm text-muted-foreground">On Vacation</p>
+                  </div>
+                  <p className="text-2xl font-bold text-blue-600">{stats.onVacation}</p>
+                  <p className="text-xs text-muted-foreground">excused</p>
+                </div>
+              </div>
+
+              {/* Configuration Info */}
+              {orgSettings && (
+                <div className="border-t pt-4">
+                  <div className="flex items-start gap-2">
+                    <Info className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <div className="text-xs text-muted-foreground space-y-1">
+                      <p>Check-ins are due every <strong>{orgSettings.checkinDueDayName}</strong> at <strong>{orgSettings.checkinDueTime}</strong></p>
+                      {orgSettings.checkinReminderDayName && (
+                        <p>Reminders are sent on <strong>{orgSettings.checkinReminderDayName}</strong> at <strong>{orgSettings.checkinReminderTime}</strong></p>
+                      )}
+                      <p>Timezone: <strong>{orgSettings.timezone}</strong></p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
 
           {/* Filters and Export */}
           <div className="flex flex-col sm:flex-row gap-4">
