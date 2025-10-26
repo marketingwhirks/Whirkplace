@@ -10,7 +10,7 @@ import { DynamicThemeProvider } from "@/components/theme/DynamicThemeProvider";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
-import UnifiedCheckins from "@/pages/checkins-unified";
+import Checkins from "@/pages/checkins";
 import OneOnOnesPage from "@/pages/one-on-ones";
 import KraManagementPage from "@/pages/kra-management";
 import Team from "@/pages/team";
@@ -60,7 +60,7 @@ function Router() {
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/dashboard" component={Dashboard} />
-            <Route path="/checkins" component={UnifiedCheckins} />
+            <Route path="/checkins" component={Checkins} />
             <Route path="/one-on-ones" component={OneOnOnesPage} />
             <Route path="/kra-management" component={KraManagementPage} />
             <Route path="/team" component={Team} />
@@ -70,7 +70,7 @@ function Router() {
             <Route path="/team-goals" component={TeamGoals} />
             <Route path="/questions" component={Questions} />
             <Route path="/teams/:teamId/questions" component={TeamQuestionManagementPage} />
-            <Route path="/reviews" component={UnifiedCheckins} />
+            <Route path="/reviews" component={Reviews} />
             <Route path="/leadership-dashboard" component={LeadershipDashboard} />
             <Route path="/analytics" component={Analytics} />
             <Route path="/settings" component={Settings} />

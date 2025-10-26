@@ -33,7 +33,8 @@ function getIsActive(currentLocation: string, itemHref: string): boolean {
 // Base navigation items available to all users - ordered as requested
 const baseNavigation = [
   { name: "Dashboard", href: "/", icon: BarChart3, roles: ["member", "manager", "admin"] },
-  { name: "Check-ins", href: "/checkins", icon: ClipboardList, roles: ["member", "manager", "admin"], hasBadge: true },
+  { name: "Check-ins", href: "/checkins", icon: ClipboardList, roles: ["member", "manager", "admin"] },
+  { name: "Reviews", href: "/reviews", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
   { name: "Shout Outs", href: "/shoutouts", icon: Sparkles, roles: ["member", "manager", "admin"] },
   { name: "Wins", href: "/wins", icon: Trophy, roles: ["member", "manager", "admin"] },
   { name: "Team Goals", href: "/team-goals", icon: Target, roles: ["member", "manager", "admin"] },
@@ -41,9 +42,9 @@ const baseNavigation = [
   { name: "KRA Management", href: "/kra-management", icon: Target, roles: ["member", "manager", "admin"] },
   { name: "Questions", href: "/questions", icon: HelpCircle, roles: ["manager", "admin"] },
   { name: "Team Management", href: "/team-management", icon: Users, roles: ["manager", "admin"] },
-  { name: "Organization Analytics", href: "/analytics", icon: Activity, roles: ["admin"] },
-  { name: "Billing", href: "/billing", icon: CreditCard, roles: ["admin"] },
+  { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Admin Panel", href: "/admin", icon: Shield, roles: ["admin"] },
+  { name: "Billing", href: "/billing", icon: CreditCard, roles: ["admin"] },
   { name: "Super Admin", href: "/super-admin", icon: Lock, roles: [] as ("member" | "manager" | "admin")[], isSuperAdminOnly: true },
   { name: "Settings", href: "/settings", icon: Settings, roles: ["member", "manager", "admin"] },
   { name: "Onboarding", href: "/onboarding", icon: Rocket, roles: [] as ("member" | "manager" | "admin")[], isSuperAdminOnly: true },
@@ -116,12 +117,8 @@ function SidebarContent() {
     if (!item.hasBadge || !currentUser) return undefined;
     
     switch (item.name) {
-      case "Check-ins":
-        // Show badge for managers/admins with pending reviews
-        if (currentUser.role === "manager" || currentUser.role === "admin") {
-          return pendingLoading ? undefined : pendingCheckins.length;
-        }
-        return undefined;
+      case "Reviews":
+        return pendingLoading ? undefined : pendingCheckins.length;
       default:
         return undefined;
     }
