@@ -231,13 +231,17 @@ app.use((req, res, next) => {
       // Don't throw here, as this is not critical for startup
     }
     
-    // Initialize Slack token refresh job (runs every 6 hours to refresh expiring tokens)
+    // Initialize Slack token refresh job (runs every 2 hours to refresh expiring tokens)
     try {
-      const { startSlackTokenRefreshJob } = await import("./services/slack");
+      const { startSlackTokenRefreshJob, startSlackConnectionHealthMonitoring } = await import("./services/slack");
       startSlackTokenRefreshJob();
-      console.log("✅ Slack token refresh job initialized - will run every 6 hours");
+      console.log("✅ Slack token refresh job initialized - will run every 2 hours");
+      
+      // Also start the health monitoring job
+      startSlackConnectionHealthMonitoring();
+      console.log("✅ Slack connection health monitoring initialized - will run every hour");
     } catch (error) {
-      console.error("Failed to initialize Slack token refresh job:", error);
+      console.error("Failed to initialize Slack jobs:", error);
       // Don't throw here, as this is not critical for startup
     }
 

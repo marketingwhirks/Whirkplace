@@ -437,11 +437,15 @@ export async function getSlackUserInfo(accessToken: string, userId: string): Pro
 }
 
 /**
- * Refresh Slack OAuth access token using refresh token
+ * Refresh Slack OAuth access token using refresh token with retry logic
  * @param organizationId - The organization ID to refresh tokens for
+ * @param attemptNumber - Current attempt number for retry logic
  * @returns The new access token, or null if refresh failed
  */
-export async function refreshSlackToken(organizationId: string): Promise<string | null> {
+export async function refreshSlackToken(organizationId: string, attemptNumber: number = 1): Promise<string | null> {
+  const MAX_ATTEMPTS = 3;
+  const RETRY_DELAYS = [1000, 3000, 9000]; // Exponential backoff: 1s, 3s, 9s
+  
   try {
     // Get the organization with current tokens
     const organization = await storage.getOrganization(organizationId);
@@ -464,7 +468,15 @@ export async function refreshSlackToken(organizationId: string): Promise<string 
       return null;
     }
 
-    console.log(`🔄 Refreshing Slack token for organization ${organizationId}`);
+    console.log(`🔄 [Attempt ${attemptNumber}/${MAX_ATTEMPTS}] Refreshing Slack token for organization ${organizationId}`);
+    
+    // Log refresh attempt
+    console.log(`📊 Token refresh attempt started:`, {
+      organizationId,
+      attemptNumber,
+      timestamp: new Date().toISOString(),
+      currentExpiry: organization.slackTokenExpiresAt
+    });
 
     // Call Slack's OAuth v2 token refresh endpoint
     const params = new URLSearchParams({
@@ -485,17 +497,53 @@ export async function refreshSlackToken(organizationId: string): Promise<string 
     const data = await response.json();
 
     if (!data.ok) {
-      console.error(`Failed to refresh Slack token for org ${organizationId}:`, data.error);
+      console.error(`❌ [Attempt ${attemptNumber}/${MAX_ATTEMPTS}] Failed to refresh Slack token for org ${organizationId}:`, data.error);
       
-      // Mark connection as errored if refresh fails
-      await storage.markSlackConnectionStatus(organizationId, 'error', data.error);
+      // Check if error is permanent or temporary
+      const isPermanentError = data.error === 'invalid_refresh_token' || 
+                              data.error === 'token_revoked' || 
+                              data.error === 'invalid_client' ||
+                              data.error === 'invalid_grant';
       
-      // Handle specific errors
-      if (data.error === 'invalid_refresh_token' || data.error === 'token_revoked') {
-        console.error(`Refresh token invalid or revoked for org ${organizationId}`);
+      if (isPermanentError) {
+        console.error(`🚫 Permanent error detected: ${data.error}. Stopping retry attempts.`);
+        await storage.markSlackConnectionStatus(organizationId, 'error', `Permanent error: ${data.error}`);
+        
+        // Log the failed attempt
+        console.log(`📊 Token refresh failed permanently:`, {
+          organizationId,
+          attemptNumber,
+          error: data.error,
+          timestamp: new Date().toISOString()
+        });
+        
+        return null;
       }
       
-      return null;
+      // Temporary error - retry if attempts remain
+      if (attemptNumber < MAX_ATTEMPTS) {
+        const delay = RETRY_DELAYS[attemptNumber - 1];
+        console.log(`⏳ Temporary error detected. Retrying in ${delay}ms...`);
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // Recursive retry with incremented attempt number
+        return refreshSlackToken(organizationId, attemptNumber + 1);
+      } else {
+        // Max attempts reached
+        console.error(`🔴 Max retry attempts (${MAX_ATTEMPTS}) reached for org ${organizationId}`);
+        await storage.markSlackConnectionStatus(organizationId, 'error', `Token refresh failed after ${MAX_ATTEMPTS} attempts: ${data.error}`);
+        
+        // Log the final failure
+        console.log(`📊 Token refresh failed after all retries:`, {
+          organizationId,
+          totalAttempts: attemptNumber,
+          finalError: data.error,
+          timestamp: new Date().toISOString()
+        });
+        
+        return null;
+      }
     }
 
     // Slack OAuth tokens expire in 12 hours (43200 seconds)
@@ -509,15 +557,49 @@ export async function refreshSlackToken(organizationId: string): Promise<string 
       refreshToken: data.refresh_token, // New refresh token!
       expiresAt: expiresAt
     });
+    
+    // Mark connection as successful
+    await storage.markSlackConnectionStatus(organizationId, 'connected', undefined);
 
     console.log(`✅ Successfully refreshed Slack token for organization ${organizationId}`);
     console.log(`   New token expires at: ${expiresAt.toISOString()}`);
+    
+    // Log successful refresh
+    console.log(`📊 Token refresh successful:`, {
+      organizationId,
+      attemptNumber,
+      newExpiry: expiresAt.toISOString(),
+      timestamp: new Date().toISOString()
+    });
 
     return data.access_token;
   } catch (error) {
-    console.error(`Error refreshing Slack token for org ${organizationId}:`, error);
-    await storage.markSlackConnectionStatus(organizationId, 'error', 'Token refresh failed');
-    return null;
+    console.error(`❌ [Attempt ${attemptNumber}/${MAX_ATTEMPTS}] Error refreshing Slack token for org ${organizationId}:`, error);
+    
+    // Network or other temporary error - retry if attempts remain
+    if (attemptNumber < MAX_ATTEMPTS) {
+      const delay = RETRY_DELAYS[attemptNumber - 1];
+      console.log(`⏳ Network/temporary error. Retrying in ${delay}ms...`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+      
+      // Recursive retry with incremented attempt number
+      return refreshSlackToken(organizationId, attemptNumber + 1);
+    } else {
+      // Max attempts reached
+      console.error(`🔴 Max retry attempts (${MAX_ATTEMPTS}) reached for org ${organizationId} due to network error`);
+      await storage.markSlackConnectionStatus(organizationId, 'error', `Token refresh failed after ${MAX_ATTEMPTS} attempts: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      // Log the final failure
+      console.log(`📊 Token refresh failed with error after all retries:`, {
+        organizationId,
+        totalAttempts: attemptNumber,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      });
+      
+      return null;
+    }
   }
 }
 
@@ -539,17 +621,18 @@ export async function getValidSlackToken(organizationId: string): Promise<string
       const now = new Date();
       const expiresAt = new Date(organization.slackTokenExpiresAt);
       
-      // Check if token expires within 2 hours (proactive refresh)
-      const twoHoursFromNow = new Date();
-      twoHoursFromNow.setHours(twoHoursFromNow.getHours() + 2);
+      // Check if token expires within 4 hours (proactive refresh)
+      const fourHoursFromNow = new Date();
+      fourHoursFromNow.setHours(fourHoursFromNow.getHours() + 4);
       
-      if (expiresAt > twoHoursFromNow) {
-        // Token is still valid for more than 2 hours
+      if (expiresAt > fourHoursFromNow) {
+        // Token is still valid for more than 4 hours
+        console.log(`✅ Token for org ${organizationId} is valid until ${expiresAt.toISOString()}`);
         return organization.slackAccessToken;
       }
       
       // Token expires soon or has expired, refresh it
-      console.log(`🔄 Token for org ${organizationId} expires soon (${expiresAt.toISOString()}), refreshing...`);
+      console.log(`🔄 Token for org ${organizationId} expires soon (${expiresAt.toISOString()}), refreshing proactively...`);
       const newToken = await refreshSlackToken(organizationId);
       
       if (newToken) {
@@ -557,20 +640,21 @@ export async function getValidSlackToken(organizationId: string): Promise<string
       }
       
       // Refresh failed, fall back to bot token if available
-      console.warn(`Token refresh failed for org ${organizationId}, falling back to bot token`);
+      console.warn(`⚠️ Token refresh failed for org ${organizationId}, falling back to bot token`);
     }
 
     // Fall back to legacy bot token if available (backward compatibility)
     if (organization.slackBotToken) {
-      console.log(`Using legacy bot token for org ${organizationId}`);
+      console.log(`📌 Using legacy bot token for org ${organizationId}`);
       return organization.slackBotToken;
     }
 
     // No tokens available
-    console.error(`No Slack tokens available for organization ${organizationId}`);
+    console.error(`❌ No Slack tokens available for organization ${organizationId}`);
+    await storage.markSlackConnectionStatus(organizationId, 'error', 'No tokens available');
     return null;
   } catch (error) {
-    console.error(`Error getting valid Slack token for org ${organizationId}:`, error);
+    console.error(`❌ Error getting valid Slack token for org ${organizationId}:`, error);
     return null;
   }
 }
@@ -580,46 +664,248 @@ export async function getValidSlackToken(organizationId: string): Promise<string
  * Runs every 6 hours to proactively refresh tokens before they expire
  */
 export function startSlackTokenRefreshJob(): void {
-  // Run every 6 hours
-  cron.schedule('0 */6 * * *', async () => {
-    console.log('🔄 Starting scheduled Slack token refresh job');
+  // Run every 2 hours - more frequent checks for better stability
+  cron.schedule('0 */2 * * *', async () => {
+    console.log('🔄 Starting scheduled Slack token refresh job (runs every 2 hours)');
     
     try {
-      // Get organizations with tokens expiring within 6 hours
-      const organizations = await storage.getOrganizationsWithExpiringSlackTokens(6);
+      // Get organizations with tokens expiring within 4 hours
+      const organizations = await storage.getOrganizationsWithExpiringSlackTokens(4);
       
       if (organizations.length === 0) {
-        console.log('No organizations with expiring Slack tokens found');
+        console.log('✅ No organizations with expiring Slack tokens found');
         return;
       }
       
-      console.log(`Found ${organizations.length} organizations with expiring Slack tokens`);
+      console.log(`📊 Found ${organizations.length} organizations with tokens expiring within 4 hours`);
+      
+      let refreshedCount = 0;
+      let failedCount = 0;
       
       for (const org of organizations) {
         try {
-          console.log(`Refreshing token for organization ${org.id} (${org.name})`);
+          console.log(`🔄 Refreshing token for organization ${org.id} (${org.name})`);
+          console.log(`   Current expiry: ${org.slackTokenExpiresAt}`);
+          
           const newToken = await refreshSlackToken(org.id);
           
           if (newToken) {
             console.log(`✅ Successfully refreshed token for ${org.name}`);
+            refreshedCount++;
           } else {
             console.error(`❌ Failed to refresh token for ${org.name}`);
+            failedCount++;
           }
           
           // Add a small delay between refreshes to avoid rate limiting
           await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (error) {
-          console.error(`Error refreshing token for org ${org.id}:`, error);
+          console.error(`❌ Error refreshing token for org ${org.id}:`, error);
+          failedCount++;
         }
       }
       
-      console.log('✅ Slack token refresh job completed');
+      console.log(`✅ Scheduled token refresh job completed:`, {
+        total: organizations.length,
+        refreshed: refreshedCount,
+        failed: failedCount,
+        timestamp: new Date().toISOString()
+      });
     } catch (error) {
-      console.error('Error in Slack token refresh job:', error);
+      console.error('❌ Error in scheduled token refresh job:', error);
     }
   });
   
-  console.log('✅ Slack token refresh job scheduled to run every 6 hours');
+  console.log('✅ Slack token refresh job scheduled to run every 2 hours');
+  
+  // Also run initial check on startup after 10 seconds
+  setTimeout(async () => {
+    console.log('🚀 Running startup Slack token validation check...');
+    await performStartupTokenValidation();
+  }, 10000); // 10 seconds after startup
+}
+
+/**
+ * Perform immediate token validation on startup
+ * Checks all tokens and refreshes any expiring within 4 hours
+ */
+export async function performStartupTokenValidation(): Promise<void> {
+  console.log('🔍 Starting Slack token validation for all organizations...');
+  
+  try {
+    // Get all organizations
+    const organizations = await storage.getAllOrganizations();
+    
+    if (organizations.length === 0) {
+      console.log('No organizations found for token validation');
+      return;
+    }
+    
+    console.log(`📊 Checking ${organizations.length} organizations for token validity...`);
+    
+    let validCount = 0;
+    let refreshedCount = 0;
+    let failedCount = 0;
+    let noTokenCount = 0;
+    
+    for (const org of organizations) {
+      // Skip organizations without Slack tokens
+      if (!org.slackAccessToken && !org.slackBotToken) {
+        console.log(`⏭️ Organization ${org.name} has no Slack tokens configured`);
+        noTokenCount++;
+        continue;
+      }
+      
+      // Check if token needs refresh
+      if (org.slackAccessToken && org.slackTokenExpiresAt) {
+        const expiresAt = new Date(org.slackTokenExpiresAt);
+        const fourHoursFromNow = new Date();
+        fourHoursFromNow.setHours(fourHoursFromNow.getHours() + 4);
+        
+        if (expiresAt > fourHoursFromNow) {
+          console.log(`✅ Token for ${org.name} is valid until ${expiresAt.toISOString()}`);
+          validCount++;
+        } else {
+          // Token expires within 4 hours or has expired
+          console.log(`🔄 Token for ${org.name} expires at ${expiresAt.toISOString()}, refreshing...`);
+          
+          const newToken = await refreshSlackToken(org.id);
+          
+          if (newToken) {
+            console.log(`✅ Successfully refreshed token for ${org.name}`);
+            refreshedCount++;
+          } else {
+            console.error(`❌ Failed to refresh token for ${org.name}`);
+            failedCount++;
+          }
+          
+          // Small delay to avoid rate limiting
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } else if (org.slackBotToken) {
+        console.log(`📌 Organization ${org.name} using legacy bot token`);
+        validCount++;
+      }
+    }
+    
+    console.log(`✅ Startup token validation completed:`, {
+      total: organizations.length,
+      valid: validCount,
+      refreshed: refreshedCount,
+      failed: failedCount,
+      noTokens: noTokenCount,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Error during startup token validation:', error);
+  }
+}
+
+/**
+ * Connection health monitoring job
+ * Runs every hour to check connection health and refresh if needed
+ */
+export function startSlackConnectionHealthMonitoring(): void {
+  console.log('🏥 Initializing Slack connection health monitoring...');
+  
+  // Store connection failure counts
+  const connectionFailures = new Map<string, { count: number; lastFailure: Date }>();
+  const MAX_FAILURES = 3;
+  
+  // Run every hour
+  cron.schedule('0 * * * *', async () => {
+    console.log('🏥 Running Slack connection health check...');
+    
+    try {
+      const organizations = await storage.getAllOrganizations();
+      
+      for (const org of organizations) {
+        // Skip organizations without Slack tokens
+        if (!org.slackAccessToken && !org.slackBotToken) {
+          continue;
+        }
+        
+        try {
+          // Get token for this organization
+          const token = await getValidSlackToken(org.id);
+          
+          if (!token) {
+            console.warn(`⚠️ No valid token for organization ${org.name}`);
+            continue;
+          }
+          
+          // Test connection with a simple API call
+          const testClient = new WebClient(token);
+          const authResult = await testClient.auth.test();
+          
+          if (authResult.ok) {
+            console.log(`✅ Connection healthy for ${org.name}`);
+            // Reset failure count on success
+            connectionFailures.delete(org.id);
+            await storage.markSlackConnectionStatus(org.id, 'connected', undefined);
+          } else {
+            throw new Error('Auth test failed');
+          }
+        } catch (error: any) {
+          console.error(`❌ Connection test failed for ${org.name}:`, error.message);
+          
+          // Track failures
+          const failures = connectionFailures.get(org.id) || { count: 0, lastFailure: new Date() };
+          failures.count++;
+          failures.lastFailure = new Date();
+          connectionFailures.set(org.id, failures);
+          
+          // Check if it's an auth error
+          const isAuthError = error.message?.includes('invalid_auth') || 
+                            error.message?.includes('token_revoked') ||
+                            error.message?.includes('account_inactive') ||
+                            error.message?.includes('not_authed');
+          
+          if (isAuthError) {
+            console.log(`🔄 Auth error detected for ${org.name}, attempting token refresh...`);
+            
+            // Attempt immediate token refresh
+            const newToken = await refreshSlackToken(org.id);
+            
+            if (newToken) {
+              console.log(`✅ Token refreshed successfully for ${org.name} after auth error`);
+              // Reset failure count on successful refresh
+              connectionFailures.delete(org.id);
+            } else {
+              console.error(`❌ Failed to refresh token for ${org.name} after auth error`);
+              await storage.markSlackConnectionStatus(org.id, 'error', 'Token refresh failed after auth error');
+            }
+          } else {
+            // Non-auth error
+            await storage.markSlackConnectionStatus(org.id, 'error', error.message || 'Connection test failed');
+          }
+          
+          // Alert if repeated failures
+          if (failures.count >= MAX_FAILURES) {
+            console.error(`🚨 ALERT: Organization ${org.name} has failed ${failures.count} consecutive connection checks!`);
+            console.error(`   Last failure: ${failures.lastFailure.toISOString()}`);
+            console.error(`   Action needed: Manual intervention may be required`);
+            
+            // Could trigger additional alerts here (email, webhook, etc.)
+            await storage.markSlackConnectionStatus(
+              org.id, 
+              'error', 
+              `Critical: ${failures.count} consecutive connection failures`
+            );
+          }
+        }
+        
+        // Small delay between checks
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      console.log(`✅ Connection health check completed. Organizations with issues: ${connectionFailures.size}`);
+    } catch (error) {
+      console.error('❌ Error in connection health monitoring:', error);
+    }
+  });
+  
+  console.log('✅ Slack connection health monitoring scheduled to run every hour');
 }
 
 /**
@@ -627,7 +913,8 @@ export function startSlackTokenRefreshJob(): void {
  */
 export async function sendSlackMessage(
   message: ChatPostMessageArguments,
-  organizationId?: string
+  organizationId?: string,
+  retryOnAuthError: boolean = true
 ): Promise<string | undefined> {
   console.log('📬 sendSlackMessage called with:', {
     channel: message.channel,
@@ -635,7 +922,8 @@ export async function sendSlackMessage(
     text: 'text' in message ? message.text?.substring(0, 50) + '...' : undefined,
     organizationId,
     hasBotToken: !!process.env.SLACK_BOT_TOKEN,
-    globalSlackClientExists: !!slack
+    globalSlackClientExists: !!slack,
+    retryOnAuthError
   });
   
   // Try to get organization-specific token first
@@ -679,6 +967,11 @@ export async function sendSlackMessage(
       ok: response.ok
     });
     
+    // Mark connection as successful if we have an organizationId
+    if (organizationId) {
+      await storage.markSlackConnectionStatus(organizationId, 'connected', undefined);
+    }
+    
     return response.ts;
   } catch (error: any) {
     console.error('❌ Error sending Slack message:', {
@@ -690,6 +983,74 @@ export async function sendSlackMessage(
       hasSlackClient: !!slackClient,
       errorType: error.constructor?.name
     });
+    
+    // Check if it's an auth error and we should retry
+    const isAuthError = error.data?.error === 'invalid_auth' || 
+                       error.data?.error === 'token_revoked' ||
+                       error.data?.error === 'account_inactive' ||
+                       error.data?.error === 'not_authed' ||
+                       error.message?.includes('invalid_auth') ||
+                       error.message?.includes('token_revoked');
+    
+    if (isAuthError && organizationId && retryOnAuthError) {
+      console.log('🔄 Auth error detected. Attempting to refresh token and retry...');
+      
+      // Log the auth error
+      console.log(`📊 Auth error during message send:`, {
+        organizationId,
+        error: error.data?.error || error.message,
+        timestamp: new Date().toISOString()
+      });
+      
+      try {
+        // Attempt to refresh the token
+        const newToken = await refreshSlackToken(organizationId);
+        
+        if (newToken) {
+          console.log('✅ Token refreshed successfully. Retrying message send...');
+          
+          // Create new client with refreshed token
+          const newSlackClient = new WebClient(newToken);
+          
+          // Retry sending the message with the new token
+          const retryResponse = await newSlackClient.chat.postMessage(message);
+          
+          if (retryResponse.ok) {
+            console.log('✅ Message sent successfully after token refresh:', {
+              messageId: retryResponse.ts,
+              channel: retryResponse.channel
+            });
+            
+            // Mark connection as recovered
+            await storage.markSlackConnectionStatus(organizationId, 'connected', undefined);
+            
+            return retryResponse.ts;
+          } else {
+            console.error('❌ Message send failed even after token refresh:', retryResponse.error);
+            await storage.markSlackConnectionStatus(organizationId, 'error', 'Message send failed after token refresh');
+          }
+        } else {
+          console.error('❌ Failed to refresh token for retry');
+          await storage.markSlackConnectionStatus(organizationId, 'error', 'Token refresh failed during message retry');
+        }
+      } catch (retryError: any) {
+        console.error('❌ Error during token refresh and retry:', retryError.message || retryError);
+        await storage.markSlackConnectionStatus(organizationId, 'error', 'Failed to recover from auth error');
+        
+        // Log the failed recovery attempt
+        console.log(`📊 Failed to recover from auth error:`, {
+          organizationId,
+          error: retryError.message || 'Unknown error',
+          originalError: error.data?.error || error.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } else if (organizationId && !isAuthError) {
+      // Non-auth error - mark connection status
+      await storage.markSlackConnectionStatus(organizationId, 'error', error.message || 'Message send failed');
+    }
+    
+    // Re-throw the original error if we couldn't recover
     throw error;
   }
 }
