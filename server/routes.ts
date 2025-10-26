@@ -6636,6 +6636,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         maximumQuestionsPerWeek: z.number().min(1).max(50).optional(),
         avoidRecentlyAskedDays: z.number().min(0).max(365).optional(),
         includeTeamSpecific: z.boolean().optional(),
+        includeUserKraRelated: z.boolean().optional(),
         prioritizeCategories: z.array(z.string()).optional()
       });
       
@@ -6644,8 +6645,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if settings exist
       const existingSettings = await storage.getOrganizationQuestionSettings(req.orgId);
       const result = existingSettings
-        ? await storage.updateOrganizationQuestionSettings(req.orgId, settings)
-        : await storage.createOrganizationQuestionSettings(req.orgId, settings);
+        ? await storage.updateOrganizationQuestionSettings(req.orgId, {
+            ...settings,
+            updatedBy: req.currentUser!.id
+          })
+        : await storage.createOrganizationQuestionSettings(req.orgId, {
+            ...settings,
+            createdBy: req.currentUser!.id,
+            updatedBy: req.currentUser!.id
+          });
       
       res.json(result);
     } catch (error) {

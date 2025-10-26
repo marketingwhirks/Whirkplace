@@ -17,8 +17,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const settingsSchema = z.object({
   minimumQuestionsPerWeek: z.number().min(1).max(10),
+  maximumQuestionsPerWeek: z.number().min(1).max(50),
   autoSelectEnabled: z.boolean(),
   selectionStrategy: z.enum(["random", "rotating", "smart"]),
+  avoidRecentlyAskedDays: z.number().min(0).max(365),
+  includeTeamSpecific: z.boolean(),
+  includeUserKraRelated: z.boolean(),
+  prioritizeCategories: z.array(z.string()),
 });
 
 type SettingsForm = z.infer<typeof settingsSchema>;
@@ -48,8 +53,13 @@ export function QuestionSettings() {
     resolver: zodResolver(settingsSchema),
     defaultValues: {
       minimumQuestionsPerWeek: 3,
+      maximumQuestionsPerWeek: 10,
       autoSelectEnabled: false,
       selectionStrategy: "smart",
+      avoidRecentlyAskedDays: 30,
+      includeTeamSpecific: true,
+      includeUserKraRelated: true,
+      prioritizeCategories: [],
     },
   });
   
@@ -58,8 +68,13 @@ export function QuestionSettings() {
     if (settings) {
       form.reset({
         minimumQuestionsPerWeek: settings.minimumQuestionsPerWeek || 3,
+        maximumQuestionsPerWeek: settings.maximumQuestionsPerWeek || 10,
         autoSelectEnabled: settings.autoSelectEnabled || false,
         selectionStrategy: settings.selectionStrategy || "smart",
+        avoidRecentlyAskedDays: settings.avoidRecentlyAskedDays || 30,
+        includeTeamSpecific: settings.includeTeamSpecific !== false,
+        includeUserKraRelated: settings.includeUserKraRelated !== false,
+        prioritizeCategories: settings.prioritizeCategories || [],
       });
     }
   }, [settings, form]);
