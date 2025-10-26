@@ -7691,6 +7691,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Team Goals
+  app.get("/api/team-goals", requireAuth(), async (req, res) => {
+    try {
+      const { activeOnly, teamId } = req.query;
+      
+      let goals;
+      if (teamId) {
+        // Get goals for a specific team (includes org-wide goals with null teamId)
+        goals = await storage.getTeamGoalsByTeam(
+          req.orgId, 
+          teamId as string, 
+          activeOnly === 'true'
+        );
+      } else {
+        // Get all goals for the organization
+        goals = await storage.getAllTeamGoals(req.orgId, activeOnly === 'true');
+      }
+      
+      res.json(goals);
+    } catch (error) {
+      console.error("Failed to fetch team goals:", error);
+      res.status(500).json({ message: "Failed to fetch team goals" });
+    }
+  });
+
+  app.post("/api/team-goals", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Add organizationId and createdBy from request context
+      const goalData = {
+        ...req.body,
+        createdBy: req.currentUser!.id
+      };
+      
+      // Validate the goal data using the schema
+      const validatedData = insertTeamGoalSchema.parse(goalData);
+      
+      // Create the team goal
+      const goal = await storage.createTeamGoal(req.orgId, validatedData);
+      
+      res.status(201).json(goal);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid team goal data", 
+          details: error.errors 
+        });
+      }
+      console.error("Error creating team goal:", error);
+      res.status(500).json({ message: "Failed to create team goal" });
+    }
+  });
+
+  app.patch("/api/team-goals/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      // Use partial schema for updates
+      const updates = insertTeamGoalSchema.partial().parse(req.body);
+      
+      // Update the team goal
+      const goal = await storage.updateTeamGoal(req.orgId, req.params.id, updates);
+      
+      if (!goal) {
+        return res.status(404).json({ message: "Team goal not found" });
+      }
+      
+      res.json(goal);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid team goal data", 
+          details: error.errors 
+        });
+      }
+      console.error("Error updating team goal:", error);
+      res.status(500).json({ message: "Failed to update team goal" });
+    }
+  });
+
+  app.delete("/api/team-goals/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const deleted = await storage.deleteTeamGoal(req.orgId, req.params.id);
+      
+      if (!deleted) {
+        return res.status(404).json({ message: "Team goal not found" });
+      }
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Error deleting team goal:", error);
+      res.status(500).json({ message: "Failed to delete team goal" });
+    }
+  });
+
   // Post Reactions (for Wins and Shoutouts)
   app.get("/api/:postType/:id/reactions", requireAuth(), async (req, res) => {
     try {
