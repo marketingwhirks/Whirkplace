@@ -48,17 +48,11 @@ interface NotificationPreferences {
  * Interface for notification schedule
  */
 interface NotificationSchedule {
-  doNotDisturb?: {
-    enabled?: boolean;
-    start?: string; // HH:MM format
-    end?: string; // HH:MM format
-  };
+  doNotDisturb?: boolean;
+  doNotDisturbStart?: string; // HH:MM format  
+  doNotDisturbEnd?: string; // HH:MM format
+  weekendNotifications?: boolean;
   timezone?: string;
-  workingHours?: {
-    start?: string; // HH:MM format
-    end?: string; // HH:MM format
-    days?: string[]; // ['Monday', 'Tuesday', ...]
-  };
 }
 
 /**
@@ -187,17 +181,18 @@ export function isInDoNotDisturbPeriod(user: User): boolean {
   try {
     const schedule = (user.notificationSchedule as NotificationSchedule) || {};
     
-    if (!schedule.doNotDisturb?.enabled) {
+    if (!schedule.doNotDisturb) {
       return false;
     }
 
-    const { start, end } = schedule.doNotDisturb;
+    const start = schedule.doNotDisturbStart;
+    const end = schedule.doNotDisturbEnd;
     if (!start || !end) {
       return false;
     }
 
-    // Get current time in user's timezone or default to UTC
-    const timezone = schedule.timezone || 'UTC';
+    // Get current time in user's timezone or default to America/Chicago
+    const timezone = schedule.timezone || 'America/Chicago';
     const now = new Date();
     const userTime = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
     
@@ -226,48 +221,25 @@ export function isInDoNotDisturbPeriod(user: User): boolean {
 }
 
 /**
- * Check if current time is within user's working hours
- * @param user - The user object
- * @returns true if currently in working hours, false otherwise
+ * Check if it's currently weekend based on user's timezone
+ * @param user - The user object  
+ * @returns true if it's weekend, false otherwise
  */
-export function isInWorkingHours(user: User): boolean {
+export function isWeekend(user: User): boolean {
   try {
     const schedule = (user.notificationSchedule as NotificationSchedule) || {};
-    const workingHours = schedule.workingHours;
     
-    if (!workingHours?.start || !workingHours?.end) {
-      return true; // If no working hours set, assume always available
-    }
-
     // Get current time in user's timezone
-    const timezone = schedule.timezone || 'UTC';
+    const timezone = schedule.timezone || 'America/Chicago';
     const now = new Date();
     const userTime = new Date(now.toLocaleString('en-US', { timeZone: timezone }));
     
-    // Check if today is a working day
-    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const currentDay = dayNames[userTime.getDay()];
-    
-    if (workingHours.days && workingHours.days.length > 0) {
-      if (!workingHours.days.includes(currentDay)) {
-        return false; // Not a working day
-      }
-    }
-
-    // Check if current time is within working hours
-    const currentHour = userTime.getHours();
-    const currentMinute = userTime.getMinutes();
-    const currentTimeMinutes = currentHour * 60 + currentMinute;
-
-    const [startHour, startMinute] = workingHours.start.split(':').map(Number);
-    const [endHour, endMinute] = workingHours.end.split(':').map(Number);
-    const startTimeMinutes = startHour * 60 + startMinute;
-    const endTimeMinutes = endHour * 60 + endMinute;
-
-    return currentTimeMinutes >= startTimeMinutes && currentTimeMinutes < endTimeMinutes;
+    // Check if today is Saturday (6) or Sunday (0)
+    const dayOfWeek = userTime.getDay();
+    return dayOfWeek === 0 || dayOfWeek === 6;
   } catch (error) {
-    console.error(`Error checking working hours:`, error);
-    return true; // Default to available on error
+    console.error(`Error checking weekend:`, error);
+    return false;
   }
 }
 
@@ -314,10 +286,11 @@ export async function shouldSendNotification(
       return false;
     }
 
-    // For certain notification types, also check working hours
-    const workHoursSensitive = ['checkinReminders', 'teamUpdates', 'weeklyDigest'];
-    if (workHoursSensitive.includes(notificationType) && !isInWorkingHours(userObj)) {
-      console.log(`User ${userObj.email} is outside working hours, skipping ${notificationType}`);
+    // Check weekend notifications preference
+    const schedule = (userObj.notificationSchedule as NotificationSchedule) || {};
+    // weekendNotifications: false means don't send on weekends
+    if (schedule.weekendNotifications === false && isWeekend(userObj)) {
+      console.log(`User ${userObj.email} has weekend notifications disabled, skipping notification`);
       return false;
     }
   }
