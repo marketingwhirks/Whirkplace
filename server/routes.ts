@@ -4804,6 +4804,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get user notification preferences  
+  app.get("/api/users/:id/notification-preferences", requireAuth(), async (req, res) => {
+    try {
+      const user = await storage.getUser(req.orgId, req.params.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Only allow users to view their own preferences or admins to view any
+      if (req.currentUser?.id !== req.params.id && req.currentUser?.role !== 'admin') {
+        return res.status(403).json({ message: "Not authorized to view these preferences" });
+      }
+      
+      res.json({
+        preferences: user.notificationPreferences || {
+          email: {
+            checkinReminders: true,
+            checkinSubmissions: true,
+            winAnnouncements: true,
+            shoutouts: true,
+            teamUpdates: true,
+            weeklyDigest: true
+          },
+          slack: {
+            checkinReminders: true,
+            checkinSubmissions: true,
+            winAnnouncements: true,
+            shoutouts: true,
+            directMessages: true
+          },
+          inApp: {
+            checkinReminders: true,
+            checkinSubmissions: true,
+            winAnnouncements: true,
+            shoutouts: true,
+            teamUpdates: true,
+            systemAlerts: true
+          }
+        },
+        schedule: user.notificationSchedule || {
+          doNotDisturb: false,
+          doNotDisturbStart: "18:00",
+          doNotDisturbEnd: "09:00",
+          weekendNotifications: false,
+          timezone: "America/Chicago"
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch notification preferences" });
+    }
+  });
+
+  // Update user notification preferences
+  app.patch("/api/users/:id/notification-preferences", requireAuth(), async (req, res) => {
+    try {
+      // Only allow users to update their own preferences
+      if (req.currentUser?.id !== req.params.id) {
+        return res.status(403).json({ message: "You can only update your own notification preferences" });
+      }
+      
+      const { preferences, schedule } = req.body;
+      
+      const updatedUser = await storage.updateUserNotificationPreferences(
+        req.orgId,
+        req.params.id,
+        preferences,
+        schedule
+      );
+      
+      if (!updatedUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      res.json({
+        message: "Notification preferences updated successfully",
+        preferences: updatedUser.notificationPreferences,
+        schedule: updatedUser.notificationSchedule
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update notification preferences" });
+    }
+  });
+
   app.post("/api/users", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
       const userData = insertUserSchema.parse(req.body);

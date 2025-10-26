@@ -148,6 +148,7 @@ export interface IStorage {
   getUserByMicrosoftId(organizationId: string, microsoftUserId: string): Promise<User | undefined>;
   createUser(organizationId: string, user: InsertUser): Promise<User>;
   updateUser(organizationId: string, id: string, user: Partial<InsertUser>): Promise<User | undefined>;
+  updateUserNotificationPreferences(organizationId: string, userId: string, preferences: any, schedule: any): Promise<User | undefined>;
   getUsersByTeam(organizationId: string, teamId: string, includeInactive?: boolean): Promise<User[]>;
   getUsersByManager(organizationId: string, managerId: string, includeInactive?: boolean): Promise<User[]>;
   getUsersByTeamLeadership(organizationId: string, leaderId: string, includeInactive?: boolean): Promise<User[]>;
@@ -843,6 +844,18 @@ export class DatabaseStorage implements IStorage {
       .update(users)
       .set(userUpdate)
       .where(and(eq(users.id, id), eq(users.organizationId, organizationId)))
+      .returning();
+    return user || undefined;
+  }
+
+  async updateUserNotificationPreferences(organizationId: string, userId: string, preferences: any, schedule: any): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set({
+        notificationPreferences: preferences,
+        notificationSchedule: schedule
+      })
+      .where(and(eq(users.id, userId), eq(users.organizationId, organizationId)))
       .returning();
     return user || undefined;
   }
@@ -7153,6 +7166,19 @@ export class MemStorage implements IStorage {
     
     const updatedUser = { ...user, ...userUpdate };
     this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+
+  async updateUserNotificationPreferences(organizationId: string, userId: string, preferences: any, schedule: any): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (!user || user.organizationId !== organizationId) return undefined;
+    
+    const updatedUser = { 
+      ...user, 
+      notificationPreferences: preferences,
+      notificationSchedule: schedule
+    };
+    this.users.set(userId, updatedUser);
     return updatedUser;
   }
 
