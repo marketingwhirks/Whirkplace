@@ -187,6 +187,7 @@ export interface IStorage {
   getPreviousWeekCheckin(organizationId: string, userId: string): Promise<Checkin | undefined>;
   getCheckinForWeek(organizationId: string, userId: string, weekStart: Date): Promise<Checkin | undefined>;
   getRecentCheckins(organizationId: string, limit?: number): Promise<Checkin[]>;
+  getCheckinsForWeek(organizationId: string, weekStart: Date, userIds?: string[]): Promise<Checkin[]>;
   
   // Super Admin Check-in Management
   getAllCheckinsAcrossOrgs(filters?: {
@@ -1866,6 +1867,35 @@ export class DatabaseStorage implements IStorage {
       ))
       .orderBy(desc(checkins.createdAt))
       .limit(limit);
+  }
+
+  async getCheckinsForWeek(organizationId: string, weekStart: Date, userIds?: string[]): Promise<Checkin[]> {
+    // Get the organization for timezone settings
+    const organization = await this.getOrganization(organizationId);
+    
+    // Normalize the week start to Monday at 00:00:00 in the organization's timezone
+    const normalizedWeekStart = getWeekStartCentral(weekStart, organization);
+    const weekEnd = new Date(normalizedWeekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    
+    // Build conditions
+    const conditions: any[] = [
+      eq(checkins.organizationId, organizationId),
+      gte(checkins.weekOf, normalizedWeekStart),
+      lt(checkins.weekOf, weekEnd)
+    ];
+    
+    // If specific user IDs are provided, filter by them
+    if (userIds && userIds.length > 0) {
+      conditions.push(inArray(checkins.userId, userIds));
+    }
+    
+    // Find all check-ins for the specified week
+    return await db
+      .select()
+      .from(checkins)
+      .where(and(...conditions))
+      .orderBy(desc(checkins.createdAt));
   }
 
   // Super Admin Check-in Management

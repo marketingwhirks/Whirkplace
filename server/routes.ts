@@ -5409,7 +5409,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Check-ins with hierarchical visibility controls
   app.get("/api/checkins", requireAuth(), async (req, res) => {
     try {
-      const { userId, managerId, limit } = req.query;
+      const { userId, managerId, limit, weekStart } = req.query;
       const currentUser = req.currentUser!;
       
       // Get full user data including canViewAllTeams permission
@@ -5421,24 +5421,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let checkins;
       let authorizedUserIds: Set<string>;
       
+      // Parse weekStart if provided
+      let parsedWeekStart: Date | undefined;
+      if (weekStart) {
+        parsedWeekStart = new Date(weekStart as string);
+        if (isNaN(parsedWeekStart.getTime())) {
+          return res.status(400).json({ message: "Invalid weekStart date format" });
+        }
+      }
+      
       // Apply hierarchical visibility rules
       if (fullUser.isSuperAdmin) {
         // Super admins see everything across all organizations
-        if (userId) {
-          checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
-        } else if (managerId) {
-          checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
+        if (weekStart && parsedWeekStart) {
+          // If weekStart is provided, filter by week
+          if (userId) {
+            checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart, [userId as string]);
+          } else if (managerId) {
+            // Get all direct reports of the manager
+            const directReports = await storage.getUsersByManager(req.orgId, managerId as string, true);
+            const userIds = directReports.map(u => u.id);
+            checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart, userIds);
+          } else {
+            checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart);
+          }
         } else {
-          checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
+          // Original behavior when weekStart is not provided
+          if (userId) {
+            checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
+          } else if (managerId) {
+            checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
+          } else {
+            checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
+          }
         }
       } else if (fullUser.isAccountOwner) {
         // Account owners see everything in their organization
-        if (userId) {
-          checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
-        } else if (managerId) {
-          checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
+        if (weekStart && parsedWeekStart) {
+          // If weekStart is provided, filter by week
+          if (userId) {
+            checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart, [userId as string]);
+          } else if (managerId) {
+            // Get all direct reports of the manager
+            const directReports = await storage.getUsersByManager(req.orgId, managerId as string, true);
+            const userIds = directReports.map(u => u.id);
+            checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart, userIds);
+          } else {
+            checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart);
+          }
         } else {
-          checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
+          // Original behavior when weekStart is not provided
+          if (userId) {
+            checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
+          } else if (managerId) {
+            checkins = await storage.getCheckinsByManager(req.orgId, managerId as string);
+          } else {
+            checkins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : undefined);
+          }
         }
       } else if (fullUser.canViewAllTeams) {
         // Users with canViewAllTeams permission - see all teams but respect hierarchy
@@ -5472,14 +5511,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         }
         
-        if (userId) {
-          if (!authorizedUserIds.has(userId as string)) {
-            return res.status(403).json({ message: "Access denied to this user's check-ins" });
+        if (weekStart && parsedWeekStart) {
+          // If weekStart is provided, filter by week
+          if (userId) {
+            if (!authorizedUserIds.has(userId as string)) {
+              return res.status(403).json({ message: "Access denied to this user's check-ins" });
+            }
+            checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart, [userId as string]);
+          } else {
+            // Get check-ins for all authorized users in the specified week
+            checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart, Array.from(authorizedUserIds));
           }
-          checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
         } else {
-          const allCheckins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : 100);
-          checkins = allCheckins.filter(c => authorizedUserIds.has(c.userId));
+          // Original behavior when weekStart is not provided
+          if (userId) {
+            if (!authorizedUserIds.has(userId as string)) {
+              return res.status(403).json({ message: "Access denied to this user's check-ins" });
+            }
+            checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
+          } else {
+            const allCheckins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : 100);
+            checkins = allCheckins.filter(c => authorizedUserIds.has(c.userId));
+          }
         }
       } else if (fullUser.role === "manager" || fullUser.role === "admin") {
         // Managers and admins see only their direct reports' check-ins
@@ -5491,21 +5544,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ...directReports.map(u => u.id)
         ]);
         
-        if (userId) {
-          if (!authorizedUserIds.has(userId as string)) {
-            return res.status(403).json({ message: "Access denied to this user's check-ins" });
+        if (weekStart && parsedWeekStart) {
+          // If weekStart is provided, filter by week
+          if (userId) {
+            if (!authorizedUserIds.has(userId as string)) {
+              return res.status(403).json({ message: "Access denied to this user's check-ins" });
+            }
+            checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart, [userId as string]);
+          } else {
+            // Get check-ins for all authorized users in the specified week
+            checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart, Array.from(authorizedUserIds));
           }
-          checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
         } else {
-          const allCheckins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : 100);
-          checkins = allCheckins.filter(c => authorizedUserIds.has(c.userId));
+          // Original behavior when weekStart is not provided
+          if (userId) {
+            if (!authorizedUserIds.has(userId as string)) {
+              return res.status(403).json({ message: "Access denied to this user's check-ins" });
+            }
+            checkins = await storage.getCheckinsByUser(req.orgId, userId as string);
+          } else {
+            const allCheckins = await storage.getRecentCheckins(req.orgId, limit ? parseInt(limit as string) : 100);
+            checkins = allCheckins.filter(c => authorizedUserIds.has(c.userId));
+          }
         }
       } else {
         // Regular users can only see their own check-ins
         if (userId && userId !== fullUser.id) {
           return res.status(403).json({ message: "Access denied to other users' check-ins" });
         }
-        checkins = await storage.getCheckinsByUser(req.orgId, fullUser.id);
+        
+        if (weekStart && parsedWeekStart) {
+          // If weekStart is provided, filter by week
+          checkins = await storage.getCheckinsForWeek(req.orgId, parsedWeekStart, [fullUser.id]);
+        } else {
+          // Original behavior when weekStart is not provided
+          checkins = await storage.getCheckinsByUser(req.orgId, fullUser.id);
+        }
       }
       
       res.json(checkins);
