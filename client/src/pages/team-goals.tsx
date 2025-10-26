@@ -285,8 +285,16 @@ export default function TeamGoals() {
     },
   });
 
-  // Group goals by status
-  const activeGoals = goals.filter((g) => g.status === "active");
+  // Group goals by status and check for upcoming goals
+  const now = new Date();
+  const upcomingGoals = goals.filter((g) => {
+    const startDate = new Date(g.startDate);
+    return startDate > now && g.status !== "completed" && g.status !== "expired";
+  });
+  const activeGoals = goals.filter((g) => {
+    const startDate = new Date(g.startDate);
+    return g.status === "active" && startDate <= now;
+  });
   const completedGoals = goals.filter((g) => g.status === "completed");
   const expiredGoals = goals.filter((g) => g.status === "expired");
 
@@ -337,6 +345,16 @@ export default function TeamGoals() {
     if (days === 0) return "Ends today";
     if (days === 1) return "1 day left";
     return `${days} days left`;
+  };
+
+  const getTimeUntilStart = (startDate: string) => {
+    const days = differenceInDays(new Date(startDate), new Date());
+    if (days <= 0) return "Starting now";
+    if (days === 1) return "Starts tomorrow";
+    if (days <= 7) return `Starts in ${days} days`;
+    const weeks = Math.floor(days / 7);
+    if (weeks === 1) return "Starts next week";
+    return `Starts in ${weeks} weeks`;
   };
 
   const getMetricIcon = (metric: string) => {
@@ -411,9 +429,10 @@ export default function TeamGoals() {
     }
   };
 
-  const GoalCard = ({ goal }: { goal: TeamGoal }) => {
+  const GoalCard = ({ goal, isUpcoming = false }: { goal: TeamGoal; isUpcoming?: boolean }) => {
     const progress = getProgressPercentage(goal);
     const timeRemaining = getTimeRemaining(goal.endDate);
+    const timeUntilStart = getTimeUntilStart(goal.startDate);
     const isCompleted = goal.status === "completed";
     const isExpired = goal.status === "expired";
 
@@ -421,7 +440,9 @@ export default function TeamGoals() {
       <Card
         className={`relative overflow-hidden transition-all hover:shadow-lg ${
           isCompleted ? "border-green-500 bg-green-50 dark:bg-green-950/20" : ""
-        } ${isExpired ? "opacity-60" : ""}`}
+        } ${isExpired ? "opacity-60" : ""} ${
+          isUpcoming ? "border-blue-200 bg-blue-50/50 dark:bg-blue-950/20" : ""
+        }`}
         data-testid={`card-team-goal-${goal.id}`}
       >
         {isCompleted && (
@@ -429,6 +450,14 @@ export default function TeamGoals() {
             <Badge className="bg-green-500">
               <Trophy className="mr-1 h-3 w-3" />
               Completed
+            </Badge>
+          </div>
+        )}
+        {isUpcoming && (
+          <div className="absolute top-2 right-2">
+            <Badge className="bg-blue-500">
+              <Clock className="mr-1 h-3 w-3" />
+              Upcoming
             </Badge>
           </div>
         )}
@@ -486,7 +515,7 @@ export default function TeamGoals() {
           <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              {timeRemaining}
+              {isUpcoming ? timeUntilStart : timeRemaining}
             </span>
             <Badge variant="outline">{goal.goalType}</Badge>
             {goal.teamName && isAdmin ? (
@@ -510,14 +539,53 @@ export default function TeamGoals() {
 
         <CardContent>
           <div className="space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">Progress</span>
-              <span className="font-semibold">
-                {goal.currentValue} / {goal.targetValue} {goal.metric}
-              </span>
-            </div>
+            {isUpcoming ? (
+              <>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Target</span>
+                  <span className="font-semibold">
+                    {goal.targetValue} {goal.metric}
+                  </span>
+                </div>
 
-            <Progress value={progress} className="h-3" />
+                <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-medium">Schedule</span>
+                  </div>
+                  <div className="text-sm space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Starts:</span>
+                      <span>{format(new Date(goal.startDate), "MMM dd, yyyy")}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Ends:</span>
+                      <span>{format(new Date(goal.endDate), "MMM dd, yyyy")}</span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Progress</span>
+                  <span className="font-semibold">
+                    {goal.currentValue} / {goal.targetValue} {goal.metric}
+                  </span>
+                </div>
+
+                <Progress value={progress} className="h-3" />
+
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>
+                    {format(new Date(goal.startDate), "MMM dd, yyyy")}
+                  </span>
+                  <span>
+                    {format(new Date(goal.endDate), "MMM dd, yyyy")}
+                  </span>
+                </div>
+              </>
+            )}
 
             {goal.prize && (
               <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg">
@@ -525,15 +593,6 @@ export default function TeamGoals() {
                 <span className="text-sm font-medium">Prize: {goal.prize}</span>
               </div>
             )}
-
-            <div className="flex justify-between text-xs text-muted-foreground">
-              <span>
-                {format(new Date(goal.startDate), "MMM dd, yyyy")}
-              </span>
-              <span>
-                {format(new Date(goal.endDate), "MMM dd, yyyy")}
-              </span>
-            </div>
           </div>
         </CardContent>
       </Card>
@@ -584,6 +643,9 @@ export default function TeamGoals() {
 
       <Tabs defaultValue="active" className="w-full">
         <TabsList data-testid="tabs-goal-status">
+          <TabsTrigger value="upcoming">
+            Upcoming ({upcomingGoals.length})
+          </TabsTrigger>
           <TabsTrigger value="active">
             Active ({activeGoals.length})
           </TabsTrigger>
@@ -594,6 +656,47 @@ export default function TeamGoals() {
             Expired ({expiredGoals.length})
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="upcoming" className="space-y-4">
+          {upcomingGoals.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+                <Clock className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-lg font-medium">No upcoming goals</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  {isTeamLeader
+                    ? "Create future-dated goals to plan ahead"
+                    : "No future goals scheduled yet"}
+                </p>
+              </CardContent>
+            </Card>
+          ) : isAdmin ? (
+            // Admin view: Group goals by team
+            <div className="space-y-6">
+              {Object.entries(groupGoalsByTeam(upcomingGoals)).map(([teamName, teamGoals]) => (
+                <div key={teamName} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-5 w-5 text-blue-500" />
+                    <h3 className="text-lg font-semibold">{teamName}</h3>
+                    <Badge variant="outline">{teamGoals.length} upcoming</Badge>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {teamGoals.map((goal) => (
+                      <GoalCard key={goal.id} goal={goal} isUpcoming={true} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            // Non-admin view: Simple grid
+            <div className="grid gap-4 md:grid-cols-2">
+              {upcomingGoals.map((goal) => (
+                <GoalCard key={goal.id} goal={goal} isUpcoming={true} />
+              ))}
+            </div>
+          )}
+        </TabsContent>
 
         <TabsContent value="active" className="space-y-4">
           {activeGoals.length === 0 ? (
