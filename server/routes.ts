@@ -6480,6 +6480,142 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Send personalized check-in reminders with week information
+  app.post("/api/checkins/send-reminder", requireAuth(), requireRole(['admin', 'manager']), requireFeatureAccess('slack_integration'), generateCSRF(), validateCSRF(), async (req, res) => {
+    try {
+      const user = req.currentUser!;
+      const { userIds, weekStart } = req.body;
+      
+      if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).json({ message: "Please provide user IDs to remind" });
+      }
+      
+      // Parse week start date if provided
+      const weekStartDate = weekStart ? new Date(weekStart) : getWeekStartCentral(new Date(), req.organization);
+      
+      // Get organization for Slack configuration
+      const organization = await storage.getOrganization(req.orgId);
+      if (!organization?.enableSlackIntegration) {
+        return res.status(400).json({ message: "Slack integration is not enabled for this organization" });
+      }
+      
+      // Get active questions for inclusion in reminders
+      const questions = await storage.getActiveQuestions(req.orgId);
+      
+      // Verify users need reminders and have permission to remind them
+      const results = {
+        sent: [] as string[],
+        failed: [] as { userId: string; reason: string }[]
+      };
+      
+      for (const userId of userIds) {
+        try {
+          // Get user details
+          const targetUser = await storage.getUser(req.orgId, userId);
+          if (!targetUser) {
+            results.failed.push({ 
+              userId, 
+              reason: `User not found` 
+            });
+            continue;
+          }
+          
+          // Check permission: managers can only remind their direct reports
+          if (user.role === 'manager') {
+            const reports = await storage.getUsersByManager(req.orgId, user.id);
+            const canRemind = reports.some(r => r.id === userId);
+            if (!canRemind) {
+              results.failed.push({ 
+                userId, 
+                reason: `No permission to remind ${targetUser.name}` 
+              });
+              continue;
+            }
+          }
+          
+          // Check if user has already submitted for this week
+          const existingCheckin = await storage.getCheckinByUserAndWeek(req.orgId, userId, weekStartDate);
+          if (existingCheckin?.isComplete) {
+            results.failed.push({ 
+              userId, 
+              reason: `${targetUser.name} has already submitted` 
+            });
+            continue;
+          }
+          
+          // Check if user is on vacation
+          const vacation = await storage.getVacation(req.orgId, userId, weekStartDate);
+          if (vacation) {
+            results.failed.push({ 
+              userId, 
+              reason: `${targetUser.name} is on vacation` 
+            });
+            continue;
+          }
+          
+          // Skip if no Slack ID
+          if (!targetUser.slackUserId) {
+            results.failed.push({ 
+              userId, 
+              reason: `${targetUser.name} doesn't have Slack connected` 
+            });
+            continue;
+          }
+          
+          // Send personalized reminder with week information
+          const { sendPersonalizedCheckinReminder } = await import("./services/slack");
+          
+          // Format week information for the message
+          const weekOfText = format(weekStartDate, 'MMMM d, yyyy');
+          const enhancedQuestions = questions.map(q => ({
+            ...q,
+            text: q.text + ` (Week of ${weekOfText})`
+          }));
+          
+          await sendPersonalizedCheckinReminder(
+            targetUser.id,
+            targetUser.name,
+            enhancedQuestions,
+            false, // not a weekly scheduled reminder
+            organization
+          );
+          
+          results.sent.push(targetUser.name);
+          
+          // Log the reminder in notifications
+          await storage.createNotification(req.orgId, {
+            userId: targetUser.id,
+            type: 'checkin_reminder',
+            title: 'Manual Check-in Reminder',
+            message: `Reminder sent by ${user.name} for week of ${weekOfText}`,
+            createdBy: user.id,
+            metadata: {
+              sentBy: user.id,
+              sentByName: user.name,
+              weekStart: weekStartDate.toISOString()
+            }
+          });
+          
+        } catch (error) {
+          console.error(`Error sending reminder to user ${userId}:`, error);
+          const targetUser = await storage.getUser(req.orgId, userId);
+          results.failed.push({ 
+            userId, 
+            reason: `Error sending to ${targetUser?.name || 'user'}` 
+          });
+        }
+      }
+      
+      res.json({
+        message: `Sent ${results.sent.length} reminders`,
+        results
+      });
+    } catch (error) {
+      console.error("Failed to send check-in reminders:", error);
+      res.status(500).json({ message: "Failed to send check-in reminders" });
+    }
+  });
+
   // AI Question Generation
   app.post("/api/questions/generate", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {

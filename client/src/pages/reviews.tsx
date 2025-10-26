@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow, formatDistance, format, startOfWeek, addWeeks, differenceInDays } from "date-fns";
 import { 
   CheckCircle, XCircle, Clock, Eye, MessageSquare, Filter, Calendar, User, AlertCircle, Send, UserMinus, Bell,
-  Plane, Download, Users, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, Activity
+  Plane, Download, Users, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, Activity, BellRing
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
+import { 
+  AlertDialog, 
+  AlertDialogAction, 
+  AlertDialogCancel, 
+  AlertDialogContent, 
+  AlertDialogDescription, 
+  AlertDialogFooter, 
+  AlertDialogHeader, 
+  AlertDialogTitle 
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -79,6 +89,11 @@ export default function Reviews() {
   const [selectedWeek, setSelectedWeek] = useState(0); // 0 = current week, -1 = last week, etc.
   const [selectedTeam, setSelectedTeam] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  
+  // Reminder state
+  const [showBulkReminderDialog, setShowBulkReminderDialog] = useState(false);
+  const [sendingReminder, setSendingReminder] = useState<string | null>(null);
+  const [remindersSent, setRemindersSent] = useState<Set<string>>(new Set());
   
   // Calculate the week we're viewing
   const viewingWeekStart = useMemo(() => {
@@ -329,17 +344,46 @@ export default function Reviews() {
 
   // Reminder mutation
   const reminderMutation = useMutation({
-    mutationFn: async (userIds: string[]) => {
-      const response = await apiRequest("POST", "/api/checkins/remind", { userIds });
+    mutationFn: async ({ userIds, weekStart }: { userIds: string | string[]; weekStart?: string }) => {
+      const response = await apiRequest("POST", "/api/checkins/send-reminder", { 
+        userIds: Array.isArray(userIds) ? userIds : [userIds],
+        weekStart: weekStart || viewingWeekStart.toISOString()
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to send reminders');
+      }
       return await response.json();
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/checkins/missing"] });
-      toast({
-        title: "Reminders sent",
-        description: data.message || `Sent ${data.results?.sent?.length || 0} reminders successfully.`,
-      });
+      const { results } = data;
+      if (results?.sent?.length > 0) {
+        toast({
+          title: "Reminders sent",
+          description: `Successfully sent ${results.sent.length} reminder${results.sent.length === 1 ? '' : 's'}.`,
+        });
+        // Track which reminders were sent
+        const newRemindersSent = new Set(remindersSent);
+        results.sent.forEach((userName: string) => {
+          // Find user ID from name
+          const user = filteredStatuses.find(s => s.user.name === userName)?.user;
+          if (user) {
+            newRemindersSent.add(`${user.id}-${viewingWeekStart.toISOString()}`);
+          }
+        });
+        setRemindersSent(newRemindersSent);
+      }
+      if (results?.failed?.length > 0) {
+        const failedReasons = results.failed.map((f: any) => f.reason).slice(0, 3).join(', ');
+        toast({
+          variant: "destructive",
+          title: "Some reminders failed",
+          description: failedReasons + (results.failed.length > 3 ? '...' : ''),
+        });
+      }
       setSelectedReminders(new Set());
+      setSendingReminder(null);
     },
     onError: (error: any) => {
       toast({
@@ -347,6 +391,7 @@ export default function Reviews() {
         title: "Failed to send reminders",
         description: error.message || "An error occurred while sending reminders",
       });
+      setSendingReminder(null);
     },
   });
 
@@ -371,6 +416,36 @@ export default function Reviews() {
       checkinId: reviewModal.checkin.id,
       reviewData,
     });
+  };
+
+  // Handle sending individual reminder
+  const handleSendIndividualReminder = (userId: string) => {
+    setSendingReminder(userId);
+    reminderMutation.mutate({ userIds: userId });
+  };
+
+  // Handle sending bulk reminders
+  const handleSendBulkReminders = () => {
+    const userIdsToRemind = filteredStatuses
+      .filter(s => s.status === 'missing' || s.status === 'overdue')
+      .map(s => s.user.id);
+    
+    if (userIdsToRemind.length === 0) {
+      toast({
+        title: "No reminders to send",
+        description: "All team members have submitted their check-ins.",
+      });
+      return;
+    }
+    
+    setSendingReminder('bulk');
+    reminderMutation.mutate({ userIds: userIdsToRemind });
+    setShowBulkReminderDialog(false);
+  };
+
+  // Check if reminder was already sent
+  const wasReminderSent = (userId: string) => {
+    return remindersSent.has(`${userId}-${viewingWeekStart.toISOString()}`);
   };
 
   // Handle sending reminders
@@ -937,6 +1012,22 @@ export default function Reviews() {
             
             <div className="flex-1" />
             
+            {/* Only show reminder button for current week and if Slack is enabled */}
+            {selectedWeek === 0 && organization?.enableSlackIntegration && (
+              filteredStatuses.some(s => s.status === 'missing' || s.status === 'overdue') && (
+                <Button
+                  onClick={() => setShowBulkReminderDialog(true)}
+                  variant="default"
+                  className="flex items-center gap-2"
+                  disabled={sendingReminder === 'bulk'}
+                  data-testid="button-send-all-reminders"
+                >
+                  <BellRing className="w-4 h-4" />
+                  {sendingReminder === 'bulk' ? 'Sending...' : 'Send All Reminders'}
+                </Button>
+              )
+            )}
+            
             <Button
               onClick={handleExportCSV}
               variant="outline"
@@ -1063,6 +1154,31 @@ export default function Reviews() {
                           {status.vacation.note}
                         </div>
                       )}
+                      
+                      {/* Send Reminder button for missing/overdue check-ins */}
+                      {selectedWeek === 0 && organization?.enableSlackIntegration && 
+                       (status.status === 'missing' || status.status === 'overdue') && (
+                        <div className="mt-3 pt-3 border-t">
+                          {wasReminderSent(status.user.id) ? (
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <CheckCircle className="w-3 h-3" />
+                              Reminder sent
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleSendIndividualReminder(status.user.id)}
+                              disabled={sendingReminder === status.user.id || sendingReminder === 'bulk'}
+                              className="w-full flex items-center gap-2"
+                              data-testid={`button-send-reminder-${status.user.id}`}
+                            >
+                              <Bell className="w-3 h-3" />
+                              {sendingReminder === status.user.id ? 'Sending...' : 'Send Reminder'}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1071,6 +1187,30 @@ export default function Reviews() {
           )}
         </div>
       </main>
+
+      {/* Bulk Reminder Confirmation Dialog */}
+      <AlertDialog open={showBulkReminderDialog} onOpenChange={setShowBulkReminderDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send Reminders to All</AlertDialogTitle>
+            <AlertDialogDescription>
+              You're about to send check-in reminders to {
+                filteredStatuses.filter(s => s.status === 'missing' || s.status === 'overdue').length
+              } team members who haven't submitted their check-ins for the week of {
+                format(viewingWeekStart, 'MMMM d, yyyy')
+              }.
+              <br /><br />
+              Each person will receive a personalized Slack message with instructions to complete their check-in.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSendBulkReminders}>
+              Send All Reminders
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Review Modal */}
       {reviewModal && (
