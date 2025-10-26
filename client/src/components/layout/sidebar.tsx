@@ -42,6 +42,7 @@ const baseNavigation = [
   { name: "KRA Management", href: "/kra-management", icon: Target, roles: ["member", "manager", "admin"] },
   { name: "Questions", href: "/questions", icon: HelpCircle, roles: ["manager", "admin"] },
   { name: "Team Management", href: "/team-management", icon: Users, roles: ["manager", "admin"] },
+  { name: "Team Check-in Status", href: "/team-checkin-status", icon: Activity, roles: ["manager", "admin"] },
   { name: "Analytics", href: "/analytics", icon: BarChart3, roles: ["member", "manager", "admin"] },
   { name: "Leadership Dashboard", href: "/leadership-dashboard", icon: Crown, roles: ["admin"] },
   { name: "Admin Panel", href: "/admin", icon: Shield, roles: ["admin"] },
