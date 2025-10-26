@@ -1910,6 +1910,7 @@ export const insertTeamGoalSchema = createInsertSchema(teamGoals).omit({
   currentValue: true,
   status: true,
   completedAt: true,
+  organizationId: true, // Set by middleware
 }).extend({
   title: z.string().min(1, "Title is required").max(200, "Title too long"),
   description: z.string().max(1000, "Description too long").optional(),
@@ -1917,8 +1918,10 @@ export const insertTeamGoalSchema = createInsertSchema(teamGoals).omit({
   goalType: z.enum(["weekly", "monthly", "quarterly", "custom"]),
   metric: z.string().min(1, "Metric is required").max(100, "Metric too long"),
   prize: z.string().max(500, "Prize description too long").optional(),
-  startDate: z.date().optional(),
-  endDate: z.date().optional(),
+  startDate: z.coerce.date(),
+  endDate: z.coerce.date(),
+  teamId: z.string().optional(), // null means org-wide goal
+  createdBy: z.string().optional(), // Set server-side
 });
 export type InsertTeamGoal = z.infer<typeof insertTeamGoalSchema>;
 export type TeamGoal = typeof teamGoals.$inferSelect;
