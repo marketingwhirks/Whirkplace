@@ -5595,21 +5595,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const user = req.currentUser!;
       let checkins;
       
+      console.log('[/api/checkins/pending] Request from user:', {
+        userId: user.id,
+        role: user.role,
+        orgId: req.orgId,
+        timestamp: new Date().toISOString()
+      });
+      
       // Check if user has no manager (needs self-review capability)
       const userWithManager = await storage.getUser(req.orgId, user.id);
       const needsSelfReview = userWithManager && !userWithManager.managerId;
+      
+      console.log('[/api/checkins/pending] User manager status:', {
+        managerId: userWithManager?.managerId,
+        needsSelfReview
+      });
       
       if (user.role === "admin" || user.role === "manager" || user.role === "team_lead") {
         // Admins, managers and team_leads can review their reports' check-ins
         // Pass includeOwnIfNoManager=true to include their own if they have no manager
         checkins = await storage.getPendingCheckins(req.orgId, user.id, true);
+        console.log('[/api/checkins/pending] Manager/Admin - getPendingCheckins returned:', {
+          count: checkins.length,
+          checkinDetails: checkins.map(c => ({ 
+            id: c.id, 
+            userId: c.userId, 
+            weekOf: c.weekOf,
+            reviewStatus: c.reviewStatus,
+            isComplete: c.isComplete 
+          }))
+        });
       } else if (needsSelfReview) {
         // Regular users with no manager can see their own pending check-ins for self-review
         const allCheckins = await storage.getPendingCheckins(req.orgId);
         checkins = allCheckins.filter(checkin => checkin.userId === user.id);
+        console.log('[/api/checkins/pending] Self-review user - filtered checkins:', {
+          allCount: allCheckins.length,
+          filteredCount: checkins.length
+        });
       } else {
         // Regular users with a manager cannot access this endpoint
         checkins = [];
+        console.log('[/api/checkins/pending] Regular user with manager - no access');
       }
       
       // Enhance with user information
@@ -6477,10 +6504,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { weekStart } = req.query;
       const user = req.currentUser!;
       
+      console.log('[/api/checkins/reviews] Request from user:', {
+        userId: user.id,
+        role: user.role,
+        weekStart: weekStart || 'current week',
+        timestamp: new Date().toISOString()
+      });
+      
       // Parse week start date
       const targetWeekStart = weekStart 
         ? getWeekStartCentral(new Date(weekStart as string))
         : getWeekStartCentral(new Date());
+      
+      console.log('[/api/checkins/reviews] Week calculation:', {
+        targetWeekStart: targetWeekStart.toISOString(),
+        dayOfWeek: targetWeekStart.getDay() // Should be 1 (Monday)
+      });
       
       // Get the organization for proper week calculations
       const organization = await storage.getOrganization(req.orgId);
@@ -6496,11 +6535,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const userIds = managedUsers.map(u => u.id);
       
-      // Get check-ins for the week
+      console.log('[/api/checkins/reviews] Managed users:', {
+        count: managedUsers.length,
+        userIds: userIds.slice(0, 5) // Log first 5 for brevity
+      });
+      
+      // CRITICAL FIX: Get ALL pending checkins regardless of week
+      // This matches the behavior of /api/checkins/pending
+      let allPendingCheckins: Checkin[] = [];
+      if (user.id) {
+        // Use the same method as /api/checkins/pending
+        allPendingCheckins = await storage.getPendingCheckins(req.orgId, user.id, true);
+        console.log('[/api/checkins/reviews] ALL pending checkins (from getPendingCheckins):', {
+          count: allPendingCheckins.length,
+          details: allPendingCheckins.map(c => ({
+            id: c.id,
+            userId: c.userId,
+            weekOf: c.weekOf,
+            reviewStatus: c.reviewStatus
+          }))
+        });
+      }
+      
+      // Get check-ins for the specific week (for reviewed and missing)
       const weekCheckins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, userIds);
       
-      // Categorize check-ins
-      const pending = weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'pending');
+      console.log('[/api/checkins/reviews] Week checkins:', {
+        weekStart: targetWeekStart.toISOString(),
+        totalCount: weekCheckins.length,
+        pendingInWeek: weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'pending').length,
+        reviewedInWeek: weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'reviewed').length
+      });
+      
+      // Use ALL pending checkins (not filtered by week)
+      const pending = allPendingCheckins;
+      // For reviewed, use only the selected week
       const reviewed = weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'reviewed');
       
       // Find users without check-ins
@@ -6543,6 +6612,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const enhancedPending = await Promise.all(pending.map(enhanceCheckin));
       const enhancedReviewed = await Promise.all(reviewed.map(enhanceCheckin));
+      
+      console.log('[/api/checkins/reviews] Final response summary:', {
+        pendingCount: enhancedPending.length,
+        reviewedCount: enhancedReviewed.length,
+        missingCount: missing.length,
+        pendingWeeks: enhancedPending.map(c => ({ id: c.id, weekOf: c.weekOf }))
+      });
       
       res.json({ 
         pending: enhancedPending, 

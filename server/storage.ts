@@ -8022,12 +8022,30 @@ export class MemStorage implements IStorage {
 
   // Check-in Review Methods
   async getPendingCheckins(organizationId: string, managerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]> {
+    console.log('[storage.getPendingCheckins] Called with:', {
+      organizationId,
+      managerId,
+      includeOwnIfNoManager
+    });
+    
     let checkins = Array.from(this.checkins.values())
       .filter(checkin => 
         checkin.organizationId === organizationId &&
         checkin.reviewStatus === ReviewStatus.PENDING &&
         checkin.isComplete
       );
+    
+    console.log('[storage.getPendingCheckins] Initial pending checkins:', {
+      totalInOrg: Array.from(this.checkins.values()).filter(c => c.organizationId === organizationId).length,
+      pendingCount: checkins.length,
+      pendingDetails: checkins.map(c => ({
+        id: c.id,
+        userId: c.userId,
+        weekOf: c.weekOf,
+        reviewStatus: c.reviewStatus,
+        isComplete: c.isComplete
+      }))
+    });
 
     if (managerId) {
       // First check if user is a team leader
@@ -8047,10 +8065,19 @@ export class MemStorage implements IStorage {
           user.isActive !== false
         );
         reportIds = teamMembers.map(u => u.id).filter(id => id !== managerId); // Exclude self
+        console.log('[storage.getPendingCheckins] Team leader path:', {
+          teamsLed: teamsLed.map(t => ({ id: t.id, name: t.name })),
+          teamMemberCount: teamMembers.length,
+          reportIds: reportIds.slice(0, 5) // Log first 5 for brevity
+        });
       } else {
         // Not a team leader - use manager relationships (include inactive for historical data)
         const reports = await this.getUsersByManager(organizationId, managerId, true);
         reportIds = reports.map(user => user.id);
+        console.log('[storage.getPendingCheckins] Manager path:', {
+          directReportCount: reports.length,
+          reportIds: reportIds.slice(0, 5) // Log first 5 for brevity
+        });
       }
       
       // If includeOwnIfNoManager is true, check if the user has no manager themselves
@@ -8060,16 +8087,30 @@ export class MemStorage implements IStorage {
           // User has no manager, include their own pending check-ins for self-review
           if (!reportIds.includes(managerId)) {
             reportIds.push(managerId);
+            console.log('[storage.getPendingCheckins] Added self for review (no manager)');
           }
         }
       }
       
-      if (reportIds.length === 0) return [];
+      if (reportIds.length === 0) {
+        console.log('[storage.getPendingCheckins] No report IDs found, returning empty');
+        return [];
+      }
       
       checkins = checkins.filter(checkin => reportIds.includes(checkin.userId));
+      console.log('[storage.getPendingCheckins] After filtering by reportIds:', {
+        reportIdCount: reportIds.length,
+        filteredCount: checkins.length
+      });
     }
 
-    return checkins.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    const result = checkins.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    console.log('[storage.getPendingCheckins] Returning:', {
+      count: result.length,
+      weeks: result.map(c => c.weekOf).filter((v, i, a) => a.indexOf(v) === i)
+    });
+    
+    return result;
   }
 
   async reviewCheckin(organizationId: string, checkinId: string, reviewedBy: string, reviewData: ReviewCheckin): Promise<Checkin | undefined> {
