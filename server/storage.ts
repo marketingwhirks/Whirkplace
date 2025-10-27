@@ -1883,6 +1883,16 @@ export class DatabaseStorage implements IStorage {
     const weekEnd = new Date(normalizedWeekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
     
+    // DEBUG: Log date boundaries
+    console.log('[STORAGE getCheckinsForWeek] Date boundaries:', {
+      inputWeekStart: weekStart.toISOString(),
+      normalizedWeekStart: normalizedWeekStart.toISOString(),
+      weekEnd: weekEnd.toISOString(),
+      organizationId,
+      orgTimezone: organization?.timezone || 'America/Chicago',
+      userIdsCount: userIds?.length || 'all'
+    });
+    
     // Build conditions
     const conditions: any[] = [
       eq(checkins.organizationId, organizationId),
@@ -1896,11 +1906,25 @@ export class DatabaseStorage implements IStorage {
     }
     
     // Find all check-ins for the specified week
-    return await db
+    const results = await db
       .select()
       .from(checkins)
       .where(and(...conditions))
       .orderBy(desc(checkins.createdAt));
+    
+    // DEBUG: Log results
+    console.log('[STORAGE getCheckinsForWeek] Query results:', {
+      count: results.length,
+      checkins: results.slice(0, 3).map(c => ({
+        id: c.id,
+        userId: c.userId,
+        weekOf: c.weekOf?.toISOString(),
+        submittedAt: c.submittedAt?.toISOString(),
+        isComplete: c.isComplete
+      }))
+    });
+    
+    return results;
   }
 
   async getCheckinsByTeam(organizationId: string, teamId: string, from: Date, to: Date): Promise<Checkin[]> {

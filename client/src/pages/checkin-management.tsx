@@ -385,13 +385,43 @@ export default function CheckinManagement() {
     queryKey: ["/api/checkins/team", selectedWeek.toISOString(), selectedTeamId],
     queryFn: async () => {
       const weekStart = getWeekStartCentral(selectedWeek);
+      
+      // DEBUG: Log week calculation details
+      console.log('[TEAM CHECKINS] Debug week calculation:', {
+        selectedWeek: selectedWeek.toISOString(),
+        selectedWeekLocal: format(selectedWeek, 'yyyy-MM-dd EEEE'),
+        weekStart: weekStart.toISOString(),
+        weekStartLocal: format(weekStart, 'yyyy-MM-dd EEEE'),
+        currentWeekStart: currentWeekStart.toISOString(),
+        currentWeekStartLocal: format(currentWeekStart, 'yyyy-MM-dd EEEE'),
+        isCurrentWeek,
+        today: new Date().toISOString(),
+        todayLocal: format(new Date(), 'yyyy-MM-dd EEEE')
+      });
+      
       const params = new URLSearchParams({
         weekStart: weekStart.toISOString(),
         ...(selectedTeamId && { teamId: selectedTeamId })
       });
+      
+      console.log('[TEAM CHECKINS] API query params:', params.toString());
+      
       const response = await fetch(`/api/checkins/team?${params}`);
       if (!response.ok) throw new Error("Failed to fetch team check-ins");
-      return response.json();
+      const data = await response.json();
+      
+      console.log('[TEAM CHECKINS] Response data:', {
+        checkinsCount: data.checkins?.length || 0,
+        checkins: data.checkins?.map((c: any) => ({
+          id: c.id,
+          userId: c.userId,
+          weekOf: c.weekOf,
+          submittedAt: c.submittedAt,
+          userName: c.user?.name
+        }))
+      });
+      
+      return data;
     },
     enabled: !userLoading && !!currentUser && canViewReviews,
   });
@@ -401,9 +431,24 @@ export default function CheckinManagement() {
     queryKey: ["/api/checkins/reviews", selectedWeek.toISOString()],
     queryFn: async () => {
       const weekStart = getWeekStartCentral(selectedWeek);
+      
+      console.log('[REVIEWS] Debug week calculation:', {
+        selectedWeek: selectedWeek.toISOString(),
+        weekStart: weekStart.toISOString(),
+        isCurrentWeek
+      });
+      
       const response = await fetch(`/api/checkins/reviews?weekStart=${weekStart.toISOString()}`);
       if (!response.ok) throw new Error("Failed to fetch review check-ins");
-      return response.json();
+      const data = await response.json();
+      
+      console.log('[REVIEWS] Response data:', {
+        pending: data.pending?.length || 0,
+        reviewed: data.reviewed?.length || 0,
+        missing: data.missing?.length || 0
+      });
+      
+      return data;
     },
     enabled: !userLoading && !!currentUser && canViewReviews,
   });
