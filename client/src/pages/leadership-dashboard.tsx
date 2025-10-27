@@ -532,26 +532,35 @@ export default function LeadershipDashboard() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center">
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-muted-foreground">Pending Reviews</p>
-                  <p className="text-2xl font-bold text-orange-600" data-testid="text-pending-reviews">
-                    {analytics.pendingCount}
-                  </p>
-                  <p className="text-xs text-orange-600">
-                    {analytics.totalCheckins > 0 
-                      ? `${((analytics.pendingCount / analytics.totalCheckins) * 100).toFixed(1)}% of total`
-                      : "No data"}
-                  </p>
+          <Link href="/checkin-management?tab=reviews">
+            <Card className="cursor-pointer hover:shadow-md transition-shadow duration-200 hover:border-orange-200">
+              <CardContent className="p-6">
+                <div className="flex items-center">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-muted-foreground">Pending Reviews</p>
+                    <p className="text-2xl font-bold text-orange-600" data-testid="text-pending-reviews">
+                      {analytics.pendingCount}
+                    </p>
+                    <p className="text-xs text-orange-600">
+                      {analytics.totalCheckins > 0 
+                        ? `${((analytics.pendingCount / analytics.totalCheckins) * 100).toFixed(1)}% of total`
+                        : "No data"}
+                    </p>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="mt-2 text-orange-600 hover:text-orange-700 p-0"
+                    >
+                      View all reviews →
+                    </Button>
+                  </div>
+                  <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                    <Clock className="w-6 h-6 text-orange-600" />
+                  </div>
                 </div>
-                <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
-                  <Clock className="w-6 h-6 text-orange-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Link>
 
           <Card>
             <CardContent className="p-6">

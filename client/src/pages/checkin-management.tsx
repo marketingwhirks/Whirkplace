@@ -261,6 +261,7 @@ export default function CheckinManagement() {
   );
   const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   
   // Update URL when tab changes
   const handleTabChange = (value: string) => {
@@ -1224,31 +1225,68 @@ export default function CheckinManagement() {
             <TabsContent value="team-checkins" className="space-y-6">
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Team Check-ins</CardTitle>
-                      <CardDescription>
-                        View check-in status for all team members
-                      </CardDescription>
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle>Team Check-ins</CardTitle>
+                        <CardDescription>
+                          View check-in status for all team members
+                        </CardDescription>
+                      </div>
+                      <div className="flex gap-2">
+                        {isAdmin && teams.length > 0 && (
+                          <Select
+                            value={selectedTeamId || "all"}
+                            onValueChange={(value) => {
+                              setSelectedTeamId(value === "all" ? null : value);
+                              setSelectedUserId(null); // Reset user filter when team changes
+                            }}
+                          >
+                            <SelectTrigger className="w-[200px]">
+                              <SelectValue placeholder="Filter by team" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Teams</SelectItem>
+                              {teams.map((team) => (
+                                <SelectItem key={team.id} value={team.id}>
+                                  {team.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                        {teamCheckinsData?.checkins && teamCheckinsData.checkins.length > 0 && (
+                          <Select
+                            value={selectedUserId || "all"}
+                            onValueChange={(value) => setSelectedUserId(value === "all" ? null : value)}
+                          >
+                            <SelectTrigger className="w-[200px]">
+                              <SelectValue placeholder="Filter by user" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Users</SelectItem>
+                              {[...new Map(teamCheckinsData.checkins.map((c: EnhancedCheckin) => [
+                                c.user?.id, 
+                                { id: c.user?.id, name: c.user?.name }
+                              ])).values()]
+                                .filter(u => u.id)
+                                .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+                                .map((user) => (
+                                  <SelectItem key={user.id} value={user.id!}>
+                                    {user.name || 'Unknown User'}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
                     </div>
-                    {isAdmin && teams.length > 0 && (
-                      <Select
-                        value={selectedTeamId || "all"}
-                        onValueChange={(value) => setSelectedTeamId(value === "all" ? null : value)}
-                      >
-                        <SelectTrigger className="w-[200px]">
-                          <SelectValue placeholder="Select team" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Teams</SelectItem>
-                          {teams.map((team) => (
-                            <SelectItem key={team.id} value={team.id}>
-                              {team.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Info className="h-4 w-4" />
+                      <span>Showing check-ins for week of {format(selectedWeek, 'MMMM d, yyyy')}</span>
+                      {selectedTeamId && <Badge variant="outline">{teams.find(t => t.id === selectedTeamId)?.name || 'Team'}</Badge>}
+                      {selectedUserId && <Badge variant="outline">User filtered</Badge>}
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -1260,15 +1298,18 @@ export default function CheckinManagement() {
                     </div>
                   ) : teamCheckinsData.checkins.length > 0 ? (
                     <div className="space-y-3">
-                      {teamCheckinsData.checkins.map((checkin: EnhancedCheckin) => (
+                      {teamCheckinsData.checkins
+                        .filter((checkin: EnhancedCheckin) => {
+                          // Apply user filter
+                          if (selectedUserId && checkin.user?.id !== selectedUserId) {
+                            return false;
+                          }
+                          return true;
+                        })
+                        .map((checkin: EnhancedCheckin) => (
                         <div
                           key={checkin.id}
-                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
-                          onClick={() => {
-                            setSelectedCheckin(checkin);
-                            setCheckinToReview(checkin);
-                            setShowReviewModal(true);
-                          }}
+                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                         >
                           <div className="flex items-center gap-4">
                             <Avatar>
@@ -1278,35 +1319,74 @@ export default function CheckinManagement() {
                             </Avatar>
                             <div>
                               <p className="font-medium">{checkin.user?.name || 'Unknown User'}</p>
-                              <p className="text-sm text-muted-foreground">
-                                {checkin.user?.teamName || 'No Team'}
-                              </p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-sm text-muted-foreground">
+                                  {checkin.user?.teamName || 'No Team'}
+                                </span>
+                                <Badge variant="outline" className="text-xs">
+                                  Week of {format(getWeekStartCentral(new Date(checkin.weekOf)), 'MMM d')}
+                                </Badge>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-4">
-                            <RatingStars rating={checkin.moodRating || 0} size="small" />
+                          <div className="flex items-center gap-3">
+                            <RatingStars rating={checkin.overallMood || checkin.moodRating || 0} size="small" />
                             {checkin.reviewStatus === 'reviewed' ? (
                               <Badge variant="secondary">
-                                <Eye className="mr-1 h-3 w-3" />
+                                <CheckCheck className="mr-1 h-3 w-3" />
                                 Reviewed
                               </Badge>
-                            ) : (
+                            ) : checkin.reviewStatus === 'pending' ? (
                               <Badge variant="outline">
                                 <Clock className="mr-1 h-3 w-3" />
                                 Pending Review
+                              </Badge>
+                            ) : (
+                              <Badge variant="default">
+                                <CheckCircle className="mr-1 h-3 w-3" />
+                                Submitted
                               </Badge>
                             )}
                             <span className="text-sm text-muted-foreground">
                               {formatDistanceToNow(new Date(checkin.submittedAt || checkin.createdAt), { addSuffix: true })}
                             </span>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedCheckin(checkin)}
+                                data-testid={`button-view-team-${checkin.id}`}
+                              >
+                                <FileText className="mr-2 h-4 w-4" />
+                                View Details
+                              </Button>
+                              {(currentUser?.role === 'manager' || currentUser?.role === 'admin') && checkin.reviewStatus === 'pending' && (
+                                <Button
+                                  size="sm"
+                                  onClick={() => {
+                                    setCheckinToReview(checkin);
+                                    setShowReviewModal(true);
+                                  }}
+                                  data-testid={`button-review-team-${checkin.id}`}
+                                >
+                                  <Eye className="mr-2 h-4 w-4" />
+                                  Review
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p className="text-muted-foreground text-center py-8">
-                      No check-ins found for the selected week
-                    </p>
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground mb-2">
+                        No check-ins found for week of {format(selectedWeek, 'MMM d, yyyy')}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {selectedTeamId ? 'Selected team has no check-ins for this week' : 'No team members have submitted check-ins yet'}
+                      </p>
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -1358,29 +1438,49 @@ export default function CheckinManagement() {
                               <div>
                                 <p className="font-medium">{checkin.user?.name || 'Unknown User'}</p>
                                 <div className="flex items-center gap-2 mt-1">
-                                  <RatingStars rating={checkin.moodRating || 0} size="small" />
+                                  <RatingStars rating={checkin.overallMood || checkin.moodRating || 0} size="small" />
+                                  <Badge variant="outline" className="text-xs">
+                                    Week of {format(getWeekStartCentral(new Date(checkin.weekOf)), 'MMM d, yyyy')}
+                                  </Badge>
                                   <span className="text-sm text-muted-foreground">
                                     Submitted {formatDistanceToNow(new Date(checkin.submittedAt || checkin.createdAt), { addSuffix: true })}
                                   </span>
                                 </div>
                               </div>
                             </div>
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                setCheckinToReview(checkin);
-                                setShowReviewModal(true);
-                              }}
-                            >
-                              <Eye className="mr-2 h-4 w-4" />
-                              Review
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedCheckin(checkin)}
+                                data-testid={`button-view-details-${checkin.id}`}
+                              >
+                                <FileText className="mr-2 h-4 w-4" />
+                                View Details
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  setCheckinToReview(checkin);
+                                  setShowReviewModal(true);
+                                }}
+                                data-testid={`button-review-${checkin.id}`}
+                              >
+                                <Eye className="mr-2 h-4 w-4" />
+                                Review
+                              </Button>
+                            </div>
                           </div>
                         ))
                       ) : (
-                        <p className="text-muted-foreground text-center py-8">
-                          No pending reviews
-                        </p>
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground mb-2">
+                            No pending reviews for week of {format(selectedWeek, 'MMM d, yyyy')}
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            All check-ins have been reviewed or no submissions yet
+                          </p>
+                        </div>
                       )}
                     </TabsContent>
 
@@ -1389,8 +1489,7 @@ export default function CheckinManagement() {
                         reviewCheckins.reviewed.map((checkin: EnhancedCheckin) => (
                           <div
                             key={checkin.id}
-                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
-                            onClick={() => setSelectedCheckin(checkin)}
+                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
                           >
                             <div className="flex items-center gap-4">
                               <Avatar>
@@ -1401,9 +1500,13 @@ export default function CheckinManagement() {
                               <div>
                                 <p className="font-medium">{checkin.user?.name || 'Unknown User'}</p>
                                 <div className="flex items-center gap-2 mt-1">
+                                  <RatingStars rating={checkin.overallMood || checkin.moodRating || 0} size="small" />
                                   <Badge variant="secondary">
                                     <CheckCheck className="mr-1 h-3 w-3" />
                                     Reviewed by {checkin.reviewer?.name || 'Unknown'}
+                                  </Badge>
+                                  <Badge variant="outline" className="text-xs">
+                                    Week of {format(getWeekStartCentral(new Date(checkin.weekOf)), 'MMM d, yyyy')}
                                   </Badge>
                                   <span className="text-sm text-muted-foreground">
                                     {checkin.reviewedAt && formatDistanceToNow(new Date(checkin.reviewedAt), { addSuffix: true })}
@@ -1411,13 +1514,33 @@ export default function CheckinManagement() {
                                 </div>
                               </div>
                             </div>
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedCheckin(checkin)}
+                              data-testid={`button-view-reviewed-${checkin.id}`}
+                            >
+                              <FileText className="mr-2 h-4 w-4" />
+                              View Details
+                            </Button>
                           </div>
                         ))
                       ) : (
-                        <p className="text-muted-foreground text-center py-8">
-                          No reviewed check-ins for this week
-                        </p>
+                        <div className="text-center py-8">
+                          <p className="text-muted-foreground mb-2">
+                            No reviewed check-ins for week of {format(selectedWeek, 'MMM d, yyyy')}
+                          </p>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Info className="inline-block h-4 w-4 ml-2 text-muted-foreground cursor-help" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Reviews are completed by managers after check-ins are submitted</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
                       )}
                     </TabsContent>
 
@@ -1866,7 +1989,11 @@ export default function CheckinManagement() {
         {selectedCheckin && !showReviewModal && (
           <CheckinDetail
             checkin={selectedCheckin}
-            onClose={() => setSelectedCheckin(null)}
+            questions={activeQuestions}
+            open={!!selectedCheckin}
+            onOpenChange={(open) => {
+              if (!open) setSelectedCheckin(null);
+            }}
           />
         )}
 
