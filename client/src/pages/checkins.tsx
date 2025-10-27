@@ -102,7 +102,7 @@ export default function Checkins() {
   const needsSelfReview = currentUser && !currentUser.managerId;
 
   // Get current week start (Monday)
-  const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 6 });
   
   // Get previous week start (Monday)
   const previousWeekStart = addWeeks(currentWeekStart, -1);
@@ -224,14 +224,14 @@ export default function Checkins() {
   // Check if current week is marked as vacation
   const currentWeekVacation = useMemo(() => {
     return vacations.find(v => 
-      isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 1 })
+      isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 6 })
     );
   }, [vacations, currentWeekStart]);
 
   // Check if previous week was marked as vacation
   const previousWeekVacation = useMemo(() => {
     return vacations.find(v => 
-      isSameWeek(new Date(v.weekOf), previousWeekStart, { weekStartsOn: 1 })
+      isSameWeek(new Date(v.weekOf), previousWeekStart, { weekStartsOn: 6 })
     );
   }, [vacations, previousWeekStart]);
 
@@ -264,11 +264,11 @@ export default function Checkins() {
 
   // Separate current week and historical checkins
   const currentWeekCheckin = currentCheckin || sortedCheckins.find(checkin => 
-    isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 1 })
+    isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
   );
   
   const historicalCheckins = sortedCheckins.filter(checkin => 
-    !isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 1 })
+    !isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
   );
 
   // Vacation management mutations
@@ -1018,7 +1018,7 @@ export default function Checkins() {
                   {[1, 2, 3, 4].map(weeksAhead => {
                     const futureWeek = addWeeks(currentWeekStart, weeksAhead);
                     const futureVacation = vacations.find(v => 
-                      isSameWeek(new Date(v.weekOf), futureWeek, { weekStartsOn: 1 })
+                      isSameWeek(new Date(v.weekOf), futureWeek, { weekStartsOn: 6 })
                     );
                     return (
                       <div key={weeksAhead} className="flex items-center justify-between p-2 rounded-lg border bg-background">
@@ -1067,7 +1067,7 @@ export default function Checkins() {
                     const teamMembersOnVacation = teamMembers.filter(member => 
                       allVacations.some(v => 
                         v.userId === member.id && 
-                        isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 1 })
+                        isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 6 })
                       )
                     );
                     

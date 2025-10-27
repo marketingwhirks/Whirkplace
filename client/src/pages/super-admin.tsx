@@ -1254,7 +1254,7 @@ export default function SuperAdminPage() {
                                           size="sm"
                                           onClick={() => {
                                             setSelectedCheckinToEdit(checkin);
-                                            setNewWeekDate(startOfWeek(parseISO(checkin.weekOf), { weekStartsOn: 1 }));
+                                            setNewWeekDate(startOfWeek(parseISO(checkin.weekOf), { weekStartsOn: 6 }));
                                             setShowEditCheckinDialog(true);
                                           }}
                                           data-testid={`button-edit-checkin-${checkin.id}`}
@@ -2007,7 +2007,7 @@ export default function SuperAdminPage() {
                       createManualCheckinMutation.mutate({
                         organizationId: manualCheckinOrgId,
                         userId: manualCheckinUserId,
-                        weekStartDate: startOfWeek(manualCheckinWeekDate, { weekStartsOn: 1 }).toISOString(),
+                        weekStartDate: startOfWeek(manualCheckinWeekDate, { weekStartsOn: 6 }).toISOString(),
                         isComplete: true
                       });
                     }

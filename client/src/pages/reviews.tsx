@@ -271,12 +271,12 @@ export default function Reviews() {
   
   // Calculate the week we're viewing
   const viewingWeekStart = useMemo(() => {
-    const weekStart = addWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), selectedWeek);
+    const weekStart = addWeeks(startOfWeek(new Date(), { weekStartsOn: 6 }), selectedWeek);
     return weekStart;
   }, [selectedWeek]);
   
   const viewingWeekEnd = useMemo(() => {
-    const weekEnd = endOfWeek(viewingWeekStart, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(viewingWeekStart, { weekStartsOn: 6 });
     return weekEnd;
   }, [viewingWeekStart]);
 
