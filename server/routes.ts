@@ -9495,61 +9495,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      // Get check-ins for the last N weeks
+      // Get check-ins and vacations for the user
       const checkins = await storage.getCheckinsByUser(req.orgId, userId);
+      const vacations = await storage.getVacationsByUser(req.orgId, userId);
       const now = new Date();
-      const cutoffDate = new Date(now.getTime() - weeksToAnalyze * 7 * 24 * 60 * 60 * 1000);
+      const currentWeekStart = getWeekStartCentral(now);
       
       // DEBUG: Log compliance calculation details
       console.log('[COMPLIANCE user-metrics] Initial data:', {
         userId,
+        userName: user.name,
         weeksToAnalyze,
         now: now.toISOString(),
-        cutoffDate: cutoffDate.toISOString(),
+        currentWeekStart: currentWeekStart.toISOString(),
+        currentWeek: `Saturday Oct 26 - Friday Nov 1, 2025 (Week starting ${format(currentWeekStart, 'MMM dd, yyyy')})`,
         totalCheckins: checkins.length,
+        totalVacations: vacations.length,
         firstCheckin: checkins[0] ? {
           id: checkins[0].id,
           weekOf: checkins[0].weekOf,
-          weekStartDate: checkins[0].weekStartDate,
           submittedAt: checkins[0].submittedAt
         } : 'no checkins'
       });
       
-      // Filter check-ins to the analysis period
-      // NOTE: Using weekOf field instead of weekStartDate for compatibility
+      // Filter check-ins to the analysis period using weekOf field
+      const cutoffDate = new Date(currentWeekStart.getTime() - weeksToAnalyze * 7 * 24 * 60 * 60 * 1000);
       const relevantCheckins = checkins
         .filter(c => {
-          const checkinDate = c.weekOf || c.weekStartDate;
-          return new Date(checkinDate) >= cutoffDate;
+          const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
+          return checkinWeek >= cutoffDate && checkinWeek <= currentWeekStart;
         })
-        .sort((a, b) => {
-          const aDate = a.weekOf || a.weekStartDate;
-          const bDate = b.weekOf || b.weekStartDate;
-          return new Date(bDate).getTime() - new Date(aDate).getTime();
-        });
+        .sort((a, b) => new Date(b.weekOf).getTime() - new Date(a.weekOf).getTime());
       
       console.log('[COMPLIANCE user-metrics] Filtered checkins:', {
+        cutoffDate: cutoffDate.toISOString(),
         relevantCount: relevantCheckins.length,
         filteredCheckins: relevantCheckins.slice(0, 3).map(c => ({
           weekOf: c.weekOf,
-          weekStartDate: c.weekStartDate,
+          weekOfFormatted: format(new Date(c.weekOf), 'MMM dd, yyyy'),
           submittedAt: c.submittedAt
         }))
       });
       
-      // Calculate metrics
+      // Calculate metrics properly excluding vacation weeks
       let streak = 0;
       let onTimeCount = 0;
-      let submittedCount = relevantCheckins.length;
+      let submittedCount = 0;
       let expectedWeeks = 0;
+      let vacationWeeks = 0;
+      const weekDetails = [];
       
-      // Calculate expected weeks (excluding vacation weeks)
-      const vacations = await storage.getVacationsByUser(req.orgId, userId);
-      const currentWeekStart = getWeekStartCentral(now);
-      
+      // Calculate expected weeks and check submissions
       for (let i = 0; i < weeksToAnalyze; i++) {
         const weekStart = new Date(currentWeekStart.getTime() - i * 7 * 24 * 60 * 60 * 1000);
         const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+        
+        // Skip future weeks
+        if (weekStart > now) continue;
         
         // Check if user was on vacation this week
         const wasOnVacation = vacations.some(v => {
@@ -9558,87 +9560,181 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return vStart <= weekEnd && vEnd >= weekStart;
         });
         
-        if (!wasOnVacation) {
-          expectedWeeks++;
-        }
-        
-        // Check for submission and calculate streak
+        // Find check-in for this week using weekOf field
         const weeklyCheckin = relevantCheckins.find(c => {
-          const checkinDate = c.weekOf || c.weekStartDate;
-          const checkinWeek = getWeekStartCentral(new Date(checkinDate));
+          const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
           return checkinWeek.getTime() === weekStart.getTime();
         });
         
-        if (i === 0 && weeklyCheckin) {
-          streak = 1;
-          // Count consecutive weeks going backward
-          for (let j = 1; j < relevantCheckins.length; j++) {
-            const prevWeekStart = new Date(currentWeekStart.getTime() - j * 7 * 24 * 60 * 60 * 1000);
-            const hasCheckin = relevantCheckins.some(c => {
-              const checkinDate = c.weekOf || c.weekStartDate;
-              const checkinWeek = getWeekStartCentral(new Date(checkinDate));
-              return checkinWeek.getTime() === prevWeekStart.getTime();
-            });
+        if (wasOnVacation) {
+          vacationWeeks++;
+          weekDetails.push({
+            week: format(weekStart, 'MMM dd'),
+            status: 'vacation',
+            checkin: null
+          });
+        } else {
+          expectedWeeks++;
+          if (weeklyCheckin) {
+            submittedCount++;
             
-            if (hasCheckin) {
-              streak++;
-            } else {
-              break;
+            // Check if submitted on time (before Friday 5PM Central)
+            const submittedAt = new Date(weeklyCheckin.submittedAt);
+            const dueDate = getCheckinDueDate(weekStart); // Friday 5PM Central
+            if (submittedAt <= dueDate) {
+              onTimeCount++;
             }
+            
+            weekDetails.push({
+              week: format(weekStart, 'MMM dd'),
+              status: 'submitted',
+              onTime: submittedAt <= dueDate,
+              checkin: {
+                submittedAt: weeklyCheckin.submittedAt,
+                mood: weeklyCheckin.overallMood
+              }
+            });
+          } else {
+            weekDetails.push({
+              week: format(weekStart, 'MMM dd'),
+              status: 'missing',
+              checkin: null
+            });
           }
         }
         
-        // Check if on-time
-        if (weeklyCheckin) {
-          const submittedAt = new Date(weeklyCheckin.submittedAt);
-          const dueDate = getCheckinDueDate(weekStart);
-          if (submittedAt <= dueDate) {
-            onTimeCount++;
+        // Calculate current streak (consecutive weeks with submissions, not counting vacations)
+        if (i === 0 && weeklyCheckin) {
+          streak = 1;
+          // Count consecutive weeks going backward (excluding vacations)
+          for (let j = 1; j < weeksToAnalyze; j++) {
+            const prevWeekStart = new Date(currentWeekStart.getTime() - j * 7 * 24 * 60 * 60 * 1000);
+            const prevWeekEnd = new Date(prevWeekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+            
+            // Check if on vacation
+            const prevWasOnVacation = vacations.some(v => {
+              const vStart = new Date(v.startDate);
+              const vEnd = new Date(v.endDate);
+              return vStart <= prevWeekEnd && vEnd >= prevWeekStart;
+            });
+            
+            if (prevWasOnVacation) {
+              // Skip vacation weeks in streak calculation
+              continue;
+            }
+            
+            const prevCheckin = relevantCheckins.find(c => {
+              const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
+              return checkinWeek.getTime() === prevWeekStart.getTime();
+            });
+            
+            if (prevCheckin) {
+              streak++;
+            } else {
+              break; // Streak broken
+            }
           }
         }
       }
       
-      const complianceRate = expectedWeeks > 0 ? (submittedCount / expectedWeeks) * 100 : 0;
+      // Calculate rates
+      const submissionRate = expectedWeeks > 0 ? (submittedCount / expectedWeeks) * 100 : 0;
       const onTimeRate = submittedCount > 0 ? (onTimeCount / submittedCount) * 100 : 0;
       
-      // Get last 4 weeks trend
-      const fourWeeksAgo = new Date(now.getTime() - 4 * 7 * 24 * 60 * 60 * 1000);
-      const recentCheckins = relevantCheckins.filter(c => {
-        const checkinDate = c.weekOf || c.weekStartDate;
-        return new Date(checkinDate) >= fourWeeksAgo;
+      console.log('[COMPLIANCE user-metrics] Calculated metrics:', {
+        weeksAnalyzed: weeksToAnalyze,
+        expectedWeeks,
+        vacationWeeks,
+        submittedCount,
+        onTimeCount,
+        submissionRate: Math.round(submissionRate),
+        onTimeRate: Math.round(onTimeRate),
+        currentStreak: streak,
+        weekDetails: weekDetails.slice(0, 4) // Show first 4 weeks for debugging
       });
-      const recentExpectedWeeks = 4; // Simplified - should check vacations
-      const recentComplianceRate = recentExpectedWeeks > 0 ? (recentCheckins.length / recentExpectedWeeks) * 100 : 0;
       
-      // Compare with previous period
-      const eightWeeksAgo = new Date(now.getTime() - 8 * 7 * 24 * 60 * 60 * 1000);
-      const previousPeriodCheckins = relevantCheckins.filter(c => {
-        const checkinDate = c.weekOf || c.weekStartDate;
-        const date = new Date(checkinDate);
-        return date >= eightWeeksAgo && date < fourWeeksAgo;
-      });
-      const previousComplianceRate = recentExpectedWeeks > 0 ? (previousPeriodCheckins.length / recentExpectedWeeks) * 100 : 0;
+      // Get last 4 weeks trend (excluding vacations)
+      const fourWeeksAgo = new Date(currentWeekStart.getTime() - 4 * 7 * 24 * 60 * 60 * 1000);
+      let recentSubmitted = 0;
+      let recentExpected = 0;
       
+      for (let i = 0; i < 4; i++) {
+        const weekStart = new Date(currentWeekStart.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+        const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+        
+        if (weekStart > now) continue;
+        
+        const wasOnVacation = vacations.some(v => {
+          const vStart = new Date(v.startDate);
+          const vEnd = new Date(v.endDate);
+          return vStart <= weekEnd && vEnd >= weekStart;
+        });
+        
+        if (!wasOnVacation) {
+          recentExpected++;
+          const hasCheckin = relevantCheckins.some(c => {
+            const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
+            return checkinWeek.getTime() === weekStart.getTime();
+          });
+          if (hasCheckin) recentSubmitted++;
+        }
+      }
+      
+      const recentComplianceRate = recentExpected > 0 ? (recentSubmitted / recentExpected) * 100 : 0;
+      
+      // Compare with previous 4 weeks
+      let previousSubmitted = 0;
+      let previousExpected = 0;
+      
+      for (let i = 4; i < 8; i++) {
+        const weekStart = new Date(currentWeekStart.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+        const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+        
+        const wasOnVacation = vacations.some(v => {
+          const vStart = new Date(v.startDate);
+          const vEnd = new Date(v.endDate);
+          return vStart <= weekEnd && vEnd >= weekStart;
+        });
+        
+        if (!wasOnVacation) {
+          previousExpected++;
+          const hasCheckin = relevantCheckins.some(c => {
+            const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
+            return checkinWeek.getTime() === weekStart.getTime();
+          });
+          if (hasCheckin) previousSubmitted++;
+        }
+      }
+      
+      const previousComplianceRate = previousExpected > 0 ? (previousSubmitted / previousExpected) * 100 : 0;
       const trend = recentComplianceRate > previousComplianceRate ? 'up' : 
                    recentComplianceRate < previousComplianceRate ? 'down' : 'stable';
       
-      res.json({
+      // Calculate average mood for submitted check-ins
+      const averageMood = relevantCheckins.length > 0
+        ? relevantCheckins.reduce((sum, c) => sum + (c.overallMood || 0), 0) / relevantCheckins.length
+        : null;
+      
+      const response = {
         userId,
         userName: user.name,
         metrics: {
           currentStreak: streak,
-          complianceRate: Math.round(complianceRate),
+          complianceRate: Math.round(submissionRate),
           onTimeRate: Math.round(onTimeRate),
           totalSubmitted: submittedCount,
           totalExpected: expectedWeeks,
+          totalVacationWeeks: vacationWeeks,
           recentComplianceRate: Math.round(recentComplianceRate),
           trend,
           lastSubmission: relevantCheckins[0]?.submittedAt || null,
-          averageMood: relevantCheckins.length > 0 
-            ? relevantCheckins.reduce((sum, c) => sum + (c.overallMood || 0), 0) / relevantCheckins.length 
-            : null
+          averageMood: averageMood ? Math.round(averageMood * 10) / 10 : null // Round to 1 decimal
         }
-      });
+      };
+      
+      console.log('[COMPLIANCE user-metrics] Response:', response);
+      res.json(response);
+      
     } catch (error) {
       console.error("Failed to fetch user compliance metrics:", error);
       res.status(500).json({ message: "Failed to fetch compliance metrics" });
@@ -9649,10 +9745,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/compliance/team-metrics", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
     try {
       const { teamId, weekStart } = req.query;
+      const now = new Date();
       
       const targetWeekStart = weekStart 
         ? getWeekStartCentral(new Date(weekStart as string))
-        : getWeekStartCentral(new Date());
+        : getWeekStartCentral(now);
+      
+      console.log('[COMPLIANCE team-metrics] Initial data:', {
+        teamId: teamId || 'all',
+        requestedWeekStart: weekStart,
+        targetWeekStart: targetWeekStart.toISOString(),
+        currentWeek: `Saturday Oct 26 - Friday Nov 1, 2025 (Week starting ${format(targetWeekStart, 'MMM dd, yyyy')})`,
+        now: now.toISOString()
+      });
       
       // If teamId is provided, get metrics for specific team
       // Otherwise, get metrics for all teams
@@ -9675,15 +9780,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         // Calculate metrics
         const activeMembers = members.filter(m => !m.isInactive);
-        const onVacation = vacations.filter(v => {
+        
+        // Get unique users on vacation (avoid counting duplicates)
+        const uniqueUsersOnVacation = new Set(vacations.filter(v => {
           const vStart = new Date(v.startDate);
           const vEnd = new Date(v.endDate);
           return vStart <= weekEndDate && vEnd >= targetWeekStart;
-        });
+        }).map(v => v.userId));
         
-        const expectedSubmissions = activeMembers.length - onVacation.length;
+        const expectedSubmissions = activeMembers.length - uniqueUsersOnVacation.size;
         const actualSubmissions = teamCheckins.length;
         const submissionRate = expectedSubmissions > 0 ? (actualSubmissions / expectedSubmissions) * 100 : 0;
+        
+        console.log(`[COMPLIANCE team-metrics] Team ${team.name}:`, {
+          totalMembers: members.length,
+          activeMembers: activeMembers.length,
+          uniqueUsersOnVacation: uniqueUsersOnVacation.size,
+          expectedSubmissions,
+          actualSubmissions,
+          submissionRate: Math.round(submissionRate)
+        });
         
         // Calculate on-time submissions
         const dueDate = getCheckinDueDate(targetWeekStart);
@@ -9726,19 +9842,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const memberMetrics = await Promise.all(activeMembers.map(async (member) => {
           const fourWeeksAgo = new Date(targetWeekStart.getTime() - 4 * 7 * 24 * 60 * 60 * 1000);
           const memberCheckins = await storage.getCheckinsByUser(req.orgId, member.id);
+          
+          // Filter recent check-ins using weekOf field
           const recentCheckins = memberCheckins.filter(c => {
-            const checkinDate = new Date(c.weekStartDate);
-            return checkinDate >= fourWeeksAgo && checkinDate <= targetWeekStart;
+            const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
+            return checkinWeek >= fourWeeksAgo && checkinWeek <= targetWeekStart;
           });
           
           const memberVacations = await storage.getVacationsByUser(req.orgId, member.id);
-          const recentVacations = memberVacations.filter(v => {
-            const vStart = new Date(v.startDate);
-            const vEnd = new Date(v.endDate);
-            return vStart <= targetWeekStart && vEnd >= fourWeeksAgo;
-          });
           
-          const expectedWeeks = 4 - recentVacations.length;
+          // Calculate expected weeks properly (excluding vacation weeks)
+          let expectedWeeks = 0;
+          let vacationWeeks = 0;
+          
+          for (let i = 0; i < 4; i++) {
+            const weekStart = new Date(targetWeekStart.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+            const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+            
+            // Check if member was on vacation this week
+            const wasOnVacation = memberVacations.some(v => {
+              const vStart = new Date(v.startDate);
+              const vEnd = new Date(v.endDate);
+              return vStart <= weekEnd && vEnd >= weekStart;
+            });
+            
+            if (wasOnVacation) {
+              vacationWeeks++;
+            } else {
+              expectedWeeks++;
+            }
+          }
+          
           const actualWeeks = recentCheckins.length;
           const complianceRate = expectedWeeks > 0 ? (actualWeeks / expectedWeeks) * 100 : 0;
           
@@ -9747,7 +9881,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             memberName: member.name,
             complianceRate: Math.round(complianceRate),
             isConsistent: complianceRate >= 80,
-            isStruggling: complianceRate < 50
+            isStruggling: complianceRate < 50,
+            actualWeeks,
+            expectedWeeks,
+            vacationWeeks
           };
         }));
         
@@ -9786,10 +9923,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/compliance/organization-summary", requireAuth(), requireRole(['admin']), async (req, res) => {
     try {
       const { weekStart } = req.query;
+      const now = new Date();
       
       const targetWeekStart = weekStart 
         ? getWeekStartCentral(new Date(weekStart as string))
-        : getWeekStartCentral(new Date());
+        : getWeekStartCentral(now);
+      
+      console.log('[COMPLIANCE organization-summary] Initial data:', {
+        requestedWeekStart: weekStart,
+        targetWeekStart: targetWeekStart.toISOString(),
+        currentWeek: `Saturday Oct 26 - Friday Nov 1, 2025 (Week starting ${format(targetWeekStart, 'MMM dd, yyyy')})`,
+        now: now.toISOString()
+      });
       
       // Get all teams and users
       const teams = await storage.getAllTeams(req.orgId);
@@ -9805,6 +9950,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const expectedSubmissions = activeUsers.length - usersOnVacation.size;
       const actualSubmissions = allCheckins.length;
       const orgSubmissionRate = expectedSubmissions > 0 ? (actualSubmissions / expectedSubmissions) * 100 : 0;
+      
+      console.log('[COMPLIANCE organization-summary] Organization metrics:', {
+        totalUsers: allUsers.length,
+        activeUsers: activeUsers.length,
+        usersOnVacation: usersOnVacation.size,
+        expectedSubmissions,
+        actualSubmissions,
+        submissionRate: Math.round(orgSubmissionRate),
+        weekStart: format(targetWeekStart, 'MMM dd, yyyy'),
+        weekEnd: format(weekEndDate, 'MMM dd, yyyy')
+      });
       
       // Get team metrics
       const teamMetrics = await Promise.all(teams.map(async (team) => {
@@ -9842,15 +9998,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const userCheckin = allCheckins.find(c => c.userId === user.id);
         const isOnVacation = usersOnVacation.has(user.id);
         
-        // Get last 4 weeks compliance
+        // Get last 4 weeks compliance (excluding vacation weeks)
         const fourWeeksAgo = new Date(targetWeekStart.getTime() - 4 * 7 * 24 * 60 * 60 * 1000);
         const userCheckins = await storage.getCheckinsByUser(req.orgId, user.id);
+        const userVacations = await storage.getVacationsByUser(req.orgId, user.id);
+        
+        // Filter recent check-ins using weekOf field
         const recentCheckins = userCheckins.filter(c => {
-          const checkinDate = new Date(c.weekStartDate);
-          return checkinDate >= fourWeeksAgo && checkinDate <= targetWeekStart;
+          const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
+          return checkinWeek >= fourWeeksAgo && checkinWeek <= targetWeekStart;
         });
         
-        const complianceRate = recentCheckins.length / 4 * 100;
+        // Calculate expected weeks properly (excluding vacation weeks)
+        let expectedWeeks = 0;
+        for (let i = 0; i < 4; i++) {
+          const weekStart = new Date(targetWeekStart.getTime() - i * 7 * 24 * 60 * 60 * 1000);
+          const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+          
+          const wasOnVacation = userVacations.some(v => {
+            const vStart = new Date(v.startDate);
+            const vEnd = new Date(v.endDate);
+            return vStart <= weekEnd && vEnd >= weekStart;
+          });
+          
+          if (!wasOnVacation) {
+            expectedWeeks++;
+          }
+        }
+        
+        const complianceRate = expectedWeeks > 0 ? (recentCheckins.length / expectedWeeks) * 100 : 0;
         
         return {
           userId: user.id,
@@ -9858,7 +10034,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           teamId: user.teamId,
           hasSubmitted: !!userCheckin,
           isOnVacation,
-          complianceRate: Math.round(complianceRate)
+          complianceRate: Math.round(complianceRate),
+          expectedWeeks,
+          actualWeeks: recentCheckins.length
         };
       }));
       
@@ -9940,7 +10118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Get current week check-in
           const checkins = await storage.getCheckinsByUser(req.orgId, member.id);
           const currentWeekCheckin = checkins.find(c => {
-            const checkinWeek = getWeekStartCentral(new Date(c.weekStartDate));
+            const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
             return checkinWeek.getTime() === targetWeekStart.getTime();
           });
           
@@ -9977,8 +10155,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Calculate compliance metrics for last 12 weeks
           const twelveWeeksAgo = new Date(targetWeekStart.getTime() - 12 * 7 * 24 * 60 * 60 * 1000);
           const recentCheckins = checkins.filter(c => {
-            const checkinDate = new Date(c.weekStartDate);
-            return checkinDate >= twelveWeeksAgo && checkinDate <= targetWeekStart;
+            const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
+            return checkinWeek >= twelveWeeksAgo && checkinWeek <= targetWeekStart;
           });
           
           // Calculate streak
@@ -9988,7 +10166,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             for (let i = 1; i < 12; i++) {
               const prevWeek = new Date(targetWeekStart.getTime() - i * 7 * 24 * 60 * 60 * 1000);
               const hasCheckin = recentCheckins.some(c => {
-                const checkinWeek = getWeekStartCentral(new Date(c.weekStartDate));
+                const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
                 return checkinWeek.getTime() === prevWeek.getTime();
               });
               
@@ -10004,7 +10182,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const dueDate = getCheckinDueDate(targetWeekStart);
           const onTimeCheckins = recentCheckins.filter(c => {
             const submitted = new Date(c.submittedAt);
-            const checkinDue = getCheckinDueDate(new Date(c.weekStartDate));
+            const checkinDue = getCheckinDueDate(getWeekStartCentral(new Date(c.weekOf)));
             return submitted <= checkinDue;
           });
           
@@ -10037,9 +10215,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Get recent trend
           const fourWeeksAgo = new Date(targetWeekStart.getTime() - 4 * 7 * 24 * 60 * 60 * 1000);
-          const lastFourWeeksCheckins = recentCheckins.filter(c => 
-            new Date(c.weekStartDate) >= fourWeeksAgo
-          );
+          const lastFourWeeksCheckins = recentCheckins.filter(c => {
+            const checkinWeek = getWeekStartCentral(new Date(c.weekOf));
+            return checkinWeek >= fourWeeksAgo;
+          });
           const recentComplianceText = lastFourWeeksCheckins.length === 4 
             ? "Perfect last 4 weeks" 
             : `${lastFourWeeksCheckins.length} of last 4 weeks`;
