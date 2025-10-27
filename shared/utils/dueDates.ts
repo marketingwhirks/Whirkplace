@@ -48,13 +48,24 @@ export function getCheckinDueDate(weekOf: Date, organization?: Partial<Organizat
   // Convert the input date to the organization's timezone
   const localWeekOf = toZonedTime(weekOf, config.timezone);
   
-  // Get the start of the week (Monday) in the organization's timezone
-  const monday = startOfWeek(localWeekOf, { weekStartsOn: 1 });
+  // Get the start of the week (Saturday) in the organization's timezone
+  // Week runs Saturday-Friday, so Saturday = 6
+  const saturday = startOfWeek(localWeekOf, { weekStartsOn: 6 });
   
   // Add days to get to the configured due day (0=Sunday, 1=Monday, ..., 6=Saturday)
-  // If due day is Sunday (0), it's the last day of the week, so add 6 days from Monday
-  const daysToAdd = config.checkinDueDay === 0 ? 6 : config.checkinDueDay - 1;
-  const dueDay = addDays(monday, daysToAdd);
+  // From Saturday: Sunday=1, Monday=2, Tuesday=3, Wednesday=4, Thursday=5, Friday=6, next Saturday=7
+  let daysToAdd: number;
+  if (config.checkinDueDay === 6) {
+    // Saturday - first day of week
+    daysToAdd = 0;
+  } else if (config.checkinDueDay === 0) {
+    // Sunday - second day of week  
+    daysToAdd = 1;
+  } else {
+    // Monday(1)=2, Tuesday(2)=3, Wednesday(3)=4, Thursday(4)=5, Friday(5)=6
+    daysToAdd = config.checkinDueDay + 1;
+  }
+  const dueDay = addDays(saturday, daysToAdd);
   
   // Parse the due time
   const { hours, minutes } = parseTimeString(config.checkinDueTime);
@@ -98,12 +109,24 @@ export function getCheckinReminderDate(weekOf: Date, organization?: Partial<Orga
   // Convert the input date to the organization's timezone
   const localWeekOf = toZonedTime(weekOf, config.timezone);
   
-  // Get the start of the week (Monday) in the organization's timezone
-  const monday = startOfWeek(localWeekOf, { weekStartsOn: 1 });
+  // Get the start of the week (Saturday) in the organization's timezone
+  // Week runs Saturday-Friday, so Saturday = 6
+  const saturday = startOfWeek(localWeekOf, { weekStartsOn: 6 });
   
   // Add days to get to the reminder day
-  const daysToAdd = reminderDay === 0 ? 6 : reminderDay - 1;
-  const reminderDate = addDays(monday, daysToAdd);
+  // From Saturday: Sunday=1, Monday=2, Tuesday=3, Wednesday=4, Thursday=5, Friday=6, next Saturday=7
+  let daysToAdd: number;
+  if (reminderDay === 6) {
+    // Saturday - first day of week
+    daysToAdd = 0;
+  } else if (reminderDay === 0) {
+    // Sunday - second day of week  
+    daysToAdd = 1;
+  } else {
+    // Monday(1)=2, Tuesday(2)=3, Wednesday(3)=4, Thursday(4)=5, Friday(5)=6
+    daysToAdd = reminderDay + 1;
+  }
+  const reminderDate = addDays(saturday, daysToAdd);
   
   // Parse the reminder time
   const { hours, minutes } = parseTimeString(config.checkinReminderTime);
@@ -208,11 +231,11 @@ export function getDueDateString(weekOf: Date, organization?: Partial<Organizati
 }
 
 /**
- * Calculates the Monday 00:00 (start of week) for the week containing the given date.
+ * Calculates the Saturday 00:00 (start of week) for the week containing the given date.
  * 
  * @param date - The date within the week for which to calculate the week start
  * @param organization - The organization with custom timezone settings (optional)
- * @returns A Date object representing Monday at 00:00 in the organization's timezone (stored as UTC)
+ * @returns A Date object representing Saturday at 00:00 in the organization's timezone (stored as UTC)
  */
 export function getWeekStartCentral(date: Date, organization?: Partial<Organization>): Date {
   const timezone = organization?.timezone ?? DEFAULT_TIMEZONE;
@@ -220,14 +243,14 @@ export function getWeekStartCentral(date: Date, organization?: Partial<Organizat
   // Convert the input date to the organization's timezone
   const localDate = toZonedTime(date, timezone);
   
-  // Get the Monday of the week (week starts on Monday = 1)
-  const monday = startOfWeek(localDate, { weekStartsOn: 1 });
+  // Get the Saturday of the week (week starts on Saturday = 6)
+  const saturday = startOfWeek(localDate, { weekStartsOn: 6 });
   
   // Set time to 00:00:00.000
-  const mondayAt00AM = setMilliseconds(
+  const saturdayAt00AM = setMilliseconds(
     setSeconds(
       setMinutes(
-        setHours(monday, 0),
+        setHours(saturday, 0),
         0
       ),
       0
@@ -236,7 +259,7 @@ export function getWeekStartCentral(date: Date, organization?: Partial<Organizat
   );
   
   // Convert back to UTC for storage
-  return fromZonedTime(mondayAt00AM, timezone);
+  return fromZonedTime(saturdayAt00AM, timezone);
 }
 
 /**
@@ -252,10 +275,10 @@ export function getWeekEndingFriday(date: Date, organization?: Partial<Organizat
   // Convert the input date to the organization's timezone
   const localDate = toZonedTime(date, timezone);
   
-  // Get this week's Friday (week runs Monday-Sunday)
-  // Saturday and Sunday are part of the current week
-  const monday = startOfWeek(localDate, { weekStartsOn: 1 });
-  const friday = addDays(monday, 4);
+  // Get this week's Friday (week runs Saturday-Friday)
+  // Week starts on Saturday = 6
+  const saturday = startOfWeek(localDate, { weekStartsOn: 6 });
+  const friday = addDays(saturday, 6);  // Saturday + 6 days = Friday
   
   // Set time to 23:59:59.999 (end of day)
   const fridayEndOfDay = setMilliseconds(
@@ -287,10 +310,10 @@ export function getCheckinWeekFriday(date: Date, organization?: Partial<Organiza
   // Convert the input date to the organization's timezone
   const localDate = toZonedTime(date, timezone);
   
-  // Get this week's Friday (week runs Monday-Sunday)
-  // Saturday and Sunday are part of the current week
-  const monday = startOfWeek(localDate, { weekStartsOn: 1 });
-  const friday = addDays(monday, 4);
+  // Get this week's Friday (week runs Saturday-Friday)
+  // Week starts on Saturday = 6
+  const saturday = startOfWeek(localDate, { weekStartsOn: 6 });
+  const friday = addDays(saturday, 6);  // Saturday + 6 days = Friday
   
   // Set time to 00:00:00.000 (start of day for display)
   const fridayStartOfDay = setMilliseconds(

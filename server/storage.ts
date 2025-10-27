@@ -2547,13 +2547,160 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(checkins.reviewedAt));
   }
 
+  async getUserComplianceMetrics(organizationId: string, userId: string, weeksToAnalyze: number = 12): Promise<{
+    submissionRate: number;
+    onTimeRate: number;
+    currentStreak: number;
+    longestStreak: number;
+    totalSubmitted: number;
+    totalExpected: number;
+    recentSubmissions: number;
+    recentWeeks: number;
+  }> {
+    // Get the organization for timezone settings
+    const organization = await this.getOrganization(organizationId);
+    
+    // Calculate the date range (Saturday-Friday weeks)
+    const currentWeekStart = getWeekStartCentral(new Date(), organization);
+    const startDate = new Date(currentWeekStart);
+    startDate.setDate(startDate.getDate() - (weeksToAnalyze * 7));
+    
+    // Get all check-ins for the user in the date range
+    const userCheckins = await db
+      .select()
+      .from(checkins)
+      .where(and(
+        eq(checkins.userId, userId),
+        eq(checkins.organizationId, organizationId),
+        gte(checkins.weekOf, startDate)
+      ))
+      .orderBy(desc(checkins.weekOf));
+    
+    // Get vacation weeks for the user
+    const userVacations = await db
+      .select()
+      .from(vacations)
+      .where(and(
+        eq(vacations.userId, userId),
+        eq(vacations.organizationId, organizationId),
+        gte(vacations.weekOf, startDate)
+      ));
+    
+    const vacationWeeks = new Set(userVacations.map(v => 
+      getWeekStartCentral(v.weekOf, organization).toISOString()
+    ));
+    
+    // Calculate metrics for each week
+    const weeklyMetrics: Map<string, {
+      submitted: boolean;
+      onTime: boolean;
+      onVacation: boolean;
+    }> = new Map();
+    
+    // Initialize all weeks in the range
+    for (let i = 0; i < weeksToAnalyze; i++) {
+      const weekStart = new Date(currentWeekStart);
+      weekStart.setDate(weekStart.getDate() - (i * 7));
+      const weekKey = weekStart.toISOString();
+      
+      weeklyMetrics.set(weekKey, {
+        submitted: false,
+        onTime: false,
+        onVacation: vacationWeeks.has(weekKey)
+      });
+    }
+    
+    // Process check-ins
+    for (const checkin of userCheckins) {
+      if (!checkin.isComplete) continue;
+      
+      const weekStart = getWeekStartCentral(checkin.weekOf, organization);
+      const weekKey = weekStart.toISOString();
+      
+      if (weeklyMetrics.has(weekKey)) {
+        const dueDate = getCheckinDueDate(weekStart, organization);
+        const onTime = checkin.createdAt <= dueDate;
+        
+        weeklyMetrics.set(weekKey, {
+          submitted: true,
+          onTime: onTime,
+          onVacation: vacationWeeks.has(weekKey)
+        });
+      }
+    }
+    
+    // Calculate statistics
+    let totalSubmitted = 0;
+    let totalOnTime = 0;
+    let totalExpected = 0; // Weeks where submission was expected (not on vacation)
+    let currentStreak = 0;
+    let longestStreak = 0;
+    let tempStreak = 0;
+    let recentSubmissions = 0;
+    const recentWeeksCount = 4; // Last 4 weeks for recent metrics
+    
+    // Process weeks from oldest to newest for streak calculation
+    const sortedWeeks = Array.from(weeklyMetrics.entries()).sort((a, b) => 
+      a[0].localeCompare(b[0])
+    );
+    
+    sortedWeeks.forEach(([weekKey, metrics], index) => {
+      // Count expected weeks (not on vacation)
+      if (!metrics.onVacation) {
+        totalExpected++;
+      }
+      
+      // Count submissions
+      if (metrics.submitted) {
+        totalSubmitted++;
+        if (metrics.onTime) {
+          totalOnTime++;
+        }
+        
+        // Update streak
+        tempStreak++;
+        if (tempStreak > longestStreak) {
+          longestStreak = tempStreak;
+        }
+      } else if (!metrics.onVacation) {
+        // Break streak only if not on vacation and didn't submit
+        tempStreak = 0;
+      }
+      
+      // Count recent submissions (last 4 weeks)
+      if (index >= sortedWeeks.length - recentWeeksCount) {
+        if (metrics.submitted) {
+          recentSubmissions++;
+        }
+      }
+    });
+    
+    // Current streak is the temp streak at the end
+    currentStreak = tempStreak;
+    
+    // Calculate rates
+    const submissionRate = totalExpected > 0 ? (totalSubmitted / totalExpected) * 100 : 0;
+    const onTimeRate = totalSubmitted > 0 ? (totalOnTime / totalSubmitted) * 100 : 0;
+    
+    return {
+      submissionRate: Math.round(submissionRate * 10) / 10, // Round to 1 decimal
+      onTimeRate: Math.round(onTimeRate * 10) / 10,
+      currentStreak,
+      longestStreak,
+      totalSubmitted,
+      totalExpected,
+      recentSubmissions,
+      recentWeeks: recentWeeksCount
+    };
+  }
+
   async getUsersWithoutCheckins(organizationId: string, managerId?: string): Promise<Array<{
     user: User;
     lastCheckin: Checkin | null;
     daysSinceLastCheckin: number | null;
     lastReminderSent: Date | null;
   }>> {
-    // Get the current week start (Monday 00:00 Central Time)
+    // Get the current week start (Saturday 00:00 Central Time)
     const currentWeekStart = getWeekStartCentral(new Date());
     
     let allUsers: User[] = [];

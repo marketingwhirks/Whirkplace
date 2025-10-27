@@ -6367,6 +6367,354 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get team check-ins for a specific week
+  app.get("/api/checkins/team", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { weekStart, teamId } = req.query;
+      const user = req.currentUser!;
+      
+      // Parse week start date
+      const targetWeekStart = weekStart 
+        ? getWeekStartCentral(new Date(weekStart as string))
+        : getWeekStartCentral(new Date());
+      
+      // Get the organization for proper week calculations
+      const organization = await storage.getOrganization(req.orgId);
+      
+      let checkins: Checkin[] = [];
+      
+      if (teamId && teamId !== 'all') {
+        // Get check-ins for specific team
+        const teamMembers = await storage.getUsersByTeam(req.orgId, teamId as string, true);
+        const userIds = teamMembers.map(u => u.id);
+        checkins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, userIds);
+      } else {
+        // Get all check-ins for the week
+        if (user.role === 'manager') {
+          // Managers see their reports only
+          const reports = await storage.getUsersByManager(req.orgId, user.id, true);
+          const userIds = reports.map(u => u.id);
+          checkins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, userIds);
+        } else {
+          // Admins see all
+          checkins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart);
+        }
+      }
+      
+      // Enhance check-ins with user and team information
+      const enhancedCheckins = await Promise.all(
+        checkins.map(async (checkin) => {
+          const checkinUser = await storage.getUser(req.orgId, checkin.userId);
+          const team = checkinUser?.teamId 
+            ? await storage.getTeam(req.orgId, checkinUser.teamId)
+            : null;
+          const reviewer = checkin.reviewedBy 
+            ? await storage.getUser(req.orgId, checkin.reviewedBy)
+            : null;
+          
+          return {
+            ...checkin,
+            user: checkinUser ? {
+              id: checkinUser.id,
+              name: checkinUser.name,
+              email: checkinUser.email,
+              teamId: checkinUser.teamId,
+              teamName: team?.name || null
+            } : null,
+            reviewer: reviewer ? {
+              id: reviewer.id,
+              name: reviewer.name,
+              email: reviewer.email
+            } : null
+          };
+        })
+      );
+      
+      res.json({ checkins: enhancedCheckins });
+    } catch (error) {
+      console.error("Failed to fetch team check-ins:", error);
+      res.status(500).json({ message: "Failed to fetch team check-ins" });
+    }
+  });
+
+  // Get check-ins for review (pending, reviewed, missing)
+  app.get("/api/checkins/reviews", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { weekStart } = req.query;
+      const user = req.currentUser!;
+      
+      // Parse week start date
+      const targetWeekStart = weekStart 
+        ? getWeekStartCentral(new Date(weekStart as string))
+        : getWeekStartCentral(new Date());
+      
+      // Get the organization for proper week calculations
+      const organization = await storage.getOrganization(req.orgId);
+      
+      // Get all users managed by this person
+      let managedUsers: any[] = [];
+      if (user.role === 'manager') {
+        managedUsers = await storage.getUsersByManager(req.orgId, user.id, true);
+      } else {
+        // Admins see all users
+        managedUsers = await storage.getAllUsers(req.orgId, true);
+      }
+      
+      const userIds = managedUsers.map(u => u.id);
+      
+      // Get check-ins for the week
+      const weekCheckins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, userIds);
+      
+      // Categorize check-ins
+      const pending = weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'pending');
+      const reviewed = weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'reviewed');
+      
+      // Find users without check-ins
+      const usersWithCheckins = new Set(weekCheckins.map(c => c.userId));
+      const missing = managedUsers
+        .filter(u => !usersWithCheckins.has(u.id) && u.isActive)
+        .map(u => ({
+          userId: u.id,
+          userName: u.name,
+          email: u.email,
+          teamId: u.teamId
+        }));
+      
+      // Enhance check-ins with user info
+      const enhanceCheckin = async (checkin: Checkin) => {
+        const checkinUser = await storage.getUser(req.orgId, checkin.userId);
+        const team = checkinUser?.teamId 
+          ? await storage.getTeam(req.orgId, checkinUser.teamId)
+          : null;
+        const reviewer = checkin.reviewedBy 
+          ? await storage.getUser(req.orgId, checkin.reviewedBy)
+          : null;
+        
+        return {
+          ...checkin,
+          user: checkinUser ? {
+            id: checkinUser.id,
+            name: checkinUser.name,
+            email: checkinUser.email,
+            teamId: checkinUser.teamId,
+            teamName: team?.name || null
+          } : null,
+          reviewer: reviewer ? {
+            id: reviewer.id,
+            name: reviewer.name,
+            email: reviewer.email
+          } : null
+        };
+      };
+      
+      const enhancedPending = await Promise.all(pending.map(enhanceCheckin));
+      const enhancedReviewed = await Promise.all(reviewed.map(enhanceCheckin));
+      
+      res.json({ 
+        pending: enhancedPending, 
+        reviewed: enhancedReviewed, 
+        missing 
+      });
+    } catch (error) {
+      console.error("Failed to fetch review check-ins:", error);
+      res.status(500).json({ message: "Failed to fetch review check-ins" });
+    }
+  });
+
+  // Get compliance data for check-ins
+  app.get("/api/checkins/compliance", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { weekStart } = req.query;
+      
+      // Parse week start date
+      const targetWeekStart = weekStart 
+        ? getWeekStartCentral(new Date(weekStart as string))
+        : getWeekStartCentral(new Date());
+      
+      // Get the organization for proper week calculations
+      const organization = await storage.getOrganization(req.orgId);
+      
+      // Get teams compliance data
+      const teams = await storage.getAllTeams(req.orgId);
+      const teamsCompliance = await Promise.all(
+        teams.map(async (team) => {
+          const members = await storage.getUsersByTeam(req.orgId, team.id, false);
+          const memberIds = members.map(m => m.id);
+          
+          if (memberIds.length === 0) {
+            return {
+              teamId: team.id,
+              teamName: team.name,
+              metrics: {
+                submissionRate: 0,
+                onTimeRate: 0,
+                averageMood: null,
+                submitted: 0,
+                expected: 0,
+                onVacation: 0
+              },
+              members: []
+            };
+          }
+          
+          // Get check-ins for team members
+          const checkins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, memberIds);
+          
+          // Calculate metrics
+          const submitted = checkins.filter(c => c.isComplete).length;
+          const expected = members.filter(m => m.isActive).length;
+          const submissionRate = expected > 0 ? (submitted / expected) * 100 : 0;
+          
+          // Calculate on-time rate
+          const dueDate = getCheckinDueDate(targetWeekStart, organization);
+          const onTime = checkins.filter(c => c.isComplete && c.createdAt <= dueDate).length;
+          const onTimeRate = submitted > 0 ? (onTime / submitted) * 100 : 0;
+          
+          // Calculate average mood
+          const moods = checkins
+            .filter(c => c.isComplete && c.overallMood !== null)
+            .map(c => c.overallMood as number);
+          const averageMood = moods.length > 0 
+            ? moods.reduce((sum, mood) => sum + mood, 0) / moods.length 
+            : null;
+          
+          // Get member status
+          const memberStatus = await Promise.all(
+            members.map(async (member) => {
+              const checkin = checkins.find(c => c.userId === member.id);
+              const compliance = await storage.getUserComplianceMetrics(
+                req.orgId, 
+                member.id, 
+                12
+              );
+              
+              return {
+                userId: member.id,
+                userName: member.name,
+                email: member.email,
+                status: checkin?.isComplete 
+                  ? 'submitted' 
+                  : 'missing',
+                submittedAt: checkin?.createdAt,
+                moodRating: checkin?.overallMood,
+                compliance: {
+                  rate: compliance.submissionRate,
+                  streak: compliance.currentStreak,
+                  onTimeRate: compliance.onTimeRate,
+                  recentText: `${compliance.recentSubmissions}/${compliance.recentWeeks}`,
+                  totalSubmitted: compliance.totalSubmitted,
+                  totalExpected: compliance.totalExpected
+                }
+              };
+            })
+          );
+          
+          return {
+            teamId: team.id,
+            teamName: team.name,
+            metrics: {
+              submissionRate,
+              onTimeRate,
+              averageMood,
+              submitted,
+              expected,
+              onVacation: 0
+            },
+            members: memberStatus
+          };
+        })
+      );
+      
+      // Get organization summary
+      const allUsers = await storage.getAllUsers(req.orgId, false);
+      const allCheckins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart);
+      
+      const totalSubmitted = allCheckins.filter(c => c.isComplete).length;
+      const totalExpected = allUsers.filter(u => u.isActive).length;
+      const overallSubmissionRate = totalExpected > 0 
+        ? (totalSubmitted / totalExpected) * 100 
+        : 0;
+      
+      // Top performing teams
+      const topPerforming = teamsCompliance
+        .filter(t => t.metrics.expected > 0)
+        .sort((a, b) => b.metrics.submissionRate - a.metrics.submissionRate)
+        .slice(0, 3)
+        .map(t => ({
+          teamId: t.teamId,
+          teamName: t.teamName,
+          submissionRate: t.metrics.submissionRate
+        }));
+      
+      // Teams needing attention
+      const needingAttention = teamsCompliance
+        .filter(t => t.metrics.expected > 0)
+        .sort((a, b) => a.metrics.submissionRate - b.metrics.submissionRate)
+        .slice(0, 3)
+        .map(t => ({
+          teamId: t.teamId,
+          teamName: t.teamName,
+          submissionRate: t.metrics.submissionRate
+        }));
+      
+      // Top performing individuals
+      const allMemberStatuses = teamsCompliance.flatMap(t => t.members);
+      const topIndividuals = allMemberStatuses
+        .sort((a, b) => b.compliance.rate - a.compliance.rate)
+        .slice(0, 5)
+        .map(m => ({
+          userId: m.userId,
+          userName: m.userName,
+          complianceRate: m.compliance.rate
+        }));
+      
+      // Individuals needing attention
+      const strugglingIndividuals = allMemberStatuses
+        .filter(m => m.compliance.rate < 50)
+        .sort((a, b) => a.compliance.rate - b.compliance.rate)
+        .slice(0, 5)
+        .map(m => ({
+          userId: m.userId,
+          userName: m.userName,
+          complianceRate: m.compliance.rate
+        }));
+      
+      const organizationSummary = {
+        overall: {
+          submissionRate: overallSubmissionRate,
+          submitted: totalSubmitted,
+          expected: totalExpected,
+          onVacation: 0,
+          totalActive: totalExpected
+        },
+        teams: {
+          all: teamsCompliance.map(t => ({
+            teamId: t.teamId,
+            teamName: t.teamName,
+            submissionRate: t.metrics.submissionRate,
+            submitted: t.metrics.submitted,
+            expected: t.metrics.expected,
+            members: t.members.length
+          })),
+          topPerforming,
+          needingAttention
+        },
+        individuals: {
+          topPerformers: topIndividuals,
+          needingAttention: strugglingIndividuals
+        }
+      };
+      
+      res.json({ 
+        teams: teamsCompliance,
+        organization: organizationSummary
+      });
+    } catch (error) {
+      console.error("Failed to fetch compliance data:", error);
+      res.status(500).json({ message: "Failed to fetch compliance data" });
+    }
+  });
+
   // Send check-in reminders to selected users  
   app.post("/api/checkins/remind", requireAuth(), requireRole(['admin', 'manager']), requireFeatureAccess('slack_integration'), async (req, res) => {
     try {
