@@ -2584,7 +2584,7 @@ export class DatabaseStorage implements IStorage {
     // Get the organization for timezone settings
     const organization = await this.getOrganization(organizationId);
     
-    // Calculate the date range (Saturday-Friday weeks)
+    // Calculate the date range (Monday-Sunday weeks)
     const currentWeekStart = getWeekStartCentral(new Date(), organization);
     const startDate = new Date(currentWeekStart);
     startDate.setDate(startDate.getDate() - (weeksToAnalyze * 7));
@@ -2724,7 +2724,7 @@ export class DatabaseStorage implements IStorage {
     daysSinceLastCheckin: number | null;
     lastReminderSent: Date | null;
   }>> {
-    // Get the current week start (Saturday 00:00 Central Time)
+    // Get the current week start (Monday 00:00 Central Time)
     const currentWeekStart = getWeekStartCentral(new Date());
     
     let allUsers: User[] = [];

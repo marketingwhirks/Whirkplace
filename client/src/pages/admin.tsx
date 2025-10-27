@@ -476,7 +476,7 @@ export default function Admin() {
   // Add vacation mutation for team member
   const addVacationForUserMutation = useMutation({
     mutationFn: async ({ userId, weekOf, note }: { userId: string; weekOf: Date; note?: string }) => {
-      const weekStart = startOfWeek(weekOf, { weekStartsOn: 6 });
+      const weekStart = startOfWeek(weekOf, { weekStartsOn: 1 });
       return apiRequest("POST", "/api/admin/vacations", {
         userId,
         weekOf: weekStart.toISOString(),
@@ -506,7 +506,7 @@ export default function Admin() {
   // Remove vacation mutation for team member
   const removeVacationForUserMutation = useMutation({
     mutationFn: async ({ userId, weekOf }: { userId: string; weekOf: string }) => {
-      const weekStart = startOfWeek(parseISO(weekOf), { weekStartsOn: 6 });
+      const weekStart = startOfWeek(parseISO(weekOf), { weekStartsOn: 1 });
       return apiRequest("DELETE", `/api/admin/vacations/${userId}/${weekStart.toISOString()}`);
     },
     onSuccess: () => {
@@ -2286,7 +2286,7 @@ export default function Admin() {
                     userVacations
                       .sort((a, b) => new Date(b.weekOf).getTime() - new Date(a.weekOf).getTime())
                       .map((vacation) => {
-                        const weekStart = startOfWeek(typeof vacation.weekOf === 'string' ? parseISO(vacation.weekOf) : new Date(vacation.weekOf), { weekStartsOn: 6 });
+                        const weekStart = startOfWeek(typeof vacation.weekOf === 'string' ? parseISO(vacation.weekOf) : new Date(vacation.weekOf), { weekStartsOn: 1 });
                         return (
                           <div
                             key={vacation.id}

@@ -9508,7 +9508,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         weeksToAnalyze,
         now: now.toISOString(),
         currentWeekStart: currentWeekStart.toISOString(),
-        currentWeek: `Saturday Oct 26 - Friday Nov 1, 2025 (Week starting ${format(currentWeekStart, 'MMM dd, yyyy')})`,
+        currentWeek: `Monday Oct 27 - Sunday Nov 2, 2025 (Week starting ${format(currentWeekStart, 'MMM dd, yyyy')})`,
         totalCheckins: checkins.length,
         totalVacations: vacations.length,
         firstCheckin: checkins[0] ? {
@@ -9755,7 +9755,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         teamId: teamId || 'all',
         requestedWeekStart: weekStart,
         targetWeekStart: targetWeekStart.toISOString(),
-        currentWeek: `Saturday Oct 26 - Friday Nov 1, 2025 (Week starting ${format(targetWeekStart, 'MMM dd, yyyy')})`,
+        currentWeek: `Monday Oct 27 - Sunday Nov 2, 2025 (Week starting ${format(targetWeekStart, 'MMM dd, yyyy')})`,
         now: now.toISOString()
       });
       
@@ -9932,7 +9932,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('[COMPLIANCE organization-summary] Initial data:', {
         requestedWeekStart: weekStart,
         targetWeekStart: targetWeekStart.toISOString(),
-        currentWeek: `Saturday Oct 26 - Friday Nov 1, 2025 (Week starting ${format(targetWeekStart, 'MMM dd, yyyy')})`,
+        currentWeek: `Monday Oct 27 - Sunday Nov 2, 2025 (Week starting ${format(targetWeekStart, 'MMM dd, yyyy')})`,
         now: now.toISOString()
       });
       

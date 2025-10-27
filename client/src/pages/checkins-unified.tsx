@@ -177,7 +177,7 @@ export default function UnifiedCheckins() {
     
     const weeks: Array<{ start: Date, end: Date, friday: Date, label: string }> = [];
     const today = new Date();
-    const currentWeekStart = startOfWeek(today, { weekStartsOn: 6 });
+    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
     
     // Go back up to 4 weeks
     for (let i = 0; i < 4; i++) {

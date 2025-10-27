@@ -259,7 +259,7 @@ export default function CheckinManagement() {
   const [activeTab, setActiveTab] = useState<"my-checkin" | "team-checkins" | "reviews" | "compliance" | "reminders">(
     mapParamToTab(initialTabParam)
   );
-  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 6 }));
+  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   
   // Update URL when tab changes
@@ -305,10 +305,10 @@ export default function CheckinManagement() {
   const [isSubmittingLate, setIsSubmittingLate] = useState(false);
 
   // Get current week and previous week starts
-  const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 6 });
+  const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
   const previousWeekStart = addWeeks(currentWeekStart, -1);
-  const isCurrentWeek = isSameWeek(selectedWeek, currentWeekStart, { weekStartsOn: 6 });
-  const isPreviousWeek = isSameWeek(selectedWeek, previousWeekStart, { weekStartsOn: 6 });
+  const isCurrentWeek = isSameWeek(selectedWeek, currentWeekStart, { weekStartsOn: 1 });
+  const isPreviousWeek = isSameWeek(selectedWeek, previousWeekStart, { weekStartsOn: 1 });
 
   // Calculate if user is admin or manager
   const isAdmin = currentUser?.role === "admin";
@@ -347,17 +347,17 @@ export default function CheckinManagement() {
 
   // Find current week check-in
   const currentWeekCheckin = sortedCheckins.find(checkin => 
-    isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
+    isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 1 })
   );
 
   // Find previous week check-in for late submission
   const previousWeekCheckin = sortedCheckins.find(checkin =>
-    isSameWeek(new Date(checkin.weekOf), previousWeekStart, { weekStartsOn: 6 })
+    isSameWeek(new Date(checkin.weekOf), previousWeekStart, { weekStartsOn: 1 })
   );
 
   // Get historical check-ins (last 6 weeks excluding current)
   const historicalCheckins = sortedCheckins.filter(checkin => 
-    !isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
+    !isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 1 })
   ).slice(0, 6);
 
   // Fetch vacations
@@ -369,14 +369,14 @@ export default function CheckinManagement() {
   // Check if current week is marked as vacation
   const currentWeekVacation = useMemo(() => {
     return vacations.find(v => 
-      isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 6 })
+      isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 1 })
     );
   }, [vacations, currentWeekStart]);
 
   // Check if previous week was marked as vacation
   const previousWeekVacation = useMemo(() => {
     return vacations.find(v => 
-      isSameWeek(new Date(v.weekOf), previousWeekStart, { weekStartsOn: 6 })
+      isSameWeek(new Date(v.weekOf), previousWeekStart, { weekStartsOn: 1 })
     );
   }, [vacations, previousWeekStart]);
 
@@ -700,7 +700,7 @@ export default function CheckinManagement() {
               </Button>
               <div className="min-w-[200px] text-center">
                 <div className="font-semibold">
-                  {format(selectedWeek, 'MMM dd')} - {format(endOfWeek(selectedWeek, { weekStartsOn: 6 }), 'MMM dd, yyyy')}
+                  {format(selectedWeek, 'MMM dd')} - {format(endOfWeek(selectedWeek, { weekStartsOn: 1 }), 'MMM dd, yyyy')}
                 </div>
                 {isCurrentWeek && (
                   <Badge variant="default" className="mt-1">Current Week</Badge>

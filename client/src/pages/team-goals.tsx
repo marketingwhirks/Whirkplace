@@ -397,8 +397,8 @@ export default function TeamGoals() {
       const now = new Date();
       switch (data.goalType) {
         case "weekly":
-          startDate = startOfWeek(now, { weekStartsOn: 6 }).toISOString();
-          endDate = endOfWeek(now, { weekStartsOn: 6 }).toISOString();
+          startDate = startOfWeek(now, { weekStartsOn: 1 }).toISOString();
+          endDate = endOfWeek(now, { weekStartsOn: 1 }).toISOString();
           break;
         case "monthly":
           startDate = startOfMonth(now).toISOString();

@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Mandy Patrick",
+    "email": "mandypatrick@patrickaccounting.com",
+    "week_of": "2025-10-20T05:00:00.000Z",
+    "submitted_at": "2025-10-24T14:51:11.407Z",
+    "week_ending": "3eek en25ng: Mon 10/20/2025",
+    "when_submitted": "Sub51tte6: Fri 10/24/2025 at 02:51 PM",
+    "overall_mood": 5,
+    "is_complete": true
+  },
+  {
+    "name": "Matthew Patrick",
+    "email": "mpatrick@patrickaccounting.com",
+    "week_of": "2025-10-20T05:00:00.000Z",
+    "submitted_at": "2025-10-24T02:39:48.478Z",
+    "week_ending": "3eek en25ng: Mon 10/20/2025",
+    "when_submitted": "Sub39tte6: Fri 10/24/2025 at 02:39 AM",
+    "overall_mood": 5,
+    "is_complete": true
+  },
+  {
+    "name": "Matthew Patrick",
+    "email": "mpatrick@patrickaccounting.com",
+    "week_of": "2025-10-13T05:00:00.000Z",
+    "submitted_at": "2025-10-15T17:57:50.721Z",
+    "week_ending": "2eek en25ng: Mon 10/13/2025",
+    "when_submitted": "Sub57tte4: Wed 10/15/2025 at 05:57 PM",
+    "overall_mood": 5,
+    "is_complete": true
+  },
+  {
+    "name": "Mandy Patrick",
+    "email": "mandypatrick@patrickaccounting.com",
+    "week_of": "2025-10-13T05:00:00.000Z",
+    "submitted_at": "2025-10-13T15:07:30.272Z",
+    "week_ending": "2eek en25ng: Mon 10/13/2025",
+    "when_submitted": "Sub07tte2: Mon 10/13/2025 at 03:07 PM",
+    "overall_mood": 5,
+    "is_complete": true
+  },
+  {
+    "name": "Matthew Patrick",
+    "email": "mpatrick@patrickaccounting.com",
+    "week_of": "2025-09-29T05:00:00.000Z",
+    "submitted_at": "2025-10-11T19:51:20.812Z",
+    "week_ending": "5eek en25ng: Mon 09/29/2025",
+    "when_submitted": "Sub51tte7: Sat 10/11/2025 at 07:51 PM",
+    "overall_mood": 5,
+    "is_complete": true
+  },
+  {
+    "name": "Mandy Patrick",
+    "email": "mandypatrick@patrickaccounting.com",
+    "week_of": "2025-10-11T01:32:36.744Z",
+    "submitted_at": "2025-10-11T01:32:37.594Z",
+    "week_ending": "2eek en75ng: Sat 10/11/2025",
+    "when_submitted": "Sub32tte7: Sat 10/11/2025 at 01:32 AM",
+    "overall_mood": 5,
+    "is_complete": true
+  },
+  {
+    "name": "Matthew Patrick",
+    "email": "mpatrick@patrickaccounting.com",
+    "week_of": "2025-10-06T05:00:00.000Z",
+    "submitted_at": "2025-10-06T14:10:42.343Z",
+    "week_ending": "1eek en25ng: Mon 10/06/2025",
+    "when_submitted": "Sub10tte2: Mon 10/06/2025 at 02:10 PM",
+    "overall_mood": 5,
+    "is_complete": true
+  }
+]
