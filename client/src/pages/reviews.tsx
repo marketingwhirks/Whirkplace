@@ -280,6 +280,11 @@ export default function Reviews() {
     return weekEnd;
   }, [viewingWeekStart]);
 
+  // Calculate Friday of the week (for display purposes)
+  const viewingWeekFriday = useMemo(() => {
+    return new Date(viewingWeekStart.getTime() + 4 * 24 * 60 * 60 * 1000); // Add 4 days to Monday to get Friday
+  }, [viewingWeekStart]);
+
   // Fetch organization data
   const { data: organization } = useQuery<Organization>({
     queryKey: ["/api/organizations", currentUser?.organizationId],
@@ -476,7 +481,7 @@ export default function Reviews() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `compliance-report-${format(viewingWeekStart, 'yyyy-MM-dd')}.csv`;
+    a.download = `compliance-report-${format(viewingWeekFriday, 'yyyy-MM-dd')}.csv`;
     a.click();
   };
 
@@ -509,7 +514,7 @@ export default function Reviews() {
                 <CardTitle>Organization Compliance Dashboard</CardTitle>
               </div>
               <Badge variant="outline" className="text-lg px-3 py-1">
-                Week of {format(viewingWeekStart, 'MMM dd, yyyy')}
+                Week of {format(viewingWeekFriday, 'MMM dd, yyyy')}
               </Badge>
             </div>
           </CardHeader>
