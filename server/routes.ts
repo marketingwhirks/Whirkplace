@@ -9285,6 +9285,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const query = complianceAnalyticsSchema.parse(req.query);
       
+      // DEBUG: Log incoming request
+      console.log('[DEBUG /api/analytics/checkin-compliance] Request:', {
+        orgId: req.orgId,
+        scope: query.scope,
+        id: query.id,
+        period: query.period,
+        from: query.from,
+        to: query.to,
+        now: new Date().toISOString()
+      });
+      
       // Validate scope and id relationship
       if ((query.scope === 'team' || query.scope === 'user') && !query.id) {
         return res.status(400).json({ message: "ID is required for team and user scopes" });
@@ -9303,8 +9314,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         to: query.to,
       });
       
+      // DEBUG: Log metrics result
+      console.log('[DEBUG /api/analytics/checkin-compliance] Metrics result:', {
+        metricsCount: metrics.length,
+        metrics: metrics.map((m, i) => ({
+          index: i,
+          periodStart: m.periodStart?.toISOString(),
+          totalCount: m.metrics?.totalCount || 0,
+          onTimeCount: m.metrics?.onTimeCount || 0,
+          onTimePercentage: m.metrics?.onTimePercentage || 0,
+          vacationWeeks: m.metrics?.vacationWeeks || 0
+        }))
+      });
+      
       res.json(metrics);
     } catch (error) {
+      console.error('[ERROR /api/analytics/checkin-compliance]:', error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ 
           message: "Invalid query parameters",
@@ -9319,6 +9344,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/analytics/review-compliance", requireAuth(), authorizeAnalyticsAccess(), async (req, res) => {
     try {
       const query = complianceAnalyticsSchema.parse(req.query);
+      
+      // DEBUG: Log incoming request
+      console.log('[DEBUG /api/analytics/review-compliance] Request:', {
+        orgId: req.orgId,
+        scope: query.scope,
+        id: query.id,
+        period: query.period,
+        from: query.from,
+        to: query.to,
+        now: new Date().toISOString()
+      });
       
       // Validate scope and id relationship
       if ((query.scope === 'team' || query.scope === 'user') && !query.id) {
@@ -9338,8 +9374,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         to: query.to,
       });
       
+      // DEBUG: Log metrics result
+      console.log('[DEBUG /api/analytics/review-compliance] Metrics result:', {
+        metricsCount: metrics.length,
+        metrics: metrics.map((m, i) => ({
+          index: i,
+          periodStart: m.periodStart?.toISOString(),
+          totalCount: m.metrics?.totalCount || 0,
+          onTimeCount: m.metrics?.onTimeCount || 0,
+          onTimePercentage: m.metrics?.onTimePercentage || 0,
+          reviewerVacationWeeks: m.metrics?.reviewerVacationWeeks || 0
+        }))
+      });
+      
       res.json(metrics);
     } catch (error) {
+      console.error('[ERROR /api/analytics/review-compliance]:', error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ 
           message: "Invalid query parameters",
@@ -9945,6 +9995,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const weekEndDate = new Date(targetWeekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
       const allCheckins = await storage.getCheckinsByOrganization(req.orgId, targetWeekStart, weekEndDate);
       const allVacations = await storage.getVacationsByOrganization(req.orgId, targetWeekStart, weekEndDate);
+      
+      // DEBUG: Log raw data retrieved
+      console.log('[COMPLIANCE organization-summary] Raw data:', {
+        orgId: req.orgId,
+        targetWeekStart: targetWeekStart.toISOString(),
+        weekEndDate: weekEndDate.toISOString(),
+        totalTeams: teams.length,
+        totalUsers: allUsers.length,
+        activeUsers: activeUsers.length,
+        checkinsRetrieved: allCheckins.length,
+        vacationsRetrieved: allVacations.length,
+        checkinDetails: allCheckins.slice(0, 3).map(c => ({
+          id: c.id,
+          userId: c.userId,
+          weekOf: c.weekOf,
+          submittedAt: c.submittedAt,
+          submittedOnTime: c.submittedOnTime,
+          isComplete: c.isComplete
+        }))
+      });
       
       const usersOnVacation = new Set(allVacations.map(v => v.userId));
       const expectedSubmissions = activeUsers.length - usersOnVacation.size;

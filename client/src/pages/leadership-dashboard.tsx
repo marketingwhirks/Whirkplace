@@ -230,7 +230,7 @@ export default function LeadershipDashboard() {
   }, [dateRange]);
 
   // Fetch check-in compliance metrics
-  const { data: checkinComplianceResult, isLoading: checkinComplianceLoading } = useQuery<ComplianceMetricsResult>({
+  const { data: checkinComplianceResult, isLoading: checkinComplianceLoading } = useQuery<ComplianceMetricsResult[]>({
     queryKey: ["/api/analytics/checkin-compliance", complianceQueryParams],
     queryFn: () => fetch(`/api/analytics/checkin-compliance?${complianceQueryParams}`).then(res => {
       if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
@@ -241,7 +241,7 @@ export default function LeadershipDashboard() {
   });
 
   // Fetch review compliance metrics  
-  const { data: reviewComplianceResult, isLoading: reviewComplianceLoading } = useQuery<ComplianceMetricsResult>({
+  const { data: reviewComplianceResult, isLoading: reviewComplianceLoading } = useQuery<ComplianceMetricsResult[]>({
     queryKey: ["/api/analytics/review-compliance", complianceQueryParams],
     queryFn: () => fetch(`/api/analytics/review-compliance?${complianceQueryParams}`).then(res => {
       if (!res.ok) throw new Error(`Failed to fetch: ${res.status}`);
@@ -620,7 +620,7 @@ export default function LeadershipDashboard() {
                     <Skeleton className="h-4 w-16" />
                   ) : (
                     <span className="text-2xl font-bold text-foreground" data-testid="text-checkin-compliance-rate">
-                      {(checkinComplianceResult?.metrics?.onTimePercentage ?? 0).toFixed(1)}%
+                      {(checkinComplianceResult?.[0]?.metrics?.onTimePercentage ?? 0).toFixed(1)}%
                     </span>
                   )}
                 </div>
@@ -628,10 +628,10 @@ export default function LeadershipDashboard() {
                   <Skeleton className="h-2 w-full" />
                 ) : (
                   <Progress 
-                    value={checkinComplianceResult?.metrics?.onTimePercentage ?? 0} 
+                    value={checkinComplianceResult?.[0]?.metrics?.onTimePercentage ?? 0} 
                     className={`h-2 ${
-                      (checkinComplianceResult?.metrics?.onTimePercentage ?? 0) >= 80 ? 'text-green-600' : 
-                      (checkinComplianceResult?.metrics?.onTimePercentage ?? 0) >= 60 ? 'text-yellow-600' : 
+                      (checkinComplianceResult?.[0]?.metrics?.onTimePercentage ?? 0) >= 80 ? 'text-green-600' : 
+                      (checkinComplianceResult?.[0]?.metrics?.onTimePercentage ?? 0) >= 60 ? 'text-yellow-600' : 
                       'text-red-600'
                     }`}
                     data-testid="progress-checkin-compliance"
@@ -639,17 +639,17 @@ export default function LeadershipDashboard() {
                 )}
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
-                    {checkinComplianceResult?.metrics?.onTimeCount ?? 0} of {checkinComplianceResult?.metrics?.totalCount ?? 0} on time
+                    {checkinComplianceResult?.[0]?.metrics?.onTimeCount ?? 0} of {checkinComplianceResult?.[0]?.metrics?.totalCount ?? 0} on time
                   </span>
                   <div className="flex items-center gap-1">
                     <CheckCircle className="w-3 h-3" />
                     <span>Submitted by deadline</span>
                   </div>
                 </div>
-                {checkinComplianceResult?.metrics?.averageDaysLate && checkinComplianceResult?.metrics?.averageDaysLate > 0 && (
+                {checkinComplianceResult?.[0]?.metrics?.averageDaysLate && checkinComplianceResult?.[0]?.metrics?.averageDaysLate > 0 && (
                   <div className="flex items-center gap-1 text-xs text-red-600">
                     <Clock className="w-3 h-3" />
-                    <span>Avg {checkinComplianceResult?.metrics?.averageDaysLate?.toFixed(1)} days late for overdue items</span>
+                    <span>Avg {checkinComplianceResult?.[0]?.metrics?.averageDaysLate?.toFixed(1)} days late for overdue items</span>
                   </div>
                 )}
               </div>
@@ -662,7 +662,7 @@ export default function LeadershipDashboard() {
                     <Skeleton className="h-4 w-16" />
                   ) : (
                     <span className="text-2xl font-bold text-foreground" data-testid="text-review-compliance-rate">
-                      {(reviewComplianceResult?.metrics?.onTimePercentage ?? 0).toFixed(1)}%
+                      {(reviewComplianceResult?.[0]?.metrics?.onTimePercentage ?? 0).toFixed(1)}%
                     </span>
                   )}
                 </div>
@@ -670,10 +670,10 @@ export default function LeadershipDashboard() {
                   <Skeleton className="h-2 w-full" />
                 ) : (
                   <Progress 
-                    value={reviewComplianceResult?.metrics?.onTimePercentage ?? 0} 
+                    value={reviewComplianceResult?.[0]?.metrics?.onTimePercentage ?? 0} 
                     className={`h-2 ${
-                      (reviewComplianceResult?.metrics?.onTimePercentage ?? 0) >= 80 ? 'text-green-600' : 
-                      (reviewComplianceResult?.metrics?.onTimePercentage ?? 0) >= 60 ? 'text-yellow-600' : 
+                      (reviewComplianceResult?.[0]?.metrics?.onTimePercentage ?? 0) >= 80 ? 'text-green-600' : 
+                      (reviewComplianceResult?.[0]?.metrics?.onTimePercentage ?? 0) >= 60 ? 'text-yellow-600' : 
                       'text-red-600'
                     }`}
                     data-testid="progress-review-compliance"
@@ -681,17 +681,17 @@ export default function LeadershipDashboard() {
                 )}
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <span>
-                    {reviewComplianceResult?.metrics?.onTimeCount ?? 0} of {reviewComplianceResult?.metrics?.totalCount ?? 0} on time
+                    {reviewComplianceResult?.[0]?.metrics?.onTimeCount ?? 0} of {reviewComplianceResult?.[0]?.metrics?.totalCount ?? 0} on time
                   </span>
                   <div className="flex items-center gap-1">
                     <Timer className="w-3 h-3" />
                     <span>Reviewed by deadline</span>
                   </div>
                 </div>
-                {reviewComplianceResult?.metrics?.averageDaysLate && reviewComplianceResult?.metrics?.averageDaysLate > 0 && (
+                {reviewComplianceResult?.[0]?.metrics?.averageDaysLate && reviewComplianceResult?.[0]?.metrics?.averageDaysLate > 0 && (
                   <div className="flex items-center gap-1 text-xs text-red-600">
                     <Clock className="w-3 h-3" />
-                    <span>Avg {reviewComplianceResult?.metrics?.averageDaysLate?.toFixed(1)} days late for overdue items</span>
+                    <span>Avg {reviewComplianceResult?.[0]?.metrics?.averageDaysLate?.toFixed(1)} days late for overdue items</span>
                   </div>
                 )}
               </div>

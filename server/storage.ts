@@ -1947,7 +1947,35 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCheckinsByOrganization(organizationId: string, from: Date, to: Date): Promise<Checkin[]> {
-    return await db
+    // DEBUG: Log query parameters
+    console.log('[DEBUG DatabaseStorage.getCheckinsByOrganization] Query params:', {
+      organizationId,
+      from: from.toISOString(),
+      to: to.toISOString(),
+      fromDateType: typeof from,
+      toDateType: typeof to
+    });
+    
+    // First get all checkins for this org to see what's in DB
+    const allOrgCheckins = await db
+      .select()
+      .from(checkins)
+      .where(eq(checkins.organizationId, organizationId))
+      .limit(10);
+    
+    console.log('[DEBUG DatabaseStorage.getCheckinsByOrganization] Sample checkins in DB:', {
+      totalFound: allOrgCheckins.length,
+      samples: allOrgCheckins.map(c => ({
+        id: c.id,
+        weekOf: c.weekOf,
+        submittedAt: c.submittedAt,
+        isComplete: c.isComplete,
+        userId: c.userId
+      }))
+    });
+    
+    // Now run the actual query with date filters
+    const result = await db
       .select()
       .from(checkins)
       .where(and(
@@ -1956,6 +1984,17 @@ export class DatabaseStorage implements IStorage {
         lte(checkins.weekOf, to)
       ))
       .orderBy(desc(checkins.weekOf));
+    
+    console.log('[DEBUG DatabaseStorage.getCheckinsByOrganization] Query result:', {
+      resultCount: result.length,
+      resultSample: result.slice(0, 3).map(c => ({
+        weekOf: c.weekOf,
+        userId: c.userId,
+        isComplete: c.isComplete
+      }))
+    });
+    
+    return result;
   }
 
   // Super Admin Check-in Management
@@ -4812,6 +4851,16 @@ export class DatabaseStorage implements IStorage {
   private async getCheckinComplianceMetricsFromRaw(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
     const { scope = 'organization', entityId, period, from, to } = options || {};
 
+    // DEBUG: Log parameters
+    console.log('[DEBUG getCheckinComplianceMetricsFromRaw] Called with:', {
+      organizationId,
+      scope,
+      entityId,
+      period,
+      from: from?.toISOString(),
+      to: to?.toISOString()
+    });
+
     // Apply date filtering
     const whereConditions: any[] = [
       eq(checkins.organizationId, organizationId),
@@ -4847,6 +4896,19 @@ export class DatabaseStorage implements IStorage {
         eq(vacations.weekOf, checkins.weekOf)
       ))
       .where(and(...whereConditions));
+
+    // DEBUG: Log query results
+    console.log('[DEBUG getCheckinComplianceMetricsFromRaw] Query results:', {
+      resultCount: results.length,
+      firstFewResults: results.slice(0, 3).map(r => ({
+        id: r.id,
+        userId: r.userId,
+        weekOf: r.weekOf,
+        submittedAt: r.submittedAt,
+        submittedOnTime: r.submittedOnTime,
+        isOnVacation: r.isOnVacation
+      }))
+    });
 
     let complianceResults: ComplianceMetricsResult[] = [];
 
@@ -5043,7 +5105,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   private calculateComplianceMetrics(checkins: any[]): any {
+    console.log('[DEBUG calculateComplianceMetrics] Called with:', {
+      totalCheckins: checkins.length,
+      checkinsSnapshot: checkins.slice(0, 3).map(c => ({
+        submittedOnTime: c.submittedOnTime,
+        isOnVacation: c.isOnVacation,
+        weekOf: c.weekOf
+      }))
+    });
+
     if (checkins.length === 0) {
+      console.log('[DEBUG calculateComplianceMetrics] No checkins found, returning zeros');
       return { totalCount: 0, onTimeCount: 0, onTimePercentage: 0 };
     }
 
@@ -5057,6 +5129,15 @@ export class DatabaseStorage implements IStorage {
     const totalDueCount = nonVacationCheckins.length;
     const onTimeCount = checkins.filter(c => c.submittedOnTime).length;
     const onTimePercentage = totalDueCount > 0 ? (onTimeCount / totalDueCount) * 100 : 0;
+
+    console.log('[DEBUG calculateComplianceMetrics] Metrics calculated:', {
+      totalCheckins: checkins.length,
+      nonVacationCheckins: nonVacationCheckins.length,
+      vacationCheckins: vacationCheckins.length,
+      totalDueCount,
+      onTimeCount,
+      onTimePercentage
+    });
 
     // Calculate average days early/late for all submissions
     let totalDaysDiff = 0;
@@ -7889,13 +7970,54 @@ export class MemStorage implements IStorage {
   }
 
   async getCheckinsByOrganization(organizationId: string, from: Date, to: Date): Promise<Checkin[]> {
-    return Array.from(this.checkins.values())
-      .filter(checkin => 
-        checkin.organizationId === organizationId &&
-        checkin.weekOf >= from &&
-        checkin.weekOf <= to
-      )
+    // DEBUG: Log all checkins for this org to understand what's in memory
+    const allOrgCheckins = Array.from(this.checkins.values())
+      .filter(checkin => checkin.organizationId === organizationId);
+    
+    console.log('[DEBUG getCheckinsByOrganization] All checkins for org:', {
+      organizationId,
+      totalCheckins: allOrgCheckins.length,
+      completeCheckins: allOrgCheckins.filter(c => c.isComplete).length,
+      incompleteCheckins: allOrgCheckins.filter(c => !c.isComplete).length,
+      weekOfDates: allOrgCheckins.slice(0, 5).map(c => ({
+        id: c.id,
+        weekOf: c.weekOf,
+        isComplete: c.isComplete,
+        submittedAt: c.submittedAt
+      }))
+    });
+    
+    const organizationCheckins = Array.from(this.checkins.values())
+      .filter(checkin => {
+        const orgMatch = checkin.organizationId === organizationId;
+        const weekOfMatch = checkin.weekOf >= from && checkin.weekOf <= to;
+        
+        // Debug first few exclusions
+        if (orgMatch && !weekOfMatch && allOrgCheckins.length <= 20) {
+          console.log('[DEBUG getCheckinsByOrganization] Checkin excluded by date:', {
+            checkinWeekOf: checkin.weekOf,
+            from: from.toISOString(),
+            to: to.toISOString(),
+            weekOfCompare: `${checkin.weekOf} >= ${from} && ${checkin.weekOf} <= ${to}`,
+            result: weekOfMatch
+          });
+        }
+        
+        return orgMatch && weekOfMatch;
+      })
       .sort((a, b) => b.weekOf.getTime() - a.weekOf.getTime());
+    
+    console.log('[DEBUG getCheckinsByOrganization] Final result:', {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      resultCount: organizationCheckins.length,
+      resultSample: organizationCheckins.slice(0, 3).map(c => ({
+        weekOf: c.weekOf,
+        userId: c.userId
+      }))
+    });
+    
+    return organizationCheckins;
   }
 
   // Check-in Review Methods
@@ -9133,23 +9255,69 @@ export class MemStorage implements IStorage {
   async getCheckinComplianceMetrics(organizationId: string, options?: ComplianceMetricsOptions): Promise<ComplianceMetricsResult[]> {
     const { scope = 'organization', entityId, period, from, to } = options || {};
 
+    // DEBUG: Log initial parameters
+    console.log('[DEBUG getCheckinComplianceMetrics] Called with:', {
+      organizationId,
+      scope,
+      entityId,
+      period,
+      from: from?.toISOString(),
+      to: to?.toISOString()
+    });
+
     // Filter submitted check-ins only
     let relevantCheckins = Array.from(this.checkins.values())
       .filter(checkin => checkin.organizationId === organizationId && checkin.isComplete);
 
+    console.log('[DEBUG getCheckinComplianceMetrics] After org filter:', {
+      totalCheckinsInMemory: Array.from(this.checkins.values()).length,
+      checkinsForOrg: relevantCheckins.length,
+      firstFewCheckins: relevantCheckins.slice(0, 3).map(c => ({
+        id: c.id,
+        userId: c.userId,
+        weekOf: c.weekOf,
+        submittedAt: c.submittedAt,
+        isComplete: c.isComplete
+      }))
+    });
+
     // Apply scope filtering
     if (scope === 'user' && entityId) {
       relevantCheckins = relevantCheckins.filter(checkin => checkin.userId === entityId);
+      console.log('[DEBUG getCheckinComplianceMetrics] After user filter:', relevantCheckins.length);
     } else if (scope === 'team' && entityId) {
       const teamUsers = Array.from(this.users.values())
         .filter(user => user.teamId === entityId && user.organizationId === organizationId)
         .map(user => user.id);
       relevantCheckins = relevantCheckins.filter(checkin => teamUsers.includes(checkin.userId));
+      console.log('[DEBUG getCheckinComplianceMetrics] After team filter:', {
+        teamId: entityId,
+        teamUsers: teamUsers.length,
+        checkinsForTeam: relevantCheckins.length
+      });
     }
 
     // Apply date filtering
     if (from || to) {
-      relevantCheckins = relevantCheckins.filter(checkin => this.isInDateRange(checkin.weekOf, from, to));
+      const beforeFilterCount = relevantCheckins.length;
+      relevantCheckins = relevantCheckins.filter(checkin => {
+        const inRange = this.isInDateRange(checkin.weekOf, from, to);
+        if (!inRange && beforeFilterCount <= 10) {
+          console.log('[DEBUG getCheckinComplianceMetrics] Excluded checkin:', {
+            weekOf: checkin.weekOf,
+            from: from?.toISOString(),
+            to: to?.toISOString(),
+            inRange
+          });
+        }
+        return inRange;
+      });
+      console.log('[DEBUG getCheckinComplianceMetrics] After date filter:', {
+        beforeCount: beforeFilterCount,
+        afterCount: relevantCheckins.length,
+        from: from?.toISOString(),
+        to: to?.toISOString()
+      });
     }
 
     // Add vacation status to each checkin
