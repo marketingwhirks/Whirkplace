@@ -11,6 +11,7 @@ import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Checkins from "@/pages/checkins";
+import CheckinManagement from "@/pages/checkin-management";
 import OneOnOnesPage from "@/pages/one-on-ones";
 import KraManagementPage from "@/pages/kra-management";
 import Team from "@/pages/team";
@@ -61,6 +62,7 @@ function Router() {
             <Route path="/" component={Dashboard} />
             <Route path="/dashboard" component={Dashboard} />
             <Route path="/checkins" component={Checkins} />
+            <Route path="/checkin-management" component={CheckinManagement} />
             <Route path="/one-on-ones" component={OneOnOnesPage} />
             <Route path="/kra-management" component={KraManagementPage} />
             <Route path="/team" component={Team} />

@@ -33,8 +33,8 @@ function getIsActive(currentLocation: string, itemHref: string): boolean {
 // Base navigation items available to all users - ordered as requested
 const baseNavigation = [
   { name: "Dashboard", href: "/", icon: BarChart3, roles: ["member", "manager", "admin"] },
-  { name: "Check-ins", href: "/checkins", icon: ClipboardList, roles: ["member", "manager", "admin"] },
-  { name: "Reviews", href: "/reviews", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
+  { name: "Check-ins", href: "/checkin-management", icon: ClipboardList, roles: ["member", "manager", "admin"] },
+  { name: "Reviews", href: "/checkin-management", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
   { name: "Shout Outs", href: "/shoutouts", icon: Sparkles, roles: ["member", "manager", "admin"] },
   { name: "Wins", href: "/wins", icon: Trophy, roles: ["member", "manager", "admin"] },
   { name: "Team Goals", href: "/team-goals", icon: Target, roles: ["member", "manager", "admin"] },
