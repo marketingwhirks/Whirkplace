@@ -33,8 +33,8 @@ function getIsActive(currentLocation: string, itemHref: string): boolean {
 // Base navigation items available to all users - ordered as requested
 const baseNavigation = [
   { name: "Dashboard", href: "/", icon: BarChart3, roles: ["member", "manager", "admin"] },
-  { name: "Check-ins", href: "/checkin-management", icon: ClipboardList, roles: ["member", "manager", "admin"] },
-  { name: "Reviews", href: "/checkin-management", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
+  { name: "Check-ins", href: "/checkin-management?tab=my-checkin", icon: ClipboardList, roles: ["member", "manager", "admin"] },
+  { name: "Reviews", href: "/checkin-management?tab=reviews", icon: ClipboardCheck, roles: ["manager", "admin"], hasBadge: true },
   { name: "Shout Outs", href: "/shoutouts", icon: Sparkles, roles: ["member", "manager", "admin"] },
   { name: "Wins", href: "/wins", icon: Trophy, roles: ["member", "manager", "admin"] },
   { name: "Team Goals", href: "/team-goals", icon: Target, roles: ["member", "manager", "admin"] },
@@ -159,10 +159,23 @@ function SidebarContent() {
               (item.name === "KRA Management" && !canAccessKraManagement)
             );
             
+            // Handle href with query parameters properly
+            let finalHref = item.href;
+            if (!needsUpgrade && orgParam) {
+              // If item href already has query params, append org param with &
+              if (item.href.includes('?')) {
+                finalHref = `${item.href}&org=${orgParam}`;
+              } else {
+                finalHref = `${item.href}?org=${orgParam}`;
+              }
+            } else if (needsUpgrade) {
+              finalHref = `/settings${orgSuffix ? `${orgSuffix}&tab=plan` : '?tab=plan'}`;
+            }
+            
             return (
               <Link
                 key={item.name}
-                href={needsUpgrade ? `/settings${orgSuffix ? `${orgSuffix}&tab=plan` : '?tab=plan'}` : `${item.href}${orgSuffix}`}
+                href={finalHref}
                 className={cn(
                   "sidebar-link flex items-center space-x-2 p-2 rounded-lg transition-colors text-sm",
                   needsUpgrade

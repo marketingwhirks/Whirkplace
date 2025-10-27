@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useLocation } from "wouter";
 import { formatDistanceToNow, formatDistance, format, startOfWeek, addWeeks, differenceInDays, endOfWeek, isSameWeek, isToday, isPast } from "date-fns";
 import { 
   CheckCircle, XCircle, Clock, Eye, MessageSquare, Filter, Calendar, User, AlertCircle, Send, UserMinus, Bell,
@@ -213,16 +214,82 @@ type CheckinForm = {
 export default function CheckinManagement() {
   const { toast } = useToast();
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
+  const [location, setLocation] = useLocation();
   
   // Get initial tab from URL query parameter
   const urlParams = new URLSearchParams(window.location.search);
-  const initialTab = urlParams.get('tab') as "my-checkin" | "team-checkins" | "reviews" | "compliance" | "reminders" | null;
+  const initialTabParam = urlParams.get('tab');
+  
+  // Map query parameter values to internal tab names
+  const mapParamToTab = (param: string | null): "my-checkin" | "team-checkins" | "reviews" | "compliance" | "reminders" => {
+    switch(param) {
+      case 'my-checkin':
+        return 'my-checkin';
+      case 'team':
+        return 'team-checkins';
+      case 'reviews':
+        return 'reviews';
+      case 'compliance':
+        return 'compliance';
+      case 'reminders':
+        return 'reminders';
+      default:
+        return 'my-checkin';
+    }
+  };
+  
+  // Map internal tab names to query parameter values
+  const mapTabToParam = (tab: string): string => {
+    switch(tab) {
+      case 'my-checkin':
+        return 'my-checkin';
+      case 'team-checkins':
+        return 'team';
+      case 'reviews':
+        return 'reviews';
+      case 'compliance':
+        return 'compliance';
+      case 'reminders':
+        return 'reminders';
+      default:
+        return 'my-checkin';
+    }
+  };
   
   const [activeTab, setActiveTab] = useState<"my-checkin" | "team-checkins" | "reviews" | "compliance" | "reminders">(
-    initialTab || "my-checkin"
+    mapParamToTab(initialTabParam)
   );
   const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+  
+  // Update URL when tab changes
+  const handleTabChange = (value: string) => {
+    const tab = value as "my-checkin" | "team-checkins" | "reviews" | "compliance" | "reminders";
+    setActiveTab(tab);
+    
+    // Update URL with the new tab parameter
+    const params = new URLSearchParams(window.location.search);
+    params.set('tab', mapTabToParam(tab));
+    
+    // Keep the organization parameter if it exists
+    const orgParam = params.get('org');
+    const queryString = params.toString();
+    const newUrl = `/checkin-management${queryString ? '?' + queryString : ''}`;
+    
+    setLocation(newUrl);
+  };
+  
+  // Sync URL with tab state (handle browser back/forward)
+  useEffect(() => {
+    const handlePopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      setActiveTab(mapParamToTab(tabParam));
+    };
+    
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [selectedCheckin, setSelectedCheckin] = useState<(Checkin & { user?: UserType }) | null>(null);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -610,7 +677,7 @@ export default function CheckinManagement() {
         </div>
 
         {/* Main tabs */}
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)} className="space-y-4">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
           <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 gap-2 h-auto">
             <TabsTrigger value="my-checkin" className="flex items-center gap-2">
               <ClipboardList className="h-4 w-4" />
