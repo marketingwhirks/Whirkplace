@@ -11,7 +11,7 @@ SELECT
     u.email,
     c.week_of::date as week_of_date,
     c.submitted_at,
-    TO_CHAR(c.submitted_at, 'Day, Mon DD, YYYY at HH:MI AM') as submitted_formatted,
+    TO_CHAR(c.submitted_at, 'Day, Mon DD, YYYY at HH:MI AM')as submitted_formatted,
     c.overall_mood,
     c.is_complete,
     o.name as org_name
