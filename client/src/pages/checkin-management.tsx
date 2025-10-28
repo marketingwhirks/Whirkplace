@@ -809,7 +809,7 @@ export default function CheckinManagement() {
                     {isCurrentWeek && (
                       <div className="flex gap-2">
                         {!currentWeekCheckin && !currentWeekVacation && (
-                          <Dialog open={showCreateDialog} onValueChange={setShowCreateDialog}>
+                          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
                             <DialogTrigger asChild>
                               <Button>
                                 <Plus className="mr-2 h-4 w-4" />
@@ -836,8 +836,7 @@ export default function CheckinManagement() {
                                           <RatingStars
                                             rating={field.value}
                                             onRatingChange={field.onChange}
-                                            size="large"
-                                            interactive
+                                            size="lg"
                                           />
                                         </FormControl>
                                         <FormMessage />
@@ -1010,7 +1009,7 @@ export default function CheckinManagement() {
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <RatingStars rating={currentWeekCheckin.moodRating || 0} />
+                          <RatingStars rating={currentWeekCheckin.overallMood || 0} />
                           <Badge variant="default">
                             <CheckCircle className="mr-1 h-3 w-3" />
                             Submitted
@@ -1022,7 +1021,7 @@ export default function CheckinManagement() {
                       </div>
                       
                       {/* Show responses */}
-                      {currentWeekCheckin.responses && Object.keys(currentWeekCheckin.responses).length > 0 && (
+                      {currentWeekCheckin.responses && typeof currentWeekCheckin.responses === 'object' && Object.keys(currentWeekCheckin.responses as Record<string, any>).length > 0 ? (
                         <div className="space-y-3 pt-2">
                           {Object.entries(currentWeekCheckin.responses as Record<string, string>).map(([questionId, response]) => {
                             const question = activeQuestions.find(q => q.id === questionId);
@@ -1036,7 +1035,7 @@ export default function CheckinManagement() {
                             );
                           })}
                         </div>
-                      )}
+                      ) : null}
                     </div>
                   ) : (
                     <div>
@@ -1087,7 +1086,7 @@ export default function CheckinManagement() {
                         <div
                           key={checkin.id}
                           className="flex items-center justify-between p-3 border rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
-                          onClick={() => setSelectedCheckin(checkin)}
+                          onClick={() => setSelectedCheckin(checkin as any)}
                         >
                           <div className="flex items-center gap-3">
                             <div className={cn(
@@ -1099,7 +1098,7 @@ export default function CheckinManagement() {
                                 Week of {format(new Date(checkin.weekOf), 'MMM dd, yyyy')}
                               </p>
                               <div className="flex items-center gap-2 mt-1">
-                                <RatingStars rating={checkin.moodRating || 0} size="small" />
+                                <RatingStars rating={checkin.overallMood || 0} size="sm" />
                                 {checkin.reviewStatus === 'reviewed' && (
                                   <Badge variant="secondary" className="text-xs">
                                     <Eye className="mr-1 h-3 w-3" />
@@ -1121,7 +1120,7 @@ export default function CheckinManagement() {
             </div>
 
             {/* Late submission dialog */}
-            <Dialog open={showPreviousWeekDialog} onValueChange={setShowPreviousWeekDialog}>
+            <Dialog open={showPreviousWeekDialog} onOpenChange={setShowPreviousWeekDialog}>
               <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Submit Late Check-in</DialogTitle>
@@ -1148,8 +1147,7 @@ export default function CheckinManagement() {
                             <RatingStars
                               rating={field.value}
                               onRatingChange={field.onChange}
-                              size="large"
-                              interactive
+                              size="lg"
                             />
                           </FormControl>
                           <FormMessage />
@@ -1210,7 +1208,7 @@ export default function CheckinManagement() {
             </Dialog>
 
             {/* Vacation dialog */}
-            <Dialog open={showVacationDialog} onValueChange={setShowVacationDialog}>
+            <Dialog open={showVacationDialog} onOpenChange={setShowVacationDialog}>
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Mark as Vacation</DialogTitle>
@@ -1298,10 +1296,10 @@ export default function CheckinManagement() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="all">All Users</SelectItem>
-                              {[...new Map(teamCheckinsData.checkins.map((c: EnhancedCheckin) => [
+                              {(Array.from(new Map(teamCheckinsData.checkins.map((c: EnhancedCheckin) => [
                                 c.user?.id, 
                                 { id: c.user?.id, name: c.user?.name }
-                              ])).values()]
+                              ])).values()) as { id: string; name: string }[])
                                 .filter(u => u.id)
                                 .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
                                 .map((user) => (
@@ -1363,7 +1361,7 @@ export default function CheckinManagement() {
                             </div>
                           </div>
                           <div className="flex items-center gap-3">
-                            <RatingStars rating={checkin.overallMood || checkin.moodRating || 0} size="small" />
+                            <RatingStars rating={checkin.overallMood || 0} size="sm" />
                             {checkin.reviewStatus === 'reviewed' ? (
                               <Badge variant="secondary">
                                 <CheckCheck className="mr-1 h-3 w-3" />
@@ -1387,7 +1385,7 @@ export default function CheckinManagement() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setSelectedCheckin(checkin)}
+                                onClick={() => setSelectedCheckin(checkin as any)}
                                 data-testid={`button-view-team-${checkin.id}`}
                               >
                                 <FileText className="mr-2 h-4 w-4" />
@@ -1471,7 +1469,7 @@ export default function CheckinManagement() {
                               <div>
                                 <p className="font-medium">{checkin.user?.name || 'Unknown User'}</p>
                                 <div className="flex items-center gap-2 mt-1">
-                                  <RatingStars rating={checkin.overallMood || checkin.moodRating || 0} size="small" />
+                                  <RatingStars rating={checkin.overallMood || 0} size="sm" />
                                   <Badge variant="outline" className="text-xs">
                                     Week of {format(getWeekStartCentral(new Date(checkin.weekOf)), 'MMM d, yyyy')}
                                   </Badge>
@@ -1485,7 +1483,7 @@ export default function CheckinManagement() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => setSelectedCheckin(checkin)}
+                                onClick={() => setSelectedCheckin(checkin as any)}
                                 data-testid={`button-view-details-${checkin.id}`}
                               >
                                 <FileText className="mr-2 h-4 w-4" />
@@ -1533,7 +1531,7 @@ export default function CheckinManagement() {
                               <div>
                                 <p className="font-medium">{checkin.user?.name || 'Unknown User'}</p>
                                 <div className="flex items-center gap-2 mt-1">
-                                  <RatingStars rating={checkin.overallMood || checkin.moodRating || 0} size="small" />
+                                  <RatingStars rating={checkin.overallMood || 0} size="sm" />
                                   <Badge variant="secondary">
                                     <CheckCheck className="mr-1 h-3 w-3" />
                                     Reviewed by {checkin.reviewer?.name || 'Unknown'}
@@ -1550,7 +1548,7 @@ export default function CheckinManagement() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => setSelectedCheckin(checkin)}
+                              onClick={() => setSelectedCheckin(checkin as any)}
                               data-testid={`button-view-reviewed-${checkin.id}`}
                             >
                               <FileText className="mr-2 h-4 w-4" />
@@ -1746,7 +1744,7 @@ export default function CheckinManagement() {
                                   </p>
                                 </div>
                                 {team.metrics.averageMood && (
-                                  <RatingStars rating={team.metrics.averageMood} size="small" />
+                                  <RatingStars rating={team.metrics.averageMood} size="sm" />
                                 )}
                                 <ChevronDown className="h-4 w-4" />
                               </div>
@@ -1777,7 +1775,7 @@ export default function CheckinManagement() {
                                             Submitted
                                           </Badge>
                                           {member.moodRating && (
-                                            <RatingStars rating={member.moodRating} size="small" />
+                                            <RatingStars rating={member.moodRating} size="sm" />
                                           )}
                                         </>
                                       ) : member.status === 'on-vacation' ? (
@@ -1834,7 +1832,7 @@ export default function CheckinManagement() {
                                         This Week
                                       </Badge>
                                       {member.moodRating && (
-                                        <RatingStars rating={member.moodRating} size="small" />
+                                        <RatingStars rating={member.moodRating} size="sm" />
                                       )}
                                     </>
                                   ) : member.status === 'on-vacation' ? (
@@ -2033,6 +2031,7 @@ export default function CheckinManagement() {
         {/* Review modal */}
         {showReviewModal && checkinToReview && (
           <ReviewModal
+            isOpen={true}
             checkin={checkinToReview}
             onClose={() => {
               setShowReviewModal(false);

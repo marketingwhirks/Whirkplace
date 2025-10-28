@@ -663,7 +663,7 @@ export class DatabaseStorage implements IStorage {
     // Settings fields
     if (organizationUpdate.timezone !== undefined) updateData.timezone = organizationUpdate.timezone;
     if (organizationUpdate.weeklyCheckInSchedule !== undefined) updateData.weeklyCheckInSchedule = organizationUpdate.weeklyCheckInSchedule;
-    if (organizationUpdate.checkInReminderTime !== undefined) updateData.checkInReminderTime = organizationUpdate.checkInReminderTime;
+    if (organizationUpdate.checkinReminderTime !== undefined) updateData.checkinReminderTime = organizationUpdate.checkinReminderTime;
     
     // Slack integration fields
     if (organizationUpdate.slackBotToken !== undefined) updateData.slackBotToken = organizationUpdate.slackBotToken;
@@ -817,8 +817,9 @@ export class DatabaseStorage implements IStorage {
       // Get the team to check if it has a leader
       const team = await this.getTeam(organizationId, insertUser.teamId);
       if (team && team.leaderId) {
-        // Don't make someone their own manager
-        if (insertUser.id !== team.leaderId) {
+        // Don't make someone their own manager - check if email matches the leader
+        const teamLeader = await this.getUser(organizationId, team.leaderId);
+        if (teamLeader && teamLeader.email !== insertUser.email) {
           managerId = team.leaderId;
           console.log(`Auto-assigning team leader ${team.leaderId} as manager for new user`);
         }
@@ -1748,7 +1749,7 @@ export class DatabaseStorage implements IStorage {
         ));
       
       // Create snapshots map
-      questionSnapshots = {};
+      questionSnapshots = {} as Record<string, any>;
       for (const question of questionsData) {
         questionSnapshots[question.id] = {
           id: question.id,
@@ -1758,13 +1759,17 @@ export class DatabaseStorage implements IStorage {
         };
       }
       
-      // Track question usage for each question asked
+      // Get user's team if we need to track question usage
+      const user = await this.getUser(organizationId, insertCheckin.userId);
+      const teamId = user?.teamId || null;
+      
+      // Track question usage for each question asked (we'll update with checkinId later)
       for (const questionId of questionIds) {
         await this.trackQuestionUsage(organizationId, {
           questionId,
           userId: insertCheckin.userId,
-          teamId: insertCheckin.teamId,
-          checkinId: '', // Will be updated after checkin is created
+          teamId,
+          checkinId: null, // Will be updated after checkin is created
           createdAt: now,
         }).catch(error => {
           console.error(`Failed to track question usage for ${questionId}:`, error);
@@ -2150,21 +2155,15 @@ export class DatabaseStorage implements IStorage {
       const total = totalResult[0]?.count || 0;
       
       // Get paginated results
-      let query = db
+      const queryBuilder = db
         .select()
         .from(checkins)
         .where(conditions.length > 0 ? and(...conditions) : undefined)
-        .orderBy(desc(checkins.createdAt));
+        .orderBy(desc(checkins.createdAt))
+        .limit(filters?.limit ?? 100)
+        .offset(filters?.offset ?? 0);
       
-      if (filters?.limit) {
-        query = query.limit(filters.limit);
-      }
-      
-      if (filters?.offset) {
-        query = query.offset(filters.offset);
-      }
-      
-      const checkinList = await query;
+      const checkinList = await queryBuilder;
       
       return {
         checkins: checkinList,
@@ -2340,7 +2339,7 @@ export class DatabaseStorage implements IStorage {
     organizationId: string, 
     userId: string, 
     weekStart: Date, 
-    checkinData: Partial<InsertCheckin>
+    checkinData: Partial<InsertCheckin & {submittedAt?: Date | null; reviewStatus?: string; reviewedBy?: string | null; reviewedAt?: Date | null; reviewComments?: string | null}>
   ): Promise<Checkin> {
     try {
       // Get organization for custom schedule settings
@@ -2355,7 +2354,7 @@ export class DatabaseStorage implements IStorage {
       
       const now = new Date();
       const isComplete = checkinData.isComplete ?? true;
-      const submittedAt = isComplete ? (checkinData.submittedAt || now) : null;
+      const submittedAt = isComplete ? ((checkinData as any).submittedAt || now) : null;
       const submittedOnTime = submittedAt ? isSubmittedOnTime(submittedAt, dueDate) : false;
       
       // Create the check-in
@@ -2372,12 +2371,12 @@ export class DatabaseStorage implements IStorage {
           dueDate,
           submittedOnTime,
           reviewDueDate,
-          reviewStatus: checkinData.reviewStatus ?? ReviewStatus.PENDING,
-          reviewedBy: checkinData.reviewedBy ?? null,
-          reviewedAt: checkinData.reviewedAt ?? null,
+          reviewStatus: (checkinData as any).reviewStatus ?? ReviewStatus.PENDING,
+          reviewedBy: (checkinData as any).reviewedBy ?? null,
+          reviewedAt: (checkinData as any).reviewedAt ?? null,
           reviewedOnTime: false,
-          reviewComments: checkinData.reviewComments ?? null,
-        })
+          reviewComments: (checkinData as any).reviewComments ?? null,
+        } as any)
         .returning();
       
       // Invalidate analytics cache for this organization
@@ -2668,7 +2667,7 @@ export class DatabaseStorage implements IStorage {
         }
       }
       
-      const uniqueUsersToReview = [...new Set(usersToReview)];
+      const uniqueUsersToReview = Array.from(new Set(usersToReview));
       console.log(`[getPendingCheckins] Total unique users to review: ${uniqueUsersToReview.length}`, uniqueUsersToReview);
       
       if (usersToReview.length === 0) {
@@ -3162,7 +3161,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .delete(questionCategories)
       .where(eq(questionCategories.id, id));
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
   
   // KRA Categories - COMMENTED OUT: Table doesn't exist in production
@@ -3239,7 +3238,7 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .delete(questionBank)
       .where(eq(questionBank.id, id));
-    return result.rowCount > 0;
+    return (result.rowCount ?? 0) > 0;
   }
   
   async incrementQuestionBankUsage(id: string): Promise<void> {
@@ -3296,7 +3295,7 @@ export class DatabaseStorage implements IStorage {
       ));
 
     const uniqueUsers = new Set(history.filter(h => h.userId).map(h => h.userId)).size;
-    const uniqueTeams = [...new Set(history.filter(h => h.teamId).map(h => h.teamId))];
+    const uniqueTeams = Array.from(new Set(history.filter(h => h.teamId).map(h => h.teamId)));
     const lastAsked = history.length > 0 
       ? history.reduce((latest, h) => h.createdAt > latest ? h.createdAt : latest, history[0].createdAt)
       : null;
@@ -5331,7 +5330,7 @@ export class DatabaseStorage implements IStorage {
     // Calculate average days early/late for all reviews
     let totalDaysDiff = 0;
     let earlyCount = 0;
-    let lateReviews = [];
+    let lateReviews: number[] = [];
 
     reviews.forEach(review => {
       if (review.reviewedAt && review.reviewDueDate) {
@@ -5492,10 +5491,10 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         eq(vacations.organizationId, organizationId),
         inArray(vacations.userId, userIds),
-        gte(vacations.startDate, from),
-        lte(vacations.endDate, to)
+        gte(vacations.weekOf, from),
+        lte(vacations.weekOf, to)
       ))
-      .orderBy(desc(vacations.startDate));
+      .orderBy(desc(vacations.weekOf));
   }
 
   async getVacationsByOrganization(organizationId: string, from: Date, to: Date): Promise<Vacation[]> {
@@ -5504,10 +5503,10 @@ export class DatabaseStorage implements IStorage {
       .from(vacations)
       .where(and(
         eq(vacations.organizationId, organizationId),
-        gte(vacations.startDate, from),
-        lte(vacations.endDate, to)
+        gte(vacations.weekOf, from),
+        lte(vacations.weekOf, to)
       ))
-      .orderBy(desc(vacations.startDate));
+      .orderBy(desc(vacations.weekOf));
   }
 
   // One-on-One Meetings
@@ -5557,7 +5556,7 @@ export class DatabaseStorage implements IStorage {
       const result = await db
         .delete(oneOnOnes)
         .where(and(eq(oneOnOnes.organizationId, organizationId), eq(oneOnOnes.id, id)));
-      return result.rowCount > 0;
+      return (result.rowCount ?? 0) > 0;
     } catch (error) {
       console.error("Failed to delete one-on-one:", error);
       throw error;
@@ -5759,7 +5758,7 @@ export class DatabaseStorage implements IStorage {
       const result = await db
         .delete(kraTemplates)
         .where(and(eq(kraTemplates.organizationId, organizationId), eq(kraTemplates.id, id)));
-      return result.rowCount > 0;
+      return (result.rowCount ?? 0) > 0;
     } catch (error) {
       console.error("Failed to delete KRA template:", error);
       throw error;
@@ -5928,7 +5927,7 @@ export class DatabaseStorage implements IStorage {
       const result = await db
         .delete(userKras)
         .where(and(eq(userKras.organizationId, organizationId), eq(userKras.id, id)));
-      return result.rowCount > 0;
+      return (result.rowCount ?? 0) > 0;
     } catch (error) {
       console.error("Failed to delete user KRA:", error);
       throw error;
@@ -6091,7 +6090,7 @@ export class DatabaseStorage implements IStorage {
       const result = await db
         .delete(actionItems)
         .where(and(eq(actionItems.organizationId, organizationId), eq(actionItems.id, id)));
-      return result.rowCount > 0;
+      return (result.rowCount ?? 0) > 0;
     } catch (error) {
       console.error("Failed to delete action item:", error);
       throw error;
@@ -8449,7 +8448,7 @@ export class MemStorage implements IStorage {
   }> {
     const history = this.getQuestionUsageHistory(organizationId, questionId);
     const uniqueUsers = new Set((await history).filter(h => h.userId).map(h => h.userId)).size;
-    const uniqueTeams = [...new Set((await history).filter(h => h.teamId).map(h => h.teamId))];
+    const uniqueTeams = Array.from(new Set((await history).filter(h => h.teamId).map(h => h.teamId)));
     const historyArray = await history;
     const lastAsked = historyArray.length > 0
       ? historyArray.reduce((latest, h) => h.createdAt > latest ? h.createdAt : latest, historyArray[0].createdAt)
@@ -8903,7 +8902,7 @@ export class MemStorage implements IStorage {
 
   async markAllNotificationsAsRead(organizationId: string, userId: string): Promise<number> {
     let count = 0;
-    for (const notification of this.notifications.values()) {
+    for (const notification of Array.from(this.notifications.values())) {
       if (notification.organizationId === organizationId && 
           notification.userId === userId && 
           !notification.isRead) {
@@ -10334,7 +10333,7 @@ export class MemStorage implements IStorage {
       const result = await db
         .delete(teamGoals)
         .where(and(eq(teamGoals.organizationId, organizationId), eq(teamGoals.id, id)));
-      return result.rowCount > 0;
+      return (result.rowCount ?? 0) > 0;
     } catch (error) {
       console.error("Failed to delete team goal:", error);
       throw error;

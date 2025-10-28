@@ -2274,8 +2274,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     if (action === 'set') {
       // Test setting session data
-      req.session.testData = data || 'test-value-' + Date.now();
-      req.session.testTime = new Date().toISOString();
+      (req.session as any).testData = data || 'test-value-' + Date.now();
+      (req.session as any).testTime = new Date().toISOString();
       
       // Force save the session
       req.session.save((err) => {
@@ -2287,8 +2287,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({
           message: 'Session data set',
           sessionId: req.sessionID,
-          data: req.session.testData,
-          time: req.session.testTime
+          data: (req.session as any).testData,
+          time: (req.session as any).testTime
         });
       });
     } else if (action === 'get') {
@@ -2296,8 +2296,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         message: 'Session data retrieved',
         sessionId: req.sessionID,
-        data: req.session.testData || null,
-        time: req.session.testTime || null,
+        data: (req.session as any).testData || null,
+        time: (req.session as any).testTime || null,
         userId: req.session.userId || null,
         organizationId: req.session.organizationId || null
       });
@@ -2678,7 +2678,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Check existing data
-        const users = await storage.getUsersByOrganization(req.orgId);
+        const users = await storage.getAllUsers(req.orgId);
         capabilities.hasMembers = users.length > 1; // More than just the admin
         capabilities.memberCount = users.length;
       }
@@ -3028,7 +3028,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Get existing users to mark them as already imported
-      const existingUsers = await storage.getUsersByOrganization(req.orgId);
+      const existingUsers = await storage.getAllUsers(req.orgId);
       const existingEmails = new Set(existingUsers.map(u => u.email.toLowerCase()));
       
       // Mark users as already imported if they exist
@@ -12123,8 +12123,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Generate state for CSRF protection
       const state = randomBytes(32).toString('hex');
-      req.session.slackBotOAuthState = state;
-      req.session.slackBotOAuthOrgId = req.orgId;
+      (req.session as any).slackBotOAuthState = state;
+      (req.session as any).slackBotOAuthOrgId = req.orgId;
       
       // Bot scopes needed for the application
       const scopes = [
@@ -12187,7 +12187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Validate state
-      const sessionState = req.session.slackBotOAuthState;
+      const sessionState = (req.session as any).slackBotOAuthState;
       console.log(`🔑 Bot OAuth state validation:`);
       console.log(`   Session state: ${sessionState?.substring(0, 8)}...`);
       console.log(`   Received state: ${state.substring(0, 8)}...`);
@@ -12197,7 +12197,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.redirect('/?error=state_mismatch');
       }
       
-      const orgId = req.session.slackBotOAuthOrgId;
+      const orgId = (req.session as any).slackBotOAuthOrgId;
       console.log(`🏢 Organization ID from session: ${orgId}`);
       
       if (!orgId) {
@@ -12215,8 +12215,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`✅ Found organization: ${organization.name} (ID: ${organization.id}, Slug: ${organization.slug})`);
       
       // Clear OAuth state early to prevent replay attacks
-      delete req.session.slackBotOAuthState;
-      delete req.session.slackBotOAuthOrgId;
+      delete (req.session as any).slackBotOAuthState;
+      delete (req.session as any).slackBotOAuthOrgId;
       
       // Exchange code for access token
       const clientId = process.env.SLACK_CLIENT_ID;
