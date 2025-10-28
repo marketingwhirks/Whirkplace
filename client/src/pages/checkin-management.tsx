@@ -430,7 +430,7 @@ export default function CheckinManagement() {
   // Fetch check-ins for review
   // CRITICAL: Don't include week in the query key for pending reviews - we want ALL pending reviews regardless of week
   const { data: reviewCheckins = { pending: [], reviewed: [], missing: [] }, isLoading: reviewCheckinsLoading } = useQuery({
-    queryKey: ["/api/checkins/reviews", "all-pending", selectedWeek.toISOString()],
+    queryKey: ["/api/checkins/reviews", "all-pending"], // No selectedWeek - we want ALL pending reviews
     queryFn: async () => {
       const weekStart = getWeekStartCentral(selectedWeek);
       
@@ -1512,7 +1512,7 @@ export default function CheckinManagement() {
                       ) : (
                         <div className="text-center py-8">
                           <p className="text-muted-foreground mb-2">
-                            No pending reviews for week of {format(selectedWeek, 'MMM d, yyyy')}
+                            No pending reviews
                           </p>
                           <p className="text-sm text-muted-foreground">
                             All check-ins have been reviewed or no submissions yet
