@@ -48,6 +48,12 @@ export default function ReviewModal({
   const [addToOneOnOne, setAddToOneOnOne] = useState(false);
   const [flagForFollowUp, setFlagForFollowUp] = useState(false);
   const [reviewComment, setReviewComment] = useState("");
+  const [responseComments, setResponseComments] = useState<Record<string, string>>(
+    checkin?.responseComments || {}
+  );
+  const [responseFlags, setResponseFlags] = useState<Record<string, { addToOneOnOne: boolean; flagForFollowUp: boolean }>>(
+    checkin?.responseFlags || {}
+  );
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [reviewAction, setReviewAction] = useState<"approve" | "reject" | null>(null);
 
@@ -110,6 +116,8 @@ export default function ReviewModal({
     const reviewData: ReviewCheckin = {
       reviewStatus: "reviewed",
       reviewComments: finalComments || undefined,
+      responseComments,
+      responseFlags,
       addToOneOnOne,
       flagForFollowUp,
     };
@@ -125,6 +133,8 @@ export default function ReviewModal({
     setAddToOneOnOne(false);
     setFlagForFollowUp(false);
     setReviewComment("");
+    setResponseComments({});
+    setResponseFlags({});
     setShowConfirmation(false);
     setReviewAction(null);
     onClose();
@@ -219,15 +229,125 @@ export default function ReviewModal({
                     No responses provided
                   </p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {Object.entries(checkin.responses as Record<string, string>).map(([questionId, response]) => {
-                      const question = questions.find(q => q.id === questionId);
+                      // Use questionSnapshots for question text if available
+                      const questionSnapshot = (checkin.questionSnapshots as any)?.[questionId];
+                      const questionText = questionSnapshot?.text || 
+                                         questions.find(q => q.id === questionId)?.text || 
+                                         `Question ${questionId}`;
+                      const questionFlags = responseFlags[questionId] || { addToOneOnOne: false, flagForFollowUp: false };
+                      const questionComment = responseComments[questionId] || '';
+                      
                       return (
-                        <div key={questionId} className="bg-muted p-3 rounded-lg">
-                          <p className="text-sm font-medium mb-1">
-                            {question?.text || `Question ${questionId}`}
-                          </p>
-                          <p className="text-sm text-muted-foreground">{response}</p>
+                        <div key={questionId} className="bg-muted p-4 rounded-lg space-y-3">
+                          <div>
+                            <p className="text-sm font-medium mb-2">
+                              {questionText}
+                            </p>
+                            <p className="text-sm text-muted-foreground">{response}</p>
+                          </div>
+                          
+                          {/* Per-question flags and comments (only if pending review) */}
+                          {checkin.reviewStatus === "pending" && !disabled && (
+                            <div className="space-y-3 pt-3 border-t border-border/50">
+                              {/* Flags */}
+                              <div className="flex flex-wrap gap-4">
+                                <div className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    id={`follow-up-${questionId}`}
+                                    checked={questionFlags.flagForFollowUp}
+                                    onChange={(e) => {
+                                      setResponseFlags(prev => ({
+                                        ...prev,
+                                        [questionId]: {
+                                          ...prev[questionId],
+                                          flagForFollowUp: e.target.checked
+                                        }
+                                      }));
+                                    }}
+                                    className="h-4 w-4 rounded border-gray-300"
+                                  />
+                                  <Label 
+                                    htmlFor={`follow-up-${questionId}`} 
+                                    className="text-xs font-normal cursor-pointer"
+                                  >
+                                    Flag for follow-up
+                                  </Label>
+                                </div>
+                                
+                                <div className="flex items-center space-x-2">
+                                  <input
+                                    type="checkbox"
+                                    id={`one-on-one-${questionId}`}
+                                    checked={questionFlags.addToOneOnOne}
+                                    onChange={(e) => {
+                                      setResponseFlags(prev => ({
+                                        ...prev,
+                                        [questionId]: {
+                                          ...prev[questionId],
+                                          addToOneOnOne: e.target.checked
+                                        }
+                                      }));
+                                    }}
+                                    className="h-4 w-4 rounded border-gray-300"
+                                  />
+                                  <Label 
+                                    htmlFor={`one-on-one-${questionId}`}
+                                    className="text-xs font-normal cursor-pointer"
+                                  >
+                                    Add to 1:1 agenda
+                                  </Label>
+                                </div>
+                              </div>
+                              
+                              {/* Comment */}
+                              <div className="space-y-1">
+                                <Label htmlFor={`comment-${questionId}`} className="text-xs">
+                                  Manager comment
+                                </Label>
+                                <input
+                                  type="text"
+                                  id={`comment-${questionId}`}
+                                  value={questionComment}
+                                  onChange={(e) => {
+                                    setResponseComments(prev => ({
+                                      ...prev,
+                                      [questionId]: e.target.value
+                                    }));
+                                  }}
+                                  placeholder="Add a comment about this response..."
+                                  className="w-full text-xs px-2 py-1 border rounded-md bg-background"
+                                />
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Show existing flags/comments if already reviewed */}
+                          {checkin.reviewStatus === "reviewed" && (questionFlags.flagForFollowUp || questionFlags.addToOneOnOne || questionComment) && (
+                            <div className="pt-3 border-t border-border/50 space-y-2">
+                              {(questionFlags.flagForFollowUp || questionFlags.addToOneOnOne) && (
+                                <div className="flex flex-wrap gap-3">
+                                  {questionFlags.flagForFollowUp && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      Flagged for follow-up
+                                    </Badge>
+                                  )}
+                                  {questionFlags.addToOneOnOne && (
+                                    <Badge variant="secondary" className="text-xs">
+                                      Added to 1:1 agenda
+                                    </Badge>
+                                  )}
+                                </div>
+                              )}
+                              {questionComment && (
+                                <p className="text-xs text-muted-foreground">
+                                  <span className="font-medium">Manager comment:</span> {questionComment}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

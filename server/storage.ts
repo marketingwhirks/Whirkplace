@@ -2808,6 +2808,7 @@ export class DatabaseStorage implements IStorage {
         reviewedOnTime,
         reviewComments: reviewData.reviewComments || null,
         responseComments: reviewData.responseComments || {},
+        responseFlags: reviewData.responseFlags || {},
         addToOneOnOne: reviewData.addToOneOnOne || false,
         flagForFollowUp: reviewData.flagForFollowUp || false,
       })

@@ -1161,6 +1161,10 @@ export const reviewCheckinSchema = z.object({
   reviewStatus: z.enum([ReviewStatus.PENDING, ReviewStatus.REVIEWED]),
   reviewComments: z.string().max(1000, "Review comments too long").optional(),
   responseComments: z.record(z.string(), z.string().max(500, "Response comment too long")).optional(), // question_id -> comment
+  responseFlags: z.record(z.string(), z.object({ 
+    addToOneOnOne: z.boolean(), 
+    flagForFollowUp: z.boolean() 
+  })).optional(), // question_id -> flags
   addToOneOnOne: z.boolean().optional(),
   flagForFollowUp: z.boolean().optional(),
   // reviewedBy and reviewedAt are set automatically server-side
