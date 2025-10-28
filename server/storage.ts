@@ -1023,6 +1023,36 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
+  async syncManagersFromTeamLeaders(orgId: string): Promise<{ updated: number; message: string }> {
+    try {
+      console.log(`[syncManagersFromTeamLeaders] Starting sync for organization ${orgId}`);
+      
+      // Update all users without managers to have their team leader as manager
+      const result = await db.execute(sql`
+        UPDATE users u
+        SET manager_id = t.leader_id
+        FROM teams t
+        WHERE u.team_id = t.id
+          AND u.organization_id = ${orgId}
+          AND u.manager_id IS NULL
+          AND t.leader_id IS NOT NULL
+          AND u.is_active = true
+          AND u.id != t.leader_id
+      `);
+      
+      const rowCount = result.rowCount || 0;
+      console.log(`[syncManagersFromTeamLeaders] Synced managers for ${rowCount} users in organization ${orgId}`);
+      
+      return {
+        updated: rowCount,
+        message: `Successfully synced ${rowCount} users with their team leaders as managers`
+      };
+    } catch (error) {
+      console.error('[syncManagersFromTeamLeaders] Error syncing managers:', error);
+      throw error;
+    }
+  }
+
   // Password Reset Methods
   async createPasswordResetToken(userId: string): Promise<string> {
     try {
@@ -2562,6 +2592,8 @@ export class DatabaseStorage implements IStorage {
 
   // Check-in Review Methods
   async getPendingCheckins(organizationId: string, reviewerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]> {
+    console.log(`[getPendingCheckins] Starting - orgId: ${organizationId}, reviewerId: ${reviewerId}, includeOwnIfNoManager: ${includeOwnIfNoManager}`);
+    
     const whereConditions = [
       eq(checkins.organizationId, organizationId),
       eq(checkins.reviewStatus, ReviewStatus.PENDING),
@@ -2569,73 +2601,100 @@ export class DatabaseStorage implements IStorage {
     ];
 
     if (reviewerId) {
+      console.log(`[getPendingCheckins] Finding users to review for reviewer: ${reviewerId}`);
       // Get all users who should be reviewed by this reviewer
       const usersToReview: string[] = [];
       
       // 1. Get users with this person as custom reviewer
       const customReviewees = await db
-        .select({ id: users.id })
+        .select({ id: users.id, name: users.name, email: users.email })
         .from(users)
         .where(and(
           eq(users.organizationId, organizationId),
           eq(users.reviewerId, reviewerId),
           eq(users.isActive, true)
         ));
+      console.log(`[getPendingCheckins] Custom reviewees: ${customReviewees.length}`, customReviewees.map(u => ({ id: u.id, name: u.name })));
       usersToReview.push(...customReviewees.map(u => u.id));
       
       // 2. Get teams where this person is the leader
       const ledTeams = await db
-        .select({ id: teams.id })
+        .select({ id: teams.id, name: teams.name })
         .from(teams)
         .where(and(
           eq(teams.organizationId, organizationId),
           eq(teams.leaderId, reviewerId)
         ));
+      console.log(`[getPendingCheckins] Teams led by reviewer: ${ledTeams.length}`, ledTeams.map(t => ({ id: t.id, name: t.name })));
       
       if (ledTeams.length > 0) {
         const teamMembers = await db
-          .select({ id: users.id, reviewerId: users.reviewerId })
+          .select({ id: users.id, name: users.name, reviewerId: users.reviewerId, managerId: users.managerId })
           .from(users)
           .where(and(
             eq(users.organizationId, organizationId),
             inArray(users.teamId, ledTeams.map(t => t.id)),
             eq(users.isActive, true)
           ));
+        console.log(`[getPendingCheckins] Team members found: ${teamMembers.length}`, teamMembers.map(u => ({ id: u.id, name: u.name, reviewerId: u.reviewerId, managerId: u.managerId })));
         // Only include team members who don't have a custom reviewer
         const teamMembersToReview = teamMembers
           .filter(u => !u.reviewerId && u.id !== reviewerId)
           .map(u => u.id);
+        console.log(`[getPendingCheckins] Team members to review (no custom reviewer): ${teamMembersToReview.length}`);
         usersToReview.push(...teamMembersToReview);
       }
       
       // 3. For backward compatibility, also get direct reports (manager relationship)
       const directReports = await this.getUsersByManager(organizationId, reviewerId, true);
+      console.log(`[getPendingCheckins] Direct reports (managerId=${reviewerId}): ${directReports.length}`, directReports.map(u => ({ id: u.id, name: u.name, reviewerId: u.reviewerId })));
       const reportIds = directReports
         .filter(u => !u.reviewerId && !usersToReview.includes(u.id))
         .map(u => u.id);
+      console.log(`[getPendingCheckins] Direct reports to review (no custom reviewer, not already included): ${reportIds.length}`);
       usersToReview.push(...reportIds);
       
       // 4. Include self if has no reviewer and includeOwnIfNoManager is true
       if (includeOwnIfNoManager) {
         const reviewer = await this.getUser(organizationId, reviewerId);
+        console.log(`[getPendingCheckins] Reviewer details:`, { id: reviewer?.id, name: reviewer?.name, reviewerId: reviewer?.reviewerId, managerId: reviewer?.managerId });
         if (reviewer && !reviewer.reviewerId && !reviewer.managerId) {
           const reviewerTeam = reviewer.teamId ? await this.getTeam(organizationId, reviewer.teamId) : null;
+          console.log(`[getPendingCheckins] Reviewer's team:`, { teamId: reviewer.teamId, teamLeader: reviewerTeam?.leaderId });
           if (!reviewerTeam || reviewerTeam.leaderId !== reviewerId) {
+            console.log(`[getPendingCheckins] Including self for review`);
             usersToReview.push(reviewerId);
           }
         }
       }
       
-      if (usersToReview.length === 0) return [];
+      const uniqueUsersToReview = [...new Set(usersToReview)];
+      console.log(`[getPendingCheckins] Total unique users to review: ${uniqueUsersToReview.length}`, uniqueUsersToReview);
       
-      whereConditions.push(inArray(checkins.userId, [...new Set(usersToReview)]));
+      if (usersToReview.length === 0) {
+        console.log(`[getPendingCheckins] No users to review, returning empty array`);
+        return [];
+      }
+      
+      whereConditions.push(inArray(checkins.userId, uniqueUsersToReview));
     }
 
-    return await db
+    console.log(`[getPendingCheckins] Executing query with conditions`);
+    const results = await db
       .select()
       .from(checkins)
       .where(and(...whereConditions))
       .orderBy(desc(checkins.createdAt));
+    
+    console.log(`[getPendingCheckins] Found ${results.length} pending check-ins`, results.map(c => ({ 
+      id: c.id, 
+      userId: c.userId, 
+      weekOf: c.weekOf, 
+      reviewStatus: c.reviewStatus,
+      isComplete: c.isComplete 
+    })));
+    
+    return results;
   }
 
   async reviewCheckin(organizationId: string, checkinId: string, reviewedBy: string, reviewData: ReviewCheckin): Promise<Checkin | undefined> {

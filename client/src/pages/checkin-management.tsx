@@ -446,7 +446,24 @@ export default function CheckinManagement() {
       console.log('[REVIEWS] Response data:', {
         pending: data.pending?.length || 0,
         reviewed: data.reviewed?.length || 0,
-        missing: data.missing?.length || 0
+        missing: data.missing?.length || 0,
+        pendingDetails: data.pending?.map((p: any) => ({
+          id: p.id,
+          userId: p.userId,
+          userName: p.user?.name,
+          weekOf: p.weekOf,
+          reviewStatus: p.reviewStatus,
+          isComplete: p.isComplete,
+          submittedAt: p.submittedAt
+        })),
+        reviewedDetails: data.reviewed?.map((r: any) => ({
+          id: r.id,
+          userId: r.userId,
+          userName: r.user?.name,
+          weekOf: r.weekOf,
+          reviewedBy: r.reviewedBy,
+          reviewedAt: r.reviewedAt
+        }))
       });
       
       return data;
@@ -480,6 +497,22 @@ export default function CheckinManagement() {
     },
     enabled: !userLoading && !!currentUser && canSendReminders && isCurrentWeek,
   });
+
+  // Debug effect to log reviewCheckins when they change
+  useEffect(() => {
+    if (reviewCheckins) {
+      console.log('[REVIEWS DEBUG] reviewCheckins updated:', {
+        activeTab,
+        reviewsTab,
+        selectedWeek: selectedWeek.toISOString(),
+        pendingCount: reviewCheckins.pending?.length || 0,
+        reviewedCount: reviewCheckins.reviewed?.length || 0,
+        missingCount: reviewCheckins.missing?.length || 0,
+        pendingIds: reviewCheckins.pending?.map((p: any) => p.id) || [],
+        pendingUsers: reviewCheckins.pending?.map((p: any) => ({ userId: p.userId, userName: p.user?.name, weekOf: p.weekOf })) || []
+      });
+    }
+  }, [reviewCheckins, activeTab, reviewsTab]);
 
   // Create check-in form with dynamic schema based on questions
   const form = useForm<CheckinForm>({
