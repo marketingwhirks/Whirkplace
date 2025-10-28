@@ -11996,6 +11996,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Manager sync endpoint - syncs team leaders as managers for their team members
+  app.post("/api/admin/sync-managers", requireAuth(), requireRole('admin'), async (req, res) => {
+    try {
+      console.log(`👥 Starting manager sync for organization: ${req.orgId}`);
+      
+      // Perform the sync using the storage method
+      const result = await storage.syncManagersFromTeamLeaders(req.orgId);
+      
+      console.log(`✅ Manager sync completed: ${result.updated} users updated`);
+      
+      res.json({
+        message: result.message,
+        updated: result.updated
+      });
+    } catch (error: any) {
+      console.error("Failed to sync managers:", error);
+      res.status(500).json({ 
+        message: "Failed to sync managers from team leaders",
+        error: error.message 
+      });
+    }
+  });
+
   // NEW: Simplified integrations endpoint that uses current user's organization
   // This endpoint serves as a wrapper for the existing /api/organizations/:id/integrations endpoint
   // It automatically uses the authenticated user's organization ID from req.orgId

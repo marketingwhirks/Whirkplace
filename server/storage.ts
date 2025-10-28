@@ -155,6 +155,7 @@ export interface IStorage {
   getTeamMembersByLeader(organizationId: string, leaderId: string): Promise<User[]>;
   getAllUsers(organizationId: string, includeInactive?: boolean): Promise<User[]>;
   getUserOrganizations(email: string): Promise<Array<{user: User; organization: Organization}>>;
+  syncManagersFromTeamLeaders(organizationId: string): Promise<{ updated: number; message: string }>;
 
   // Password Reset
   createPasswordResetToken(userId: string): Promise<string>;
@@ -809,6 +810,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createUser(organizationId: string, insertUser: InsertUser): Promise<User> {
+    // If user has a team but no manager, auto-assign team leader as manager
+    let managerId = insertUser.managerId ?? null;
+    
+    if (insertUser.teamId && !managerId) {
+      // Get the team to check if it has a leader
+      const team = await this.getTeam(organizationId, insertUser.teamId);
+      if (team && team.leaderId) {
+        // Don't make someone their own manager
+        if (insertUser.id !== team.leaderId) {
+          managerId = team.leaderId;
+          console.log(`Auto-assigning team leader ${team.leaderId} as manager for new user`);
+        }
+      }
+    }
+    
     const userValues = {
       username: insertUser.username,
       password: insertUser.password ?? '',
@@ -817,7 +833,7 @@ export class DatabaseStorage implements IStorage {
       organizationId,
       role: insertUser.role ?? "member",
       teamId: insertUser.teamId ?? null,
-      managerId: insertUser.managerId ?? null,
+      managerId,
       avatar: insertUser.avatar ?? null,
       slackUserId: insertUser.slackUserId ?? null,
       slackUsername: insertUser.slackUsername ?? null,
@@ -846,6 +862,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUser(organizationId: string, id: string, userUpdate: Partial<InsertUser>): Promise<User | undefined> {
+    // Check if team is being updated
+    if (userUpdate.teamId !== undefined) {
+      // Get the existing user to check current manager
+      const existingUser = await this.getUser(organizationId, id);
+      
+      // If user's team is changing and they don't have a manager in the update
+      // and their current manager is null, auto-assign the new team's leader
+      if (existingUser && !existingUser.managerId && userUpdate.managerId === undefined && userUpdate.teamId) {
+        // Get the new team to check if it has a leader
+        const newTeam = await this.getTeam(organizationId, userUpdate.teamId);
+        if (newTeam && newTeam.leaderId) {
+          // Don't make someone their own manager
+          if (id !== newTeam.leaderId) {
+            userUpdate.managerId = newTeam.leaderId;
+            console.log(`Auto-assigning team leader ${newTeam.leaderId} as manager for user ${id} when joining team ${userUpdate.teamId}`);
+          }
+        }
+      }
+    }
+    
     const [user] = await db
       .update(users)
       .set(userUpdate)
@@ -1421,6 +1457,49 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateTeam(organizationId: string, id: string, teamUpdate: Partial<InsertTeam>): Promise<Team | undefined> {
+    // If the team leader is being updated, cascade the manager update to team members
+    if (teamUpdate.leaderId !== undefined) {
+      // Get the existing team to check if leader is actually changing
+      const existingTeam = await this.getTeam(organizationId, id);
+      
+      if (existingTeam && existingTeam.leaderId !== teamUpdate.leaderId) {
+        console.log(`Team leader changing from ${existingTeam.leaderId} to ${teamUpdate.leaderId} for team ${id}`);
+        
+        // Get all users in this team who currently have no manager or have the old leader as manager
+        const teamMembers = await db
+          .select()
+          .from(users)
+          .where(and(
+            eq(users.organizationId, organizationId),
+            eq(users.teamId, id),
+            eq(users.isActive, true),
+            or(
+              isNull(users.managerId),
+              existingTeam.leaderId ? eq(users.managerId, existingTeam.leaderId) : sql`false`
+            )
+          ));
+        
+        // Update each team member's manager to the new leader if applicable
+        for (const member of teamMembers) {
+          // Don't make someone their own manager
+          if (teamUpdate.leaderId && member.id !== teamUpdate.leaderId) {
+            await db
+              .update(users)
+              .set({ managerId: teamUpdate.leaderId })
+              .where(eq(users.id, member.id));
+            console.log(`Updated manager for user ${member.id} to new team leader ${teamUpdate.leaderId}`);
+          } else if (!teamUpdate.leaderId && member.managerId === existingTeam.leaderId) {
+            // If leader is being removed and user's manager was the old leader, clear the manager
+            await db
+              .update(users)
+              .set({ managerId: null })
+              .where(eq(users.id, member.id));
+            console.log(`Cleared manager for user ${member.id} as team leader was removed`);
+          }
+        }
+      }
+    }
+    
     const [team] = await db
       .update(teams)
       .set(teamUpdate)
@@ -10502,6 +10581,71 @@ export class MemStorage implements IStorage {
       }];
     } catch (error) {
       console.error("Failed to get missing check-ins:", error);
+      throw error;
+    }
+  }
+
+  // Manager Sync from Team Leaders
+  async syncManagersFromTeamLeaders(organizationId: string): Promise<{ updated: number; message: string }> {
+    try {
+      console.log(`Starting manager sync from team leaders for organization: ${organizationId}`);
+      
+      // Get all teams with leaders in the organization
+      const teamsWithLeaders = await db
+        .select()
+        .from(teams)
+        .where(and(
+          eq(teams.organizationId, organizationId),
+          sql`${teams.leaderId} IS NOT NULL`
+        ));
+      
+      let totalUpdated = 0;
+      const updates: Array<{ userId: string; teamId: string; newManagerId: string }> = [];
+      
+      // Process each team
+      for (const team of teamsWithLeaders) {
+        if (!team.leaderId) continue;
+        
+        // Get all users in this team who don't have a manager set
+        const usersWithoutManager = await db
+          .select()
+          .from(users)
+          .where(and(
+            eq(users.organizationId, organizationId),
+            eq(users.teamId, team.id),
+            isNull(users.managerId),
+            eq(users.isActive, true),
+            // Don't make someone their own manager
+            sql`${users.id} != ${team.leaderId}`
+          ));
+        
+        // Update each user to have the team leader as their manager
+        for (const user of usersWithoutManager) {
+          await db
+            .update(users)
+            .set({ managerId: team.leaderId })
+            .where(eq(users.id, user.id));
+          
+          updates.push({
+            userId: user.id,
+            teamId: team.id,
+            newManagerId: team.leaderId
+          });
+          
+          totalUpdated++;
+        }
+      }
+      
+      const message = totalUpdated > 0 
+        ? `Successfully synced ${totalUpdated} users with their team leaders as managers`
+        : 'No users needed manager sync (all users already have managers or no team leaders assigned)';
+      
+      console.log(message);
+      console.log('Sync details:', updates);
+      
+      return { updated: totalUpdated, message };
+    } catch (error) {
+      console.error('Failed to sync managers from team leaders:', error);
       throw error;
     }
   }

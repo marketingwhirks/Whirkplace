@@ -246,15 +246,45 @@ export default function Admin() {
     createAnnouncementMutation.mutate(data);
   };
 
+  // Sync managers mutation
+  const syncManagersMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/admin/sync-managers", {});
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw error;
+      }
+      
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams"] });
+      toast({
+        title: "Manager sync completed",
+        description: data.message || "Successfully synchronized team managers",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive", 
+        title: "Sync failed",
+        description: error.message || "Failed to sync team managers",
+      });
+    },
+  });
+
   // Bulk import mutation
   const bulkImportMutation = useMutation({
     mutationFn: async (file: File) => {
-      const response = await apiRequest("/api/admin/users/bulk-import", {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch("/api/admin/users/bulk-import", {
         method: "POST",
-        headers: {
-          "Content-Type": "text/csv",
-        },
-        body: file,
+        credentials: "include",
+        body: formData,
       });
       
       if (!response.ok) {
@@ -1414,13 +1444,24 @@ export default function Admin() {
                 <Building2 className="w-5 h-5" />
                 Teams Management
               </CardTitle>
-              <Button 
-                onClick={() => setShowCreateTeam(true)}
-                data-testid="button-create-team"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Create Team
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline"
+                  onClick={() => syncManagersMutation.mutate()}
+                  disabled={syncManagersMutation.isPending}
+                  data-testid="button-sync-managers"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${syncManagersMutation.isPending ? 'animate-spin' : ''}`} />
+                  {syncManagersMutation.isPending ? 'Syncing...' : 'Sync Managers'}
+                </Button>
+                <Button 
+                  onClick={() => setShowCreateTeam(true)}
+                  data-testid="button-create-team"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Team
+                </Button>
+              </div>
             </div>
           </CardHeader>
           <CardContent>
