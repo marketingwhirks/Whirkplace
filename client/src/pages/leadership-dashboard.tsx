@@ -4,7 +4,7 @@ import { formatDistanceToNow, format, subDays, startOfWeek, endOfWeek } from "da
 import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Users, Filter,
   Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer, FileText,
-  AlertCircle, AlertTriangle, UserX, ClipboardList, Send, Flame
+  AlertCircle, AlertTriangle, UserX, ClipboardList, Send, Flame, Check
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import RatingStars from "@/components/checkin/rating-stars";
 import type { Checkin, User as UserType, Team, Question, ComplianceMetricsResult } from "@shared/schema";
 import { DateRange } from "react-day-picker";
@@ -176,6 +176,33 @@ export default function LeadershipDashboard() {
       toast({
         title: "Error",
         description: "Failed to send reminders. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Mutation for marking reviews as reviewed
+  const markAsReviewedMutation = useMutation({
+    mutationFn: async (checkinId: string) => {
+      const response = await apiRequest('PATCH', `/api/checkins/${checkinId}/review`, { 
+        reviewStatus: 'reviewed',
+        reviewNotes: 'Reviewed from Leadership Dashboard'
+      });
+      return response.json();
+    },
+    onSuccess: (data, checkinId) => {
+      toast({
+        title: "Review Marked as Complete",
+        description: "The check-in has been marked as reviewed.",
+      });
+      // Invalidate the queries to refresh the data
+      queryClient.invalidateQueries({ queryKey: ["/api/compliance/pending-reviews"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/checkins/leadership-view"] });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to mark review as complete. Please try again.",
         variant: "destructive",
       });
     },
@@ -925,15 +952,41 @@ export default function LeadershipDashboard() {
                               <Clock className="w-3 h-3 mr-1" />
                               {review.daysPending} {review.daysPending === 1 ? "day" : "days"} pending
                             </Badge>
-                            <Button 
-                              size="sm"
-                              variant="outline"
-                              className="text-xs h-6 px-2"
-                              data-testid={`button-review-${review.id}`}
-                            >
-                              <Eye className="w-3 h-3 mr-1" />
-                              Review
-                            </Button>
+                            <div className="flex gap-1">
+                              <Button 
+                                size="sm"
+                                variant="outline"
+                                className="text-xs h-6 px-2"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  window.location.href = `/checkins?checkinId=${review.id}`;
+                                }}
+                                data-testid={`button-view-${review.id}`}
+                              >
+                                <Eye className="w-3 h-3 mr-1" />
+                                View
+                              </Button>
+                              <Button 
+                                size="sm"
+                                variant="default"
+                                className="text-xs h-6 px-2"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  markAsReviewedMutation.mutate(review.id);
+                                }}
+                                disabled={markAsReviewedMutation.isPending}
+                                data-testid={`button-mark-reviewed-${review.id}`}
+                              >
+                                {markAsReviewedMutation.isPending ? (
+                                  <Clock className="w-3 h-3 animate-spin" />
+                                ) : (
+                                  <>
+                                    <Check className="w-3 h-3 mr-1" />
+                                    Mark Reviewed
+                                  </>
+                                )}
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </Link>

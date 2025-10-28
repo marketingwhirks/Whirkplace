@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Users, UserCog, ChevronDown, ChevronRight, Building, Target, 
   Shield, CheckCircle, Clock, AlertCircle, User, Briefcase,
@@ -23,6 +23,11 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import {
   Select,
   SelectContent,
@@ -33,6 +38,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 interface UserKra {
   id: string;
@@ -217,15 +223,141 @@ function QuickActionsPanel() {
   );
 }
 
+// Form validation schemas
+const assignLeaderSchema = z.object({
+  leaderId: z.string().optional(),
+});
+
+const assignManagerSchema = z.object({
+  managerId: z.string().min(1, "Please select a manager"),
+});
+
+const assignReviewerSchema = z.object({
+  reviewerId: z.string().min(1, "Please select a reviewer"),
+});
+
+type AssignLeaderFormData = z.infer<typeof assignLeaderSchema>;
+type AssignManagerFormData = z.infer<typeof assignManagerSchema>;
+type AssignReviewerFormData = z.infer<typeof assignReviewerSchema>;
+
 function TeamCard({ team, isAdmin }: { team: Team; isAdmin: boolean }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [selectedMemberForManager, setSelectedMemberForManager] = useState<TeamMember | null>(null);
+  const [selectedMemberForReviewer, setSelectedMemberForReviewer] = useState<TeamMember | null>(null);
+  const [showAssignLeaderDialog, setShowAssignLeaderDialog] = useState(false);
   const { toast } = useToast();
 
+  // Fetch users for dropdowns
+  const { data: users = [] } = useQuery<Array<{
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    teamId?: string | null;
+  }>>({
+    queryKey: ["/api/users"],
+  });
+
+  // Forms for dialogs
+  const assignLeaderForm = useForm<AssignLeaderFormData>({
+    resolver: zodResolver(assignLeaderSchema),
+    defaultValues: {
+      leaderId: team.leaderId || "",
+    },
+  });
+
+  const assignManagerForm = useForm<AssignManagerFormData>({
+    resolver: zodResolver(assignManagerSchema),
+    defaultValues: {
+      managerId: "",
+    },
+  });
+
+  const assignReviewerForm = useForm<AssignReviewerFormData>({
+    resolver: zodResolver(assignReviewerSchema),
+    defaultValues: {
+      reviewerId: "",
+    },
+  });
+
+  // Mutations
+  const updateTeamLeaderMutation = useMutation({
+    mutationFn: async (data: { teamId: string; leaderId?: string }) => {
+      const response = await apiRequest("PATCH", `/api/teams/${data.teamId}`, {
+        leaderId: data.leaderId || null,
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Team Leader Updated",
+        description: data.message || "Successfully updated team leader",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams/with-kras"] });
+      setShowAssignLeaderDialog(false);
+      assignLeaderForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to update team leader",
+        description: error.message || "An error occurred",
+      });
+    },
+  });
+
+  const updateUserManagerMutation = useMutation({
+    mutationFn: async (data: { userId: string; managerId: string }) => {
+      const response = await apiRequest("PATCH", `/api/users/${data.userId}`, {
+        managerId: data.managerId,
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Manager Updated",
+        description: data.message || "Successfully updated user's manager",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams/with-kras"] });
+      setSelectedMemberForManager(null);
+      assignManagerForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to update manager",
+        description: error.message || "An error occurred",
+      });
+    },
+  });
+
+  const updateUserReviewerMutation = useMutation({
+    mutationFn: async (data: { userId: string; reviewerId: string }) => {
+      const response = await apiRequest("PATCH", `/api/users/${data.userId}`, {
+        customReviewerId: data.reviewerId,
+      });
+      return response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Reviewer Updated",
+        description: data.message || "Successfully updated user's reviewer",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/teams/with-kras"] });
+      setSelectedMemberForReviewer(null);
+      assignReviewerForm.reset();
+    },
+    onError: (error: any) => {
+      toast({
+        variant: "destructive",
+        title: "Failed to update reviewer",
+        description: error.message || "An error occurred",
+      });
+    },
+  });
+
   const handleEditTeam = () => {
-    toast({
-      title: "Edit Team",
-      description: "Team editing coming soon",
-    });
+    setShowAssignLeaderDialog(true);
   };
 
   const handleDeleteTeam = () => {
@@ -251,23 +383,44 @@ function TeamCard({ team, isAdmin }: { team: Team; isAdmin: boolean }) {
     });
   };
 
-  const handleChangeManager = (memberId: string, memberName: string) => {
-    toast({
-      title: "Change Manager",
-      description: `Manager change coming soon for ${memberName}`,
+  const handleSetReviewer = (member: TeamMember) => {
+    setSelectedMemberForReviewer(member);
+    assignReviewerForm.setValue("reviewerId", "");
+  };
+
+  const handleChangeManager = (member: TeamMember) => {
+    setSelectedMemberForManager(member);
+    assignManagerForm.setValue("managerId", member.managerId || "");
+  };
+
+  // Form submit handlers
+  const handleAssignLeaderSubmit = (data: AssignLeaderFormData) => {
+    updateTeamLeaderMutation.mutate({
+      teamId: team.id,
+      leaderId: data.leaderId === "no-leader" ? undefined : data.leaderId,
     });
   };
 
-  const handleSetReviewer = (member: TeamMember) => {
-    // For now, show a toast with placeholder
-    toast({
-      title: "Set Custom Reviewer",
-      description: `Custom reviewer assignment for ${member.name} coming soon`,
-    });
-    // TODO: Open a dialog to select a reviewer from available managers/leaders
+  const handleAssignManagerSubmit = (data: AssignManagerFormData) => {
+    if (selectedMemberForManager) {
+      updateUserManagerMutation.mutate({
+        userId: selectedMemberForManager.id,
+        managerId: data.managerId,
+      });
+    }
+  };
+
+  const handleAssignReviewerSubmit = (data: AssignReviewerFormData) => {
+    if (selectedMemberForReviewer) {
+      updateUserReviewerMutation.mutate({
+        userId: selectedMemberForReviewer.id,
+        reviewerId: data.reviewerId,
+      });
+    }
   };
   
   return (
+    <>
     <Card className="mb-4">
       <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
         <CollapsibleTrigger asChild>
@@ -358,7 +511,7 @@ function TeamCard({ team, isAdmin }: { team: Team; isAdmin: boolean }) {
                     <Button 
                       variant="ghost" 
                       size="sm"
-                      onClick={() => handleChangeManager(team.leaderId || '', team.leaderName || '')}
+                      onClick={handleEditTeam}
                       data-testid={`button-change-leader-${team.id}`}
                     >
                       <Edit className="w-3 h-3 mr-1" />
@@ -460,7 +613,7 @@ function TeamCard({ team, isAdmin }: { team: Team; isAdmin: boolean }) {
                               <UserCheck className="w-4 h-4 mr-2" />
                               Set Custom Reviewer
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleChangeManager(member.id, member.name)}>
+                            <DropdownMenuItem onClick={() => handleChangeManager(member)}>
                               <UserCog className="w-4 h-4 mr-2" />
                               Change Manager
                             </DropdownMenuItem>
@@ -525,6 +678,191 @@ function TeamCard({ team, isAdmin }: { team: Team; isAdmin: boolean }) {
         </CollapsibleContent>
       </Collapsible>
     </Card>
+
+    {/* Assign Team Leader Dialog */}
+    <Dialog open={showAssignLeaderDialog} onOpenChange={setShowAssignLeaderDialog}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assign Team Leader</DialogTitle>
+          <DialogDescription>
+            Select a team leader for {team.name}. Only managers and admins can be team leaders.
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...assignLeaderForm}>
+          <form onSubmit={assignLeaderForm.handleSubmit(handleAssignLeaderSubmit)} className="space-y-4">
+            <FormField
+              control={assignLeaderForm.control}
+              name="leaderId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Team Leader</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid={`select-team-leader-${team.id}`}>
+                        <SelectValue placeholder="Select a team leader" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="no-leader" data-testid="option-no-leader">No Leader</SelectItem>
+                      {users
+                        .filter(user => user.role === "manager" || user.role === "admin")
+                        .map((user) => (
+                          <SelectItem 
+                            key={user.id} 
+                            value={user.id} 
+                            data-testid={`option-leader-${user.id}`}
+                          >
+                            {user.name} ({user.role})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end gap-2">
+              <Button 
+                type="button"
+                variant="outline" 
+                onClick={() => setShowAssignLeaderDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={updateTeamLeaderMutation.isPending}
+              >
+                {updateTeamLeaderMutation.isPending ? "Updating..." : "Update Leader"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+
+    {/* Assign Manager Dialog */}
+    <Dialog open={!!selectedMemberForManager} onOpenChange={(open) => !open && setSelectedMemberForManager(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assign Manager</DialogTitle>
+          <DialogDescription>
+            Select a manager for {selectedMemberForManager?.name}. Managers can review team members' check-ins.
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...assignManagerForm}>
+          <form onSubmit={assignManagerForm.handleSubmit(handleAssignManagerSubmit)} className="space-y-4">
+            <FormField
+              control={assignManagerForm.control}
+              name="managerId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Manager</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid={`select-manager-${selectedMemberForManager?.id}`}>
+                        <SelectValue placeholder="Select a manager" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {users
+                        .filter(user => (user.role === "manager" || user.role === "admin") && user.id !== selectedMemberForManager?.id)
+                        .map((user) => (
+                          <SelectItem 
+                            key={user.id} 
+                            value={user.id} 
+                            data-testid={`option-manager-${user.id}`}
+                          >
+                            {user.name} ({user.role})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end gap-2">
+              <Button 
+                type="button"
+                variant="outline" 
+                onClick={() => setSelectedMemberForManager(null)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={updateUserManagerMutation.isPending}
+              >
+                {updateUserManagerMutation.isPending ? "Updating..." : "Update Manager"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+
+    {/* Assign Custom Reviewer Dialog */}
+    <Dialog open={!!selectedMemberForReviewer} onOpenChange={(open) => !open && setSelectedMemberForReviewer(null)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Set Custom Reviewer</DialogTitle>
+          <DialogDescription>
+            Select a custom reviewer for {selectedMemberForReviewer?.name}. This overrides the default manager-based review.
+          </DialogDescription>
+        </DialogHeader>
+        <Form {...assignReviewerForm}>
+          <form onSubmit={assignReviewerForm.handleSubmit(handleAssignReviewerSubmit)} className="space-y-4">
+            <FormField
+              control={assignReviewerForm.control}
+              name="reviewerId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Custom Reviewer</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid={`select-reviewer-${selectedMemberForReviewer?.id}`}>
+                        <SelectValue placeholder="Select a reviewer" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {users
+                        .filter(user => (user.role === "manager" || user.role === "admin") && user.id !== selectedMemberForReviewer?.id)
+                        .map((user) => (
+                          <SelectItem 
+                            key={user.id} 
+                            value={user.id} 
+                            data-testid={`option-reviewer-${user.id}`}
+                          >
+                            {user.name} ({user.role})
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <div className="flex justify-end gap-2">
+              <Button 
+                type="button"
+                variant="outline" 
+                onClick={() => setSelectedMemberForReviewer(null)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                type="submit"
+                disabled={updateUserReviewerMutation.isPending}
+              >
+                {updateUserReviewerMutation.isPending ? "Updating..." : "Update Reviewer"}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

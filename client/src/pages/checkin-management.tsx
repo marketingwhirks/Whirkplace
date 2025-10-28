@@ -428,17 +428,21 @@ export default function CheckinManagement() {
   });
 
   // Fetch check-ins for review
+  // CRITICAL: Don't include week in the query key for pending reviews - we want ALL pending reviews regardless of week
   const { data: reviewCheckins = { pending: [], reviewed: [], missing: [] }, isLoading: reviewCheckinsLoading } = useQuery({
-    queryKey: ["/api/checkins/reviews", selectedWeek.toISOString()],
+    queryKey: ["/api/checkins/reviews", "all-pending", selectedWeek.toISOString()],
     queryFn: async () => {
       const weekStart = getWeekStartCentral(selectedWeek);
       
       console.log('[REVIEWS] Debug week calculation:', {
         selectedWeek: selectedWeek.toISOString(),
         weekStart: weekStart.toISOString(),
-        isCurrentWeek
+        isCurrentWeek,
+        note: 'Server will return ALL pending reviews regardless of week'
       });
       
+      // The server returns ALL pending reviews regardless of week
+      // But we still send weekStart for reviewed/missing filtering
       const response = await fetch(`/api/checkins/reviews?weekStart=${weekStart.toISOString()}`);
       if (!response.ok) throw new Error("Failed to fetch review check-ins");
       const data = await response.json();
@@ -447,6 +451,8 @@ export default function CheckinManagement() {
         pending: data.pending?.length || 0,
         reviewed: data.reviewed?.length || 0,
         missing: data.missing?.length || 0,
+        pendingNote: 'Pending shows ALL pending reviews regardless of selected week',
+        reviewedNote: 'Reviewed shows only for the selected week',
         pendingDetails: data.pending?.map((p: any) => ({
           id: p.id,
           userId: p.userId,
