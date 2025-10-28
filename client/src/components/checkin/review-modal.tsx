@@ -51,9 +51,21 @@ export default function ReviewModal({
   const [responseComments, setResponseComments] = useState<Record<string, string>>(
     checkin?.responseComments || {}
   );
-  const [responseFlags, setResponseFlags] = useState<Record<string, { addToOneOnOne: boolean; flagForFollowUp: boolean }>>(
-    checkin?.responseFlags || {}
-  );
+  // Initialize responseFlags with proper boolean conversion
+  const [responseFlags, setResponseFlags] = useState<Record<string, { addToOneOnOne: boolean; flagForFollowUp: boolean }>>(() => {
+    const initial: Record<string, { addToOneOnOne: boolean; flagForFollowUp: boolean }> = {};
+    if (checkin?.responseFlags) {
+      Object.entries(checkin.responseFlags).forEach(([key, value]) => {
+        if (value && typeof value === 'object') {
+          initial[key] = {
+            addToOneOnOne: Boolean(value.addToOneOnOne),
+            flagForFollowUp: Boolean(value.flagForFollowUp)
+          };
+        }
+      });
+    }
+    return initial;
+  });
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [reviewAction, setReviewAction] = useState<"approve" | "reject" | null>(null);
 
@@ -113,11 +125,23 @@ export default function ReviewModal({
       finalComments = `${reviewAction === "approve" ? "[APPROVED]" : "[NEEDS IMPROVEMENT]"} ${finalComments}`;
     }
 
+    // Clean up responseFlags to ensure all values are properly typed as booleans
+    const cleanedResponseFlags: Record<string, { addToOneOnOne: boolean; flagForFollowUp: boolean }> = {};
+    Object.entries(responseFlags).forEach(([key, value]) => {
+      if (value && typeof value === 'object') {
+        // Ensure both properties exist and are booleans
+        cleanedResponseFlags[key] = {
+          addToOneOnOne: Boolean(value.addToOneOnOne),
+          flagForFollowUp: Boolean(value.flagForFollowUp)
+        };
+      }
+    });
+
     const reviewData: ReviewCheckin = {
       reviewStatus: "reviewed",
       reviewComments: finalComments || undefined,
       responseComments,
-      responseFlags,
+      responseFlags: cleanedResponseFlags,
       addToOneOnOne,
       flagForFollowUp,
     };
@@ -262,7 +286,7 @@ export default function ReviewModal({
                                       setResponseFlags(prev => ({
                                         ...prev,
                                         [questionId]: {
-                                          ...prev[questionId],
+                                          addToOneOnOne: prev[questionId]?.addToOneOnOne || false,
                                           flagForFollowUp: e.target.checked
                                         }
                                       }));
@@ -286,7 +310,7 @@ export default function ReviewModal({
                                       setResponseFlags(prev => ({
                                         ...prev,
                                         [questionId]: {
-                                          ...prev[questionId],
+                                          flagForFollowUp: prev[questionId]?.flagForFollowUp || false,
                                           addToOneOnOne: e.target.checked
                                         }
                                       }));
