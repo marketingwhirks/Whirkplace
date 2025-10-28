@@ -2591,16 +2591,31 @@ export class DatabaseStorage implements IStorage {
 
   // Check-in Review Methods
   async getPendingCheckins(organizationId: string, reviewerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]> {
-    console.log(`[getPendingCheckins] Starting - orgId: ${organizationId}, reviewerId: ${reviewerId}, includeOwnIfNoManager: ${includeOwnIfNoManager}`);
+    console.log(`[getPendingCheckins] ========== COMPREHENSIVE PENDING REVIEWS SEARCH ==========`);
+    console.log(`[getPendingCheckins] Parameters:`, {
+      organizationId,
+      reviewerId,
+      includeOwnIfNoManager,
+      timestamp: new Date().toISOString()
+    });
     
+    // CRITICAL FIX: Use exact string 'pending' for review status
+    // NO WEEK FILTERING - Return ALL pending reviews regardless of when they were submitted
     const whereConditions = [
       eq(checkins.organizationId, organizationId),
-      eq(checkins.reviewStatus, ReviewStatus.PENDING),
+      eq(checkins.reviewStatus, 'pending'), // Using exact string 'pending' - case sensitive
       eq(checkins.isComplete, true)
     ];
+    
+    console.log(`[getPendingCheckins] Base query conditions:`, {
+      organizationId,
+      reviewStatus: 'pending', // Exact string match - CRITICAL
+      isComplete: true,
+      weekFilter: 'NONE - RETURNING ALL PENDING REVIEWS'
+    });
 
     if (reviewerId) {
-      console.log(`[getPendingCheckins] Finding users to review for reviewer: ${reviewerId}`);
+      console.log(`[getPendingCheckins] Finding ALL users to review for reviewer: ${reviewerId}`);
       // Get all users who should be reviewed by this reviewer
       const usersToReview: string[] = [];
       
@@ -2613,7 +2628,10 @@ export class DatabaseStorage implements IStorage {
           eq(users.reviewerId, reviewerId),
           eq(users.isActive, true)
         ));
-      console.log(`[getPendingCheckins] Custom reviewees: ${customReviewees.length}`, customReviewees.map(u => ({ id: u.id, name: u.name })));
+      console.log(`[getPendingCheckins] [1] Custom reviewees (users.reviewerId = ${reviewerId}):`, {
+        count: customReviewees.length,
+        users: customReviewees.map(u => ({ id: u.id, name: u.name, email: u.email }))
+      });
       usersToReview.push(...customReviewees.map(u => u.id));
       
       // 2. Get teams where this person is the leader
@@ -2624,75 +2642,152 @@ export class DatabaseStorage implements IStorage {
           eq(teams.organizationId, organizationId),
           eq(teams.leaderId, reviewerId)
         ));
-      console.log(`[getPendingCheckins] Teams led by reviewer: ${ledTeams.length}`, ledTeams.map(t => ({ id: t.id, name: t.name })));
+      console.log(`[getPendingCheckins] [2] Teams led by reviewer:`, {
+        count: ledTeams.length,
+        teams: ledTeams.map(t => ({ id: t.id, name: t.name }))
+      });
       
       if (ledTeams.length > 0) {
         const teamMembers = await db
-          .select({ id: users.id, name: users.name, reviewerId: users.reviewerId, managerId: users.managerId })
+          .select({ id: users.id, name: users.name, email: users.email, reviewerId: users.reviewerId, managerId: users.managerId, teamId: users.teamId })
           .from(users)
           .where(and(
             eq(users.organizationId, organizationId),
             inArray(users.teamId, ledTeams.map(t => t.id)),
             eq(users.isActive, true)
           ));
-        console.log(`[getPendingCheckins] Team members found: ${teamMembers.length}`, teamMembers.map(u => ({ id: u.id, name: u.name, reviewerId: u.reviewerId, managerId: u.managerId })));
+        console.log(`[getPendingCheckins] [2a] All team members found:`, {
+          count: teamMembers.length,
+          members: teamMembers.map(u => ({ 
+            id: u.id, 
+            name: u.name, 
+            email: u.email,
+            teamId: u.teamId,
+            reviewerId: u.reviewerId, 
+            managerId: u.managerId 
+          }))
+        });
+        
         // Only include team members who don't have a custom reviewer
         const teamMembersToReview = teamMembers
           .filter(u => !u.reviewerId && u.id !== reviewerId)
           .map(u => u.id);
-        console.log(`[getPendingCheckins] Team members to review (no custom reviewer): ${teamMembersToReview.length}`);
+        console.log(`[getPendingCheckins] [2b] Team members to review (no custom reviewer, excluding self):`, {
+          count: teamMembersToReview.length,
+          userIds: teamMembersToReview
+        });
         usersToReview.push(...teamMembersToReview);
       }
       
       // 3. For backward compatibility, also get direct reports (manager relationship)
       const directReports = await this.getUsersByManager(organizationId, reviewerId, true);
-      console.log(`[getPendingCheckins] Direct reports (managerId=${reviewerId}): ${directReports.length}`, directReports.map(u => ({ id: u.id, name: u.name, reviewerId: u.reviewerId })));
+      console.log(`[getPendingCheckins] [3] Direct reports (users.managerId = ${reviewerId}):`, {
+        count: directReports.length,
+        users: directReports.map(u => ({ 
+          id: u.id, 
+          name: u.name, 
+          email: u.email,
+          reviewerId: u.reviewerId,
+          managerId: u.managerId
+        }))
+      });
+      
       const reportIds = directReports
         .filter(u => !u.reviewerId && !usersToReview.includes(u.id))
         .map(u => u.id);
-      console.log(`[getPendingCheckins] Direct reports to review (no custom reviewer, not already included): ${reportIds.length}`);
+      console.log(`[getPendingCheckins] [3a] Direct reports to review (no custom reviewer, not already included):`, {
+        count: reportIds.length,
+        userIds: reportIds
+      });
       usersToReview.push(...reportIds);
       
       // 4. Include self if has no reviewer and includeOwnIfNoManager is true
       if (includeOwnIfNoManager) {
         const reviewer = await this.getUser(organizationId, reviewerId);
-        console.log(`[getPendingCheckins] Reviewer details:`, { id: reviewer?.id, name: reviewer?.name, reviewerId: reviewer?.reviewerId, managerId: reviewer?.managerId });
+        console.log(`[getPendingCheckins] [4] Self-review check - Reviewer details:`, { 
+          id: reviewer?.id, 
+          name: reviewer?.name, 
+          email: reviewer?.email,
+          reviewerId: reviewer?.reviewerId, 
+          managerId: reviewer?.managerId,
+          teamId: reviewer?.teamId
+        });
+        
         if (reviewer && !reviewer.reviewerId && !reviewer.managerId) {
           const reviewerTeam = reviewer.teamId ? await this.getTeam(organizationId, reviewer.teamId) : null;
-          console.log(`[getPendingCheckins] Reviewer's team:`, { teamId: reviewer.teamId, teamLeader: reviewerTeam?.leaderId });
+          console.log(`[getPendingCheckins] [4a] Reviewer's team check:`, { 
+            teamId: reviewer.teamId, 
+            teamName: reviewerTeam?.name,
+            teamLeaderId: reviewerTeam?.leaderId,
+            isTeamLeader: reviewerTeam?.leaderId === reviewerId
+          });
+          
           if (!reviewerTeam || reviewerTeam.leaderId !== reviewerId) {
-            console.log(`[getPendingCheckins] Including self for review`);
+            console.log(`[getPendingCheckins] [4b] INCLUDING SELF FOR REVIEW - User has no manager/reviewer`);
             usersToReview.push(reviewerId);
           }
         }
       }
       
       const uniqueUsersToReview = Array.from(new Set(usersToReview));
-      console.log(`[getPendingCheckins] Total unique users to review: ${uniqueUsersToReview.length}`, uniqueUsersToReview);
+      console.log(`[getPendingCheckins] ===== FINAL USER LIST =====`, {
+        totalUniqueUsers: uniqueUsersToReview.length,
+        userIds: uniqueUsersToReview
+      });
       
-      if (usersToReview.length === 0) {
-        console.log(`[getPendingCheckins] No users to review, returning empty array`);
+      if (uniqueUsersToReview.length === 0) {
+        console.log(`[getPendingCheckins] ⚠️ NO USERS TO REVIEW - Returning empty array`);
         return [];
       }
       
       whereConditions.push(inArray(checkins.userId, uniqueUsersToReview));
+    } else {
+      console.log(`[getPendingCheckins] No reviewerId provided - returning ALL pending checkins for organization`);
     }
 
-    console.log(`[getPendingCheckins] Executing query with conditions`);
+    console.log(`[getPendingCheckins] ===== EXECUTING DATABASE QUERY =====`);
+    console.log(`[getPendingCheckins] SQL conditions being applied:`, {
+      organizationId,
+      reviewStatus: 'pending',
+      isComplete: true,
+      userFilter: reviewerId ? 'Applied' : 'None'
+    });
+    
     const results = await db
       .select()
       .from(checkins)
       .where(and(...whereConditions))
-      .orderBy(desc(checkins.createdAt));
+      .orderBy(desc(checkins.weekOf), desc(checkins.createdAt)); // Order by week first, then creation time
     
-    console.log(`[getPendingCheckins] Found ${results.length} pending check-ins`, results.map(c => ({ 
-      id: c.id, 
-      userId: c.userId, 
-      weekOf: c.weekOf, 
-      reviewStatus: c.reviewStatus,
-      isComplete: c.isComplete 
-    })));
+    console.log(`[getPendingCheckins] ===== QUERY RESULTS =====`);
+    console.log(`[getPendingCheckins] Found ${results.length} pending check-ins`);
     
+    if (results.length > 0) {
+      console.log(`[getPendingCheckins] Detailed results:`, results.map(c => ({ 
+        id: c.id,
+        userId: c.userId,
+        weekOf: c.weekOf,
+        createdAt: c.createdAt,
+        reviewStatus: c.reviewStatus,
+        isComplete: c.isComplete,
+        reviewedBy: c.reviewedBy,
+        reviewedAt: c.reviewedAt
+      })));
+      
+      // Group by week for debugging
+      const byWeek = results.reduce((acc, c) => {
+        const weekKey = c.weekOf.toISOString().split('T')[0];
+        if (!acc[weekKey]) acc[weekKey] = [];
+        acc[weekKey].push(c.id);
+        return acc;
+      }, {} as Record<string, string[]>);
+      
+      console.log(`[getPendingCheckins] Pending reviews grouped by week:`, byWeek);
+    } else {
+      console.log(`[getPendingCheckins] ⚠️ NO PENDING REVIEWS FOUND`);
+    }
+    
+    console.log(`[getPendingCheckins] ========== END OF SEARCH ==========`);
     return results;
   }
 
@@ -8159,39 +8254,67 @@ export class MemStorage implements IStorage {
 
   // Check-in Review Methods
   async getPendingCheckins(organizationId: string, managerId?: string, includeOwnIfNoManager?: boolean): Promise<Checkin[]> {
-    console.log('[storage.getPendingCheckins] Called with:', {
+    console.log('[MemStorage.getPendingCheckins] ========== COMPREHENSIVE PENDING REVIEWS SEARCH (MEMORY) ==========');
+    console.log('[MemStorage.getPendingCheckins] Parameters:', {
       organizationId,
       managerId,
-      includeOwnIfNoManager
+      includeOwnIfNoManager,
+      timestamp: new Date().toISOString()
     });
     
+    // CRITICAL FIX: Use exact string 'pending' for review status
+    // NO WEEK FILTERING - Return ALL pending reviews regardless of when they were submitted
     let checkins = Array.from(this.checkins.values())
       .filter(checkin => 
         checkin.organizationId === organizationId &&
-        checkin.reviewStatus === ReviewStatus.PENDING &&
-        checkin.isComplete
+        checkin.reviewStatus === 'pending' && // EXACT STRING MATCH - case sensitive
+        checkin.isComplete === true
       );
     
-    console.log('[storage.getPendingCheckins] Initial pending checkins:', {
+    console.log('[MemStorage.getPendingCheckins] Initial filter results:', {
       totalInOrg: Array.from(this.checkins.values()).filter(c => c.organizationId === organizationId).length,
+      totalComplete: Array.from(this.checkins.values()).filter(c => c.organizationId === organizationId && c.isComplete).length,
       pendingCount: checkins.length,
+      reviewStatuses: Array.from(new Set(Array.from(this.checkins.values())
+        .filter(c => c.organizationId === organizationId)
+        .map(c => c.reviewStatus))),
       pendingDetails: checkins.map(c => ({
         id: c.id,
         userId: c.userId,
         weekOf: c.weekOf,
+        createdAt: c.createdAt,
         reviewStatus: c.reviewStatus,
         isComplete: c.isComplete
       }))
     });
 
     if (managerId) {
-      // First check if user is a team leader
+      console.log('[MemStorage.getPendingCheckins] Finding ALL users to review for manager:', managerId);
+      
+      // Get all users who should be reviewed by this manager
+      const usersToReview: string[] = [];
+      
+      // 1. Get users with this person as custom reviewer
+      const customReviewees = Array.from(this.users.values()).filter(user =>
+        user.organizationId === organizationId &&
+        user.reviewerId === managerId &&
+        user.isActive !== false
+      );
+      console.log('[MemStorage.getPendingCheckins] [1] Custom reviewees:', {
+        count: customReviewees.length,
+        users: customReviewees.map(u => ({ id: u.id, name: u.name, email: u.email }))
+      });
+      usersToReview.push(...customReviewees.map(u => u.id));
+      
+      // 2. Check if user is a team leader
       const teamsLed = Array.from(this.teams.values()).filter(team => 
         team.organizationId === organizationId &&
         team.leaderId === managerId
       );
-
-      let reportIds: string[] = [];
+      console.log('[MemStorage.getPendingCheckins] [2] Teams led:', {
+        count: teamsLed.length,
+        teams: teamsLed.map(t => ({ id: t.id, name: t.name }))
+      });
 
       if (teamsLed.length > 0) {
         // User is a team leader - get ALL team members
@@ -8201,52 +8324,122 @@ export class MemStorage implements IStorage {
           user.teamId && teamIds.includes(user.teamId) &&
           user.isActive !== false
         );
-        reportIds = teamMembers.map(u => u.id).filter(id => id !== managerId); // Exclude self
-        console.log('[storage.getPendingCheckins] Team leader path:', {
-          teamsLed: teamsLed.map(t => ({ id: t.id, name: t.name })),
-          teamMemberCount: teamMembers.length,
-          reportIds: reportIds.slice(0, 5) // Log first 5 for brevity
+        console.log('[MemStorage.getPendingCheckins] [2a] All team members:', {
+          count: teamMembers.length,
+          members: teamMembers.map(u => ({ 
+            id: u.id, 
+            name: u.name, 
+            email: u.email,
+            teamId: u.teamId,
+            reviewerId: u.reviewerId
+          }))
         });
-      } else {
-        // Not a team leader - use manager relationships (include inactive for historical data)
-        const reports = await this.getUsersByManager(organizationId, managerId, true);
-        reportIds = reports.map(user => user.id);
-        console.log('[storage.getPendingCheckins] Manager path:', {
-          directReportCount: reports.length,
-          reportIds: reportIds.slice(0, 5) // Log first 5 for brevity
+        
+        // Only include team members who don't have a custom reviewer and aren't the manager
+        const teamMembersToReview = teamMembers
+          .filter(u => !u.reviewerId && u.id !== managerId)
+          .map(u => u.id);
+        console.log('[MemStorage.getPendingCheckins] [2b] Team members to review (no custom reviewer):', {
+          count: teamMembersToReview.length,
+          userIds: teamMembersToReview
         });
+        usersToReview.push(...teamMembersToReview);
       }
       
-      // If includeOwnIfNoManager is true, check if the user has no manager themselves
+      // 3. Get direct reports (manager relationship) - include inactive for historical data
+      const directReports = await this.getUsersByManager(organizationId, managerId, true);
+      console.log('[MemStorage.getPendingCheckins] [3] Direct reports (managerId relationship):', {
+        count: directReports.length,
+        users: directReports.map(u => ({ 
+          id: u.id, 
+          name: u.name, 
+          email: u.email,
+          reviewerId: u.reviewerId,
+          managerId: u.managerId
+        }))
+      });
+      
+      const reportIds = directReports
+        .filter(u => !u.reviewerId && !usersToReview.includes(u.id))
+        .map(u => u.id);
+      console.log('[MemStorage.getPendingCheckins] [3a] Direct reports to review (no custom reviewer, not already included):', {
+        count: reportIds.length,
+        userIds: reportIds
+      });
+      usersToReview.push(...reportIds);
+      
+      // 4. If includeOwnIfNoManager is true, check if the user has no manager themselves
       if (includeOwnIfNoManager) {
         const managerUser = await this.getUser(organizationId, managerId);
-        if (managerUser && !managerUser.managerId) {
-          // User has no manager, include their own pending check-ins for self-review
-          if (!reportIds.includes(managerId)) {
-            reportIds.push(managerId);
-            console.log('[storage.getPendingCheckins] Added self for review (no manager)');
+        console.log('[MemStorage.getPendingCheckins] [4] Self-review check:', {
+          user: managerUser ? {
+            id: managerUser.id,
+            name: managerUser.name,
+            managerId: managerUser.managerId,
+            reviewerId: managerUser.reviewerId
+          } : null,
+          hasNoManager: managerUser && !managerUser.managerId && !managerUser.reviewerId
+        });
+        
+        if (managerUser && !managerUser.managerId && !managerUser.reviewerId) {
+          // User has no manager or reviewer, include their own pending check-ins for self-review
+          if (!usersToReview.includes(managerId)) {
+            usersToReview.push(managerId);
+            console.log('[MemStorage.getPendingCheckins] [4a] INCLUDING SELF FOR REVIEW - User has no manager/reviewer');
           }
         }
       }
       
-      if (reportIds.length === 0) {
-        console.log('[storage.getPendingCheckins] No report IDs found, returning empty');
+      const uniqueUsersToReview = Array.from(new Set(usersToReview));
+      console.log('[MemStorage.getPendingCheckins] ===== FINAL USER LIST =====', {
+        totalUniqueUsers: uniqueUsersToReview.length,
+        userIds: uniqueUsersToReview
+      });
+      
+      if (uniqueUsersToReview.length === 0) {
+        console.log('[MemStorage.getPendingCheckins] ⚠️ NO USERS TO REVIEW - Returning empty array');
         return [];
       }
       
-      checkins = checkins.filter(checkin => reportIds.includes(checkin.userId));
-      console.log('[storage.getPendingCheckins] After filtering by reportIds:', {
-        reportIdCount: reportIds.length,
-        filteredCount: checkins.length
+      checkins = checkins.filter(checkin => uniqueUsersToReview.includes(checkin.userId));
+      console.log('[MemStorage.getPendingCheckins] After filtering by userIds:', {
+        userCount: uniqueUsersToReview.length,
+        filteredCount: checkins.length,
+        filteredDetails: checkins.map(c => ({
+          id: c.id,
+          userId: c.userId,
+          weekOf: c.weekOf
+        }))
       });
     }
 
-    const result = checkins.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-    console.log('[storage.getPendingCheckins] Returning:', {
-      count: result.length,
-      weeks: result.map(c => c.weekOf).filter((v, i, a) => a.indexOf(v) === i)
+    const result = checkins.sort((a, b) => {
+      // Sort by week first (newest first), then by creation time
+      const weekDiff = b.weekOf.getTime() - a.weekOf.getTime();
+      if (weekDiff !== 0) return weekDiff;
+      return b.createdAt.getTime() - a.createdAt.getTime();
     });
     
+    console.log('[MemStorage.getPendingCheckins] ===== FINAL RESULTS =====', {
+      count: result.length,
+      weeks: Array.from(new Set(result.map(c => c.weekOf.toISOString().split('T')[0])))
+    });
+    
+    if (result.length > 0) {
+      // Group by week for debugging
+      const byWeek = result.reduce((acc, c) => {
+        const weekKey = c.weekOf.toISOString().split('T')[0];
+        if (!acc[weekKey]) acc[weekKey] = [];
+        acc[weekKey].push(c.id);
+        return acc;
+      }, {} as Record<string, string[]>);
+      
+      console.log('[MemStorage.getPendingCheckins] Pending reviews grouped by week:', byWeek);
+    } else {
+      console.log('[MemStorage.getPendingCheckins] ⚠️ NO PENDING REVIEWS FOUND');
+    }
+    
+    console.log('[MemStorage.getPendingCheckins] ========== END OF SEARCH ==========');
     return result;
   }
 

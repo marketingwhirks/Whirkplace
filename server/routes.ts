@@ -16,7 +16,7 @@ import {
   insertPartnerApplicationSchema, insertPartnerFirmSchema, insertNotificationSchema, insertTeamGoalSchema,
   type AnalyticsScope, type AnalyticsPeriod, type ShoutoutDirection, type ShoutoutVisibility, type LeaderboardMetric,
   type ReviewStatusType, type Checkin, type InsertNotification,
-  organizations, billingEvents, checkins, users
+  organizations, billingEvents, checkins, users, notifications
 } from "@shared/schema";
 import { eq, desc, and, gte, or, sql, sum, count, avg, lt, lte, inArray, isNull } from "drizzle-orm";
 import Stripe from "stripe";
@@ -40,7 +40,7 @@ import { registerAuthRoutes } from "./routes/auth";
 import { resolveRedirectUri } from "./utils/redirect-uri";
 import { sendWelcomeEmail, sendSlackPasswordSetupEmail } from "./services/emailService";
 import { sanitizeUser, sanitizeUsers } from "./utils/sanitizeUser";
-import { getWeekStartCentral } from "@shared/utils/dueDates";
+import { getWeekStartCentral, getCheckinDueDate } from "@shared/utils/dueDates";
 import { WeeklySummaryService } from "./services/weeklySummaryService";
 import { format } from "date-fns";
 
@@ -5591,52 +5591,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Check-in Review Endpoints - these must come before the generic :id route
   app.get("/api/checkins/pending", requireAuth(), async (req, res) => {
+    console.log('[GET /api/checkins/pending] ========== PENDING REVIEWS ENDPOINT ==========');
+    console.log('[GET /api/checkins/pending] Request details:', {
+      userId: req.currentUser?.id,
+      userName: req.currentUser?.name,
+      userRole: req.currentUser?.role,
+      orgId: req.orgId,
+      timestamp: new Date().toISOString(),
+      note: 'This endpoint MUST return ALL pending reviews regardless of week'
+    });
+    
     try {
       const user = req.currentUser!;
       let checkins;
       
-      console.log('[/api/checkins/pending] Request from user:', {
-        userId: user.id,
-        role: user.role,
-        orgId: req.orgId,
-        timestamp: new Date().toISOString()
-      });
-      
       // Check if user has no manager (needs self-review capability)
       const userWithManager = await storage.getUser(req.orgId, user.id);
-      const needsSelfReview = userWithManager && !userWithManager.managerId;
+      const needsSelfReview = userWithManager && !userWithManager.managerId && !userWithManager.reviewerId;
       
-      console.log('[/api/checkins/pending] User manager status:', {
+      console.log('[GET /api/checkins/pending] User details:', {
+        userId: user.id,
+        userName: user.name,
+        role: user.role,
         managerId: userWithManager?.managerId,
-        needsSelfReview
+        reviewerId: userWithManager?.reviewerId,
+        needsSelfReview,
+        canReview: user.role === "admin" || user.role === "manager" || user.role === "team_lead"
       });
       
       if (user.role === "admin" || user.role === "manager" || user.role === "team_lead") {
         // Admins, managers and team_leads can review their reports' check-ins
         // Pass includeOwnIfNoManager=true to include their own if they have no manager
+        console.log('[GET /api/checkins/pending] Calling storage.getPendingCheckins for manager/admin...');
         checkins = await storage.getPendingCheckins(req.orgId, user.id, true);
-        console.log('[/api/checkins/pending] Manager/Admin - getPendingCheckins returned:', {
+        console.log('[GET /api/checkins/pending] storage.getPendingCheckins returned:', {
           count: checkins.length,
+          weeks: Array.from(new Set(checkins.map(c => c.weekOf.toISOString().split('T')[0]))),
           checkinDetails: checkins.map(c => ({ 
             id: c.id, 
             userId: c.userId, 
             weekOf: c.weekOf,
+            createdAt: c.createdAt,
             reviewStatus: c.reviewStatus,
             isComplete: c.isComplete 
           }))
         });
       } else if (needsSelfReview) {
         // Regular users with no manager can see their own pending check-ins for self-review
+        console.log('[GET /api/checkins/pending] User needs self-review, fetching ALL pending...');
         const allCheckins = await storage.getPendingCheckins(req.orgId);
         checkins = allCheckins.filter(checkin => checkin.userId === user.id);
-        console.log('[/api/checkins/pending] Self-review user - filtered checkins:', {
-          allCount: allCheckins.length,
-          filteredCount: checkins.length
+        console.log('[GET /api/checkins/pending] Self-review filtering:', {
+          allPendingCount: allCheckins.length,
+          selfPendingCount: checkins.length,
+          filteredIds: checkins.map(c => c.id)
         });
       } else {
         // Regular users with a manager cannot access this endpoint
         checkins = [];
-        console.log('[/api/checkins/pending] Regular user with manager - no access');
+        console.log('[GET /api/checkins/pending] Regular user with manager - no pending reviews to show');
       }
       
       // Enhance with user information
@@ -6234,14 +6247,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
 
   app.patch("/api/checkins/:id/review", requireAuth(), async (req, res) => {
+    console.log('[PATCH /api/checkins/:id/review] ========== REVIEW ENDPOINT CALLED ==========');
+    console.log('[PATCH /api/checkins/:id/review] Request details:', {
+      checkinId: req.params.id,
+      userId: req.currentUser?.id,
+      userName: req.currentUser?.name,
+      userRole: req.currentUser?.role,
+      orgId: req.orgId,
+      requestBody: req.body,
+      timestamp: new Date().toISOString()
+    });
+    
     try {
       const reviewData = reviewCheckinSchema.parse(req.body);
       const user = req.currentUser!;
       const checkinId = req.params.id;
       
+      console.log('[PATCH /api/checkins/:id/review] Parsed review data:', {
+        reviewStatus: reviewData.reviewStatus,
+        reviewComments: reviewData.reviewComments,
+        responseComments: reviewData.responseComments,
+        addToOneOnOne: reviewData.addToOneOnOne,
+        flagForFollowUp: reviewData.flagForFollowUp
+      });
+      
       // Check if check-in exists
       const existingCheckin = await storage.getCheckin(req.orgId, checkinId);
+      console.log('[PATCH /api/checkins/:id/review] Existing check-in:', {
+        found: !!existingCheckin,
+        id: existingCheckin?.id,
+        userId: existingCheckin?.userId,
+        currentReviewStatus: existingCheckin?.reviewStatus,
+        isComplete: existingCheckin?.isComplete,
+        submittedAt: existingCheckin?.submittedAt,
+        weekOf: existingCheckin?.weekOf
+      });
+      
       if (!existingCheckin) {
+        console.log('[PATCH /api/checkins/:id/review] ⚠️ Check-in not found');
         return res.status(404).json({ message: "Check-in not found" });
       }
       
@@ -6500,25 +6543,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Get check-ins for review (pending, reviewed, missing)
   app.get("/api/checkins/reviews", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    console.log('[GET /api/checkins/reviews] ========== REVIEWS ENDPOINT - CRITICAL FIX ==========');
+    console.log('[GET /api/checkins/reviews] Request details:', {
+      userId: req.currentUser?.id,
+      userName: req.currentUser?.name,
+      userRole: req.currentUser?.role,
+      orgId: req.orgId,
+      weekStart: req.query.weekStart || 'NONE - RETURNING ALL PENDING',
+      timestamp: new Date().toISOString(),
+      note: 'CRITICAL: Pending must return ALL pending reviews, NOT filtered by week'
+    });
+    
     try {
       const { weekStart } = req.query;
       const user = req.currentUser!;
       
-      console.log('[/api/checkins/reviews] Request from user:', {
-        userId: user.id,
-        role: user.role,
-        weekStart: weekStart || 'current week',
-        timestamp: new Date().toISOString()
-      });
-      
-      // Parse week start date
+      // Parse week start date (for reviewed/missing only, NOT for pending)
       const targetWeekStart = weekStart 
         ? getWeekStartCentral(new Date(weekStart as string))
         : getWeekStartCentral(new Date());
       
-      console.log('[/api/checkins/reviews] Week calculation:', {
+      console.log('[GET /api/checkins/reviews] Week calculation (for reviewed/missing only):', {
         targetWeekStart: targetWeekStart.toISOString(),
-        dayOfWeek: targetWeekStart.getDay() // Should be 1 (Monday)
+        dayOfWeek: targetWeekStart.getDay(),
+        note: 'This week is ONLY used for reviewed and missing, NOT for pending'
       });
       
       // Get the organization for proper week calculations
@@ -6527,27 +6575,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all users managed by this person
       let managedUsers: any[] = [];
       if (user.role === 'manager') {
+        console.log('[GET /api/checkins/reviews] Getting users managed by:', user.id);
         managedUsers = await storage.getUsersByManager(req.orgId, user.id, true);
       } else {
-        // Admins see all users
+        console.log('[GET /api/checkins/reviews] Admin - getting ALL users');
         managedUsers = await storage.getAllUsers(req.orgId, true);
       }
       
       const userIds = managedUsers.map(u => u.id);
       
-      console.log('[/api/checkins/reviews] Managed users:', {
+      console.log('[GET /api/checkins/reviews] Managed users:', {
         count: managedUsers.length,
-        userIds: userIds.slice(0, 5) // Log first 5 for brevity
+        userIds: userIds,
+        userNames: managedUsers.map(u => ({ id: u.id, name: u.name, email: u.email }))
       });
       
       // CRITICAL FIX: Get ALL pending checkins regardless of week
-      // This matches the behavior of /api/checkins/pending
+      // This MUST match the behavior of /api/checkins/pending
+      console.log('[GET /api/checkins/reviews] ===== FETCHING ALL PENDING REVIEWS =====');
       let allPendingCheckins: Checkin[] = [];
       if (user.id) {
         // Use the same method as /api/checkins/pending
+        console.log('[GET /api/checkins/reviews] Calling storage.getPendingCheckins...');
         allPendingCheckins = await storage.getPendingCheckins(req.orgId, user.id, true);
-        console.log('[/api/checkins/reviews] ALL pending checkins (from getPendingCheckins):', {
+        console.log('[GET /api/checkins/reviews] storage.getPendingCheckins returned:', {
           count: allPendingCheckins.length,
+          weeks: Array.from(new Set(allPendingCheckins.map(c => c.weekOf.toISOString().split('T')[0]))),
           details: allPendingCheckins.map(c => ({
             id: c.id,
             userId: c.userId,

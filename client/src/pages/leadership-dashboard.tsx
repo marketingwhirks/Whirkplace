@@ -888,9 +888,9 @@ export default function LeadershipDashboard() {
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      const uniqueManagerIds = [...new Set(pendingReviews
+                      const uniqueManagerIds = Array.from(new Set(pendingReviews
                         .filter(r => r.managerId)
-                        .map(r => r.managerId!))];
+                        .map(r => r.managerId!)));
                       pendingReviewReminderMutation.mutate(uniqueManagerIds);
                     }}
                     disabled={pendingReviewReminderMutation.isPending}
@@ -934,7 +934,7 @@ export default function LeadershipDashboard() {
                                 {review.teamName || "No Team"}
                               </Badge>
                               <div className="flex items-center gap-1">
-                                <RatingStars rating={review.overallMood} readonly size="xs" />
+                                <RatingStars rating={review.overallMood} readonly size="sm" />
                                 <span className="text-xs text-muted-foreground ml-1">
                                   Mood: {review.overallMood}
                                 </span>
