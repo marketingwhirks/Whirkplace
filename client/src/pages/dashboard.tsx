@@ -203,10 +203,14 @@ export default function Dashboard() {
     }
   }, [shoutoutsReceived, users, teams, currentUser]);
 
-  // Get current week check-in
-  const { data: currentCheckin } = useQuery<Checkin | null>({
+  // Get current week check-in with vacation status
+  const { data: currentCheckinData } = useQuery<(Checkin & { isOnVacation: boolean }) | { checkin: null; isOnVacation: boolean } | null>({
     queryKey: ["/api/users", currentUser.id, "current-checkin"],
   });
+  
+  // Extract checkin and vacation status for easier use
+  const currentCheckin = currentCheckinData && 'id' in currentCheckinData ? currentCheckinData : null;
+  const isOnVacation = currentCheckinData?.isOnVacation || false;
 
   // Get previous week check-in to check for missed submissions
   const { data: previousCheckin } = useQuery<Checkin | null>({
@@ -398,8 +402,9 @@ export default function Dashboard() {
           // Determine check-in status
           let notificationContent = null;
           
-          if (!currentCheckin && questions.length > 0) {
-            // No check-in submitted for current week
+          // Only show check-in due notifications if user is not on vacation
+          if (!currentCheckin && questions.length > 0 && !isOnVacation) {
+            // No check-in submitted for current week and not on vacation
             if (currentDueDate) {
               if (isToday(currentDueDate)) {
                 // Due today
@@ -441,6 +446,15 @@ export default function Dashboard() {
                 };
               }
             }
+          } else if (isOnVacation && !currentCheckin) {
+            // User is on vacation - show vacation notice instead of check-in due
+            notificationContent = {
+              title: "You're on vacation this week",
+              message: "No check-in required while you're away",
+              variant: "info" as const,
+              icon: CalendarDays,
+              buttonText: null
+            };
           } else if (!previousCheckin && questions.length > 0 && previousDueDate && isPast(previousDueDate)) {
             // Previous week's check-in missing
             notificationContent = {
@@ -501,17 +515,19 @@ export default function Dashboard() {
                       </p>
                     </div>
                   </div>
-                  <Link to="/checkins" className="w-full sm:w-auto">
-                    <Button 
-                      variant="outline" 
-                      size="sm"
-                      className={`w-full sm:w-auto ${buttonStyles[notificationContent.variant]}`}
-                      data-testid="button-late-checkin-dashboard"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      {notificationContent.buttonText}
-                    </Button>
-                  </Link>
+                  {notificationContent.buttonText && (
+                    <Link to="/checkins" className="w-full sm:w-auto">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className={`w-full sm:w-auto ${buttonStyles[notificationContent.variant]}`}
+                        data-testid="button-late-checkin-dashboard"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        {notificationContent.buttonText}
+                      </Button>
+                    </Link>
+                  )}
                 </div>
               </CardContent>
             </Card>

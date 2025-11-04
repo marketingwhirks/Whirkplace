@@ -6204,31 +6204,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/users/:id/current-checkin", requireAuth(), async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      // Verify user is accessing their own check-in or is admin/manager
-      if (req.currentUser!.id !== id && req.currentUser!.role !== 'admin') {
-        const user = await storage.getUser(req.orgId, id);
-        if (!user || user.managerId !== req.currentUser!.id) {
-          return res.status(403).json({ message: "Access denied" });
-        }
-      }
-      
-      const checkin = await storage.getCurrentWeekCheckin(req.orgId, id);
-      
-      if (!checkin) {
-        return res.status(404).json({ message: "No check-in found for current week" });
-      }
-      
-      res.json(checkin);
-    } catch (error) {
-      console.error("Error fetching current week check-in:", error);
-      res.status(500).json({ message: "Failed to fetch check-in" });
-    }
-  });
-
   app.get("/api/users/:id/previous-checkin", requireAuth(), async (req, res) => {
     try {
       const { id } = req.params;
@@ -6376,19 +6351,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const currentUser = req.currentUser!;
       const requestedUserId = req.params.id;
       
+      // Get current week start for vacation check
+      const currentWeekStart = getWeekStartCentral();
+      
+      // Helper function to get checkin with vacation status
+      const getCheckinWithVacationStatus = async (userId: string) => {
+        const checkin = await storage.getCurrentWeekCheckin(req.orgId, userId);
+        const isOnVacation = await storage.isUserOnVacation(req.orgId, userId, currentWeekStart);
+        
+        // Return checkin data with vacation status
+        if (checkin) {
+          return { ...checkin, isOnVacation };
+        } else {
+          // Even if no checkin exists, return vacation status
+          return { checkin: null, isOnVacation };
+        }
+      };
+      
       // Apply authorization: verify user can view this user's current check-in
       if (currentUser.role === "admin") {
         // Admins can view any user's current check-in
-        const checkin = await storage.getCurrentWeekCheckin(req.orgId, requestedUserId);
-        res.json(checkin || null);
+        const result = await getCheckinWithVacationStatus(requestedUserId);
+        res.json(result);
         return;
       }
       
       // For non-admins: check if they have authorization
       if (requestedUserId === currentUser.id) {
         // User can always view their own current check-in
-        const checkin = await storage.getCurrentWeekCheckin(req.orgId, requestedUserId);
-        res.json(checkin || null);
+        const result = await getCheckinWithVacationStatus(requestedUserId);
+        res.json(result);
         return;
       }
       
@@ -6407,8 +6399,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const checkin = await storage.getCurrentWeekCheckin(req.orgId, requestedUserId);
-      res.json(checkin || null);
+      const result = await getCheckinWithVacationStatus(requestedUserId);
+      res.json(result);
     } catch (error) {
       console.error("Failed to fetch current check-in:", error);
       res.status(500).json({ message: "Failed to fetch current check-in" });
@@ -8579,98 +8571,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: "Failed to delete shoutout" });
-    }
-  });
-
-  // Team Goals
-  app.get("/api/team-goals", requireAuth(), async (req, res) => {
-    try {
-      const { activeOnly, teamId } = req.query;
-      
-      let goals;
-      if (teamId) {
-        // Get goals for a specific team (includes org-wide goals with null teamId)
-        goals = await storage.getTeamGoalsByTeam(
-          req.orgId, 
-          teamId as string, 
-          activeOnly === 'true'
-        );
-      } else {
-        // Get all goals for the organization
-        goals = await storage.getAllTeamGoals(req.orgId, activeOnly === 'true');
-      }
-      
-      res.json(goals);
-    } catch (error) {
-      console.error("Failed to fetch team goals:", error);
-      res.status(500).json({ message: "Failed to fetch team goals" });
-    }
-  });
-
-  app.post("/api/team-goals", requireAuth(), requireRole(['admin']), async (req, res) => {
-    try {
-      // Add organizationId and createdBy from request context
-      const goalData = {
-        ...req.body,
-        createdBy: req.currentUser!.id
-      };
-      
-      // Validate the goal data using the schema
-      const validatedData = insertTeamGoalSchema.parse(goalData);
-      
-      // Create the team goal
-      const goal = await storage.createTeamGoal(req.orgId, validatedData);
-      
-      res.status(201).json(goal);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Invalid team goal data", 
-          details: error.errors 
-        });
-      }
-      console.error("Error creating team goal:", error);
-      res.status(500).json({ message: "Failed to create team goal" });
-    }
-  });
-
-  app.patch("/api/team-goals/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
-    try {
-      // Use partial schema for updates
-      const updates = insertTeamGoalSchema.partial().parse(req.body);
-      
-      // Update the team goal
-      const goal = await storage.updateTeamGoal(req.orgId, req.params.id, updates);
-      
-      if (!goal) {
-        return res.status(404).json({ message: "Team goal not found" });
-      }
-      
-      res.json(goal);
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        return res.status(400).json({ 
-          message: "Invalid team goal data", 
-          details: error.errors 
-        });
-      }
-      console.error("Error updating team goal:", error);
-      res.status(500).json({ message: "Failed to update team goal" });
-    }
-  });
-
-  app.delete("/api/team-goals/:id", requireAuth(), requireRole(['admin']), async (req, res) => {
-    try {
-      const deleted = await storage.deleteTeamGoal(req.orgId, req.params.id);
-      
-      if (!deleted) {
-        return res.status(404).json({ message: "Team goal not found" });
-      }
-      
-      res.status(204).send();
-    } catch (error) {
-      console.error("Error deleting team goal:", error);
-      res.status(500).json({ message: "Failed to delete team goal" });
     }
   });
 
