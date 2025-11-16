@@ -6219,7 +6219,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get previous week start for vacation check
       const previousWeekStart = getWeekStartCentral(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
       
-      const checkin = await storage.getPreviousWeekCheckin(req.orgId, id);
+      // Use getCheckinForWeek to ensure consistent date calculation with vacation check
+      const checkin = await storage.getCheckinForWeek(req.orgId, id, previousWeekStart);
       const isOnVacation = await storage.isUserOnVacation(req.orgId, id, previousWeekStart);
       
       if (!checkin) {
@@ -6358,11 +6359,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const requestedUserId = req.params.id;
       
       // Get current week start for vacation check
-      const currentWeekStart = getWeekStartCentral();
+      const now = new Date();
+      console.log('DEBUG: Current date:', now.toISOString());
+      const currentWeekStart = getWeekStartCentral(now);
+      console.log('DEBUG: Calculated week start:', currentWeekStart ? currentWeekStart.toISOString() : 'INVALID DATE');
       
       // Helper function to get checkin with vacation status
       const getCheckinWithVacationStatus = async (userId: string) => {
-        const checkin = await storage.getCurrentWeekCheckin(req.orgId, userId);
+        // Use getCheckinForWeek to ensure consistent date calculation with vacation check
+        const checkin = await storage.getCheckinForWeek(req.orgId, userId, currentWeekStart);
         const isOnVacation = await storage.isUserOnVacation(req.orgId, userId, currentWeekStart);
         
         // Return checkin data with vacation status
