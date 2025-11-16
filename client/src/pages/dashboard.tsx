@@ -212,10 +212,14 @@ export default function Dashboard() {
   const currentCheckin = currentCheckinData && 'id' in currentCheckinData ? currentCheckinData : null;
   const isOnVacation = currentCheckinData?.isOnVacation || false;
 
-  // Get previous week check-in to check for missed submissions
-  const { data: previousCheckin } = useQuery<Checkin | null>({
+  // Get previous week check-in with vacation status to check for missed submissions
+  const { data: previousCheckinData } = useQuery<(Checkin & { isOnVacation: boolean }) | { checkin: null; isOnVacation: boolean } | null>({
     queryKey: ["/api/users", currentUser.id, "previous-checkin"],
   });
+  
+  // Extract previous checkin and vacation status for easier use
+  const previousCheckin = previousCheckinData && 'id' in previousCheckinData ? previousCheckinData : null;
+  const isPreviousWeekOnVacation = previousCheckinData?.isOnVacation || false;
 
   // Fetch current organization data for due date calculation
   const { data: currentOrganization } = useQuery({
@@ -455,8 +459,8 @@ export default function Dashboard() {
               icon: CalendarDays,
               buttonText: null
             };
-          } else if (!previousCheckin && questions.length > 0 && previousDueDate && isPast(previousDueDate)) {
-            // Previous week's check-in missing
+          } else if (!previousCheckin && questions.length > 0 && previousDueDate && isPast(previousDueDate) && !isPreviousWeekOnVacation) {
+            // Previous week's check-in missing (but not on vacation)
             notificationContent = {
               title: "Previous Week Check-in Missing",
               message: `Was due ${format(previousDueDate, 'MMMM d, yyyy')}. You can still submit it`,
@@ -464,6 +468,10 @@ export default function Dashboard() {
               icon: Clock,
               buttonText: "Submit Late Check-in"
             };
+          } else if (isPreviousWeekOnVacation && !previousCheckin && !currentCheckin && !isOnVacation) {
+            // User was on vacation last week, no notification needed unless showing informational message
+            // This could be used to show "Welcome back from vacation!" but we'll keep it simple for now
+            notificationContent = null;
           }
           
           if (!notificationContent) return null;

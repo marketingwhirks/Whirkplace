@@ -6216,13 +6216,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
+      // Get previous week start for vacation check
+      const previousWeekStart = getWeekStartCentral(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000));
+      
       const checkin = await storage.getPreviousWeekCheckin(req.orgId, id);
+      const isOnVacation = await storage.isUserOnVacation(req.orgId, id, previousWeekStart);
       
       if (!checkin) {
-        return res.status(404).json({ message: "No check-in found for previous week" });
+        // Return vacation status even if no check-in exists
+        return res.json({ checkin: null, isOnVacation });
       }
       
-      res.json(checkin);
+      // Return check-in data with vacation status
+      res.json({ ...checkin, isOnVacation });
     } catch (error) {
       console.error("Error fetching previous week check-in:", error);
       res.status(500).json({ message: "Failed to fetch check-in" });
