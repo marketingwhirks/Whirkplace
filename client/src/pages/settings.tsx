@@ -537,6 +537,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState("profile");
   const [showPassword, setShowPassword] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [newCompanyValue, setNewCompanyValue] = useState("");
   const [editingValueIndex, setEditingValueIndex] = useState<number | null>(null);
@@ -1821,12 +1822,23 @@ export default function Settings() {
                               <FormItem>
                                 <FormLabel>Confirm New Password</FormLabel>
                                 <FormControl>
-                                  <Input
-                                    type={showPassword ? "text" : "password"}
-                                    placeholder="Confirm your new password"
-                                    data-testid="input-confirm-password"
-                                    {...field}
-                                  />
+                                  <div className="relative">
+                                    <Input
+                                      type={showConfirmPassword ? "text" : "password"}
+                                      placeholder="Confirm your new password"
+                                      data-testid="input-confirm-password"
+                                      {...field}
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="absolute right-0 top-0 h-full px-3"
+                                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                                    >
+                                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                    </Button>
+                                  </div>
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>

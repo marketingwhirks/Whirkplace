@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Building2, ArrowLeft, Heart, AlertCircle } from "lucide-react";
+import { Building2, ArrowLeft, Heart, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -15,6 +15,8 @@ import { apiRequest } from "@/lib/queryClient";
 export default function SignupPage() {
   const [location, setLocation] = useLocation();
   const { toast } = useToast();
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [orgData, setOrgData] = useState({
     organizationName: '',
     organizationSlug: '',
@@ -279,20 +281,31 @@ export default function SignupPage() {
                 
                 <div className="space-y-2">
                   <Label htmlFor="password">Password *</Label>
-                  <Input 
-                    id="password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={orgData.password}
-                    onChange={(e) => {
-                      setOrgData({...orgData, password: e.target.value});
-                      if (errors.password) {
-                        setErrors({...errors, password: ''});
-                      }
-                    }}
-                    className={errors.password ? 'border-red-500' : ''}
-                    data-testid="input-password"
-                  />
+                  <div className="relative">
+                    <Input 
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={orgData.password}
+                      onChange={(e) => {
+                        setOrgData({...orgData, password: e.target.value});
+                        if (errors.password) {
+                          setErrors({...errors, password: ''});
+                        }
+                      }}
+                      className={errors.password ? 'border-red-500' : ''}
+                      data-testid="input-password"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
                   {errors.password && (
                     <p className="text-sm text-red-500 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
@@ -303,20 +316,31 @@ export default function SignupPage() {
                 
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword">Confirm Password *</Label>
-                  <Input 
-                    id="confirmPassword"
-                    type="password"
-                    placeholder="••••••••"
-                    value={orgData.confirmPassword}
-                    onChange={(e) => {
-                      setOrgData({...orgData, confirmPassword: e.target.value});
-                      if (errors.confirmPassword) {
-                        setErrors({...errors, confirmPassword: ''});
-                      }
-                    }}
-                    className={errors.confirmPassword ? 'border-red-500' : ''}
-                    data-testid="input-confirm-password"
-                  />
+                  <div className="relative">
+                    <Input 
+                      id="confirmPassword"
+                      type={showConfirmPassword ? "text" : "password"}
+                      placeholder="••••••••"
+                      value={orgData.confirmPassword}
+                      onChange={(e) => {
+                        setOrgData({...orgData, confirmPassword: e.target.value});
+                        if (errors.confirmPassword) {
+                          setErrors({...errors, confirmPassword: ''});
+                        }
+                      }}
+                      className={errors.confirmPassword ? 'border-red-500' : ''}
+                      data-testid="input-confirm-password"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="absolute right-0 top-0 h-full px-3"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </Button>
+                  </div>
                   {errors.confirmPassword && (
                     <p className="text-sm text-red-500 flex items-center gap-1">
                       <AlertCircle className="h-3 w-3" />
