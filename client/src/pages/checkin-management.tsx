@@ -387,40 +387,14 @@ export default function CheckinManagement() {
     queryFn: async () => {
       const weekStart = getWeekStartCentral(selectedWeek);
       
-      // DEBUG: Log week calculation details
-      console.log('[TEAM CHECKINS] Debug week calculation:', {
-        selectedWeek: selectedWeek.toISOString(),
-        selectedWeekLocal: format(selectedWeek, 'yyyy-MM-dd EEEE'),
-        weekStart: weekStart.toISOString(),
-        weekStartLocal: format(weekStart, 'yyyy-MM-dd EEEE'),
-        currentWeekStart: currentWeekStart.toISOString(),
-        currentWeekStartLocal: format(currentWeekStart, 'yyyy-MM-dd EEEE'),
-        isCurrentWeek,
-        today: new Date().toISOString(),
-        todayLocal: format(new Date(), 'yyyy-MM-dd EEEE')
-      });
-      
       const params = new URLSearchParams({
         weekStart: weekStart.toISOString(),
         ...(selectedTeamId && { teamId: selectedTeamId })
       });
       
-      console.log('[TEAM CHECKINS] API query params:', params.toString());
-      
       const response = await fetch(`/api/checkins/team?${params}`);
       if (!response.ok) throw new Error("Failed to fetch team check-ins");
       const data = await response.json();
-      
-      console.log('[TEAM CHECKINS] Response data:', {
-        checkinsCount: data.checkins?.length || 0,
-        checkins: data.checkins?.map((c: any) => ({
-          id: c.id,
-          userId: c.userId,
-          weekOf: c.weekOf,
-          submittedAt: c.submittedAt,
-          userName: c.user?.name
-        }))
-      });
       
       return data;
     },
@@ -434,43 +408,11 @@ export default function CheckinManagement() {
     queryFn: async () => {
       const weekStart = getWeekStartCentral(selectedWeek);
       
-      console.log('[REVIEWS] Debug week calculation:', {
-        selectedWeek: selectedWeek.toISOString(),
-        weekStart: weekStart.toISOString(),
-        isCurrentWeek,
-        note: 'Server will return ALL pending reviews regardless of week'
-      });
-      
       // The server returns ALL pending reviews regardless of week
       // But we still send weekStart for reviewed/missing filtering
       const response = await fetch(`/api/checkins/reviews?weekStart=${weekStart.toISOString()}`);
       if (!response.ok) throw new Error("Failed to fetch review check-ins");
       const data = await response.json();
-      
-      console.log('[REVIEWS] Response data:', {
-        pending: data.pending?.length || 0,
-        reviewed: data.reviewed?.length || 0,
-        missing: data.missing?.length || 0,
-        pendingNote: 'Pending shows ALL pending reviews regardless of selected week',
-        reviewedNote: 'Reviewed shows only for the selected week',
-        pendingDetails: data.pending?.map((p: any) => ({
-          id: p.id,
-          userId: p.userId,
-          userName: p.user?.name,
-          weekOf: p.weekOf,
-          reviewStatus: p.reviewStatus,
-          isComplete: p.isComplete,
-          submittedAt: p.submittedAt
-        })),
-        reviewedDetails: data.reviewed?.map((r: any) => ({
-          id: r.id,
-          userId: r.userId,
-          userName: r.user?.name,
-          weekOf: r.weekOf,
-          reviewedBy: r.reviewedBy,
-          reviewedAt: r.reviewedAt
-        }))
-      });
       
       return data;
     },
@@ -504,19 +446,10 @@ export default function CheckinManagement() {
     enabled: !userLoading && !!currentUser && canSendReminders && isCurrentWeek,
   });
 
-  // Debug effect to log reviewCheckins when they change
+  // Update effect for reviewCheckins changes
   useEffect(() => {
     if (reviewCheckins) {
-      console.log('[REVIEWS DEBUG] reviewCheckins updated:', {
-        activeTab,
-        reviewsTab,
-        selectedWeek: selectedWeek.toISOString(),
-        pendingCount: reviewCheckins.pending?.length || 0,
-        reviewedCount: reviewCheckins.reviewed?.length || 0,
-        missingCount: reviewCheckins.missing?.length || 0,
-        pendingIds: reviewCheckins.pending?.map((p: any) => p.id) || [],
-        pendingUsers: reviewCheckins.pending?.map((p: any) => ({ userId: p.userId, userName: p.user?.name, weekOf: p.weekOf })) || []
-      });
+      // Review checkins have been updated
     }
   }, [reviewCheckins, activeTab, reviewsTab]);
 

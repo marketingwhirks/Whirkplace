@@ -34,12 +34,8 @@ export default function PartnerPage() {
 
   const submitApplication = useMutation({
     mutationFn: (data: InsertPartnerApplication) => 
-      apiRequest("/api/partners/applications", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
+      apiRequest("POST", "/api/partners/applications", data),
     onSuccess: (data) => {
-      console.log("Partner application submitted:", data);
       setIsSubmitted(true);
       toast({
         title: "Application Submitted!",
@@ -47,7 +43,6 @@ export default function PartnerPage() {
       });
     },
     onError: (error: any) => {
-      console.error("Error submitting partner application:", error);
       toast({
         title: "Submission Failed",
         description: "There was an error submitting your application. Please try again.",

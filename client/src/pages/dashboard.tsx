@@ -208,32 +208,18 @@ export default function Dashboard() {
     queryKey: ["/api/users", currentUser.id, "current-checkin"],
   });
   
-  // Debug logging for current checkin data
-  console.log('DEBUG: Current checkin data:', currentCheckinData);
-  console.log('DEBUG: Current week start:', getWeekStartCentral(new Date()));
-  
   // Extract checkin and vacation status for easier use
   const currentCheckin = currentCheckinData && 'id' in currentCheckinData ? currentCheckinData : null;
   const isOnVacation = currentCheckinData?.isOnVacation || false;
-  
-  console.log('DEBUG: Is on vacation (current week):', isOnVacation);
-  console.log('DEBUG: Current checkin:', currentCheckin);
 
   // Get previous week check-in with vacation status to check for missed submissions
   const { data: previousCheckinData } = useQuery<(Checkin & { isOnVacation: boolean }) | { checkin: null; isOnVacation: boolean } | null>({
     queryKey: ["/api/users", currentUser.id, "previous-checkin"],
   });
   
-  // Debug logging for previous checkin data
-  console.log('DEBUG: Previous checkin data:', previousCheckinData);
-  console.log('DEBUG: Previous week start:', getWeekStartCentral(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)));
-  
   // Extract previous checkin and vacation status for easier use
   const previousCheckin = previousCheckinData && 'id' in previousCheckinData ? previousCheckinData : null;
   const isPreviousWeekOnVacation = previousCheckinData?.isOnVacation || false;
-  
-  console.log('DEBUG: Is on vacation (previous week):', isPreviousWeekOnVacation);
-  console.log('DEBUG: Previous checkin:', previousCheckin);
 
   // Fetch current organization data for due date calculation
   const { data: currentOrganization } = useQuery({
@@ -417,28 +403,15 @@ export default function Dashboard() {
           const currentDueDate = currentOrganization ? getCheckinDueDate(new Date(), currentOrganization) : null;
           const previousDueDate = currentOrganization ? getCheckinDueDate(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), currentOrganization) : null;
           
-          // Debug logging for notification logic
-          console.log('DEBUG: Notification logic check:', {
-            currentCheckin: !!currentCheckin,
-            questionsLength: questions.length,
-            isOnVacation,
-            currentDueDate,
-            isPastDue: currentDueDate ? isPast(currentDueDate) : false,
-            isDueToday: currentDueDate ? isToday(currentDueDate) : false,
-            now: new Date()
-          });
-          
           // Determine check-in status
           let notificationContent = null;
           
           // Only show check-in due notifications if user is not on vacation
           if (!currentCheckin && questions.length > 0 && !isOnVacation) {
-            console.log('DEBUG: Entering notification branch - no checkin, has questions, not on vacation');
             // No check-in submitted for current week and not on vacation
             if (currentDueDate) {
               if (isToday(currentDueDate)) {
                 // Due today
-                console.log('DEBUG: Setting notification - due today');
                 notificationContent = {
                   title: "Check-in Due Today",
                   message: `Submit your check-in by ${format(currentDueDate, 'h:mm a')}`,
@@ -448,7 +421,6 @@ export default function Dashboard() {
                 };
               } else if (isPast(currentDueDate)) {
                 // Past due
-                console.log('DEBUG: Setting notification - PAST DUE (this should not happen if on vacation!)');
                 notificationContent = {
                   title: "You have a check-in past due",
                   message: `Was due ${format(currentDueDate, 'MMMM d, yyyy')} at ${format(currentDueDate, 'h:mm a')}`,
@@ -480,7 +452,6 @@ export default function Dashboard() {
             }
           } else if (isOnVacation && !currentCheckin) {
             // User is on vacation - show vacation notice instead of check-in due
-            console.log('DEBUG: User is on vacation this week - showing vacation notice');
             notificationContent = {
               title: "You're on vacation this week",
               message: "No check-in required while you're away",
@@ -489,7 +460,6 @@ export default function Dashboard() {
               buttonText: null
             };
           } else if (!previousCheckin && questions.length > 0 && previousDueDate && isPast(previousDueDate) && !isPreviousWeekOnVacation) {
-            console.log('DEBUG: Previous week check-in missing (not on vacation)');
             // Previous week's check-in missing (but not on vacation)
             notificationContent = {
               title: "Previous Week Check-in Missing",

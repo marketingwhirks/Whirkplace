@@ -96,7 +96,6 @@ export default function QuestionsPage() {
   useEffect(() => {
     if (!bankLoading && !categoriesLoading && isSuperAdmin && !isSeeding) {
       if (categories.length === 0 && questionBank.length === 0) {
-        console.log("Question bank is empty, auto-seeding for super admin...");
         handleSeedQuestionBank();
       }
     }

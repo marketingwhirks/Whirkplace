@@ -20,12 +20,8 @@ export default function LandingPage() {
     const urlParams = new URLSearchParams(window.location.search);
     const orgParam = urlParams.get('org');
     
-    // Debug logging to see what hostname we're getting
-    console.log('Landing page hostname:', hostname);
-    
     // If org is specified in URL params, use that
     if (orgParam) {
-      console.log('Using org from URL param:', orgParam);
       return orgParam;
     }
     
@@ -36,7 +32,6 @@ export default function LandingPage() {
         !hostname.startsWith('app.')) {
       const subdomain = hostname.split('.')[0];
       if (subdomain && subdomain !== 'whirkplace') {
-        console.log('Using org from subdomain:', subdomain);
         return subdomain;
       }
     }
@@ -46,18 +41,15 @@ export default function LandingPage() {
     if (hostname === 'whirkplace.com' || 
         hostname === 'www.whirkplace.com' || 
         hostname === 'app.whirkplace.com') {
-      console.log('Main whirkplace.com domain - no default org');
       return null;
     }
     
     // For replit dev environments during testing
     if (hostname.includes('replit') || hostname.includes('repl.co')) {
-      console.log('Detected replit domain - no default org for signup');
       return null;
     }
     
     // No default org - allow user to choose
-    console.log('No org determined for hostname:', hostname);
     return null;
   };
 

@@ -137,10 +137,6 @@ export function DynamicThemeProvider({ children, organizationId }: DynamicThemeP
       styleElement.setAttribute('name', 'theme-applied');
       styleElement.setAttribute('content', appliedVariables.join(','));
       document.head.appendChild(styleElement);
-      
-      console.log('✅ Custom theme applied:', themeData.themeConfig);
-    } else {
-      console.log('🎨 Using default theme');
     }
 
     // Cleanup function

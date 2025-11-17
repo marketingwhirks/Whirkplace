@@ -917,9 +917,7 @@ export default function Settings() {
   // Add vacation mutation
   const addVacationMutation = useMutation({
     mutationFn: async (data: { weekOf: Date; note?: string }) => {
-      console.log('Mutation data:', data);
       const weekStart = startOfWeek(data.weekOf, { weekStartsOn: 1 });
-      console.log('Week start:', weekStart, 'ISO:', weekStart.toISOString());
       return apiRequest("POST", "/api/vacations", {
         weekOf: weekStart.toISOString(),
         note: data.note || undefined,
@@ -968,7 +966,6 @@ export default function Settings() {
   
   const handleAddVacation = () => {
     if (!selectedVacationDate) {
-      console.error('No date selected');
       toast({
         title: "Please select a date",
         description: "You must select a week for your vacation.",
@@ -976,7 +973,6 @@ export default function Settings() {
       });
       return;
     }
-    console.log('Adding vacation for date:', selectedVacationDate);
     addVacationMutation.mutate({
       weekOf: selectedVacationDate,
       note: vacationNote || undefined,
@@ -1235,7 +1231,6 @@ export default function Settings() {
                                   mode="single"
                                   selected={selectedVacationDate}
                                   onSelect={(date) => {
-                                    console.log('Date selected:', date);
                                     setSelectedVacationDate(date);
                                   }}
                                   disabled={(date) => {

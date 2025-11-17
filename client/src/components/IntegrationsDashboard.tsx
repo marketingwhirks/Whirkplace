@@ -73,6 +73,21 @@ interface MicrosoftTestResult {
   domain?: string;
 }
 
+// Type for authentication provider
+interface AuthProvider {
+  id?: string;
+  provider: string;
+  enabled: boolean;
+  hasCredentials: boolean;
+}
+
+// Type for user identity
+interface UserIdentity {
+  provider: string;
+  providerEmail?: string;
+  providerDisplayName?: string;
+}
+
 // Component for managing authentication providers
 function AuthProviderManagement({ organizationSlug }: { organizationSlug: string }) {
   const { toast } = useToast();
@@ -83,12 +98,12 @@ function AuthProviderManagement({ organizationSlug }: { organizationSlug: string
   const [showSecret, setShowSecret] = useState(false);
   
   // Fetch available auth providers
-  const { data: authProviders = [], isLoading, refetch } = useQuery({
+  const { data: authProviders = [], isLoading, refetch } = useQuery<AuthProvider[]>({
     queryKey: ["/api/auth/providers"],
   });
   
   // Fetch user's linked identities 
-  const { data: userIdentities = [] } = useQuery({
+  const { data: userIdentities = [] } = useQuery<UserIdentity[]>({
     queryKey: ["/api/auth/identities"],
   });
   
@@ -226,7 +241,7 @@ function AuthProviderManagement({ organizationSlug }: { organizationSlug: string
         </div>
         
         <div className="grid gap-4">
-          {authProviders.map((provider: any) => (
+          {authProviders.map((provider) => (
             <Card key={provider.provider} className="p-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -245,7 +260,7 @@ function AuthProviderManagement({ organizationSlug }: { organizationSlug: string
                       checked={provider.enabled}
                       onCheckedChange={(checked) => {
                         // Don't allow disabling last enabled provider
-                        const enabledCount = authProviders.filter((p: any) => p.enabled).length;
+                        const enabledCount = authProviders.filter((p) => p.enabled).length;
                         if (!checked && enabledCount <= 1) {
                           toast({
                             title: "Cannot disable",
@@ -254,7 +269,9 @@ function AuthProviderManagement({ organizationSlug }: { organizationSlug: string
                           });
                           return;
                         }
-                        toggleProviderMutation.mutate({ providerId: provider.id, enabled: checked });
+                        if (provider.id) {
+                          toggleProviderMutation.mutate({ providerId: provider.id, enabled: checked });
+                        }
                       }}
                       data-testid={`switch-enable-${provider.provider}`}
                       aria-label={`Enable/disable ${provider.provider} authentication`}
@@ -268,7 +285,7 @@ function AuthProviderManagement({ organizationSlug }: { organizationSlug: string
                       size="sm"
                       variant="ghost"
                       onClick={() => {
-                        const enabledCount = authProviders.filter((p: any) => p.enabled).length;
+                        const enabledCount = authProviders.filter((p) => p.enabled).length;
                         if (provider.enabled && enabledCount <= 1) {
                           toast({
                             title: "Cannot disconnect",
@@ -277,7 +294,9 @@ function AuthProviderManagement({ organizationSlug }: { organizationSlug: string
                           });
                           return;
                         }
-                        disconnectProviderMutation.mutate(provider.id);
+                        if (provider.id) {
+                          disconnectProviderMutation.mutate(provider.id);
+                        }
                       }}
                       data-testid={`button-disconnect-${provider.provider}`}
                     >
@@ -296,7 +315,7 @@ function AuthProviderManagement({ organizationSlug }: { organizationSlug: string
         <div className="space-y-4">
           <h4 className="text-sm font-medium">Your Linked Accounts</h4>
           <div className="grid gap-3">
-            {userIdentities.map((identity: any) => (
+            {userIdentities.map((identity) => (
               <div key={identity.provider} className="flex items-center justify-between p-3 border rounded-lg">
                 <div className="flex items-center gap-3">
                   {getProviderIcon(identity.provider)}
@@ -332,16 +351,16 @@ function AuthProviderManagement({ organizationSlug }: { organizationSlug: string
                   <SelectValue placeholder="Select a provider" />
                 </SelectTrigger>
                 <SelectContent>
-                  {!authProviders.find((p: any) => p.provider === 'slack') && (
+                  {!authProviders.find((p) => p.provider === 'slack') && (
                     <SelectItem value="slack">Slack</SelectItem>
                   )}
-                  {!authProviders.find((p: any) => p.provider === 'microsoft') && (
+                  {!authProviders.find((p) => p.provider === 'microsoft') && (
                     <SelectItem value="microsoft">Microsoft 365</SelectItem>
                   )}
-                  {!authProviders.find((p: any) => p.provider === 'google') && (
+                  {!authProviders.find((p) => p.provider === 'google') && (
                     <SelectItem value="google">Google Workspace</SelectItem>
                   )}
-                  {!authProviders.find((p: any) => p.provider === 'local') && (
+                  {!authProviders.find((p) => p.provider === 'local') && (
                     <SelectItem value="local">Email/Password</SelectItem>
                   )}
                 </SelectContent>
@@ -1177,12 +1196,9 @@ export function IntegrationsDashboard() {
                               
                               toast({
                                 title: "⚠️ Slack Integration Issues Detected",
-                                description: failedTests || "Some tests failed. Check console for details.",
+                                description: failedTests || "Some tests failed.",
                                 variant: "destructive",
                               });
-                              
-                              // Log detailed diagnostics to console for debugging
-                              console.log("Slack Diagnostic Results:", diagnostics);
                               
                               // Show recommendations if available
                               if (diagnostics.summary?.recommendations?.length > 0) {
@@ -1231,7 +1247,7 @@ export function IntegrationsDashboard() {
                               
                               // Show detailed results if available
                               if (result.details) {
-                                console.log("Test Reminder Details:", result.details);
+                                // Test reminder details available
                               }
                             } catch (error: any) {
                               console.error("Test reminder failed:", error);

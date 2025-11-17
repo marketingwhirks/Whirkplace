@@ -494,13 +494,6 @@ export function OnboardingPage() {
     
     // If we have auth params in URL, set them in localStorage and clean the URL
     if (authUserIdFromUrl) {
-      console.log('Setting authentication from OAuth redirect:', {
-        userId: authUserIdFromUrl,
-        orgId: authOrgIdFromUrl,
-        hasSession: !!authSessionFromUrl,
-        orgSlug
-      });
-      
       // Set auth in localStorage
       localStorage.setItem('x-auth-user-id', authUserIdFromUrl);
       if (authOrgIdFromUrl) {
@@ -524,22 +517,12 @@ export function OnboardingPage() {
     }
   }, [orgSlug]);
   
-  // Log organization fetch status for debugging
+  // Handle organization fetch errors
   useEffect(() => {
     const authUserId = localStorage.getItem('x-auth-user-id');
-    console.log('Onboarding page auth status:', {
-      hasAuthUserId: !!authUserId,
-      authUserId,
-      orgSlug,
-      currentUserId: currentUser?.id,
-      currentUserOrgId: currentUser?.organizationId
-    });
     
     if (orgError) {
       console.error('Failed to fetch organization:', orgError);
-    }
-    if (organization) {
-      console.log('Organization fetched:', organization);
     }
   }, [organization, orgError, currentUser, orgSlug]);
 

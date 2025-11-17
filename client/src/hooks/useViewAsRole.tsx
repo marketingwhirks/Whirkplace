@@ -43,10 +43,8 @@ export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
   
   const switchToRole = (role: ViewAsRole | null) => {
     if (!canSwitchRoles) {
-      console.warn("Role switching is only available for super admins");
       return;
     }
-    console.log(`Switching to role: ${role} for user: ${(actualUser as any)?.email}`);
     setViewAsRole(role);
     
     // Store in sessionStorage so it persists across page reloads during testing
@@ -66,11 +64,9 @@ export function RoleSwitchProvider({ children }: RoleSwitchProviderProps) {
     if (canSwitchRoles && !userLoading && actualUser) {
       const savedRole = sessionStorage.getItem('viewAsRole') as ViewAsRole | null;
       if (savedRole && ['admin', 'manager', 'member'].includes(savedRole)) {
-        console.log(`Restoring role switch to: ${savedRole} for user: ${(actualUser as any).email}`);
         setViewAsRole(savedRole);
       } else if (savedRole) {
         // Invalid saved role, clear it
-        console.log(`Clearing invalid saved role: ${savedRole}`);
         sessionStorage.removeItem('viewAsRole');
       }
     }
