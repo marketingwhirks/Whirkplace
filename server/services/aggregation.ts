@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { 
-  checkins, shoutouts, users, teams, vacations,
+  checkins, shoutouts, users, teams, vacations, checkinExemptions,
   pulseMetricsDaily, shoutoutMetricsDaily, complianceMetricsDaily, aggregationWatermarks,
   type InsertPulseMetricsDaily, type InsertShoutoutMetricsDaily,
   type InsertComplianceMetricsDaily, type InsertAggregationWatermark
@@ -224,10 +224,12 @@ export class AggregationService {
         eq(checkins.isComplete, true) // Only completed check-ins
       ));
 
-    // Query vacation status for each check-in week
+    // Query vacation and exemption status for each check-in week
     const checkinVacationStatus = await Promise.all(
       checkinData.map(async (checkin) => {
         const normalizedWeekOf = getWeekStartCentral(checkin.weekOf);
+        
+        // Check for vacation
         const [vacation] = await db
           .select({ id: vacations.id })
           .from(vacations)
@@ -238,17 +240,29 @@ export class AggregationService {
           ))
           .limit(1);
         
+        // Check for exemption
+        const [exemption] = await db
+          .select({ id: checkinExemptions.id })
+          .from(checkinExemptions)
+          .where(and(
+            eq(checkinExemptions.organizationId, organizationId),
+            eq(checkinExemptions.userId, userId),
+            eq(checkinExemptions.weekOf, normalizedWeekOf)
+          ))
+          .limit(1);
+        
         return {
           ...checkin,
-          isOnVacation: !!vacation
+          isOnVacation: !!vacation,
+          isExempted: !!exemption
         };
       })
     );
 
-    // Calculate checkin compliance with vacation exclusions
-    const nonVacationCheckins = checkinVacationStatus.filter(c => !c.isOnVacation);
-    const checkinComplianceCount = nonVacationCheckins.length; // Only non-vacation weeks count as "due"
-    const checkinOnTimeCount = checkinVacationStatus.filter(c => c.submittedOnTime).length; // All on-time submissions count
+    // Calculate checkin compliance with vacation and exemption exclusions
+    const nonExcludedCheckins = checkinVacationStatus.filter(c => !c.isOnVacation && !c.isExempted);
+    const checkinComplianceCount = nonExcludedCheckins.length; // Only non-vacation/non-exempted weeks count as "due"
+    const checkinOnTimeCount = nonExcludedCheckins.filter(c => c.submittedOnTime).length; // On-time submissions from non-excluded weeks
 
     // Query review compliance data for the day (where user is the reviewer)
     const reviewData = await db
@@ -268,10 +282,12 @@ export class AggregationService {
         sql`${checkins.reviewedAt} IS NOT NULL` // Only reviewed check-ins
       ));
 
-    // Query vacation status for each review week (for the reviewer)
+    // Query vacation and exemption status for each review week (for the reviewer)
     const reviewVacationStatus = await Promise.all(
       reviewData.map(async (review) => {
         const normalizedWeekOf = getWeekStartCentral(review.weekOf);
+        
+        // Check for vacation
         const [vacation] = await db
           .select({ id: vacations.id })
           .from(vacations)
@@ -282,17 +298,29 @@ export class AggregationService {
           ))
           .limit(1);
         
+        // Check for exemption
+        const [exemption] = await db
+          .select({ id: checkinExemptions.id })
+          .from(checkinExemptions)
+          .where(and(
+            eq(checkinExemptions.organizationId, organizationId),
+            eq(checkinExemptions.userId, userId), // Reviewer's exemption status
+            eq(checkinExemptions.weekOf, normalizedWeekOf)
+          ))
+          .limit(1);
+        
         return {
           ...review,
-          reviewerOnVacation: !!vacation
+          reviewerOnVacation: !!vacation,
+          reviewerExempted: !!exemption
         };
       })
     );
 
-    // Calculate review compliance with vacation exclusions
-    const nonVacationReviews = reviewVacationStatus.filter(r => !r.reviewerOnVacation);
-    const reviewComplianceCount = nonVacationReviews.length; // Only non-vacation weeks count as "due"
-    const reviewOnTimeCount = reviewVacationStatus.filter(r => r.reviewedOnTime).length; // All on-time reviews count
+    // Calculate review compliance with vacation and exemption exclusions
+    const nonExcludedReviews = reviewVacationStatus.filter(r => !r.reviewerOnVacation && !r.reviewerExempted);
+    const reviewComplianceCount = nonExcludedReviews.length; // Only non-vacation/non-exempted weeks count as "due"
+    const reviewOnTimeCount = nonExcludedReviews.filter(r => r.reviewedOnTime).length; // On-time reviews from non-excluded weeks
 
     // Delete existing aggregate for this day and user (if any)
     await db

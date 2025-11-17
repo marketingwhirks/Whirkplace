@@ -603,6 +603,24 @@ export const vacations = pgTable("vacations", {
   orgUserWeekOfUnique: unique("vacations_org_user_week_of_unique").on(table.organizationId, table.userId, table.weekOf),
 }));
 
+// Check-in Exemptions table for administrators to excuse users from check-in requirements
+export const checkinExemptions = pgTable("checkin_exemptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  weekOf: timestamp("week_of").notNull(), // Monday 00:00 Central Time for the exempted week (stored as UTC)
+  reason: text("reason"), // Optional reason for exemption
+  createdBy: varchar("created_by").notNull(), // Admin who created the exemption
+  createdAt: timestamp("created_at").notNull().default(sql`now()`),
+}, (table) => ({
+  orgIdx: index("checkin_exemptions_org_idx").on(table.organizationId),
+  orgUserIdx: index("checkin_exemptions_org_user_idx").on(table.organizationId, table.userId),
+  orgWeekOfIdx: index("checkin_exemptions_org_week_of_idx").on(table.organizationId, table.weekOf),
+  orgUserWeekOfIdx: index("checkin_exemptions_org_user_week_of_idx").on(table.organizationId, table.userId, table.weekOf),
+  // Unique constraint to prevent duplicate exemption entries for the same user and week
+  orgUserWeekOfUnique: unique("checkin_exemptions_org_user_week_of_unique").on(table.organizationId, table.userId, table.weekOf),
+}));
+
 // Billing Events table for tracking all billing-related changes
 export const billingEvents = pgTable("billing_events", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1047,6 +1065,17 @@ export const insertVacationSchema = createInsertSchema(vacations).omit({
   targetUserId: z.string().optional(), // For managers/admins to mark others on vacation
 });
 
+export const insertCheckinExemptionSchema = createInsertSchema(checkinExemptions).omit({
+  id: true,
+  createdAt: true,
+  organizationId: true, // Set by middleware
+}).extend({
+  userId: z.string().min(1, "User ID is required"),
+  weekOf: z.coerce.date(),
+  reason: z.string().max(500, "Reason too long").optional(),
+  createdBy: z.string().min(1, "Created by is required"),
+});
+
 export const insertBillingEventSchema = createInsertSchema(billingEvents).omit({
   id: true,
   createdAt: true,
@@ -1285,6 +1314,9 @@ export type PostReaction = typeof postReactions.$inferSelect;
 
 export type InsertVacation = z.infer<typeof insertVacationSchema>;
 export type Vacation = typeof vacations.$inferSelect;
+
+export type InsertCheckinExemption = z.infer<typeof insertCheckinExemptionSchema>;
+export type CheckinExemption = typeof checkinExemptions.$inferSelect;
 
 export type InsertBillingEvent = z.infer<typeof insertBillingEventSchema>;
 export type BillingEvent = typeof billingEvents.$inferSelect;

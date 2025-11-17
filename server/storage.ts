@@ -14,6 +14,7 @@ import {
   type PostReaction, type InsertPostReaction,
   type Notification, type InsertNotification,
   type Vacation, type InsertVacation,
+  type CheckinExemption, type InsertCheckinExemption,
   type Organization, type InsertOrganization,
   type PartnerFirm, type InsertPartnerFirm,
   type OneOnOne, type InsertOneOnOne,
@@ -39,7 +40,7 @@ import {
   type UserIdentity, type InsertUserIdentity,
   type UserTour, type InsertUserTour,
   type PasswordResetToken, type InsertPasswordResetToken,
-  users, teams, checkins, questions, teamQuestionSettings, questionCategories, questionBank, questionUsageHistory, organizationQuestionSettings, wins, comments, shoutouts, postReactions, notifications, vacations, organizations, partnerFirms,
+  users, teams, checkins, questions, teamQuestionSettings, questionCategories, questionBank, questionUsageHistory, organizationQuestionSettings, wins, comments, shoutouts, postReactions, notifications, vacations, checkinExemptions, organizations, partnerFirms,
   organizationAuthProviders, userIdentities, userTours, teamGoals, passwordResetTokens,
   oneOnOnes, kraTemplates, userKras, actionItems, kraRatings, kraHistory, bugReports, partnerApplications,
   discountCodes, discountCodeUsage, dashboardConfigs, dashboardWidgetTemplates,
@@ -389,6 +390,15 @@ export interface IStorage {
   upsertVacationWeek(organizationId: string, userId: string, weekOf: Date, note?: string): Promise<Vacation>;
   deleteVacationWeek(organizationId: string, userId: string, weekOf: Date): Promise<boolean>;
   isUserOnVacation(organizationId: string, userId: string, weekOf: Date): Promise<boolean>;
+
+  // Check-in Exemptions (Admin-managed)
+  createExemption(organizationId: string, userId: string, weekOf: Date, reason: string | null, createdBy: string): Promise<CheckinExemption>;
+  deleteExemption(organizationId: string, exemptionId: string): Promise<boolean>;
+  getUserExemptions(organizationId: string, userId: string, from?: Date, to?: Date): Promise<CheckinExemption[]>;
+  getOrganizationExemptions(organizationId: string, from?: Date, to?: Date): Promise<CheckinExemption[]>;
+  getExemptionsByWeek(organizationId: string, weekOf: Date): Promise<CheckinExemption[]>;
+  isUserExempted(organizationId: string, userId: string, weekOf: Date): Promise<boolean>;
+  getExemptionById(organizationId: string, exemptionId: string): Promise<CheckinExemption | undefined>;
 
   // One-on-One Meetings
   getOneOnOne(organizationId: string, id: string): Promise<OneOnOne | undefined>;
@@ -5603,6 +5613,203 @@ export class DatabaseStorage implements IStorage {
         lte(vacations.weekOf, to)
       ))
       .orderBy(desc(vacations.weekOf));
+  }
+
+  // Check-in Exemptions (Admin-managed)
+  async createExemption(organizationId: string, userId: string, weekOf: Date, reason: string | null, createdBy: string): Promise<CheckinExemption> {
+    // Normalize weekOf to Monday 00:00 Central Time
+    const normalizedWeekOf = getWeekStartCentral(weekOf);
+
+    try {
+      const [exemption] = await db
+        .insert(checkinExemptions)
+        .values({
+          organizationId,
+          userId,
+          weekOf: normalizedWeekOf,
+          reason,
+          createdBy
+        })
+        .onConflictDoUpdate({
+          target: [checkinExemptions.organizationId, checkinExemptions.userId, checkinExemptions.weekOf],
+          set: {
+            reason,
+            createdBy,
+            createdAt: new Date()
+          }
+        })
+        .returning();
+
+      // Invalidate analytics cache for this organization since exemption status affects compliance metrics
+      this.analyticsCache.invalidateForOrganization(organizationId);
+      
+      // Trigger re-aggregation for the affected week (fire-and-forget)
+      AggregationService.getInstance().recomputeUserDayAggregates(
+        organizationId,
+        userId,
+        normalizedWeekOf
+      ).catch(error => {
+        console.error(`Failed to recompute aggregates after exemption creation for user ${userId}:`, error);
+      });
+
+      return exemption;
+    } catch (error) {
+      console.error("Failed to create check-in exemption:", error);
+      throw error;
+    }
+  }
+
+  async deleteExemption(organizationId: string, exemptionId: string): Promise<boolean> {
+    try {
+      // First get the exemption to know which user/week was affected
+      const [exemption] = await db
+        .select()
+        .from(checkinExemptions)
+        .where(and(
+          eq(checkinExemptions.organizationId, organizationId),
+          eq(checkinExemptions.id, exemptionId)
+        ));
+
+      if (!exemption) {
+        return false;
+      }
+
+      const result = await db
+        .delete(checkinExemptions)
+        .where(and(
+          eq(checkinExemptions.organizationId, organizationId),
+          eq(checkinExemptions.id, exemptionId)
+        ))
+        .returning({ id: checkinExemptions.id });
+
+      const wasDeleted = result.length > 0;
+
+      if (wasDeleted) {
+        // Invalidate analytics cache for this organization
+        this.analyticsCache.invalidateForOrganization(organizationId);
+        
+        // Trigger re-aggregation for the affected week (fire-and-forget)
+        AggregationService.getInstance().recomputeUserDayAggregates(
+          organizationId,
+          exemption.userId,
+          exemption.weekOf
+        ).catch(error => {
+          console.error(`Failed to recompute aggregates after exemption deletion for user ${exemption.userId}:`, error);
+        });
+      }
+
+      return wasDeleted;
+    } catch (error) {
+      console.error("Failed to delete check-in exemption:", error);
+      throw error;
+    }
+  }
+
+  async getUserExemptions(organizationId: string, userId: string, from?: Date, to?: Date): Promise<CheckinExemption[]> {
+    try {
+      let query = db
+        .select()
+        .from(checkinExemptions)
+        .where(and(
+          eq(checkinExemptions.organizationId, organizationId),
+          eq(checkinExemptions.userId, userId)
+        ));
+
+      const conditions: any[] = [
+        eq(checkinExemptions.organizationId, organizationId),
+        eq(checkinExemptions.userId, userId)
+      ];
+
+      if (from) {
+        conditions.push(gte(checkinExemptions.weekOf, getWeekStartCentral(from)));
+      }
+      if (to) {
+        conditions.push(lte(checkinExemptions.weekOf, getWeekStartCentral(to)));
+      }
+
+      return await db
+        .select()
+        .from(checkinExemptions)
+        .where(and(...conditions))
+        .orderBy(desc(checkinExemptions.weekOf));
+    } catch (error) {
+      console.error("Failed to fetch user exemptions:", error);
+      throw error;
+    }
+  }
+
+  async getOrganizationExemptions(organizationId: string, from?: Date, to?: Date): Promise<CheckinExemption[]> {
+    try {
+      const conditions: any[] = [
+        eq(checkinExemptions.organizationId, organizationId)
+      ];
+
+      if (from) {
+        conditions.push(gte(checkinExemptions.weekOf, getWeekStartCentral(from)));
+      }
+      if (to) {
+        conditions.push(lte(checkinExemptions.weekOf, getWeekStartCentral(to)));
+      }
+
+      return await db
+        .select()
+        .from(checkinExemptions)
+        .where(and(...conditions))
+        .orderBy(desc(checkinExemptions.weekOf));
+    } catch (error) {
+      console.error("Failed to fetch organization exemptions:", error);
+      throw error;
+    }
+  }
+
+  async getExemptionsByWeek(organizationId: string, weekOf: Date): Promise<CheckinExemption[]> {
+    const normalizedWeekOf = getWeekStartCentral(weekOf);
+    
+    try {
+      return await db
+        .select()
+        .from(checkinExemptions)
+        .where(and(
+          eq(checkinExemptions.organizationId, organizationId),
+          eq(checkinExemptions.weekOf, normalizedWeekOf)
+        ))
+        .orderBy(checkinExemptions.userId);
+    } catch (error) {
+      console.error("Failed to fetch exemptions by week:", error);
+      throw error;
+    }
+  }
+
+  async isUserExempted(organizationId: string, userId: string, weekOf: Date): Promise<boolean> {
+    // Normalize weekOf to Monday 00:00 Central Time
+    const normalizedWeekOf = getWeekStartCentral(weekOf);
+
+    const [exemption] = await db.select({ id: checkinExemptions.id })
+      .from(checkinExemptions)
+      .where(and(
+        eq(checkinExemptions.organizationId, organizationId),
+        eq(checkinExemptions.userId, userId),
+        eq(checkinExemptions.weekOf, normalizedWeekOf)
+      ))
+      .limit(1);
+
+    return !!exemption;
+  }
+
+  async getExemptionById(organizationId: string, exemptionId: string): Promise<CheckinExemption | undefined> {
+    try {
+      const [exemption] = await db
+        .select()
+        .from(checkinExemptions)
+        .where(and(
+          eq(checkinExemptions.organizationId, organizationId),
+          eq(checkinExemptions.id, exemptionId)
+        ));
+      return exemption || undefined;
+    } catch (error) {
+      console.error("Failed to fetch exemption by ID:", error);
+      throw error;
+    }
   }
 
   // One-on-One Meetings

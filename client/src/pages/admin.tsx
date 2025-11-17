@@ -54,6 +54,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useViewAsRole } from "@/hooks/useViewAsRole";
 import RoleSwitcher from "@/components/admin/role-switcher";
+import ExemptionManager from "@/components/admin/ExemptionManager";
 
 interface ChannelMember {
   id: string;
@@ -1599,6 +1600,9 @@ export default function Admin() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Check-in Exemption Management */}
+        <ExemptionManager />
 
         {/* Question Bank Management - Super Admin Only */}
         {actualUser?.isSuperAdmin && (

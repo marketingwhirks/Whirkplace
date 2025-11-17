@@ -6924,13 +6924,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 12
               );
               
+              // Check for vacation status
+              const vacation = await storage.getVacationForUserAndWeek(
+                req.orgId,
+                member.id,
+                targetWeekStart
+              );
+              
+              // Check for exemption status
+              const exemption = await storage.getExemptionForUserAndWeek(
+                req.orgId,
+                member.id,
+                targetWeekStart
+              );
+              
+              // Determine status with priority: submitted > exempted > vacation > missing
+              let status: 'submitted' | 'missing' | 'on-vacation' | 'exempted';
+              if (checkin?.isComplete) {
+                status = 'submitted';
+              } else if (exemption) {
+                status = 'exempted';
+              } else if (vacation) {
+                status = 'on-vacation';
+              } else {
+                status = 'missing';
+              }
+              
               return {
                 userId: member.id,
                 userName: member.name,
                 email: member.email,
-                status: checkin?.isComplete 
-                  ? 'submitted' 
-                  : 'missing',
+                status,
                 submittedAt: checkin?.createdAt,
                 moodRating: checkin?.overallMood,
                 compliance: {
@@ -9235,6 +9259,197 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Failed to delete vacation for user:", error);
       res.status(500).json({ 
         message: "Failed to delete vacation",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Check-in Exemptions (Admin-only endpoints)
+  
+  // GET /api/checkin-exemptions - List all exemptions with optional filters
+  app.get("/api/checkin-exemptions", requireAuth(), requireRole("admin"), async (req, res) => {
+    try {
+      const { userId, weekOf, from, to } = req.query;
+      
+      // If specific user is requested
+      if (userId) {
+        // Verify the user exists in the organization
+        const targetUser = await storage.getUser(req.orgId, userId as string);
+        if (!targetUser) {
+          return res.status(404).json({ 
+            message: "User not found in this organization" 
+          });
+        }
+        
+        const fromDate = from ? new Date(from as string) : undefined;
+        const toDate = to ? new Date(to as string) : undefined;
+        
+        const exemptions = await storage.getUserExemptions(
+          req.orgId,
+          userId as string,
+          fromDate,
+          toDate
+        );
+        
+        return res.json(exemptions);
+      }
+      
+      // If specific week is requested
+      if (weekOf) {
+        const weekDate = new Date(weekOf as string);
+        if (isNaN(weekDate.getTime())) {
+          return res.status(400).json({ 
+            message: "Invalid date format for weekOf" 
+          });
+        }
+        
+        const exemptions = await storage.getExemptionsByWeek(req.orgId, weekDate);
+        return res.json(exemptions);
+      }
+      
+      // Otherwise return all exemptions for the organization
+      const fromDate = from ? new Date(from as string) : undefined;
+      const toDate = to ? new Date(to as string) : undefined;
+      
+      const exemptions = await storage.getOrganizationExemptions(
+        req.orgId,
+        fromDate,
+        toDate
+      );
+      
+      res.json(exemptions);
+    } catch (error) {
+      console.error("Failed to fetch check-in exemptions:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch exemptions",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+  
+  // POST /api/checkin-exemptions - Create a new exemption
+  app.post("/api/checkin-exemptions", requireAuth(), requireRole("admin"), async (req, res) => {
+    try {
+      const currentUser = req.currentUser!;
+      const exemptionData = insertCheckinExemptionSchema.parse(req.body);
+      
+      // Verify the user exists in the organization
+      const targetUser = await storage.getUser(req.orgId, exemptionData.userId);
+      if (!targetUser) {
+        return res.status(404).json({ 
+          message: "User not found in this organization" 
+        });
+      }
+      
+      // Parse and validate the week date
+      const weekDate = new Date(exemptionData.weekOf);
+      if (isNaN(weekDate.getTime())) {
+        return res.status(400).json({ 
+          message: "Invalid date format for weekOf" 
+        });
+      }
+      
+      // Create the exemption with the current admin as the creator
+      const exemption = await storage.createExemption(
+        req.orgId,
+        exemptionData.userId,
+        weekDate,
+        exemptionData.reason || null,
+        currentUser.id // Record who created the exemption
+      );
+      
+      // Audit log
+      console.log(`AUDIT: Admin ${currentUser.email} created check-in exemption for ${targetUser.email} for week ${weekDate.toISOString()}`);
+      
+      res.status(201).json(exemption);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid exemption data",
+          details: error.errors
+        });
+      }
+      console.error("Failed to create check-in exemption:", error);
+      res.status(500).json({ 
+        message: "Failed to create exemption",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+  
+  // DELETE /api/checkin-exemptions/:id - Remove an exemption
+  app.delete("/api/checkin-exemptions/:id", requireAuth(), requireRole("admin"), async (req, res) => {
+    try {
+      const currentUser = req.currentUser!;
+      const exemptionId = req.params.id;
+      
+      // Get exemption details for audit logging
+      const exemption = await storage.getExemptionById(req.orgId, exemptionId);
+      if (!exemption) {
+        return res.status(404).json({ 
+          message: "Exemption not found" 
+        });
+      }
+      
+      // Delete the exemption
+      const deleted = await storage.deleteExemption(req.orgId, exemptionId);
+      
+      if (!deleted) {
+        return res.status(404).json({ 
+          message: "Failed to delete exemption" 
+        });
+      }
+      
+      // Audit log
+      console.log(`AUDIT: Admin ${currentUser.email} deleted check-in exemption ${exemptionId} for user ${exemption.userId}`);
+      
+      res.status(204).send();
+    } catch (error) {
+      console.error("Failed to delete check-in exemption:", error);
+      res.status(500).json({ 
+        message: "Failed to delete exemption",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+  
+  // GET /api/users/:userId/exemptions - Get exemptions for a specific user
+  app.get("/api/users/:userId/exemptions", requireAuth(), async (req, res) => {
+    try {
+      const currentUser = req.currentUser!;
+      const { userId } = req.params;
+      const { from, to } = req.query;
+      
+      // Check permissions - users can view their own, admins can view anyone's
+      if (userId !== currentUser.id && currentUser.role !== 'admin') {
+        return res.status(403).json({ 
+          message: "You don't have permission to view exemptions for this user" 
+        });
+      }
+      
+      // Verify the user exists in the organization
+      const targetUser = await storage.getUser(req.orgId, userId);
+      if (!targetUser) {
+        return res.status(404).json({ 
+          message: "User not found in this organization" 
+        });
+      }
+      
+      const fromDate = from ? new Date(from as string) : undefined;
+      const toDate = to ? new Date(to as string) : undefined;
+      
+      const exemptions = await storage.getUserExemptions(
+        req.orgId,
+        userId,
+        fromDate,
+        toDate
+      );
+      
+      res.json(exemptions);
+    } catch (error) {
+      console.error("Failed to fetch user exemptions:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch exemptions",
         error: error instanceof Error ? error.message : "Unknown error"
       });
     }

@@ -88,7 +88,7 @@ interface TeamMemberComplianceStatus {
   userId: string;
   userName: string;
   email: string;
-  status: 'submitted' | 'missing' | 'overdue' | 'on-vacation';
+  status: 'submitted' | 'missing' | 'overdue' | 'on-vacation' | 'exempted';
   submittedAt?: Date;
   daysOverdue?: number;
   moodRating?: number | null;
@@ -700,7 +700,7 @@ export default function CheckinManagement() {
           "Status": member.status,
           "Compliance Rate": `${member.compliance.rate}%`,
           "On-Time Rate": `${member.compliance.onTimeRate}%`,
-          "Current Week": member.status === 'submitted' ? 'Yes' : member.status === 'on-vacation' ? 'Vacation' : 'No',
+          "Current Week": member.status === 'submitted' ? 'Yes' : member.status === 'on-vacation' ? 'Vacation' : member.status === 'exempted' ? 'Exempted' : 'No',
           "Mood Rating": member.moodRating || '-',
           "Submitted At": member.submittedAt ? format(new Date(member.submittedAt), 'MMM dd, yyyy HH:mm') : '-'
         });
@@ -1789,6 +1789,11 @@ export default function CheckinManagement() {
                                           <Plane className="mr-1 h-3 w-3" />
                                           Vacation
                                         </Badge>
+                                      ) : member.status === 'exempted' ? (
+                                        <Badge variant="outline" className="text-xs">
+                                          <Shield className="mr-1 h-3 w-3" />
+                                          Exempted
+                                        </Badge>
                                       ) : (
                                         <Badge variant="destructive" className="text-xs">
                                           <XCircle className="mr-1 h-3 w-3" />
@@ -1845,6 +1850,11 @@ export default function CheckinManagement() {
                                     <Badge variant="secondary" className="text-xs">
                                       <Plane className="mr-1 h-3 w-3" />
                                       Vacation
+                                    </Badge>
+                                  ) : member.status === 'exempted' ? (
+                                    <Badge variant="outline" className="text-xs">
+                                      <Shield className="mr-1 h-3 w-3" />
+                                      Exempted
                                     </Badge>
                                   ) : (
                                     <Badge variant="destructive" className="text-xs">
