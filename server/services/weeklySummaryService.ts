@@ -300,8 +300,9 @@ export class WeeklySummaryService {
     const localDate = toZonedTime(weekStart, timezone);
     const legacyMondayStart = startOfWeek(localDate, { weekStartsOn: 1 });
     const legacyMondayUTC = fromZonedTime(legacyMondayStart, timezone);
-    const legacyMondayEnd = new Date(legacyMondayUTC);
-    legacyMondayEnd.setDate(legacyMondayEnd.getDate() + 7);
+    // Use a 24-hour window to catch all timezone variations of the Monday date
+    const legacyMondayEndOfDay = new Date(legacyMondayUTC);
+    legacyMondayEndOfDay.setDate(legacyMondayEndOfDay.getDate() + 1); // Just one day, not a full week
 
     // Get all active users in the organization
     const activeUsers = await db.select()
@@ -312,60 +313,60 @@ export class WeeklySummaryService {
         not(isNull(users.teamId)) // Only users assigned to teams
       ));
 
-    // Get all check-ins for the week - check both Saturday-Friday AND Monday-Sunday ranges
+    // Get all check-ins for the week - check both Saturday-Friday AND Monday dates
     const weekCheckins = await db.select()
       .from(checkins)
       .where(and(
         eq(checkins.organizationId, organizationId),
         or(
-          // New Saturday-Friday week structure
+          // New Saturday-Friday week structure (range check)
           and(
             gte(checkins.weekOf, normalizedWeekStart),
             lt(checkins.weekOf, weekEnd)
           ),
-          // Legacy Monday-Sunday week structure (for backward compatibility)
+          // Legacy Monday-Sunday week structure (24-hour window to catch all timezone variations)
           and(
             gte(checkins.weekOf, legacyMondayUTC),
-            lt(checkins.weekOf, legacyMondayEnd)
+            lt(checkins.weekOf, legacyMondayEndOfDay)
           )
         ),
         eq(checkins.isComplete, true)
       ));
 
-    // Get vacation records for the week - check both Saturday-Friday AND Monday-Sunday ranges
+    // Get vacation records for the week - check both Saturday-Friday AND Monday dates
     const vacationRecords = await db.select()
       .from(vacations)
       .where(and(
         eq(vacations.organizationId, organizationId),
         or(
-          // New Saturday-Friday week structure
+          // New Saturday-Friday week structure (range check)
           and(
             gte(vacations.weekOf, normalizedWeekStart),
             lt(vacations.weekOf, weekEnd)
           ),
-          // Legacy Monday-Sunday week structure
+          // Legacy Monday-Sunday week structure (24-hour window to catch all timezone variations)
           and(
             gte(vacations.weekOf, legacyMondayUTC),
-            lt(vacations.weekOf, legacyMondayEnd)
+            lt(vacations.weekOf, legacyMondayEndOfDay)
           )
         )
       ));
 
-    // Get exemptions for the week - check both Saturday-Friday AND Monday-Sunday ranges
+    // Get exemptions for the week - check both Saturday-Friday AND Monday dates
     const exemptions = await db.select()
       .from(checkinExemptions)
       .where(and(
         eq(checkinExemptions.organizationId, organizationId),
         or(
-          // New Saturday-Friday week structure
+          // New Saturday-Friday week structure (range check)
           and(
             gte(checkinExemptions.weekOf, normalizedWeekStart),
             lt(checkinExemptions.weekOf, weekEnd)
           ),
-          // Legacy Monday-Sunday week structure
+          // Legacy Monday-Sunday week structure (24-hour window to catch all timezone variations)
           and(
             gte(checkinExemptions.weekOf, legacyMondayUTC),
-            lt(checkinExemptions.weekOf, legacyMondayEnd)
+            lt(checkinExemptions.weekOf, legacyMondayEndOfDay)
           )
         )
       ));
