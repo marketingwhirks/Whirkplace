@@ -10988,6 +10988,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get sentiment trend over multiple weeks
+  app.get("/api/analytics/sentiment-trend", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { weeks = 12 } = req.query; // Default to 12 weeks of history
+      const numWeeks = Math.min(parseInt(weeks as string) || 12, 52); // Max 52 weeks
+      
+      const organization = await storage.getOrganization(req.orgId);
+      const currentWeek = getWeekStartCentral(new Date(), organization);
+      const sentimentData = [];
+      
+      // Calculate sentiment for each week going back
+      for (let i = numWeeks - 1; i >= 0; i--) {
+        const weekStart = new Date(currentWeek);
+        weekStart.setDate(weekStart.getDate() - (i * 7));
+        
+        const sentiment = await summaryService.calculateTeamSentiment(req.orgId, weekStart);
+        sentimentData.push({
+          weekOf: weekStart.toISOString(),
+          weekLabel: format(weekStart, 'MMM d'),
+          ...sentiment
+        });
+      }
+      
+      res.json({
+        weeks: sentimentData,
+        summary: {
+          currentWeekSentiment: sentimentData[sentimentData.length - 1]?.averageSentiment || 0,
+          averageSentiment: sentimentData.length > 0 
+            ? sentimentData.reduce((sum, w) => sum + w.averageSentiment, 0) / sentimentData.length 
+            : 0,
+          trend: sentimentData.length >= 2 
+            ? sentimentData[sentimentData.length - 1].averageSentiment - sentimentData[sentimentData.length - 2].averageSentiment
+            : 0
+        }
+      });
+    } catch (error) {
+      console.error("Failed to calculate sentiment trend:", error);
+      res.status(500).json({ message: "Failed to calculate sentiment trend" });
+    }
+  });
+
   // Comprehensive Admin Analytics Endpoint - Single API call for dashboard data
   app.get("/api/admin/analytics", 
     requireAuth(), 
