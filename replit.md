@@ -3,6 +3,8 @@
 ## Overview
 Whirkplace is a comprehensive team management and wellness application designed to track team health, conduct regular check-ins, celebrate wins, and foster strong team connections. It empowers organizations to monitor team morale, gather feedback through customizable questions, and promote a positive work environment through win recognition and Slack integration. The project aims to provide a scalable, multi-tenant solution for enhancing organizational well-being and productivity.
 
+**Reporting Period Structure**: Saturday-Friday weeks with check-ins due on Fridays at 5PM Central Time.
+
 ## User Preferences
 Preferred communication style: Simple, everyday language.
 Demo Organization: Fictitious Delicious is a fine dining restaurant (not a tech company).
