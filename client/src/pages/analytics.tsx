@@ -886,7 +886,7 @@ export default function Analytics() {
   const [filters, setFilters] = useState<FilterState>(getInitialFilters);
   const updateUrl = useUrlSync(filters, setFilters);
   const [showWeeklySummary, setShowWeeklySummary] = useState(false);
-  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 6 }));
 
   // Update filters when user data loads
   useEffect(() => {
@@ -1070,7 +1070,7 @@ export default function Analytics() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setSelectedWeek(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+                    onClick={() => setSelectedWeek(startOfWeek(new Date(), { weekStartsOn: 6 }))}
                     data-testid="button-current-week"
                   >
                     Current Week

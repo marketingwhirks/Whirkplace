@@ -259,7 +259,7 @@ export default function CheckinManagement() {
   const [activeTab, setActiveTab] = useState<"my-checkin" | "team-checkins" | "reviews" | "compliance" | "reminders">(
     mapParamToTab(initialTabParam)
   );
-  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 6 }));
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   
@@ -306,10 +306,10 @@ export default function CheckinManagement() {
   const [isSubmittingLate, setIsSubmittingLate] = useState(false);
 
   // Get current week and previous week starts
-  const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+  const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 6 });
   const previousWeekStart = addWeeks(currentWeekStart, -1);
-  const isCurrentWeek = isSameWeek(selectedWeek, currentWeekStart, { weekStartsOn: 1 });
-  const isPreviousWeek = isSameWeek(selectedWeek, previousWeekStart, { weekStartsOn: 1 });
+  const isCurrentWeek = isSameWeek(selectedWeek, currentWeekStart, { weekStartsOn: 6 });
+  const isPreviousWeek = isSameWeek(selectedWeek, previousWeekStart, { weekStartsOn: 6 });
 
   // Calculate if user is admin or manager
   const isAdmin = currentUser?.role === "admin";

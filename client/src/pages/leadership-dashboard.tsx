@@ -97,7 +97,7 @@ export default function LeadershipDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCheckin, setSelectedCheckin] = useState<EnhancedCheckinLeadership | null>(null);
   const [showOrgSummary, setShowOrgSummary] = useState(false);
-  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 6 }));
 
   // CSV Export function for missing check-ins
   const exportMissingCheckinsToCSV = () => {
@@ -580,7 +580,7 @@ export default function LeadershipDashboard() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setSelectedWeek(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+                  onClick={() => setSelectedWeek(startOfWeek(new Date(), { weekStartsOn: 6 }))}
                   data-testid="button-current-week-org"
                 >
                   Current Week
