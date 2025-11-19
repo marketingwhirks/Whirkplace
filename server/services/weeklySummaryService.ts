@@ -1,6 +1,7 @@
 import { db } from "../db";
-import { checkins, users, teams, vacations, checkinExemptions } from "@shared/schema";
-import { and, eq, gte, lte, desc, sql, not, isNull } from "drizzle-orm";
+import { checkins, users, teams, vacations, checkinExemptions, organizations } from "@shared/schema";
+import { and, eq, gte, lte, desc, sql, not, isNull, lt, or } from "drizzle-orm";
+import { getWeekStartCentral } from "@shared/utils/dueDates";
 
 interface TeamSummary {
   teamId: string;
@@ -290,6 +291,17 @@ export class WeeklySummaryService {
     const normalizedWeekStart = getWeekStartCentral(weekStart, organization[0]);
     const weekEnd = new Date(normalizedWeekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
+    
+    // BACKWARD COMPATIBILITY: Also check for Monday-based weeks (legacy data)
+    // Legacy data used Monday as week start (weekStartsOn: 1)
+    const { startOfWeek } = await import('date-fns');
+    const { toZonedTime, fromZonedTime } = await import('date-fns-tz');
+    const timezone = organization[0]?.timezone || 'America/Chicago';
+    const localDate = toZonedTime(weekStart, timezone);
+    const legacyMondayStart = startOfWeek(localDate, { weekStartsOn: 1 });
+    const legacyMondayUTC = fromZonedTime(legacyMondayStart, timezone);
+    const legacyMondayEnd = new Date(legacyMondayUTC);
+    legacyMondayEnd.setDate(legacyMondayEnd.getDate() + 7);
 
     // Get all active users in the organization
     const activeUsers = await db.select()
@@ -300,32 +312,62 @@ export class WeeklySummaryService {
         not(isNull(users.teamId)) // Only users assigned to teams
       ));
 
-    // Get all check-ins for the week
+    // Get all check-ins for the week - check both Saturday-Friday AND Monday-Sunday ranges
     const weekCheckins = await db.select()
       .from(checkins)
       .where(and(
         eq(checkins.organizationId, organizationId),
-        gte(checkins.weekOf, normalizedWeekStart),
-        lt(checkins.weekOf, weekEnd),
+        or(
+          // New Saturday-Friday week structure
+          and(
+            gte(checkins.weekOf, normalizedWeekStart),
+            lt(checkins.weekOf, weekEnd)
+          ),
+          // Legacy Monday-Sunday week structure (for backward compatibility)
+          and(
+            gte(checkins.weekOf, legacyMondayUTC),
+            lt(checkins.weekOf, legacyMondayEnd)
+          )
+        ),
         eq(checkins.isComplete, true)
       ));
 
-    // Get vacation records for the week
+    // Get vacation records for the week - check both Saturday-Friday AND Monday-Sunday ranges
     const vacationRecords = await db.select()
       .from(vacations)
       .where(and(
         eq(vacations.organizationId, organizationId),
-        gte(vacations.weekOf, normalizedWeekStart),
-        lt(vacations.weekOf, weekEnd)
+        or(
+          // New Saturday-Friday week structure
+          and(
+            gte(vacations.weekOf, normalizedWeekStart),
+            lt(vacations.weekOf, weekEnd)
+          ),
+          // Legacy Monday-Sunday week structure
+          and(
+            gte(vacations.weekOf, legacyMondayUTC),
+            lt(vacations.weekOf, legacyMondayEnd)
+          )
+        )
       ));
 
-    // Get exemptions for the week
+    // Get exemptions for the week - check both Saturday-Friday AND Monday-Sunday ranges
     const exemptions = await db.select()
       .from(checkinExemptions)
       .where(and(
         eq(checkinExemptions.organizationId, organizationId),
-        gte(checkinExemptions.weekOf, normalizedWeekStart),
-        lt(checkinExemptions.weekOf, weekEnd)
+        or(
+          // New Saturday-Friday week structure
+          and(
+            gte(checkinExemptions.weekOf, normalizedWeekStart),
+            lt(checkinExemptions.weekOf, weekEnd)
+          ),
+          // Legacy Monday-Sunday week structure
+          and(
+            gte(checkinExemptions.weekOf, legacyMondayUTC),
+            lt(checkinExemptions.weekOf, legacyMondayEnd)
+          )
+        )
       ));
 
     // Create sets for quick lookup
