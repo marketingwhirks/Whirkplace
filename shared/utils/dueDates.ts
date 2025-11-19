@@ -373,3 +373,14 @@ export function getDayName(dayNum: number): string {
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   return days[dayNum] || 'Friday';
 }
+
+/**
+ * Formats a date as "Week ending [Friday date]" for UI display
+ * @param date - Any date within the week
+ * @param organization - The organization with custom timezone settings (optional)
+ * @returns Formatted string like "Week ending Nov 14, 2025"
+ */
+export function formatWeekEndingLabel(date: Date, organization?: Partial<Organization>): string {
+  const friday = getCheckinWeekFriday(date, organization);
+  return `Week ending ${friday.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+}

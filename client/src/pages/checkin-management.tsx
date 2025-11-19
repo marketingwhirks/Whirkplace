@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
 import { formatDistanceToNow, formatDistance, format, startOfWeek, addWeeks, differenceInDays, endOfWeek, isSameWeek, isToday, isPast } from "date-fns";
+import { getCheckinWeekFriday } from "@shared/utils/dueDates";
 import { 
   CheckCircle, XCircle, Clock, Eye, MessageSquare, Filter, Calendar, User, AlertCircle, Send, UserMinus, Bell,
   Plane, Download, Users, TrendingDown, TrendingUp, ChevronLeft, ChevronRight, Activity, BellRing, Info, CheckCheck,
@@ -1034,7 +1035,7 @@ export default function CheckinManagement() {
                             )} />
                             <div>
                               <p className="font-medium">
-                                Week of {format(new Date(checkin.weekOf), 'MMM dd, yyyy')}
+                                Week ending {format(getCheckinWeekFriday(new Date(checkin.weekOf)), 'MMM dd, yyyy')}
                               </p>
                               <div className="flex items-center gap-2 mt-1">
                                 <RatingStars rating={checkin.overallMood || 0} size="sm" />
@@ -1294,7 +1295,7 @@ export default function CheckinManagement() {
                                   {checkin.user?.teamName || 'No Team'}
                                 </span>
                                 <Badge variant="outline" className="text-xs">
-                                  Week of {format(getWeekStartCentral(new Date(checkin.weekOf)), 'MMM d')}
+                                  Week ending {format(getCheckinWeekFriday(new Date(checkin.weekOf)), 'MMM d')}
                                 </Badge>
                               </div>
                             </div>
@@ -1410,7 +1411,7 @@ export default function CheckinManagement() {
                                 <div className="flex items-center gap-2 mt-1">
                                   <RatingStars rating={checkin.overallMood || 0} size="sm" />
                                   <Badge variant="outline" className="text-xs">
-                                    Week of {format(getWeekStartCentral(new Date(checkin.weekOf)), 'MMM d, yyyy')}
+                                    Week ending {format(getCheckinWeekFriday(new Date(checkin.weekOf)), 'MMM d, yyyy')}
                                   </Badge>
                                   <span className="text-sm text-muted-foreground">
                                     Submitted {formatDistanceToNow(new Date(checkin.submittedAt || checkin.createdAt), { addSuffix: true })}
@@ -1476,7 +1477,7 @@ export default function CheckinManagement() {
                                     Reviewed by {checkin.reviewer?.name || 'Unknown'}
                                   </Badge>
                                   <Badge variant="outline" className="text-xs">
-                                    Week of {format(getWeekStartCentral(new Date(checkin.weekOf)), 'MMM d, yyyy')}
+                                    Week ending {format(getCheckinWeekFriday(new Date(checkin.weekOf)), 'MMM d, yyyy')}
                                   </Badge>
                                   <span className="text-sm text-muted-foreground">
                                     {checkin.reviewedAt && formatDistanceToNow(new Date(checkin.reviewedAt), { addSuffix: true })}
@@ -1498,7 +1499,7 @@ export default function CheckinManagement() {
                       ) : (
                         <div className="text-center py-8">
                           <p className="text-muted-foreground mb-2">
-                            No reviewed check-ins for week of {format(selectedWeek, 'MMM d, yyyy')}
+                            No reviewed check-ins for week ending {format(getCheckinWeekFriday(selectedWeek), 'MMM d, yyyy')}
                           </p>
                           <TooltipProvider>
                             <Tooltip>

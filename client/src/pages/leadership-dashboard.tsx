@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { formatDistanceToNow, format, subDays, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns";
+import { getCheckinWeekFriday } from "@shared/utils/dueDates";
 import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Users, Filter,
   Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer, FileText,
@@ -566,7 +567,7 @@ export default function LeadershipDashboard() {
                 <div className="flex items-center gap-2 min-w-[200px] justify-center">
                   <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm font-medium">
-                    Week of {format(selectedWeek, "MMM d, yyyy")}
+                    Week ending {format(getCheckinWeekFriday(selectedWeek), "MMM d, yyyy")}
                   </span>
                 </div>
                 <Button
@@ -686,7 +687,7 @@ export default function LeadershipDashboard() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Heart className="w-5 h-5" />
-              Team Sentiment for Week of {format(selectedWeek, "MMM d, yyyy")}
+              Team Sentiment for Week ending {format(getCheckinWeekFriday(selectedWeek), "MMM d, yyyy")}
             </CardTitle>
             <CardDescription>
               Average sentiment including missing check-ins as zero (excluding vacation/exempt)
@@ -911,7 +912,7 @@ export default function LeadershipDashboard() {
                     {missingCheckins.map(weekData => (
                       <div key={weekData.weekOf} className="space-y-2">
                         <h4 className="text-sm font-semibold text-muted-foreground">
-                          Week of {format(new Date(weekData.weekOf), "MMM d, yyyy")}
+                          Week ending {format(getCheckinWeekFriday(new Date(weekData.weekOf)), "MMM d, yyyy")}
                         </h4>
                         <div className="space-y-2">
                           {weekData.users.map(user => (
@@ -1066,7 +1067,7 @@ export default function LeadershipDashboard() {
                               </div>
                             </div>
                             <p className="text-xs text-muted-foreground mt-1">
-                              Week of {format(new Date(review.weekOf), "MMM d")} • Submitted {format(new Date(review.submittedAt), "MMM d, h:mm a")}
+                              Week ending {format(getCheckinWeekFriday(new Date(review.weekOf)), "MMM d")} • Submitted {format(new Date(review.submittedAt), "MMM d, h:mm a")}
                             </p>
                           </div>
                           <div className="flex flex-col items-end gap-1">

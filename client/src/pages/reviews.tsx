@@ -42,7 +42,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import RatingStars from "@/components/checkin/rating-stars";
 import { cn } from "@/lib/utils";
 import Papa from "papaparse";
-import { getCheckinDueDate, getWeekStartCentral, getDueDateString } from "@shared/utils/dueDates";
+import { getCheckinDueDate, getWeekStartCentral, getDueDateString, getCheckinWeekFriday } from "@shared/utils/dueDates";
 import type { Checkin, User as UserType, Question, ReviewCheckin, Team, Vacation, Organization } from "@shared/schema";
 
 interface EnhancedCheckin extends Checkin {
@@ -514,7 +514,7 @@ export default function Reviews() {
                 <CardTitle>Organization Compliance Dashboard</CardTitle>
               </div>
               <Badge variant="outline" className="text-lg px-3 py-1">
-                Week of {format(viewingWeekFriday, 'MMM dd, yyyy')}
+                Week ending {format(viewingWeekFriday, 'MMM dd, yyyy')}
               </Badge>
             </div>
           </CardHeader>
@@ -1257,8 +1257,8 @@ export default function Reviews() {
             <AlertDialogHeader>
               <AlertDialogTitle>Review Check-in</AlertDialogTitle>
               <AlertDialogDescription>
-                Review {reviewModal.checkin.user?.name}'s check-in for week of{' '}
-                {format(new Date(reviewModal.checkin.weekStartDate), 'MMM dd, yyyy')}
+                Review {reviewModal.checkin.user?.name}'s check-in for week ending{' '}
+                {format(getCheckinWeekFriday(new Date(reviewModal.checkin.weekOf)), 'MMM dd, yyyy')}
               </AlertDialogDescription>
             </AlertDialogHeader>
             

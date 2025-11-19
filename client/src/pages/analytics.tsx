@@ -20,6 +20,7 @@ import {
   Cell,
 } from "recharts";
 import { format, subDays, subWeeks, subMonths, subYears, startOfWeek, addWeeks } from "date-fns";
+import { getCheckinWeekFriday } from "@shared/utils/dueDates";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1056,7 +1057,7 @@ export default function Analytics() {
                   <div className="flex items-center gap-2 min-w-[200px] justify-center">
                     <CalendarIcon className="h-4 w-4 text-muted-foreground" />
                     <span className="text-sm font-medium">
-                      Week of {format(selectedWeek, "MMM d, yyyy")}
+                      Week ending {format(getCheckinWeekFriday(selectedWeek), "MMM d, yyyy")}
                     </span>
                   </div>
                   <Button
