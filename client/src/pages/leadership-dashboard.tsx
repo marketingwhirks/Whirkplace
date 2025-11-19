@@ -24,6 +24,7 @@ import RatingStars from "@/components/checkin/rating-stars";
 import type { Checkin, User as UserType, Team, Question, ComplianceMetricsResult } from "@shared/schema";
 import { DateRange } from "react-day-picker";
 import { LeadershipSummary } from "@/components/analytics/LeadershipSummary";
+import SentimentTrendChart from "@/components/analytics/SentimentTrendChart";
 import { Link } from "wouter";
 
 interface EnhancedCheckinLeadership extends Checkin {
@@ -746,6 +747,9 @@ export default function LeadershipDashboard() {
             )}
           </CardContent>
         </Card>
+
+        {/* Sentiment Trend Chart */}
+        <SentimentTrendChart weeks={12} />
 
         {/* Compliance Metrics */}
         <Card>
