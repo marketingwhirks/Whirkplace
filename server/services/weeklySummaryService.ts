@@ -279,7 +279,16 @@ export class WeeklySummaryService {
     vacationCount: number;
     exemptCount: number;
   }> {
-    const weekEnd = new Date(weekStart);
+    // Get organization to access timezone settings
+    const organization = await db
+      .select()
+      .from(organizations)
+      .where(eq(organizations.id, organizationId))
+      .limit(1);
+    
+    // Normalize the week start to match how check-ins are stored (using Central Time week boundaries)
+    const normalizedWeekStart = getWeekStartCentral(weekStart, organization[0]);
+    const weekEnd = new Date(normalizedWeekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
 
     // Get all active users in the organization
@@ -296,8 +305,8 @@ export class WeeklySummaryService {
       .from(checkins)
       .where(and(
         eq(checkins.organizationId, organizationId),
-        gte(checkins.weekOf, weekStart),
-        lte(checkins.weekOf, weekEnd),
+        gte(checkins.weekOf, normalizedWeekStart),
+        lt(checkins.weekOf, weekEnd),
         eq(checkins.isComplete, true)
       ));
 
@@ -306,7 +315,7 @@ export class WeeklySummaryService {
       .from(vacations)
       .where(and(
         eq(vacations.organizationId, organizationId),
-        gte(vacations.weekOf, weekStart),
+        gte(vacations.weekOf, normalizedWeekStart),
         lt(vacations.weekOf, weekEnd)
       ));
 
@@ -315,8 +324,8 @@ export class WeeklySummaryService {
       .from(checkinExemptions)
       .where(and(
         eq(checkinExemptions.organizationId, organizationId),
-        gte(checkinExemptions.weekOf, weekStart),
-        lte(checkinExemptions.weekOf, weekEnd)
+        gte(checkinExemptions.weekOf, normalizedWeekStart),
+        lt(checkinExemptions.weekOf, weekEnd)
       ));
 
     // Create sets for quick lookup
