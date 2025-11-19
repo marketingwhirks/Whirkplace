@@ -54,6 +54,25 @@ The application adopts a multi-tenant architecture to support multiple organizat
 
 **Result**: Aggregation service now processes metrics successfully without errors
 
+## Recent Updates (November 19, 2025)
+
+### Sentiment Analytics Enhancement
+**Enhancement**: Added comprehensive sentiment trend visualization to track team morale over time
+
+**Changes Made**:
+1. Created sentiment trend API endpoint at `/api/analytics/sentiment-trend` to fetch multi-week data
+2. Built SentimentTrendChart component displaying 8-12 week rolling sentiment history
+3. Integrated trend chart into Leadership Dashboard for at-a-glance pattern identification  
+4. Fixed critical date alignment bug where frontend Monday-based dates didn't match backend Saturday/Sunday storage
+
+**Technical Details**:
+- Frontend passes Monday-based week dates but backend stored with different boundaries
+- Solution: Normalize all incoming weekStart parameters using getWeekStartCentral() before querying
+- Sentiment calculation: Expected participants = active users - (vacation + exempt), missing submissions count as 0
+- Trend chart shows average sentiment per week with color coding (green >4, yellow 3-4, red <3)
+
+**Result**: Leadership now has visibility into sentiment patterns over time to identify problematic weeks and track improvement initiatives
+
 ## Recent Updates (October 26, 2025)
 
 ### Team Check-in Status Integration
