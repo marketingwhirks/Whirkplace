@@ -1,6 +1,6 @@
 import { db } from "../db";
-import { checkins, users, teams } from "@shared/schema";
-import { and, eq, gte, lte, desc, sql } from "drizzle-orm";
+import { checkins, users, teams, vacations, checkinExemptions } from "@shared/schema";
+import { and, eq, gte, lte, desc, sql, not, isNull } from "drizzle-orm";
 
 interface TeamSummary {
   teamId: string;
@@ -267,6 +267,96 @@ export class WeeklySummaryService {
           keyResponse: checkin?.checkins.winningNextWeek || undefined
         };
       })
+    };
+  }
+
+  // Calculate team sentiment including missing check-ins as 0
+  async calculateTeamSentiment(organizationId: string, weekStart: Date): Promise<{
+    averageSentiment: number;
+    expectedCount: number;
+    submittedCount: number;
+    missingCount: number;
+    vacationCount: number;
+    exemptCount: number;
+  }> {
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    // Get all active users in the organization
+    const activeUsers = await db.select()
+      .from(users)
+      .where(and(
+        eq(users.organizationId, organizationId),
+        eq(users.isActive, true),
+        not(isNull(users.teamId)) // Only users assigned to teams
+      ));
+
+    // Get all check-ins for the week
+    const weekCheckins = await db.select()
+      .from(checkins)
+      .where(and(
+        eq(checkins.organizationId, organizationId),
+        gte(checkins.weekOf, weekStart),
+        lte(checkins.weekOf, weekEnd),
+        eq(checkins.isComplete, true)
+      ));
+
+    // Get vacation records for the week
+    const vacationRecords = await db.select()
+      .from(vacations)
+      .where(and(
+        eq(vacations.organizationId, organizationId),
+        lte(vacations.startDate, weekEnd),
+        gte(vacations.endDate, weekStart)
+      ));
+
+    // Get exemptions for the week
+    const exemptions = await db.select()
+      .from(checkinExemptions)
+      .where(and(
+        eq(checkinExemptions.organizationId, organizationId),
+        gte(checkinExemptions.weekOf, weekStart),
+        lte(checkinExemptions.weekOf, weekEnd)
+      ));
+
+    // Create sets for quick lookup
+    const vacationUserIds = new Set(vacationRecords.map(v => v.userId));
+    const exemptUserIds = new Set(exemptions.map(e => e.userId));
+    const submittedUserIds = new Set(weekCheckins.map(c => c.userId));
+
+    // Calculate expected participants (exclude vacation and exempt users)
+    const expectedUsers = activeUsers.filter(user => 
+      !vacationUserIds.has(user.id) && !exemptUserIds.has(user.id)
+    );
+
+    // Calculate sentiment
+    let totalSentiment = 0;
+    let submittedCount = 0;
+    let missingCount = 0;
+
+    for (const user of expectedUsers) {
+      const checkin = weekCheckins.find(c => c.userId === user.id);
+      if (checkin) {
+        // User submitted - use their actual mood
+        totalSentiment += checkin.overallMood || 0;
+        submittedCount++;
+      } else {
+        // User didn't submit - count as 0
+        totalSentiment += 0;
+        missingCount++;
+      }
+    }
+
+    const expectedCount = expectedUsers.length;
+    const averageSentiment = expectedCount > 0 ? totalSentiment / expectedCount : 0;
+
+    return {
+      averageSentiment,
+      expectedCount,
+      submittedCount,
+      missingCount,
+      vacationCount: vacationUserIds.size,
+      exemptCount: exemptUserIds.size
     };
   }
 

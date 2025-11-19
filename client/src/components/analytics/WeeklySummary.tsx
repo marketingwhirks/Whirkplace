@@ -45,11 +45,19 @@ interface TeamSummary {
 
 interface WeeklySummaryProps {
   shouldFetch?: boolean;
+  weekOf?: Date;
 }
 
-export function WeeklySummary({ shouldFetch = true }: WeeklySummaryProps) {
+export function WeeklySummary({ shouldFetch = true, weekOf }: WeeklySummaryProps) {
   const { data: summary, isLoading } = useQuery<TeamSummary>({
-    queryKey: ["/api/analytics/team-summary"],
+    queryKey: ["/api/analytics/team-summary", weekOf?.toISOString()],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (weekOf) params.append("weekStart", weekOf.toISOString());
+      const response = await fetch(`/api/analytics/team-summary?${params.toString()}`);
+      if (!response.ok) throw new Error("Failed to fetch team summary");
+      return response.json();
+    },
     enabled: shouldFetch,
   });
 

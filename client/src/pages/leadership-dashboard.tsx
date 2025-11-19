@@ -4,7 +4,7 @@ import { formatDistanceToNow, format, subDays, startOfWeek, endOfWeek, addWeeks,
 import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Users, Filter,
   Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer, FileText,
-  AlertCircle, AlertTriangle, UserX, ClipboardList, Send, Flame, Check, ChevronLeft, ChevronRight
+  AlertCircle, AlertTriangle, UserX, ClipboardList, Send, Flame, Check, ChevronLeft, ChevronRight, Heart
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -365,6 +365,27 @@ export default function LeadershipDashboard() {
     staleTime: 2 * 60 * 1000, // Cache for 2 minutes
   });
 
+  // Fetch team sentiment data with proper handling of missing check-ins
+  const { data: sentimentData, isLoading: sentimentLoading } = useQuery<{
+    averageSentiment: number;
+    expectedCount: number;
+    submittedCount: number;
+    missingCount: number;
+    vacationCount: number;
+    exemptCount: number;
+  }>({
+    queryKey: ["/api/analytics/team-sentiment", selectedWeek.toISOString()],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.append("weekStart", selectedWeek.toISOString());
+      const response = await fetch(`/api/analytics/team-sentiment?${params.toString()}`);
+      if (!response.ok) throw new Error(`Failed to fetch: ${response.status}`);
+      return response.json();
+    },
+    enabled: !userLoading && !!currentUser && currentUser.role === "admin",
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes
+  });
+
   // Calculate analytics metrics
   const analytics: AnalyticsMetrics = useMemo(() => {
     if (!checkins.length) {
@@ -658,6 +679,73 @@ export default function LeadershipDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Team Sentiment Metric */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Heart className="w-5 h-5" />
+              Team Sentiment for Week of {format(selectedWeek, "MMM d, yyyy")}
+            </CardTitle>
+            <CardDescription>
+              Average sentiment including missing check-ins as zero (excluding vacation/exempt)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {sentimentLoading ? (
+              <div className="space-y-4">
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-8 w-full" />
+              </div>
+            ) : sentimentData ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-3xl font-bold" data-testid="text-team-sentiment">
+                      {sentimentData.averageSentiment.toFixed(2)}/5
+                    </p>
+                    <div className="flex items-center mt-2">
+                      <RatingStars rating={sentimentData.averageSentiment} readonly />
+                    </div>
+                  </div>
+                  <div className="text-right space-y-1">
+                    <Badge variant="outline" className="ml-2">
+                      {sentimentData.expectedCount} Expected
+                    </Badge>
+                    <div className="text-xs text-muted-foreground">
+                      {sentimentData.submittedCount} submitted • {sentimentData.missingCount} missing
+                    </div>
+                    {(sentimentData.vacationCount > 0 || sentimentData.exemptCount > 0) && (
+                      <div className="text-xs text-muted-foreground">
+                        Excluded: {sentimentData.vacationCount} vacation, {sentimentData.exemptCount} exempt
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <Progress 
+                  value={(sentimentData.averageSentiment / 5) * 100} 
+                  className={`h-3 ${
+                    sentimentData.averageSentiment >= 4 ? 'text-green-600' :
+                    sentimentData.averageSentiment >= 3 ? 'text-yellow-600' :
+                    'text-red-600'
+                  }`}
+                />
+                {sentimentData.missingCount > 0 && (
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      {sentimentData.missingCount} team members didn't submit check-ins and were counted as 0 sentiment
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+            ) : (
+              <div className="text-center text-muted-foreground">
+                No sentiment data available
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Compliance Metrics */}
         <Card>

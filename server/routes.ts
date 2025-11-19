@@ -10972,6 +10972,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get team sentiment with proper handling of missing check-ins
+  app.get("/api/analytics/team-sentiment", requireAuth(), requireRole(['admin']), async (req, res) => {
+    try {
+      const { weekStart } = req.query;
+      
+      const organization = await storage.getOrganization(req.orgId);
+      const startDate = weekStart ? new Date(weekStart as string) : getWeekStartCentral(new Date(), organization);
+      const sentiment = await summaryService.calculateTeamSentiment(req.orgId, startDate);
+      
+      res.json(sentiment);
+    } catch (error) {
+      console.error("Failed to calculate team sentiment:", error);
+      res.status(500).json({ message: "Failed to calculate team sentiment" });
+    }
+  });
+
   // Comprehensive Admin Analytics Endpoint - Single API call for dashboard data
   app.get("/api/admin/analytics", 
     requireAuth(), 

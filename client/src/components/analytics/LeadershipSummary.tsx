@@ -83,11 +83,19 @@ interface LeadershipSummary {
 
 interface LeadershipSummaryProps {
   shouldFetch?: boolean;
+  weekOf?: Date;
 }
 
-export function LeadershipSummary({ shouldFetch = true }: LeadershipSummaryProps) {
+export function LeadershipSummary({ shouldFetch = true, weekOf }: LeadershipSummaryProps) {
   const { data: summary, isLoading } = useQuery<LeadershipSummary>({
-    queryKey: ["/api/analytics/leadership-summary"],
+    queryKey: ["/api/analytics/leadership-summary", weekOf?.toISOString()],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (weekOf) params.append("weekStart", weekOf.toISOString());
+      const response = await fetch(`/api/analytics/leadership-summary?${params.toString()}`);
+      if (!response.ok) throw new Error("Failed to fetch leadership summary");
+      return response.json();
+    },
     enabled: shouldFetch,
   });
 
