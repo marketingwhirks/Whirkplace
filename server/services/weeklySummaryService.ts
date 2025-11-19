@@ -306,8 +306,8 @@ export class WeeklySummaryService {
       .from(vacations)
       .where(and(
         eq(vacations.organizationId, organizationId),
-        lte(vacations.startDate, weekEnd),
-        gte(vacations.endDate, weekStart)
+        gte(vacations.weekOf, weekStart),
+        lt(vacations.weekOf, weekEnd)
       ));
 
     // Get exemptions for the week
