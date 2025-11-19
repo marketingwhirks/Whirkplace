@@ -3922,8 +3922,12 @@ export class DatabaseStorage implements IStorage {
   private getWeekKey(date: Date): string {
     const startOfWeek = new Date(date);
     const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Adjust to Monday
-    startOfWeek.setDate(diff);
+    // Adjust to Saturday (day 6) as start of week
+    // Saturday=6 -> go back 0 days
+    // Sunday=0 -> go back 1 day
+    // Monday=1 -> go back 2 days, etc.
+    const daysToGoBack = day === 6 ? 0 : (day + 1);
+    startOfWeek.setDate(startOfWeek.getDate() - daysToGoBack);
     startOfWeek.setHours(0, 0, 0, 0);
     return startOfWeek.toISOString().split('T')[0];
   }
