@@ -292,17 +292,21 @@ export class WeeklySummaryService {
     const weekEnd = new Date(normalizedWeekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
     
-    // BACKWARD COMPATIBILITY: Also check for Monday-based weeks (legacy data)
-    // Legacy data used Monday as week start (weekStartsOn: 1)
-    const { startOfWeek } = await import('date-fns');
+    // BACKWARD COMPATIBILITY: Also check for Sunday-based weeks (legacy data)
+    // Legacy data was stored with Sunday dates (e.g., Nov 10 for the week of Nov 11-17)
+    const { startOfWeek, addDays, subDays } = await import('date-fns');
     const { toZonedTime, fromZonedTime } = await import('date-fns-tz');
     const timezone = organization[0]?.timezone || 'America/Chicago';
     const localDate = toZonedTime(weekStart, timezone);
-    const legacyMondayStart = startOfWeek(localDate, { weekStartsOn: 1 });
-    const legacyMondayUTC = fromZonedTime(legacyMondayStart, timezone);
-    // Use a 24-hour window to catch all timezone variations of the Monday date
-    const legacyMondayEndOfDay = new Date(legacyMondayUTC);
-    legacyMondayEndOfDay.setDate(legacyMondayEndOfDay.getDate() + 1); // Just one day, not a full week
+    
+    // Get the Monday of this week
+    const mondayStart = startOfWeek(localDate, { weekStartsOn: 1 });
+    // Legacy data stored the PREVIOUS Sunday as the weekOf date
+    const legacySundayStart = subDays(mondayStart, 1);
+    const legacySundayUTC = fromZonedTime(legacySundayStart, timezone);
+    // Use a 24-hour window to catch all timezone variations
+    const legacySundayEndOfDay = new Date(legacySundayUTC);
+    legacySundayEndOfDay.setDate(legacySundayEndOfDay.getDate() + 1);
 
     // Get all active users in the organization
     const activeUsers = await db.select()
@@ -324,10 +328,10 @@ export class WeeklySummaryService {
             gte(checkins.weekOf, normalizedWeekStart),
             lt(checkins.weekOf, weekEnd)
           ),
-          // Legacy Monday-Sunday week structure (24-hour window to catch all timezone variations)
+          // Legacy Sunday-based week structure (24-hour window to catch all timezone variations)
           and(
-            gte(checkins.weekOf, legacyMondayUTC),
-            lt(checkins.weekOf, legacyMondayEndOfDay)
+            gte(checkins.weekOf, legacySundayUTC),
+            lt(checkins.weekOf, legacySundayEndOfDay)
           )
         ),
         eq(checkins.isComplete, true)
@@ -344,10 +348,10 @@ export class WeeklySummaryService {
             gte(vacations.weekOf, normalizedWeekStart),
             lt(vacations.weekOf, weekEnd)
           ),
-          // Legacy Monday-Sunday week structure (24-hour window to catch all timezone variations)
+          // Legacy Sunday-based week structure (24-hour window to catch all timezone variations)
           and(
-            gte(vacations.weekOf, legacyMondayUTC),
-            lt(vacations.weekOf, legacyMondayEndOfDay)
+            gte(vacations.weekOf, legacySundayUTC),
+            lt(vacations.weekOf, legacySundayEndOfDay)
           )
         )
       ));
@@ -363,10 +367,10 @@ export class WeeklySummaryService {
             gte(checkinExemptions.weekOf, normalizedWeekStart),
             lt(checkinExemptions.weekOf, weekEnd)
           ),
-          // Legacy Monday-Sunday week structure (24-hour window to catch all timezone variations)
+          // Legacy Sunday-based week structure (24-hour window to catch all timezone variations)
           and(
-            gte(checkinExemptions.weekOf, legacyMondayUTC),
-            lt(checkinExemptions.weekOf, legacyMondayEndOfDay)
+            gte(checkinExemptions.weekOf, legacySundayUTC),
+            lt(checkinExemptions.weekOf, legacySundayEndOfDay)
           )
         )
       ));
