@@ -25,7 +25,7 @@ interface ExemptionWithUser extends CheckinExemption {
 
 export default function ExemptionManager() {
   const { toast } = useToast();
-  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 6 }));
   const [selectedUserId, setSelectedUserId] = useState<string>("");
   const [exemptionReason, setExemptionReason] = useState<string>("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
@@ -136,7 +136,7 @@ export default function ExemptionManager() {
   };
 
   const goToCurrentWeek = () => {
-    setSelectedWeek(startOfWeek(new Date(), { weekStartsOn: 1 }));
+    setSelectedWeek(startOfWeek(new Date(), { weekStartsOn: 6 }));
   };
 
   // Enhance exemptions with user data

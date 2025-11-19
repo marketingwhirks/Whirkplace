@@ -918,7 +918,7 @@ export default function Settings() {
   // Add vacation mutation
   const addVacationMutation = useMutation({
     mutationFn: async (data: { weekOf: Date; note?: string }) => {
-      const weekStart = startOfWeek(data.weekOf, { weekStartsOn: 1 });
+      const weekStart = startOfWeek(data.weekOf, { weekStartsOn: 6 });
       return apiRequest("POST", "/api/vacations", {
         weekOf: weekStart.toISOString(),
         note: data.note || undefined,
@@ -946,7 +946,7 @@ export default function Settings() {
   // Remove vacation mutation
   const removeVacationMutation = useMutation({
     mutationFn: async (weekOf: string) => {
-      const weekStart = startOfWeek(parseISO(weekOf), { weekStartsOn: 1 });
+      const weekStart = startOfWeek(parseISO(weekOf), { weekStartsOn: 6 });
       return apiRequest("DELETE", `/api/vacations/${weekStart.toISOString()}`);
     },
     onSuccess: () => {
@@ -1290,7 +1290,7 @@ export default function Settings() {
                           .sort((a, b) => new Date(b.weekOf).getTime() - new Date(a.weekOf).getTime())
                           .slice(0, 10)
                           .map((vacation) => {
-                            const weekStart = startOfWeek(typeof vacation.weekOf === 'string' ? parseISO(vacation.weekOf) : new Date(vacation.weekOf), { weekStartsOn: 1 });
+                            const weekStart = startOfWeek(typeof vacation.weekOf === 'string' ? parseISO(vacation.weekOf) : new Date(vacation.weekOf), { weekStartsOn: 6 });
                             const weekEnd = addWeeks(weekStart, 1);
                             return (
                               <div

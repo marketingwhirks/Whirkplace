@@ -271,18 +271,18 @@ export default function Reviews() {
   
   // Calculate the week we're viewing
   const viewingWeekStart = useMemo(() => {
-    const weekStart = addWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), selectedWeek);
+    const weekStart = addWeeks(startOfWeek(new Date(), { weekStartsOn: 6 }), selectedWeek);
     return weekStart;
   }, [selectedWeek]);
   
   const viewingWeekEnd = useMemo(() => {
-    const weekEnd = endOfWeek(viewingWeekStart, { weekStartsOn: 1 });
+    const weekEnd = endOfWeek(viewingWeekStart, { weekStartsOn: 6 });
     return weekEnd;
   }, [viewingWeekStart]);
 
   // Calculate Friday of the week (for display purposes)
   const viewingWeekFriday = useMemo(() => {
-    return new Date(viewingWeekStart.getTime() + 4 * 24 * 60 * 60 * 1000); // Add 4 days to Monday to get Friday
+    return new Date(viewingWeekStart.getTime() + 6 * 24 * 60 * 60 * 1000); // Add 6 days to Saturday to get Friday
   }, [viewingWeekStart]);
 
   // Fetch organization data

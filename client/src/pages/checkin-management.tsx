@@ -348,17 +348,17 @@ export default function CheckinManagement() {
 
   // Find current week check-in
   const currentWeekCheckin = sortedCheckins.find(checkin => 
-    isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 1 })
+    isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
   );
 
   // Find previous week check-in for late submission
   const previousWeekCheckin = sortedCheckins.find(checkin =>
-    isSameWeek(new Date(checkin.weekOf), previousWeekStart, { weekStartsOn: 1 })
+    isSameWeek(new Date(checkin.weekOf), previousWeekStart, { weekStartsOn: 6 })
   );
 
   // Get historical check-ins (last 6 weeks excluding current)
   const historicalCheckins = sortedCheckins.filter(checkin => 
-    !isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 1 })
+    !isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
   ).slice(0, 6);
 
   // Fetch vacations
@@ -370,14 +370,14 @@ export default function CheckinManagement() {
   // Check if current week is marked as vacation
   const currentWeekVacation = useMemo(() => {
     return vacations.find(v => 
-      isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 1 })
+      isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 6 })
     );
   }, [vacations, currentWeekStart]);
 
   // Check if previous week was marked as vacation
   const previousWeekVacation = useMemo(() => {
     return vacations.find(v => 
-      isSameWeek(new Date(v.weekOf), previousWeekStart, { weekStartsOn: 1 })
+      isSameWeek(new Date(v.weekOf), previousWeekStart, { weekStartsOn: 6 })
     );
   }, [vacations, previousWeekStart]);
 
@@ -673,7 +673,7 @@ export default function CheckinManagement() {
               </Button>
               <div className="min-w-[200px] text-center">
                 <div className="font-semibold">
-                  {format(selectedWeek, 'MMM dd')} - {format(endOfWeek(selectedWeek, { weekStartsOn: 1 }), 'MMM dd, yyyy')}
+                  {format(selectedWeek, 'MMM dd')} - {format(endOfWeek(selectedWeek, { weekStartsOn: 6 }), 'MMM dd, yyyy')}
                 </div>
                 {isCurrentWeek && (
                   <Badge variant="default" className="mt-1">Current Week</Badge>
