@@ -1,10 +1,10 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { formatDistanceToNow, format, subDays, startOfWeek, endOfWeek } from "date-fns";
+import { formatDistanceToNow, format, subDays, startOfWeek, endOfWeek, addWeeks, subWeeks } from "date-fns";
 import {
   TrendingUp, TrendingDown, Clock, CheckCircle, XCircle, Users, Filter,
   Download, Calendar, BarChart3, PieChart, Eye, MessageSquare, Target, Timer, FileText,
-  AlertCircle, AlertTriangle, UserX, ClipboardList, Send, Flame, Check
+  AlertCircle, AlertTriangle, UserX, ClipboardList, Send, Flame, Check, ChevronLeft, ChevronRight
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -96,6 +96,7 @@ export default function LeadershipDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCheckin, setSelectedCheckin] = useState<EnhancedCheckinLeadership | null>(null);
   const [showOrgSummary, setShowOrgSummary] = useState(false);
+  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
 
   // CSV Export function for missing check-ins
   const exportMissingCheckinsToCSV = () => {
@@ -522,7 +523,7 @@ export default function LeadershipDashboard() {
         {/* Leadership Summary */}
         <div className="space-y-4">
           {!showOrgSummary && (
-            <div className="flex justify-start">
+            <div className="flex items-center gap-4">
               <Button 
                 onClick={() => setShowOrgSummary(true)}
                 className="flex items-center gap-2"
@@ -531,9 +532,41 @@ export default function LeadershipDashboard() {
                 <FileText className="w-4 h-4" />
                 Generate Organization Summary
               </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setSelectedWeek(prev => subWeeks(prev, 1))}
+                  data-testid="button-previous-week-org"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex items-center gap-2 min-w-[200px] justify-center">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">
+                    Week of {format(selectedWeek, "MMM d, yyyy")}
+                  </span>
+                </div>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setSelectedWeek(prev => addWeeks(prev, 1))}
+                  data-testid="button-next-week-org"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedWeek(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+                  data-testid="button-current-week-org"
+                >
+                  Current Week
+                </Button>
+              </div>
             </div>
           )}
-          <LeadershipSummary shouldFetch={showOrgSummary} />
+          <LeadershipSummary shouldFetch={showOrgSummary} weekOf={selectedWeek} />
         </div>
 
         {/* Key Metrics */}

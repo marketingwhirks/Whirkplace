@@ -19,7 +19,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { format, subDays, subWeeks, subMonths, subYears } from "date-fns";
+import { format, subDays, subWeeks, subMonths, subYears, startOfWeek, addWeeks } from "date-fns";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,9 @@ import {
   Activity,
   Trophy,
   AlertCircle,
-  FileText 
+  FileText,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TourGuide } from "@/components/TourGuide";
@@ -884,6 +886,7 @@ export default function Analytics() {
   const [filters, setFilters] = useState<FilterState>(getInitialFilters);
   const updateUrl = useUrlSync(filters, setFilters);
   const [showWeeklySummary, setShowWeeklySummary] = useState(false);
+  const [selectedWeek, setSelectedWeek] = useState<Date>(startOfWeek(new Date(), { weekStartsOn: 1 }));
 
   // Update filters when user data loads
   useEffect(() => {
@@ -1032,7 +1035,7 @@ export default function Analytics() {
         {currentUser?.role !== 'member' && (
           <div className="space-y-4">
             {!showWeeklySummary && (
-              <div className="flex justify-start">
+              <div className="flex items-center gap-4">
                 <Button 
                   onClick={() => setShowWeeklySummary(true)}
                   className="flex items-center gap-2"
@@ -1041,9 +1044,41 @@ export default function Analytics() {
                   <FileText className="w-4 h-4" />
                   Generate Weekly Summary
                 </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setSelectedWeek(prev => subWeeks(prev, 1))}
+                    data-testid="button-previous-week"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <div className="flex items-center gap-2 min-w-[200px] justify-center">
+                    <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">
+                      Week of {format(selectedWeek, "MMM d, yyyy")}
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setSelectedWeek(prev => addWeeks(prev, 1))}
+                    data-testid="button-next-week"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSelectedWeek(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+                    data-testid="button-current-week"
+                  >
+                    Current Week
+                  </Button>
+                </div>
               </div>
             )}
-            <WeeklySummary shouldFetch={showWeeklySummary} />
+            <WeeklySummary shouldFetch={showWeeklySummary} weekOf={selectedWeek} />
           </div>
         )}
 
