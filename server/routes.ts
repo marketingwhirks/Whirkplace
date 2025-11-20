@@ -7587,9 +7587,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Auto-select questions for a user/team
-  app.get("/api/questions/auto-select", requireAuth(), async (req, res) => {
+  app.post("/api/questions/auto-select", requireAuth(), async (req, res) => {
     try {
-      const { userId, teamId } = req.query;
+      const { userId, teamId } = req.body;
       
       // Use current user if no userId specified
       const targetUserId = userId as string || req.currentUser?.id;
