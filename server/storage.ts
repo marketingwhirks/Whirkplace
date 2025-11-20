@@ -3485,8 +3485,24 @@ export class DatabaseStorage implements IStorage {
 
   // Auto-select questions based on organization settings
   async autoSelectQuestions(organizationId: string, userId: string, teamId?: string): Promise<Question[]> {
-    const settings = await this.getOrganizationQuestionSettings(organizationId);
-    if (!settings || !settings.autoSelectEnabled) {
+    let settings = await this.getOrganizationQuestionSettings(organizationId);
+    
+    // Create default settings if none exist
+    if (!settings) {
+      settings = await this.createOrganizationQuestionSettings(organizationId, {
+        autoSelectEnabled: false,
+        selectionStrategy: 'random',
+        minimumQuestionsPerWeek: 3,
+        maximumQuestionsPerWeek: 5,
+        avoidRecentlyAskedDays: 30,
+        includeTeamSpecific: true,
+        prioritizeCategories: [],
+        createdBy: userId,
+        updatedBy: userId
+      });
+    }
+    
+    if (!settings.autoSelectEnabled) {
       // Return active questions as normal
       return teamId 
         ? await this.getActiveQuestionsForTeam(organizationId, teamId)
@@ -9127,8 +9143,24 @@ export class MemStorage implements IStorage {
 
   // Auto-select questions based on organization settings
   async autoSelectQuestions(organizationId: string, userId: string, teamId?: string): Promise<Question[]> {
-    const settings = await this.getOrganizationQuestionSettings(organizationId);
-    if (!settings || !settings.autoSelectEnabled) {
+    let settings = await this.getOrganizationQuestionSettings(organizationId);
+    
+    // Create default settings if none exist
+    if (!settings) {
+      settings = await this.createOrganizationQuestionSettings(organizationId, {
+        autoSelectEnabled: false,
+        selectionStrategy: 'random',
+        minimumQuestionsPerWeek: 3,
+        maximumQuestionsPerWeek: 5,
+        avoidRecentlyAskedDays: 30,
+        includeTeamSpecific: true,
+        prioritizeCategories: [],
+        createdBy: userId,
+        updatedBy: userId
+      });
+    }
+    
+    if (!settings.autoSelectEnabled) {
       // Return active questions as normal
       return teamId
         ? await this.getActiveQuestionsForTeam(organizationId, teamId)
