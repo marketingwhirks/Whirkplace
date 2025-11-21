@@ -451,16 +451,9 @@ export default function Checkins() {
     console.log('currentWeekStart:', currentWeekStart);
     console.log('currentWeekCheckin:', currentWeekCheckin);
     
-    // Don't pass weekStartDate when editing current week's check-in
-    // This allows the mutation logic to properly use currentWeekCheckin.id
-    if (currentWeekCheckin) {
-      createCheckinMutation.mutate(data);
-    } else {
-      createCheckinMutation.mutate({
-        ...data,
-        weekStartDate: currentWeekStart.toISOString()
-      });
-    }
+    // Just pass the data - weekStartDate is only for late submissions
+    // The mutation will handle whether to POST (new) or PATCH (update)
+    createCheckinMutation.mutate(data);
   };
   
   // Handle form validation errors
