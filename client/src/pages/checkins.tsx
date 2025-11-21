@@ -553,7 +553,16 @@ export default function Checkins() {
                   <span>This Week's Check-in</span>
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Week ending {format(getCheckinWeekFriday(new Date()), 'MMMM d, yyyy')}
+                  Week ending {(() => {
+                    const today = new Date();
+                    if (!isNaN(today.getTime())) {
+                      const friday = getCheckinWeekFriday(today);
+                      if (!isNaN(friday.getTime())) {
+                        return format(friday, 'MMMM d, yyyy');
+                      }
+                    }
+                    return 'this week';
+                  })()}
                   {currentWeekVacation && (
                     <Badge variant="secondary" className="ml-2 gap-1">
                       <Plane className="w-3 h-3" />
@@ -1280,7 +1289,16 @@ export default function Checkins() {
                 {currentWeekCheckin ? "Edit Check-in" : "Submit Weekly Check-in"}
               </DialogTitle>
               <DialogDescription>
-                Week ending {format(getCheckinWeekFriday(new Date()), 'MMMM d, yyyy')}
+                Week ending {(() => {
+                  const today = new Date();
+                  if (!isNaN(today.getTime())) {
+                    const friday = getCheckinWeekFriday(today);
+                    if (!isNaN(friday.getTime())) {
+                      return format(friday, 'MMMM d, yyyy');
+                    }
+                  }
+                  return 'this week';
+                })()}
               </DialogDescription>
             </DialogHeader>
             
