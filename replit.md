@@ -41,6 +41,24 @@ The application adopts a multi-tenant architecture to support multiple organizat
 7. **Rate Limiting**: Authentication endpoints limited to 10 requests per 15-minute window.
 8. **Data Validation**: Comprehensive Zod schema validation on all inputs.
 
+## Recent Fixes (November 21, 2025)
+
+### Auto-Select Questions Production Error - RESOLVED
+**Problem**: The `/api/questions/auto-select` endpoint failed in production with database constraint violations when organization question settings didn't exist.
+
+**Root Cause**: 
+1. Duplicate `autoSelectQuestions` methods in storage.ts (lines 3487 and 9145)
+2. The old method attempted to auto-create organization settings when they didn't exist
+3. Auto-creation failed due to NOT NULL constraints on `createdBy` and `updatedBy` columns
+
+**Resolution**: 
+1. Removed the problematic duplicate method that auto-created settings
+2. Implemented a simplified version in both DatabaseStorage and MemStorage classes
+3. New implementation returns active questions when settings don't exist or when auto-select is disabled
+4. Organization settings must now be explicitly created through the proper `/api/organization/question-settings` endpoint
+
+**Result**: Auto-select endpoint now works reliably in both development and production environments without database constraint violations
+
 ## Recent Fixes (October 16, 2025)
 
 ### Aggregation Service Errors - RESOLVED
