@@ -1003,7 +1003,19 @@ export default function Checkins() {
                               Week ending {checkin.weekOf && !isNaN(safeParseWeek(checkin.weekOf).getTime()) ? format(getCheckinWeekFriday(safeParseWeek(checkin.weekOf)), 'MMMM d, yyyy') : 'Unknown week'}
                             </h4>
                             <p className="text-sm text-muted-foreground">
-                              Submitted {formatDistanceToNow(new Date(checkin.createdAt), { addSuffix: true })}
+                              Submitted {(() => {
+                                try {
+                                  const date = new Date(checkin.createdAt);
+                                  if (isNaN(date.getTime())) {
+                                    console.error("[DEBUG Checkins] Invalid createdAt:", checkin.createdAt);
+                                    return "recently";
+                                  }
+                                  return formatDistanceToNow(date, { addSuffix: true });
+                                } catch (error) {
+                                  console.error("[DEBUG Checkins] Error formatting createdAt:", error, checkin.createdAt);
+                                  return "recently";
+                                }
+                              })()}
                             </p>
                           </div>
                         </div>
