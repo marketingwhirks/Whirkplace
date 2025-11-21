@@ -9147,20 +9147,33 @@ export class MemStorage implements IStorage {
     
     // Create default settings if none exist
     if (!settings) {
-      settings = await this.createOrganizationQuestionSettings(organizationId, {
-        autoSelectEnabled: false,
-        selectionStrategy: 'random',
-        minimumQuestionsPerWeek: 3,
-        maximumQuestionsPerWeek: 5,
-        avoidRecentlyAskedDays: 30,
-        includeTeamSpecific: true,
-        prioritizeCategories: [],
-        createdBy: userId,
-        updatedBy: userId
-      });
+      try {
+        // Validate userId is not empty
+        const createdByUserId = userId && userId.trim() ? userId : 'system';
+        
+        settings = await this.createOrganizationQuestionSettings(organizationId, {
+          autoSelectEnabled: false,
+          selectionStrategy: 'random',
+          minimumQuestionsPerWeek: 3,
+          maximumQuestionsPerWeek: 5,
+          avoidRecentlyAskedDays: 30,
+          includeTeamSpecific: true,
+          includeUserKraRelated: true,
+          rotationSequence: {},
+          prioritizeCategories: [],
+          createdBy: createdByUserId,
+          updatedBy: createdByUserId
+        });
+      } catch (error) {
+        console.error('Failed to create default organization question settings:', error);
+        // If settings creation fails, just return the active questions
+        return teamId
+          ? await this.getActiveQuestionsForTeam(organizationId, teamId)
+          : await this.getActiveQuestions(organizationId);
+      }
     }
     
-    if (!settings.autoSelectEnabled) {
+    if (!settings || !settings.autoSelectEnabled) {
       // Return active questions as normal
       return teamId
         ? await this.getActiveQuestionsForTeam(organizationId, teamId)
