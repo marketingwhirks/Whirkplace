@@ -198,13 +198,39 @@ export default function CheckinDetail({ checkin, questions, open, onOpenChange }
                   </Badge>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  {formatDistanceToNow(new Date(checkin.createdAt), { addSuffix: true })}
+                  {(() => {
+                    try {
+                      const date = new Date(checkin.createdAt);
+                      if (isNaN(date.getTime())) {
+                        return 'Unknown time';
+                      }
+                      return formatDistanceToNow(date, { addSuffix: true });
+                    } catch (error) {
+                      console.error('Error formatting check-in created date:', error, checkin.createdAt);
+                      return 'Unknown time';
+                    }
+                  })()}
                 </p>
               </div>
             </div>
           </DialogTitle>
           <DialogDescription>
-            Weekly check-in for week ending {format(getCheckinWeekFriday(new Date(checkin.weekOf)), 'MMMM d, yyyy')}
+            Weekly check-in for week ending {(() => {
+              try {
+                const weekDate = new Date(checkin.weekOf);
+                if (isNaN(weekDate.getTime())) {
+                  return 'Invalid date';
+                }
+                const friday = getCheckinWeekFriday(weekDate);
+                if (!friday || isNaN(friday.getTime())) {
+                  return 'Invalid date';
+                }
+                return format(friday, 'MMMM d, yyyy');
+              } catch (error) {
+                console.error('Error formatting check-in week date:', error, checkin.weekOf);
+                return 'Invalid date';
+              }
+            })()}
           </DialogDescription>
         </DialogHeader>
 
@@ -334,7 +360,18 @@ export default function CheckinDetail({ checkin, questions, open, onOpenChange }
                           <div className="flex items-center space-x-2">
                             <p className="text-sm font-medium">Manager</p>
                             <span className="text-xs text-muted-foreground">
-                              {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+                              {(() => {
+                                try {
+                                  const date = new Date(comment.createdAt);
+                                  if (isNaN(date.getTime())) {
+                                    return 'Unknown time';
+                                  }
+                                  return formatDistanceToNow(date, { addSuffix: true });
+                                } catch (error) {
+                                  console.error('Error formatting comment date:', error, comment.createdAt);
+                                  return 'Unknown time';
+                                }
+                              })()}
                             </span>
                           </div>
                           <div className="flex items-center space-x-1">
