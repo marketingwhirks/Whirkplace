@@ -242,7 +242,7 @@ export default function Checkins() {
   const form = useForm<CheckinForm>({
     resolver: zodResolver(createCheckinFormSchema(activeQuestions)),
     defaultValues: {
-      overallMood: 0,
+      overallMood: 3, // Start with neutral value (valid range is 1-5)
       responses: {},
       responseEmojis: {},
       responseFlags: {},
@@ -392,6 +392,26 @@ export default function Checkins() {
 
   // Handle form submission
   const handleSubmit = (data: CheckinForm) => {
+    // Check for validation errors before submission
+    const errors = form.formState.errors;
+    if (Object.keys(errors).length > 0) {
+      console.error("Form validation errors:", errors);
+      
+      // Get error message string (handle both string and FieldError types)
+      let errorMessage = "Please answer all questions before submitting";
+      if (errors.overallMood?.message) {
+        errorMessage = errors.overallMood.message;
+      } else if (errors.responses?.message) {
+        errorMessage = errors.responses.message;
+      }
+      
+      toast({
+        variant: "destructive",
+        title: "Please complete all required fields",
+        description: errorMessage,
+      });
+      return;
+    }
     createCheckinMutation.mutate(data);
   };
 
@@ -494,7 +514,18 @@ export default function Checkins() {
                     You can still submit it now as a late submission.
                   </span>
                 </div>
-                <Dialog open={showPreviousWeekDialog} onOpenChange={setShowPreviousWeekDialog}>
+                <Dialog open={showPreviousWeekDialog} onOpenChange={(open) => {
+                  setShowPreviousWeekDialog(open);
+                  if (open) {
+                    // Reset form with proper defaults when opening dialog
+                    form.reset({
+                      overallMood: 3,
+                      responses: {},
+                      responseEmojis: {},
+                      responseFlags: {},
+                    });
+                  }
+                }}>
                   <DialogTrigger asChild>
                     <Button 
                       variant="outline" 
@@ -1231,7 +1262,18 @@ export default function Checkins() {
         </Dialog>
 
         {/* Create/Edit Check-in Dialog */}
-        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <Dialog open={showCreateDialog} onOpenChange={(open) => {
+          setShowCreateDialog(open);
+          if (open && !currentWeekCheckin) {
+            // Reset form with proper defaults when opening dialog for new check-in
+            form.reset({
+              overallMood: 3,
+              responses: {},
+              responseEmojis: {},
+              responseFlags: {},
+            });
+          }
+        }}>
           <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>
