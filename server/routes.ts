@@ -11346,8 +11346,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   );
 
-  // Slack Integration
-  app.post("/api/slack/send-checkin-reminder", requireOrganization(), requireAuth(), requireFeatureAccess('slack_integration'), async (req, res) => {
+  // Slack Integration - now with email fallback
+  app.post("/api/slack/send-checkin-reminder", requireOrganization(), requireAuth(), async (req, res) => {
     try {
       const users = await storage.getAllUsers(req.orgId);
       const activeUsers = users.filter(user => user.isActive);
@@ -11360,21 +11360,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (const user of activeUsers) {
         const currentCheckin = await storage.getCurrentWeekCheckin(req.orgId, user.id);
         if (!currentCheckin || !currentCheckin.isComplete) {
-          usersNeedingReminder.push(user.name);
+          usersNeedingReminder.push(user);
         }
       }
       
       if (usersNeedingReminder.length > 0) {
-        // Fetch active questions to include in the reminder
-        const questions = await storage.getActiveQuestions(req.orgId);
-        await sendCheckinReminder(usersNeedingReminder, questions);
+        // Check if organization has Slack configured
+        const slackIntegration = await storage.getIntegration(req.orgId, 'slack');
+        const hasSlack = slackIntegration && slackIntegration.config?.botToken;
+        
+        let remindersSent = 0;
+        let remindersFailedSlackCount = 0;
+        let remindersFailedEmailCount = 0;
+        
+        // Try to send reminders
+        if (hasSlack) {
+          // Try Slack first if configured
+          try {
+            const questions = await storage.getActiveQuestions(req.orgId);
+            await sendCheckinReminder(usersNeedingReminder.map(u => u.name), questions);
+            remindersSent = usersNeedingReminder.length;
+          } catch (slackError) {
+            console.error("Failed to send Slack reminders, falling back to email:", slackError);
+            remindersFailedSlackCount = usersNeedingReminder.length;
+          }
+        }
+        
+        // If Slack is not configured or failed, use email
+        if (!hasSlack || remindersFailedSlackCount > 0) {
+          const { sendCheckinReminderEmail } = await import('./services/emailNotifications');
+          
+          for (const user of usersNeedingReminder) {
+            try {
+              const emailSent = await sendCheckinReminderEmail(
+                user.id,
+                req.orgId,
+                user.email,
+                user.name || user.username,
+                organization.name
+              );
+              if (emailSent) {
+                remindersSent++;
+              }
+            } catch (emailError) {
+              console.error(`Failed to send email reminder to ${user.email}:`, emailError);
+              remindersFailedEmailCount++;
+            }
+          }
+        }
+        
+        if (remindersSent === 0) {
+          return res.status(500).json({ 
+            message: "Failed to send reminders. Please configure Slack integration or ensure email service is set up.",
+            details: {
+              slackConfigured: hasSlack,
+              usersNeedingReminders: usersNeedingReminder.length,
+              emailsFailed: remindersFailedEmailCount
+            }
+          });
+        }
+        
+        res.json({ 
+          message: `Reminders sent successfully`,
+          userCount: remindersSent,
+          method: hasSlack && remindersFailedSlackCount === 0 ? 'slack' : 'email',
+          questionsIncluded: await storage.getActiveQuestions(req.orgId).then(q => q.length)
+        });
+      } else {
+        res.json({ 
+          message: "No reminders needed", 
+          userCount: 0
+        });
       }
-      
-      res.json({ 
-        message: "Reminder sent", 
-        userCount: usersNeedingReminder.length,
-        questionsIncluded: await storage.getActiveQuestions(req.orgId).then(q => q.length)
-      });
     } catch (error) {
       console.error("Failed to send check-in reminder:", error);
       res.status(500).json({ message: "Failed to send reminder" });
