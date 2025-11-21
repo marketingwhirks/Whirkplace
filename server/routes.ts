@@ -11366,8 +11366,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (usersNeedingReminder.length > 0) {
         // Check if organization has Slack configured
-        const slackIntegration = await storage.getIntegration(req.orgId, 'slack');
-        const hasSlack = slackIntegration && slackIntegration.config?.botToken;
+        const hasSlack = organization.enableSlackIntegration && 
+                        organization.slackConnectionStatus === 'connected' && 
+                        organization.slackAccessToken;
         
         let remindersSent = 0;
         let remindersFailedSlackCount = 0;
