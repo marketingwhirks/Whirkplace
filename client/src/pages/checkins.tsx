@@ -314,9 +314,12 @@ export default function Checkins() {
   }, [enrichedCheckins]);
 
   // Separate current week and historical checkins
-  const currentWeekCheckin = currentCheckin?.checkin || sortedCheckins.find(checkin => 
+  // First try to get from the dedicated current-checkin API, then fall back to finding in the list
+  const currentWeekCheckinFromApi = currentCheckin?.checkin;
+  const currentWeekCheckinFromList = sortedCheckins.find(checkin => 
     isSameWeek(safeParseWeek(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
   );
+  const currentWeekCheckin = currentWeekCheckinFromApi || currentWeekCheckinFromList;
   
   const historicalCheckins = sortedCheckins.filter(checkin => 
     !isSameWeek(safeParseWeek(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
