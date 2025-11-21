@@ -328,6 +328,11 @@ export default function Dashboard() {
 
   const handleSubmitCheckin = async () => {
     try {
+      console.log("[Dashboard] Submit button clicked");
+      console.log("[Dashboard] Current checkin data:", checkinData);
+      console.log("[Dashboard] Current organization:", currentOrganization);
+      console.log("[Dashboard] Current user:", currentUser);
+      
       if (checkinData.overallMood === 0) {
         toast({
           variant: "destructive",
@@ -339,6 +344,7 @@ export default function Dashboard() {
 
       // Calculate current week start date (Saturday) using the proper function
       const currentWeekStart = getWeekStartCentral(new Date(), currentOrganization);
+      console.log("[Dashboard] Calculated week start:", currentWeekStart.toISOString());
       
       const checkinPayload = {
         userId: currentUser.id,
@@ -348,13 +354,18 @@ export default function Dashboard() {
         responses: checkinData.responses,
         isComplete: true,
       };
+      
+      console.log("[Dashboard] Payload to send:", checkinPayload);
 
       if (currentCheckin) {
+        console.log("[Dashboard] Updating existing check-in:", currentCheckin.id);
         await apiRequest("PATCH", `/api/checkins/${currentCheckin.id}`, checkinPayload);
       } else {
+        console.log("[Dashboard] Creating new check-in");
         await apiRequest("POST", "/api/checkins", checkinPayload);
       }
 
+      console.log("[Dashboard] Check-in submitted successfully");
       await queryClient.invalidateQueries({ queryKey: ["/api/checkins"] });
       await queryClient.invalidateQueries({ queryKey: ["/api/users", currentUser.id, "current-checkin"] });
 
@@ -362,11 +373,19 @@ export default function Dashboard() {
         title: "Check-in submitted!",
         description: "Your weekly check-in has been submitted for review by your team leader.",
       });
+      
+      // Reset the form data after successful submission
+      setCheckinData({ overallMood: 0, responses: {} });
     } catch (error) {
+      console.error("[Dashboard] Error submitting check-in:", error);
+      console.error("[Dashboard] Error details:", JSON.stringify(error, null, 2));
+      
+      const errorMessage = error instanceof Error ? error.message : "There was an error submitting your check-in.";
+      
       toast({
         variant: "destructive",
         title: "Submission failed",
-        description: "There was an error submitting your check-in.",
+        description: errorMessage,
       });
     }
   };
