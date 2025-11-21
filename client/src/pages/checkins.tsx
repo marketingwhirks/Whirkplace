@@ -619,14 +619,22 @@ export default function Checkins() {
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
                   Week ending {(() => {
-                    const today = new Date();
-                    if (!isNaN(today.getTime())) {
-                      const friday = getCheckinWeekFriday(today);
-                      if (!isNaN(friday.getTime())) {
-                        return format(friday, 'MMMM d, yyyy');
+                    try {
+                      console.log("[DEBUG Checkins] Formatting week ending date...");
+                      const today = new Date();
+                      console.log("[DEBUG Checkins] Today:", today.toISOString());
+                      if (!isNaN(today.getTime())) {
+                        const friday = getCheckinWeekFriday(today);
+                        console.log("[DEBUG Checkins] Friday:", friday);
+                        if (friday && !isNaN(friday.getTime())) {
+                          return format(friday, 'MMMM d, yyyy');
+                        }
                       }
+                      return 'this week';
+                    } catch (error) {
+                      console.error("[DEBUG Checkins] Error formatting week ending:", error);
+                      return 'this week';
                     }
-                    return 'this week';
                   })()}
                   {currentWeekVacation && (
                     <Badge variant="secondary" className="ml-2 gap-1">
@@ -1355,14 +1363,22 @@ export default function Checkins() {
               </DialogTitle>
               <DialogDescription>
                 Week ending {(() => {
-                  const today = new Date();
-                  if (!isNaN(today.getTime())) {
-                    const friday = getCheckinWeekFriday(today);
-                    if (!isNaN(friday.getTime())) {
-                      return format(friday, 'MMMM d, yyyy');
+                  try {
+                    console.log("[DEBUG Checkins Dialog] Formatting week ending date...");
+                    const today = new Date();
+                    console.log("[DEBUG Checkins Dialog] Today:", today.toISOString());
+                    if (!isNaN(today.getTime())) {
+                      const friday = getCheckinWeekFriday(today);
+                      console.log("[DEBUG Checkins Dialog] Friday:", friday);
+                      if (friday && !isNaN(friday.getTime())) {
+                        return format(friday, 'MMMM d, yyyy');
+                      }
                     }
+                    return 'this week';
+                  } catch (error) {
+                    console.error("[DEBUG Checkins Dialog] Error formatting week ending:", error);
+                    return 'this week';
                   }
-                  return 'this week';
                 })()}
               </DialogDescription>
             </DialogHeader>
