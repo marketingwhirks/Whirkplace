@@ -136,18 +136,12 @@ export default function Checkins() {
   let previousWeekStart: Date;
   
   try {
-    console.log("[DEBUG Checkins] Creating currentWeekStart...");
     const today = new Date();
-    console.log("[DEBUG Checkins] Today:", today.toISOString());
     currentWeekStart = startOfWeek(today, { weekStartsOn: 6 });
-    console.log("[DEBUG Checkins] currentWeekStart:", currentWeekStart.toISOString());
     
     // Get previous week start (Saturday)
-    console.log("[DEBUG Checkins] Creating previousWeekStart...");
     previousWeekStart = addWeeks(currentWeekStart, -1);
-    console.log("[DEBUG Checkins] previousWeekStart:", previousWeekStart.toISOString());
   } catch (error) {
-    console.error("[DEBUG Checkins] Error creating week dates:", error);
     // Fallback to safe defaults
     currentWeekStart = new Date();
     previousWeekStart = new Date();
@@ -158,29 +152,10 @@ export default function Checkins() {
     queryKey: ["/api/questions?forCheckin=true"],
   });
 
-  // Fetch user's check-ins - log raw response for debugging
+  // Fetch user's check-ins
   const { data: checkins = [], isLoading: checkinsLoading, error: checkinsError } = useQuery<Checkin[]>({
     queryKey: ["/api/checkins"],
-    enabled: !!currentUser,
-    queryFn: async () => {
-      console.log("[DEBUG Checkins] Fetching checkins...");
-      const response = await fetch("/api/checkins");
-      const data = await response.json();
-      console.log("[DEBUG Checkins] Raw checkins data:", data);
-      
-      // Validate dates in the response
-      if (Array.isArray(data)) {
-        data.forEach((checkin: any, index: number) => {
-          console.log(`[DEBUG Checkins] Checkin ${index} weekOf:`, checkin.weekOf, "type:", typeof checkin.weekOf);
-          const parsedDate = new Date(checkin.weekOf);
-          if (isNaN(parsedDate.getTime())) {
-            console.error(`[DEBUG Checkins] Invalid weekOf date at index ${index}:`, checkin.weekOf);
-          }
-        });
-      }
-      
-      return data;
-    },
+    enabled: !!currentUser
   });
 
   // Fetch users for name lookups
@@ -584,7 +559,7 @@ export default function Checkins() {
                           }
                         }
                       } catch (error) {
-                        console.error("[DEBUG] Error formatting previous week Friday:", error);
+                        // Error formatting date - return fallback
                       }
                       return 'last week';
                     })()}. 
@@ -632,19 +607,16 @@ export default function Checkins() {
                 <p className="text-sm text-muted-foreground mt-1">
                   Week ending {(() => {
                     try {
-                      console.log("[DEBUG Checkins] Formatting week ending date...");
                       const today = new Date();
-                      console.log("[DEBUG Checkins] Today:", today.toISOString());
                       if (!isNaN(today.getTime())) {
                         const friday = getCheckinWeekFriday(today);
-                        console.log("[DEBUG Checkins] Friday:", friday);
                         if (friday && !isNaN(friday.getTime())) {
                           return format(friday, 'MMMM d, yyyy');
                         }
                       }
                       return 'this week';
                     } catch (error) {
-                      console.error("[DEBUG Checkins] Error formatting week ending:", error);
+                      // Error formatting date - return fallback
                       return 'this week';
                     }
                   })()}
@@ -691,7 +663,7 @@ export default function Checkins() {
                         }
                       }
                     } catch (error) {
-                      console.error("[DEBUG] Error formatting check-in due date:", error);
+                      // Error formatting date - return fallback
                     }
                     return "Submit your weekly check-in to share how you're doing with your team.";
                   })()}
@@ -763,7 +735,7 @@ export default function Checkins() {
                         return formatDistanceToNow(date, { addSuffix: true });
                       }
                     } catch (error) {
-                      console.error("[DEBUG] Error formatting submitted date:", error);
+                      // Error formatting date - return fallback
                     }
                     return "recently";
                   })()}
@@ -775,7 +747,7 @@ export default function Checkins() {
                           return formatDistanceToNow(date, { addSuffix: true });
                         }
                       } catch (error) {
-                        console.error("[DEBUG] Error formatting reviewed date:", error);
+                        // Error formatting date - return fallback
                       }
                       return "recently";
                     })()}</span>
@@ -1044,7 +1016,7 @@ export default function Checkins() {
                                     return format(friday, 'MMMM d, yyyy');
                                   }
                                 } catch (error) {
-                                  console.error("[DEBUG] Error formatting week:", error, checkin.weekOf);
+                                  // Error formatting date - return fallback
                                 }
                                 return 'Unknown week';
                               })()}
@@ -1091,7 +1063,7 @@ export default function Checkins() {
                                 return formatDistanceToNow(date, { addSuffix: true });
                               }
                             } catch (error) {
-                              console.error("[DEBUG] Error formatting history reviewed date:", error);
+                              // Error formatting date - return fallback
                             }
                             return "recently";
                           })()}</span>
@@ -1214,7 +1186,7 @@ export default function Checkins() {
                                 }
                               }
                             } catch (error) {
-                              console.error("[DEBUG] Error formatting future week Friday:", error, futureWeek);
+                              // Error formatting date - return fallback
                             }
                             return 'Invalid date';
                           })()}
@@ -1319,7 +1291,7 @@ export default function Checkins() {
                         }
                       }
                     } catch (error) {
-                      console.error("[DEBUG] Error formatting previous week dialog Friday:", error);
+                      // Error formatting date - return fallback
                     }
                     return 'last week';
                   })()}</p>
@@ -1457,19 +1429,16 @@ export default function Checkins() {
               <DialogDescription>
                 Week ending {(() => {
                   try {
-                    console.log("[DEBUG Checkins Dialog] Formatting week ending date...");
                     const today = new Date();
-                    console.log("[DEBUG Checkins Dialog] Today:", today.toISOString());
                     if (!isNaN(today.getTime())) {
                       const friday = getCheckinWeekFriday(today);
-                      console.log("[DEBUG Checkins Dialog] Friday:", friday);
                       if (friday && !isNaN(friday.getTime())) {
                         return format(friday, 'MMMM d, yyyy');
                       }
                     }
                     return 'this week';
                   } catch (error) {
-                    console.error("[DEBUG Checkins Dialog] Error formatting week ending:", error);
+                    // Error formatting date - return fallback
                     return 'this week';
                   }
                 })()}
@@ -1645,7 +1614,7 @@ export default function Checkins() {
                         }
                       }
                     } catch (error) {
-                      console.error("[DEBUG] Error formatting vacation week Friday:", error);
+                      // Error formatting date - return fallback
                     }
                     return 'selected week';
                   })()}`
@@ -1658,7 +1627,7 @@ export default function Checkins() {
                         }
                       }
                     } catch (error) {
-                      console.error("[DEBUG] Error formatting vacation week Friday (2):", error);
+                      // Error formatting date - return fallback
                     }
                     return 'selected week';
                   })()} as vacation`
