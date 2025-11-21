@@ -7138,12 +7138,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
           
-          // Send Slack reminder
+          // Send Slack reminder with organization ID for org-specific tokens
           const { sendMissingCheckinReminder } = await import("./services/slack");
           const sent = await sendMissingCheckinReminder(
             targetUser.slackUserId,
             targetUser.name,
-            daysSinceLastCheckin
+            daysSinceLastCheckin,
+            req.orgId  // Pass organization ID for org-specific Slack tokens
           );
           
           if (sent) {

@@ -1219,11 +1219,12 @@ export async function sendPersonalizedCheckinReminder(
   isWeeklyScheduled: boolean = false,
   organization?: any
 ) {
-  if (!slack) return;
-
-  // Check if user has check-in reminders enabled for Slack
+  // Get organization-specific Slack client
+  let slackClient: WebClient | null = slack;
   const organizationId = organization?.id;
+  
   if (organizationId) {
+    // Check if user has check-in reminders enabled for Slack
     const shouldSend = await shouldSendNotification(
       userId,
       'slack',
@@ -1236,6 +1237,25 @@ export async function sendPersonalizedCheckinReminder(
       console.log(`Skipping check-in reminder for ${userName} - notifications disabled or outside schedule`);
       return;
     }
+    
+    // Try to get organization-specific token
+    try {
+      const orgToken = await getValidSlackToken(organizationId);
+      if (orgToken) {
+        console.log(`Using organization-specific token for check-in reminder to ${userName}`);
+        slackClient = new WebClient(orgToken);
+      } else {
+        console.log(`No org token available for ${organizationId}, falling back to global token`);
+      }
+    } catch (error) {
+      console.error(`Error getting org token for ${organizationId}:`, error);
+    }
+  }
+  
+  // If no Slack client available (no org token and no global token)
+  if (!slackClient) {
+    console.warn("No Slack client available for sending check-in reminder");
+    return;
   }
 
   const appUrl = process.env.REPL_URL || process.env.REPLIT_URL || 'https://your-app.replit.app';
@@ -1348,26 +1368,7 @@ export async function sendPersonalizedCheckinReminder(
   });
 
   try {
-    // Get organization-specific token if organization is provided
-    let slackClient: WebClient | null = slack;
-    
-    if (organization?.id) {
-      try {
-        const token = await getValidSlackToken(organization.id);
-        if (token) {
-          slackClient = new WebClient(token);
-          console.log(`Using organization-specific token for reminder to ${userName}`);
-        }
-      } catch (error) {
-        console.warn(`Failed to get org token, using bot token:`, error);
-      }
-    }
-    
-    if (!slackClient) {
-      console.warn("Slack not configured for personalized reminder");
-      return;
-    }
-    
+    // Use the slackClient we already set up at the beginning of the function
     const dmResult = await slackClient.conversations.open({
       users: userId
     });
@@ -1377,7 +1378,7 @@ export async function sendPersonalizedCheckinReminder(
         channel: dmResult.channel.id,
         blocks: reminderBlocks,
         text: `Check-in reminder for ${userName}`
-      }, organization?.id);
+      }, organizationId);
 
       console.log(`Personalized check-in reminder sent to ${userName} (${userId})`);
     }
@@ -5725,15 +5726,40 @@ export async function getWeeklyReminderStats(organizationId: string, storage: an
  * @param slackUserId - The Slack user ID to send to
  * @param userName - The user's name for personalization  
  * @param daysOverdue - How many days since their last check-in (optional)
+ * @param organizationId - The organization ID to use for getting Slack tokens
  * @returns Promise<boolean> - true if message sent successfully
  */
 export async function sendMissingCheckinReminder(
   slackUserId: string,
   userName: string,
-  daysOverdue?: number | null
+  daysOverdue?: number | null,
+  organizationId?: string
 ): Promise<boolean> {
-  if (!slack || !slackUserId) {
-    console.warn("Slack not configured or no Slack user ID provided");
+  if (!slackUserId) {
+    console.warn("No Slack user ID provided");
+    return false;
+  }
+
+  // Try to get organization-specific token if organizationId provided
+  let slackClient: WebClient | null = slack;
+  
+  if (organizationId) {
+    try {
+      const orgToken = await getValidSlackToken(organizationId);
+      if (orgToken) {
+        console.log(`Using organization-specific token for ${organizationId}`);
+        slackClient = new WebClient(orgToken);
+      } else {
+        console.log(`No org token available for ${organizationId}, falling back to global token`);
+      }
+    } catch (error) {
+      console.error(`Error getting org token for ${organizationId}:`, error);
+    }
+  }
+  
+  // If no Slack client available (no org token and no global token)
+  if (!slackClient) {
+    console.warn("No Slack client available (no org token and no global bot token)");
     return false;
   }
 
@@ -5748,7 +5774,7 @@ export async function sendMissingCheckinReminder(
     message += `\n\nSubmit your check-in: ${baseUrl}/checkins`;
     message += `\n\nIf you've already submitted, please ignore this message.`;
     
-    await slack.chat.postMessage({
+    await slackClient.chat.postMessage({
       channel: slackUserId,
       text: message,
       blocks: [
@@ -5776,7 +5802,7 @@ export async function sendMissingCheckinReminder(
       ]
     });
     
-    console.log(`Sent personalized check-in reminder to ${userName} (${slackUserId})`);
+    console.log(`Sent personalized check-in reminder to ${userName} (${slackUserId}) for org ${organizationId}`);
     return true;
   } catch (error) {
     console.error(`Error sending personalized check-in reminder to ${userName}:`, error);
