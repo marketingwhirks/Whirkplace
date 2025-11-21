@@ -1000,7 +1000,18 @@ export default function Checkins() {
                         <div className="flex items-center space-x-4">
                           <div>
                             <h4 className="font-medium" data-testid={`checkin-week-${checkin.id}`}>
-                              Week ending {checkin.weekOf && !isNaN(safeParseWeek(checkin.weekOf).getTime()) ? format(getCheckinWeekFriday(safeParseWeek(checkin.weekOf)), 'MMMM d, yyyy') : 'Unknown week'}
+                              Week ending {(() => {
+                                try {
+                                  const weekDate = safeParseWeek(checkin.weekOf);
+                                  const friday = getCheckinWeekFriday(weekDate);
+                                  if (friday && !isNaN(friday.getTime())) {
+                                    return format(friday, 'MMMM d, yyyy');
+                                  }
+                                } catch (error) {
+                                  console.error("[DEBUG] Error formatting week:", error, checkin.weekOf);
+                                }
+                                return 'Unknown week';
+                              })()}
                             </h4>
                             <p className="text-sm text-muted-foreground">
                               Submitted {(() => {
