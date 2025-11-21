@@ -433,12 +433,19 @@ export default function Checkins() {
   // Handle form submission
   const handleSubmit = (data: CheckinForm) => {
     // React Hook Form already handles validation, so if we get here the data is valid
-    createCheckinMutation.mutate(data);
+    console.log('handleSubmit called with data:', data);
+    console.log('currentWeekStart:', currentWeekStart);
+    createCheckinMutation.mutate({
+      ...data,
+      weekStartDate: currentWeekStart.toISOString()
+    });
   };
   
   // Handle form validation errors
   const handleSubmitError = (errors: any) => {
     console.error("Form validation errors:", errors);
+    console.error("Form values at error:", form.getValues());
+    console.error("Active questions:", activeQuestions);
     
     // Get error message string
     let errorMessage = "Please answer all questions before submitting";
