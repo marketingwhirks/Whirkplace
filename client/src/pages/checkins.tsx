@@ -510,7 +510,7 @@ export default function Checkins() {
                 <div>
                   <span className="font-medium text-orange-900 dark:text-orange-300">Previous Week Check-in Missing:</span>
                   <span className="text-orange-800 dark:text-orange-400 ml-2">
-                    You missed your check-in for the week ending {format(getCheckinWeekFriday(previousWeekStart), 'MMMM d, yyyy')}. 
+                    You missed your check-in for the week ending {previousWeekStart && !isNaN(previousWeekStart.getTime()) ? format(getCheckinWeekFriday(previousWeekStart), 'MMMM d, yyyy') : 'last week'}. 
                     You can still submit it now as a late submission.
                   </span>
                 </div>
@@ -918,7 +918,7 @@ export default function Checkins() {
                         <div className="flex items-center space-x-4">
                           <div>
                             <h4 className="font-medium" data-testid={`checkin-week-${checkin.id}`}>
-                              Week ending {format(getCheckinWeekFriday(new Date(checkin.weekOf)), 'MMMM d, yyyy')}
+                              Week ending {checkin.weekOf && !isNaN(new Date(checkin.weekOf).getTime()) ? format(getCheckinWeekFriday(new Date(checkin.weekOf)), 'MMMM d, yyyy') : 'Unknown week'}
                             </h4>
                             <p className="text-sm text-muted-foreground">
                               Submitted {formatDistanceToNow(new Date(checkin.createdAt), { addSuffix: true })}
@@ -1054,7 +1054,7 @@ export default function Checkins() {
                     return (
                       <div key={weeksAhead} className="flex items-center justify-between p-2 rounded-lg border bg-background">
                         <span className="text-xs">
-                          {format(getCheckinWeekFriday(futureWeek), 'MMM d')}
+                          {!isNaN(futureWeek.getTime()) ? format(getCheckinWeekFriday(futureWeek), 'MMM d') : 'Invalid date'}
                           {futureVacation && (
                             <Plane className="w-3 h-3 ml-1 inline text-muted-foreground" />
                           )}
@@ -1147,7 +1147,7 @@ export default function Checkins() {
               </DialogTitle>
               <DialogDescription>
                 <div className="space-y-2">
-                  <p>Week ending {format(getCheckinWeekFriday(previousWeekStart), 'MMMM d, yyyy')}</p>
+                  <p>Week ending {previousWeekStart && !isNaN(previousWeekStart.getTime()) ? format(getCheckinWeekFriday(previousWeekStart), 'MMMM d, yyyy') : 'last week'}</p>
                   <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
                     Late Submission
                   </Badge>
@@ -1444,8 +1444,8 @@ export default function Checkins() {
               </DialogTitle>
               <DialogDescription>
                 {selectedTeamMemberId && selectedTeamMemberId !== currentUser?.id
-                  ? `Mark team member on vacation for the week ending ${selectedVacationWeek && format(getCheckinWeekFriday(selectedVacationWeek), 'MMMM d, yyyy')}`
-                  : `Mark the week ending ${selectedVacationWeek && format(getCheckinWeekFriday(selectedVacationWeek), 'MMMM d, yyyy')} as vacation`
+                  ? `Mark team member on vacation for the week ending ${selectedVacationWeek && !isNaN(selectedVacationWeek.getTime()) ? format(getCheckinWeekFriday(selectedVacationWeek), 'MMMM d, yyyy') : 'selected week'}`
+                  : `Mark the week ending ${selectedVacationWeek && !isNaN(selectedVacationWeek.getTime()) ? format(getCheckinWeekFriday(selectedVacationWeek), 'MMMM d, yyyy') : 'selected week'} as vacation`
                 }
               </DialogDescription>
             </DialogHeader>
