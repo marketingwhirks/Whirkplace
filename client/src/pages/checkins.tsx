@@ -575,7 +575,19 @@ export default function Checkins() {
                 <div>
                   <span className="font-medium text-orange-900 dark:text-orange-300">Previous Week Check-in Missing:</span>
                   <span className="text-orange-800 dark:text-orange-400 ml-2">
-                    You missed your check-in for the week ending {previousWeekStart && !isNaN(previousWeekStart.getTime()) ? format(getCheckinWeekFriday(previousWeekStart), 'MMMM d, yyyy') : 'last week'}. 
+                    You missed your check-in for the week ending {(() => {
+                      try {
+                        if (previousWeekStart && !isNaN(previousWeekStart.getTime())) {
+                          const friday = getCheckinWeekFriday(previousWeekStart);
+                          if (friday && !isNaN(friday.getTime())) {
+                            return format(friday, 'MMMM d, yyyy');
+                          }
+                        }
+                      } catch (error) {
+                        console.error("[DEBUG] Error formatting previous week Friday:", error);
+                      }
+                      return 'last week';
+                    })()}. 
                     You can still submit it now as a late submission.
                   </span>
                 </div>
@@ -667,15 +679,19 @@ export default function Checkins() {
                 <h3 className="text-lg font-medium mb-2">Ready to check in?</h3>
                 <p className="text-muted-foreground mb-4">
                   {(() => {
-                    const dueDate = currentOrganization ? getCheckinDueDate(new Date(), currentOrganization) : null;
-                    if (dueDate) {
-                      if (isToday(dueDate)) {
-                        return `Due today by ${format(dueDate, 'h:mm a')}`;
-                      } else if (isPast(dueDate)) {
-                        return `Past due - was due ${format(dueDate, 'EEEE, MMMM d')} at ${format(dueDate, 'h:mm a')}`;
-                      } else {
-                        return `Due by ${format(dueDate, 'EEEE, MMMM d')} at ${format(dueDate, 'h:mm a')}`;
+                    try {
+                      const dueDate = currentOrganization ? getCheckinDueDate(new Date(), currentOrganization) : null;
+                      if (dueDate && !isNaN(dueDate.getTime())) {
+                        if (isToday(dueDate)) {
+                          return `Due today by ${format(dueDate, 'h:mm a')}`;
+                        } else if (isPast(dueDate)) {
+                          return `Past due - was due ${format(dueDate, 'EEEE, MMMM d')} at ${format(dueDate, 'h:mm a')}`;
+                        } else {
+                          return `Due by ${format(dueDate, 'EEEE, MMMM d')} at ${format(dueDate, 'h:mm a')}`;
+                        }
                       }
+                    } catch (error) {
+                      console.error("[DEBUG] Error formatting check-in due date:", error);
                     }
                     return "Submit your weekly check-in to share how you're doing with your team.";
                   })()}
@@ -740,9 +756,29 @@ export default function Checkins() {
                   </div>
                 </div>
                 <div className="text-sm text-muted-foreground">
-                  Submitted {formatDistanceToNow(new Date(currentWeekCheckin.createdAt), { addSuffix: true })}
+                  Submitted {(() => {
+                    try {
+                      const date = new Date(currentWeekCheckin.createdAt);
+                      if (!isNaN(date.getTime())) {
+                        return formatDistanceToNow(date, { addSuffix: true });
+                      }
+                    } catch (error) {
+                      console.error("[DEBUG] Error formatting submitted date:", error);
+                    }
+                    return "recently";
+                  })()}
                   {currentWeekCheckin.reviewedAt && (
-                    <span> • Reviewed {formatDistanceToNow(new Date(currentWeekCheckin.reviewedAt), { addSuffix: true })}</span>
+                    <span> • Reviewed {(() => {
+                      try {
+                        const date = new Date(currentWeekCheckin.reviewedAt);
+                        if (!isNaN(date.getTime())) {
+                          return formatDistanceToNow(date, { addSuffix: true });
+                        }
+                      } catch (error) {
+                        console.error("[DEBUG] Error formatting reviewed date:", error);
+                      }
+                      return "recently";
+                    })()}</span>
                   )}
                 </div>
               </div>
@@ -1048,7 +1084,17 @@ export default function Checkins() {
                       <div className="text-sm text-muted-foreground">
                         {Object.keys(checkin.responses as Record<string, string>).length} responses provided
                         {checkin.reviewedAt && (
-                          <span> • Reviewed {formatDistanceToNow(new Date(checkin.reviewedAt), { addSuffix: true })}</span>
+                          <span> • Reviewed {(() => {
+                            try {
+                              const date = new Date(checkin.reviewedAt);
+                              if (!isNaN(date.getTime())) {
+                                return formatDistanceToNow(date, { addSuffix: true });
+                              }
+                            } catch (error) {
+                              console.error("[DEBUG] Error formatting history reviewed date:", error);
+                            }
+                            return "recently";
+                          })()}</span>
                         )}
                       </div>
                     </CardContent>
@@ -1159,7 +1205,19 @@ export default function Checkins() {
                     return (
                       <div key={weeksAhead} className="flex items-center justify-between p-2 rounded-lg border bg-background">
                         <span className="text-xs">
-                          {!isNaN(futureWeek.getTime()) ? format(getCheckinWeekFriday(futureWeek), 'MMM d') : 'Invalid date'}
+                          {(() => {
+                            try {
+                              if (!isNaN(futureWeek.getTime())) {
+                                const friday = getCheckinWeekFriday(futureWeek);
+                                if (friday && !isNaN(friday.getTime())) {
+                                  return format(friday, 'MMM d');
+                                }
+                              }
+                            } catch (error) {
+                              console.error("[DEBUG] Error formatting future week Friday:", error, futureWeek);
+                            }
+                            return 'Invalid date';
+                          })()}
                           {futureVacation && (
                             <Plane className="w-3 h-3 ml-1 inline text-muted-foreground" />
                           )}
@@ -1252,7 +1310,19 @@ export default function Checkins() {
               </DialogTitle>
               <DialogDescription>
                 <div className="space-y-2">
-                  <p>Week ending {previousWeekStart && !isNaN(previousWeekStart.getTime()) ? format(getCheckinWeekFriday(previousWeekStart), 'MMMM d, yyyy') : 'last week'}</p>
+                  <p>Week ending {(() => {
+                    try {
+                      if (previousWeekStart && !isNaN(previousWeekStart.getTime())) {
+                        const friday = getCheckinWeekFriday(previousWeekStart);
+                        if (friday && !isNaN(friday.getTime())) {
+                          return format(friday, 'MMMM d, yyyy');
+                        }
+                      }
+                    } catch (error) {
+                      console.error("[DEBUG] Error formatting previous week dialog Friday:", error);
+                    }
+                    return 'last week';
+                  })()}</p>
                   <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-300">
                     Late Submission
                   </Badge>
@@ -1566,8 +1636,32 @@ export default function Checkins() {
               </DialogTitle>
               <DialogDescription>
                 {selectedTeamMemberId && selectedTeamMemberId !== currentUser?.id
-                  ? `Mark team member on vacation for the week ending ${selectedVacationWeek && !isNaN(selectedVacationWeek.getTime()) ? format(getCheckinWeekFriday(selectedVacationWeek), 'MMMM d, yyyy') : 'selected week'}`
-                  : `Mark the week ending ${selectedVacationWeek && !isNaN(selectedVacationWeek.getTime()) ? format(getCheckinWeekFriday(selectedVacationWeek), 'MMMM d, yyyy') : 'selected week'} as vacation`
+                  ? `Mark team member on vacation for the week ending ${(() => {
+                    try {
+                      if (selectedVacationWeek && !isNaN(selectedVacationWeek.getTime())) {
+                        const friday = getCheckinWeekFriday(selectedVacationWeek);
+                        if (friday && !isNaN(friday.getTime())) {
+                          return format(friday, 'MMMM d, yyyy');
+                        }
+                      }
+                    } catch (error) {
+                      console.error("[DEBUG] Error formatting vacation week Friday:", error);
+                    }
+                    return 'selected week';
+                  })()}`
+                  : `Mark the week ending ${(() => {
+                    try {
+                      if (selectedVacationWeek && !isNaN(selectedVacationWeek.getTime())) {
+                        const friday = getCheckinWeekFriday(selectedVacationWeek);
+                        if (friday && !isNaN(friday.getTime())) {
+                          return format(friday, 'MMMM d, yyyy');
+                        }
+                      }
+                    } catch (error) {
+                      console.error("[DEBUG] Error formatting vacation week Friday (2):", error);
+                    }
+                    return 'selected week';
+                  })()} as vacation`
                 }
               </DialogDescription>
             </DialogHeader>
