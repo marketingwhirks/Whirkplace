@@ -7602,7 +7602,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         targetUserId, 
         teamId as string | undefined
       );
-      res.json(questions);
+      res.json({ questions });
     } catch (error) {
       console.error("Failed to auto-select questions:", error);
       res.status(500).json({ message: "Failed to auto-select questions" });
