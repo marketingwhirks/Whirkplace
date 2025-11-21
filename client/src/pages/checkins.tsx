@@ -80,6 +80,36 @@ type CheckinForm = {
   responseFlags?: Record<string, { addToOneOnOne: boolean; flagForFollowUp: boolean }>;
 };
 
+// Helper function to safely parse week dates
+function safeParseWeek(weekOf: any): Date {
+  if (!weekOf) {
+    console.warn("safeParseWeek: weekOf is null/undefined, returning current date");
+    return new Date();
+  }
+  
+  // If it's already a Date object and valid, return it
+  if (weekOf instanceof Date) {
+    if (!isNaN(weekOf.getTime())) {
+      return weekOf;
+    }
+    console.warn("safeParseWeek: weekOf is an Invalid Date, returning current date");
+    return new Date();
+  }
+  
+  // If it's a string, try to parse it
+  if (typeof weekOf === 'string') {
+    const parsed = new Date(weekOf);
+    if (!isNaN(parsed.getTime())) {
+      return parsed;
+    }
+    console.warn(`safeParseWeek: Failed to parse weekOf string: ${weekOf}, returning current date`);
+    return new Date();
+  }
+  
+  console.warn(`safeParseWeek: Unexpected weekOf type: ${typeof weekOf}, returning current date`);
+  return new Date();
+}
+
 export default function Checkins() {
   const { toast } = useToast();
   const { data: currentUser, isLoading: userLoading } = useCurrentUser();
@@ -224,14 +254,14 @@ export default function Checkins() {
   // Check if current week is marked as vacation
   const currentWeekVacation = useMemo(() => {
     return vacations.find(v => 
-      isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 6 })
+      isSameWeek(safeParseWeek(v.weekOf), currentWeekStart, { weekStartsOn: 6 })
     );
   }, [vacations, currentWeekStart]);
 
   // Check if previous week was marked as vacation
   const previousWeekVacation = useMemo(() => {
     return vacations.find(v => 
-      isSameWeek(new Date(v.weekOf), previousWeekStart, { weekStartsOn: 6 })
+      isSameWeek(safeParseWeek(v.weekOf), previousWeekStart, { weekStartsOn: 6 })
     );
   }, [vacations, previousWeekStart]);
 
@@ -259,16 +289,16 @@ export default function Checkins() {
 
   // Sort checkins by date (newest first)
   const sortedCheckins = useMemo(() => {
-    return enrichedCheckins.sort((a, b) => new Date(b.weekOf).getTime() - new Date(a.weekOf).getTime());
+    return enrichedCheckins.sort((a, b) => safeParseWeek(b.weekOf).getTime() - safeParseWeek(a.weekOf).getTime());
   }, [enrichedCheckins]);
 
   // Separate current week and historical checkins
   const currentWeekCheckin = currentCheckin || sortedCheckins.find(checkin => 
-    isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
+    isSameWeek(safeParseWeek(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
   );
   
   const historicalCheckins = sortedCheckins.filter(checkin => 
-    !isSameWeek(new Date(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
+    !isSameWeek(safeParseWeek(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
   );
 
   // Vacation management mutations
@@ -927,7 +957,7 @@ export default function Checkins() {
                         <div className="flex items-center space-x-4">
                           <div>
                             <h4 className="font-medium" data-testid={`checkin-week-${checkin.id}`}>
-                              Week ending {checkin.weekOf && !isNaN(new Date(checkin.weekOf).getTime()) ? format(getCheckinWeekFriday(new Date(checkin.weekOf)), 'MMMM d, yyyy') : 'Unknown week'}
+                              Week ending {checkin.weekOf && !isNaN(safeParseWeek(checkin.weekOf).getTime()) ? format(getCheckinWeekFriday(safeParseWeek(checkin.weekOf)), 'MMMM d, yyyy') : 'Unknown week'}
                             </h4>
                             <p className="text-sm text-muted-foreground">
                               Submitted {formatDistanceToNow(new Date(checkin.createdAt), { addSuffix: true })}
@@ -1058,7 +1088,7 @@ export default function Checkins() {
                   {[1, 2, 3, 4].map(weeksAhead => {
                     const futureWeek = addWeeks(currentWeekStart, weeksAhead);
                     const futureVacation = vacations.find(v => 
-                      isSameWeek(new Date(v.weekOf), futureWeek, { weekStartsOn: 6 })
+                      isSameWeek(safeParseWeek(v.weekOf), futureWeek, { weekStartsOn: 6 })
                     );
                     return (
                       <div key={weeksAhead} className="flex items-center justify-between p-2 rounded-lg border bg-background">
@@ -1107,7 +1137,7 @@ export default function Checkins() {
                     const teamMembersOnVacation = teamMembers.filter(member => 
                       allVacations.some(v => 
                         v.userId === member.id && 
-                        isSameWeek(new Date(v.weekOf), currentWeekStart, { weekStartsOn: 6 })
+                        isSameWeek(safeParseWeek(v.weekOf), currentWeekStart, { weekStartsOn: 6 })
                       )
                     );
                     
