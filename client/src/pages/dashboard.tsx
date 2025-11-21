@@ -21,7 +21,7 @@ import { TourGuide } from "@/components/TourGuide";
 import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
 import { Link, useLocation } from "wouter";
-import { getCheckinDueDate } from "@shared/utils/dueDates";
+import { getCheckinDueDate, getWeekStartCentral } from "@shared/utils/dueDates";
 
 interface DashboardStats {
   averageRating: number;
@@ -337,9 +337,13 @@ export default function Dashboard() {
         return;
       }
 
+      // Calculate current week start date (Saturday) using the proper function
+      const currentWeekStart = getWeekStartCentral(new Date(), currentOrganization);
+      
       const checkinPayload = {
         userId: currentUser.id,
-        weekOf: new Date(),
+        weekOf: currentWeekStart.toISOString(),
+        weekStartDate: currentWeekStart.toISOString(),
         overallMood: checkinData.overallMood,
         responses: checkinData.responses,
         isComplete: true,

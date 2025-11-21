@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { formatDistanceToNow, startOfWeek, addWeeks, isSameWeek, format, isToday, isPast } from "date-fns";
 import { ClipboardCheck, Clock, CheckCircle, XCircle, AlertCircle, Plus, Calendar, Heart, MessageCircle, Smile, Flag, UserPlus, CheckCheck, Plane, Users } from "lucide-react";
-import { getCheckinWeekFriday, getCheckinDueDate } from "@shared/utils/dueDates";
+import { getCheckinWeekFriday, getCheckinDueDate, getWeekStartCentral } from "@shared/utils/dueDates";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -136,8 +136,8 @@ export default function Checkins() {
   let previousWeekStart: Date;
   
   try {
-    const today = new Date();
-    currentWeekStart = startOfWeek(today, { weekStartsOn: 6 });
+    // Use the proper function to calculate week start based on organization settings
+    currentWeekStart = getWeekStartCentral(new Date(), currentOrganization);
     
     // Get previous week start (Saturday)
     previousWeekStart = addWeeks(currentWeekStart, -1);
