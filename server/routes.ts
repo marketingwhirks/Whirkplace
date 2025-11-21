@@ -5582,7 +5582,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      res.json(checkins);
+      // Debug the exact runtime shape of checkins
+      console.log('[GET /api/checkins] Raw checkins sample:', checkins.slice(0, 2).map(c => ({ 
+        id: c.id, 
+        weekOf: c.weekOf, 
+        typeofWeek: typeof c.weekOf,
+        isDate: c.weekOf instanceof Date 
+      })));
+      
+      // Sanitize weekOf to ensure proper ISO string format
+      const sanitized = checkins.map(c => ({ 
+        ...c, 
+        weekOf: new Date(c.weekOf).toISOString() 
+      }));
+      
+      console.log('[GET /api/checkins] Sanitized checkins sample:', sanitized.slice(0, 2).map(c => ({ 
+        id: c.id, 
+        weekOf: c.weekOf 
+      })));
+      
+      res.json(sanitized);
     } catch (error) {
       console.error("Failed to fetch check-ins:", error);
       res.status(500).json({ message: "Failed to fetch check-ins" });
