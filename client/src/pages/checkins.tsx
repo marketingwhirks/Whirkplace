@@ -437,12 +437,12 @@ export default function Checkins() {
     if (Object.keys(errors).length > 0) {
       console.error("Form validation errors:", errors);
       
-      // Get error message string (handle both string and FieldError types)
+      // Get error message string
       let errorMessage = "Please answer all questions before submitting";
       if (errors.overallMood?.message) {
-        errorMessage = errors.overallMood.message;
-      } else if (errors.responses?.message) {
-        errorMessage = errors.responses.message;
+        errorMessage = String(errors.overallMood.message);
+      } else if (errors.responses && typeof errors.responses === 'object' && 'message' in errors.responses) {
+        errorMessage = String((errors.responses as any).message);
       }
       
       toast({
