@@ -257,15 +257,16 @@ export default function CheckinDetail({ checkin, questions, open, onOpenChange }
               <CardTitle className="text-lg">Responses</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {Object.entries(checkin.responses as Record<string, string>).map(([questionId, response]) => (
-                <div key={questionId} className="border-l-4 border-primary pl-4">
-                  <h4 className="font-medium text-sm text-muted-foreground mb-2">
-                    {getQuestionText(questionId)}
-                  </h4>
-                  <p className="text-foreground">{response}</p>
-                </div>
-              ))}
-              {Object.keys(checkin.responses as Record<string, string>).length === 0 && (
+              {checkin.responses && Object.keys(checkin.responses).length > 0 ? (
+                Object.entries(checkin.responses as Record<string, string>).map(([questionId, response]) => (
+                  <div key={questionId} className="border-l-4 border-primary pl-4">
+                    <h4 className="font-medium text-sm text-muted-foreground mb-2">
+                      {getQuestionText(questionId)}
+                    </h4>
+                    <p className="text-foreground">{response}</p>
+                  </div>
+                ))
+              ) : (
                 <p className="text-muted-foreground italic">No responses provided</p>
               )}
             </CardContent>
