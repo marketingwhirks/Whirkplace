@@ -141,6 +141,18 @@ export default function Checkins() {
   // Check if user needs self-review capability (no manager)
   const needsSelfReview = currentUser && !currentUser.managerId;
 
+  // Fetch current organization data for due date calculation (moved here to fix LSP error)
+  const { data: currentOrganization } = useQuery({
+    queryKey: ["/api/organizations", currentUser?.organizationId],
+    queryFn: async () => {
+      if (!currentUser?.organizationId) return null;
+      const response = await apiRequest("GET", `/api/organizations/${currentUser.organizationId}`);
+      if (!response.ok) throw new Error('Failed to fetch organization');
+      return response.json();
+    },
+    enabled: !!currentUser?.organizationId,
+  });
+
   // Get current week start (Saturday) - wrap in try-catch for debugging
   let currentWeekStart: Date;
   let previousWeekStart: Date;
@@ -259,17 +271,6 @@ export default function Checkins() {
     return vacations;
   }, [vacations, allTeamVacations, currentUser]);
 
-  // Fetch current organization data for due date calculation
-  const { data: currentOrganization } = useQuery({
-    queryKey: ["/api/organizations", currentUser?.organizationId],
-    queryFn: async () => {
-      if (!currentUser?.organizationId) return null;
-      const response = await apiRequest("GET", `/api/organizations/${currentUser.organizationId}`);
-      if (!response.ok) throw new Error('Failed to fetch organization');
-      return response.json();
-    },
-    enabled: !!currentUser?.organizationId,
-  });
 
   // Check if current week is marked as vacation
   const currentWeekVacation = useMemo(() => {
@@ -445,10 +446,18 @@ export default function Checkins() {
     // React Hook Form already handles validation, so if we get here the data is valid
     console.log('handleSubmit called with data:', data);
     console.log('currentWeekStart:', currentWeekStart);
-    createCheckinMutation.mutate({
-      ...data,
-      weekStartDate: currentWeekStart.toISOString()
-    });
+    console.log('currentWeekCheckin:', currentWeekCheckin);
+    
+    // Don't pass weekStartDate when editing current week's check-in
+    // This allows the mutation logic to properly use currentWeekCheckin.id
+    if (currentWeekCheckin) {
+      createCheckinMutation.mutate(data);
+    } else {
+      createCheckinMutation.mutate({
+        ...data,
+        weekStartDate: currentWeekStart.toISOString()
+      });
+    }
   };
   
   // Handle form validation errors
