@@ -131,21 +131,56 @@ export default function Checkins() {
   // Check if user needs self-review capability (no manager)
   const needsSelfReview = currentUser && !currentUser.managerId;
 
-  // Get current week start (Saturday)
-  const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 6 });
+  // Get current week start (Saturday) - wrap in try-catch for debugging
+  let currentWeekStart: Date;
+  let previousWeekStart: Date;
   
-  // Get previous week start (Saturday)
-  const previousWeekStart = addWeeks(currentWeekStart, -1);
+  try {
+    console.log("[DEBUG Checkins] Creating currentWeekStart...");
+    const today = new Date();
+    console.log("[DEBUG Checkins] Today:", today.toISOString());
+    currentWeekStart = startOfWeek(today, { weekStartsOn: 6 });
+    console.log("[DEBUG Checkins] currentWeekStart:", currentWeekStart.toISOString());
+    
+    // Get previous week start (Saturday)
+    console.log("[DEBUG Checkins] Creating previousWeekStart...");
+    previousWeekStart = addWeeks(currentWeekStart, -1);
+    console.log("[DEBUG Checkins] previousWeekStart:", previousWeekStart.toISOString());
+  } catch (error) {
+    console.error("[DEBUG Checkins] Error creating week dates:", error);
+    // Fallback to safe defaults
+    currentWeekStart = new Date();
+    previousWeekStart = new Date();
+  }
 
   // Fetch active questions (with team-specific questions if applicable)
   const { data: questions = [], isLoading: questionsLoading } = useQuery<Question[]>({
     queryKey: ["/api/questions?forCheckin=true"],
   });
 
-  // Fetch user's check-ins
+  // Fetch user's check-ins - log raw response for debugging
   const { data: checkins = [], isLoading: checkinsLoading, error: checkinsError } = useQuery<Checkin[]>({
     queryKey: ["/api/checkins"],
     enabled: !!currentUser,
+    queryFn: async () => {
+      console.log("[DEBUG Checkins] Fetching checkins...");
+      const response = await fetch("/api/checkins");
+      const data = await response.json();
+      console.log("[DEBUG Checkins] Raw checkins data:", data);
+      
+      // Validate dates in the response
+      if (Array.isArray(data)) {
+        data.forEach((checkin: any, index: number) => {
+          console.log(`[DEBUG Checkins] Checkin ${index} weekOf:`, checkin.weekOf, "type:", typeof checkin.weekOf);
+          const parsedDate = new Date(checkin.weekOf);
+          if (isNaN(parsedDate.getTime())) {
+            console.error(`[DEBUG Checkins] Invalid weekOf date at index ${index}:`, checkin.weekOf);
+          }
+        });
+      }
+      
+      return data;
+    },
   });
 
   // Fetch users for name lookups
