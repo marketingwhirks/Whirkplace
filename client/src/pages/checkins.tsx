@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -127,6 +127,16 @@ export default function Checkins() {
   
   // Tour management
   const tourManager = useManagedTour(TOUR_IDS.CHECKINS_GUIDE);
+  
+  // Check for URL query parameter to auto-open submit dialog
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('submit') === 'true' && !showCreateDialog) {
+      setShowCreateDialog(true);
+      // Remove the query parameter to clean up the URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [showCreateDialog]);
   
   // Check if user needs self-review capability (no manager)
   const needsSelfReview = currentUser && !currentUser.managerId;

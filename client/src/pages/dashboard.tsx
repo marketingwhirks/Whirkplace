@@ -549,7 +549,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                   {notificationContent.buttonText && (
-                    <Link to="/checkins" className="w-full sm:w-auto">
+                    <Link to="/checkins?submit=true" className="w-full sm:w-auto">
                       <Button 
                         variant="outline" 
                         size="sm"
