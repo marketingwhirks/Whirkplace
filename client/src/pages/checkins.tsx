@@ -186,7 +186,7 @@ export default function Checkins() {
   });
 
   // Get current week's check-in
-  const { data: currentCheckin } = useQuery<Checkin | null>({
+  const { data: currentCheckin } = useQuery<{ checkin: Checkin | null; isOnVacation: boolean }>({
     queryKey: ["/api/users", currentUser?.id, "current-checkin"],
     enabled: !!currentUser?.id,
   });
@@ -314,7 +314,7 @@ export default function Checkins() {
   }, [enrichedCheckins]);
 
   // Separate current week and historical checkins
-  const currentWeekCheckin = currentCheckin || sortedCheckins.find(checkin => 
+  const currentWeekCheckin = currentCheckin?.checkin || sortedCheckins.find(checkin => 
     isSameWeek(safeParseWeek(checkin.weekOf), currentWeekStart, { weekStartsOn: 6 })
   );
   
