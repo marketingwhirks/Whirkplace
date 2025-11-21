@@ -37,6 +37,7 @@ export default function Dashboard() {
     overallMood: 0,
     responses: {} as Record<string, string>,
   });
+  const [isEditingCheckin, setIsEditingCheckin] = useState(false);
   const [selectedCheckin, setSelectedCheckin] = useState<(Checkin & { user?: User }) | null>(null);
   
   // Tour management
@@ -374,8 +375,9 @@ export default function Dashboard() {
         description: "Your weekly check-in has been submitted for review by your team leader.",
       });
       
-      // Reset the form data after successful submission
+      // Reset the form data and exit edit mode after successful submission
       setCheckinData({ overallMood: 0, responses: {} });
+      setIsEditingCheckin(false);
     } catch (error) {
       console.error("[Dashboard] Error submitting check-in:", error);
       console.error("[Dashboard] Error details:", JSON.stringify(error, null, 2));
@@ -1466,7 +1468,7 @@ export default function Dashboard() {
             </CardHeader>
             
             <CardContent className="space-y-6">
-              {currentCheckin ? (
+              {currentCheckin && !isEditingCheckin ? (
                 // Submitted state content
                 <div className="space-y-4">
                   {/* Display submitted mood */}
@@ -1528,6 +1530,7 @@ export default function Dashboard() {
                           overallMood: currentCheckin.overallMood,
                           responses: currentCheckin.responses as Record<string, string>,
                         });
+                        setIsEditingCheckin(true);
                       }}
                       data-testid="button-edit-checkin"
                     >
@@ -1572,6 +1575,18 @@ export default function Dashboard() {
 
                   {/* Submit Button */}
                   <div className="flex justify-end space-x-3">
+                    {isEditingCheckin && (
+                      <Button 
+                        variant="outline"
+                        onClick={() => {
+                          setIsEditingCheckin(false);
+                          setCheckinData({ overallMood: 0, responses: {} });
+                        }}
+                        data-testid="button-cancel-edit"
+                      >
+                        Cancel
+                      </Button>
+                    )}
                     <Button variant="secondary" data-testid="button-save-draft">
                       Save Draft
                     </Button>
@@ -1581,7 +1596,7 @@ export default function Dashboard() {
                       data-testid="button-submit-checkin"
                     >
                       <ClipboardCheck className="w-4 h-4 mr-2" />
-                      Submit Check-in
+                      {isEditingCheckin ? "Update Check-in" : "Submit Check-in"}
                     </Button>
                   </div>
                 </>
