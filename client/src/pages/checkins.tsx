@@ -432,27 +432,27 @@ export default function Checkins() {
 
   // Handle form submission
   const handleSubmit = (data: CheckinForm) => {
-    // Check for validation errors before submission
-    const errors = form.formState.errors;
-    if (Object.keys(errors).length > 0) {
-      console.error("Form validation errors:", errors);
-      
-      // Get error message string
-      let errorMessage = "Please answer all questions before submitting";
-      if (errors.overallMood?.message) {
-        errorMessage = String(errors.overallMood.message);
-      } else if (errors.responses && typeof errors.responses === 'object' && 'message' in errors.responses) {
-        errorMessage = String((errors.responses as any).message);
-      }
-      
-      toast({
-        variant: "destructive",
-        title: "Please complete all required fields",
-        description: errorMessage,
-      });
-      return;
-    }
+    // React Hook Form already handles validation, so if we get here the data is valid
     createCheckinMutation.mutate(data);
+  };
+  
+  // Handle form validation errors
+  const handleSubmitError = (errors: any) => {
+    console.error("Form validation errors:", errors);
+    
+    // Get error message string
+    let errorMessage = "Please answer all questions before submitting";
+    if (errors.overallMood?.message) {
+      errorMessage = String(errors.overallMood.message);
+    } else if (errors.responses && typeof errors.responses === 'object' && 'message' in errors.responses) {
+      errorMessage = String((errors.responses as any).message);
+    }
+    
+    toast({
+      variant: "destructive",
+      title: "Please complete all required fields",
+      description: errorMessage,
+    });
   };
 
   // Handle edit current check-in
@@ -788,7 +788,7 @@ export default function Checkins() {
                   </CardHeader>
                   <CardContent>
                     <Form {...form}>
-                      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+                      <form onSubmit={form.handleSubmit(handleSubmit, handleSubmitError)} className="space-y-6">
                         {/* Overall Mood Rating */}
                         <FormField
                           control={form.control}
@@ -1315,7 +1315,7 @@ export default function Checkins() {
                     ...data,
                     weekStartDate: previousWeekStart.toISOString()
                   });
-                })} className="space-y-6">
+                }, handleSubmitError)} className="space-y-6">
                   {/* Overall Mood Rating */}
                   <FormField
                     control={form.control}
@@ -1453,7 +1453,7 @@ export default function Checkins() {
               </div>
             ) : (
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+                <form onSubmit={form.handleSubmit(handleSubmit, handleSubmitError)} className="space-y-6">
                   {/* Overall Mood Rating */}
                   <FormField
                     control={form.control}
