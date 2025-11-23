@@ -1965,7 +1965,7 @@ export class DatabaseStorage implements IStorage {
     // Get the organization for timezone settings
     const organization = await this.getOrganization(organizationId);
     
-    // Normalize the week start to Monday at 00:00:00 in the organization's timezone
+    // Normalize the week start to Saturday at 00:00:00 in the organization's timezone
     const normalizedWeekStart = getWeekStartCentral(weekStart, organization);
     const weekEnd = new Date(normalizedWeekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
@@ -2002,7 +2002,7 @@ export class DatabaseStorage implements IStorage {
     // Get the organization for timezone settings
     const organization = await this.getOrganization(organizationId);
     
-    // Normalize the week start to Monday at 00:00:00 in the organization's timezone
+    // Normalize the week start to Saturday at 00:00:00 in the organization's timezone
     const normalizedWeekStart = getWeekStartCentral(weekStart, organization);
     const weekEnd = new Date(normalizedWeekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
