@@ -6146,7 +6146,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
       
-      res.json(enhancedCheckins);
+      // Return as object with checkins property to match frontend expectations
+      res.json({ checkins: enhancedCheckins });
     } catch (error) {
       console.error("Failed to fetch team check-ins:", error);
       res.status(500).json({ message: "Failed to fetch team check-ins" });
