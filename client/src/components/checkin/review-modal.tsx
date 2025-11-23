@@ -47,7 +47,12 @@ export default function ReviewModal({
   const { toast } = useToast();
   const [addToOneOnOne, setAddToOneOnOne] = useState(false);
   const [flagForFollowUp, setFlagForFollowUp] = useState(false);
-  const [reviewComment, setReviewComment] = useState("");
+  // Initialize with existing review comments if already reviewed
+  const [reviewComment, setReviewComment] = useState(
+    checkin?.reviewStatus === "reviewed" && checkin?.reviewComments ? 
+    checkin.reviewComments.replace(/^\[(APPROVED|NEEDS IMPROVEMENT)\]\s*/i, '') : 
+    ""
+  );
   const [responseComments, setResponseComments] = useState<Record<string, string>>(
     checkin?.responseComments || {}
   );
@@ -115,13 +120,18 @@ export default function ReviewModal({
 
   // Handle review submission
   const handleSubmitReview = async () => {
-    if (!checkin || !reviewAction) return;
+    if (!checkin) return;
+    
+    // For already reviewed check-ins, allow updating comments without changing status
+    const isUpdatingReview = checkin.reviewStatus === "reviewed";
+    
+    if (!isUpdatingReview && !reviewAction) return;
 
     // Add approve/reject indication to comments if not already specified
     let finalComments = reviewComment.trim();
-    if (!finalComments && reviewAction) {
+    if (!isUpdatingReview && !finalComments && reviewAction) {
       finalComments = reviewAction === "approve" ? "Approved" : "Needs improvement";
-    } else if (finalComments && reviewAction) {
+    } else if (!isUpdatingReview && finalComments && reviewAction) {
       finalComments = `${reviewAction === "approve" ? "[APPROVED]" : "[NEEDS IMPROVEMENT]"} ${finalComments}`;
     }
 
@@ -407,25 +417,39 @@ export default function ReviewModal({
               )}
 
               {/* Review Actions */}
-              {checkin.reviewStatus === "pending" && !disabled && (
+              {!disabled && (
                 <div className="flex gap-3 justify-end pt-4 border-t">
-                  <Button
-                    variant="outline"
-                    onClick={() => handleReviewAction("reject")}
-                    className="text-red-600 border-red-200 hover:bg-red-50"
-                    data-testid="button-reject-checkin"
-                  >
-                    <XCircle className="w-4 h-4 mr-2" />
-                    Reject
-                  </Button>
-                  <Button
-                    onClick={() => handleReviewAction("approve")}
-                    className="bg-green-600 hover:bg-green-700"
-                    data-testid="button-approve-checkin"
-                  >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Approve
-                  </Button>
+                  {checkin.reviewStatus === "pending" ? (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleReviewAction("reject")}
+                        className="text-red-600 border-red-200 hover:bg-red-50"
+                        data-testid="button-reject-checkin"
+                      >
+                        <XCircle className="w-4 h-4 mr-2" />
+                        Reject
+                      </Button>
+                      <Button
+                        onClick={() => handleReviewAction("approve")}
+                        className="bg-green-600 hover:bg-green-700"
+                        data-testid="button-approve-checkin"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Approve
+                      </Button>
+                    </>
+                  ) : (
+                    // Allow updating review for already reviewed check-ins
+                    <Button
+                      onClick={() => setShowConfirmation(true)}
+                      className="bg-blue-600 hover:bg-blue-700"
+                      data-testid="button-update-review"
+                    >
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Update Review Comments
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -439,22 +463,40 @@ export default function ReviewModal({
             // Confirmation View
             <>
               <div className="text-center py-4">
-                <div className={`w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center ${
-                  reviewAction === "approve" ? "bg-green-100" : "bg-red-100"
-                }`}>
-                  {reviewAction === "approve" ? (
-                    <CheckCircle className="w-8 h-8 text-green-600" />
-                  ) : (
-                    <XCircle className="w-8 h-8 text-red-600" />
-                  )}
-                </div>
-                <h3 className="text-lg font-semibold mb-2">
-                  {reviewAction === "approve" ? "Approve Check-in?" : "Reject Check-in?"}
-                </h3>
-                <p className="text-muted-foreground">
-                  This action will {reviewAction === "approve" ? "approve" : "reject"} {checkin.user?.name}'s check-in.
-                  {reviewAction === "reject" && " Please provide feedback to help them improve."}
-                </p>
+                {checkin.reviewStatus === "reviewed" ? (
+                  // Update review view
+                  <>
+                    <div className="w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center bg-blue-100">
+                      <MessageSquare className="w-8 h-8 text-blue-600" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">
+                      Update Review Comments
+                    </h3>
+                    <p className="text-muted-foreground">
+                      Update your review comments for {checkin.user?.name}'s check-in.
+                    </p>
+                  </>
+                ) : (
+                  // Initial review view
+                  <>
+                    <div className={`w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center ${
+                      reviewAction === "approve" ? "bg-green-100" : "bg-red-100"
+                    }`}>
+                      {reviewAction === "approve" ? (
+                        <CheckCircle className="w-8 h-8 text-green-600" />
+                      ) : (
+                        <XCircle className="w-8 h-8 text-red-600" />
+                      )}
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">
+                      {reviewAction === "approve" ? "Approve Check-in?" : "Reject Check-in?"}
+                    </h3>
+                    <p className="text-muted-foreground">
+                      This action will {reviewAction === "approve" ? "approve" : "reject"} {checkin.user?.name}'s check-in.
+                      {reviewAction === "reject" && " Please provide feedback to help them improve."}
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* Review Comment */}
@@ -495,9 +537,13 @@ export default function ReviewModal({
                   onClick={handleSubmitReview}
                   disabled={
                     reviewMutation.isPending || 
-                    (reviewAction === "reject" && !reviewComment.trim())
+                    (reviewAction === "reject" && !reviewComment.trim()) ||
+                    (checkin.reviewStatus === "reviewed" && !reviewComment.trim())
                   }
-                  className={reviewAction === "approve" ? 
+                  className={
+                    checkin.reviewStatus === "reviewed" ? 
+                    "bg-blue-600 hover:bg-blue-700" :
+                    reviewAction === "approve" ? 
                     "bg-green-600 hover:bg-green-700" : 
                     "bg-red-600 hover:bg-red-700"
                   }
@@ -507,12 +553,22 @@ export default function ReviewModal({
                     "Submitting..."
                   ) : (
                     <>
-                      {reviewAction === "approve" ? (
-                        <CheckCircle className="w-4 h-4 mr-2" />
+                      {checkin.reviewStatus === "reviewed" ? (
+                        <>
+                          <MessageSquare className="w-4 h-4 mr-2" />
+                          Update Comments
+                        </>
+                      ) : reviewAction === "approve" ? (
+                        <>
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          Confirm Approval
+                        </>
                       ) : (
-                        <XCircle className="w-4 h-4 mr-2" />
+                        <>
+                          <XCircle className="w-4 h-4 mr-2" />
+                          Confirm Rejection
+                        </>
                       )}
-                      Confirm {reviewAction === "approve" ? "Approval" : "Rejection"}
                     </>
                   )}
                 </Button>
