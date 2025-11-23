@@ -6009,6 +6009,150 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get users without check-ins for current week - MUST come before generic :id route
+  app.get("/api/checkins/missing", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const user = req.currentUser!;
+      
+      // If user is manager, pass their ID; if admin, don't pass managerId
+      const managerId = user.role === 'manager' ? user.id : undefined;
+      
+      const usersWithoutCheckins = await storage.getUsersWithoutCheckins(req.orgId, managerId);
+      
+      // Enhance with team information
+      const enhancedUsers = await Promise.all(
+        usersWithoutCheckins.map(async (item) => {
+          const team = item.user.teamId 
+            ? await storage.getTeam(req.orgId, item.user.teamId)
+            : null;
+          
+          return {
+            ...item,
+            user: {
+              ...item.user,
+              teamName: team?.name || null
+            }
+          };
+        })
+      );
+      
+      res.json(enhancedUsers);
+    } catch (error) {
+      console.error("Failed to fetch users without check-ins:", error);
+      res.status(500).json({ message: "Failed to fetch users without check-ins" });
+    }
+  });
+
+  // Get team check-ins for a specific week - MUST come before generic :id route
+  app.get("/api/checkins/team", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { weekStart, teamId } = req.query;
+      const user = req.currentUser!;
+      
+      // Parse week start date
+      const targetWeekStart = weekStart 
+        ? getWeekStartCentral(new Date(weekStart as string))
+        : getWeekStartCentral(new Date());
+      
+      // DEBUG: Log week calculation
+      console.log('[BACKEND /api/checkins/team] Week calculation:', {
+        queryWeekStart: weekStart,
+        parsedWeekStart: weekStart ? new Date(weekStart as string).toISOString() : 'not provided',
+        targetWeekStart: targetWeekStart.toISOString(),
+        targetWeekStartLocal: format(targetWeekStart, 'yyyy-MM-dd EEEE'),
+        currentTime: new Date().toISOString(),
+        teamId: teamId || 'all teams',
+        userId: user.id,
+        userRole: user.role
+      });
+      
+      // Get the organization for proper week calculations
+      const organization = await storage.getOrganization(req.orgId);
+      
+      let checkins: Checkin[] = [];
+      
+      if (teamId && teamId !== 'all') {
+        // Get check-ins for specific team
+        const teamMembers = await storage.getUsersByTeam(req.orgId, teamId);
+        for (const member of teamMembers) {
+          const checkin = await storage.getCheckinForWeek(
+            req.orgId,
+            member.id,
+            targetWeekStart
+          );
+          if (checkin) {
+            checkins.push(checkin);
+          }
+        }
+      } else {
+        // Get all check-ins for the week based on user's role
+        if (user.role === 'admin') {
+          // Admin can see all check-ins
+          checkins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart);
+        } else if (user.role === 'manager') {
+          // Manager can see their direct reports' check-ins
+          const directReports = await storage.getUsersByManager(req.orgId, user.id);
+          for (const report of directReports) {
+            const checkin = await storage.getCheckinForWeek(
+              req.orgId,
+              report.id,
+              targetWeekStart
+            );
+            if (checkin) {
+              checkins.push(checkin);
+            }
+          }
+        }
+      }
+      
+      // DEBUG: Log found check-ins
+      console.log('[BACKEND /api/checkins/team] Found check-ins:', {
+        count: checkins.length,
+        targetWeek: targetWeekStart.toISOString(),
+        checkinWeeks: checkins.map(c => ({
+          id: c.id,
+          weekOf: c.weekOf,
+          submittedAt: c.submittedAt,
+          userId: c.userId
+        }))
+      });
+      
+      // Enhance with user and reviewer information
+      const enhancedCheckins = await Promise.all(
+        checkins.map(async (checkin) => {
+          const checkinUser = await storage.getUser(req.orgId, checkin.userId);
+          const team = checkinUser?.teamId 
+            ? await storage.getTeam(req.orgId, checkinUser.teamId)
+            : null;
+          const reviewer = checkin.reviewedBy 
+            ? await storage.getUser(req.orgId, checkin.reviewedBy)
+            : null;
+          
+          return {
+            ...checkin,
+            user: checkinUser ? {
+              id: checkinUser.id,
+              name: checkinUser.name,
+              email: checkinUser.email,
+              teamId: checkinUser.teamId,
+              teamName: team?.name || null
+            } : null,
+            reviewer: reviewer ? {
+              id: reviewer.id,
+              name: reviewer.name,
+              email: reviewer.email
+            } : null
+          };
+        })
+      );
+      
+      res.json(enhancedCheckins);
+    } catch (error) {
+      console.error("Failed to fetch team check-ins:", error);
+      res.status(500).json({ message: "Failed to fetch team check-ins" });
+    }
+  });
+
   // Generic check-in by ID route - MUST come after all specific routes
   app.get("/api/checkins/:id", requireAuth(), async (req, res) => {
     try {
@@ -6601,144 +6745,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       res.status(500).json({ message: "Failed to review check-in" });
-    }
-  });
-
-  // Get users without check-ins for current week
-  app.get("/api/checkins/missing", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
-    try {
-      const user = req.currentUser!;
-      
-      // If user is manager, pass their ID; if admin, don't pass managerId
-      const managerId = user.role === 'manager' ? user.id : undefined;
-      
-      const usersWithoutCheckins = await storage.getUsersWithoutCheckins(req.orgId, managerId);
-      
-      // Enhance with team information
-      const enhancedUsers = await Promise.all(
-        usersWithoutCheckins.map(async (item) => {
-          const team = item.user.teamId 
-            ? await storage.getTeam(req.orgId, item.user.teamId)
-            : null;
-          
-          return {
-            ...item,
-            user: {
-              ...item.user,
-              teamName: team?.name || null
-            }
-          };
-        })
-      );
-      
-      res.json(enhancedUsers);
-    } catch (error) {
-      console.error("Failed to fetch users without check-ins:", error);
-      res.status(500).json({ message: "Failed to fetch users without check-ins" });
-    }
-  });
-
-  // Get team check-ins for a specific week
-  app.get("/api/checkins/team", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
-    try {
-      const { weekStart, teamId } = req.query;
-      const user = req.currentUser!;
-      
-      // Parse week start date
-      const targetWeekStart = weekStart 
-        ? getWeekStartCentral(new Date(weekStart as string))
-        : getWeekStartCentral(new Date());
-      
-      // DEBUG: Log week calculation
-      console.log('[BACKEND /api/checkins/team] Week calculation:', {
-        queryWeekStart: weekStart,
-        parsedWeekStart: weekStart ? new Date(weekStart as string).toISOString() : 'not provided',
-        targetWeekStart: targetWeekStart.toISOString(),
-        targetWeekStartLocal: format(targetWeekStart, 'yyyy-MM-dd EEEE'),
-        currentTime: new Date().toISOString(),
-        teamId: teamId || 'all teams',
-        userId: user.id,
-        userRole: user.role
-      });
-      
-      // Get the organization for proper week calculations
-      const organization = await storage.getOrganization(req.orgId);
-      
-      let checkins: Checkin[] = [];
-      
-      if (teamId && teamId !== 'all') {
-        // Get check-ins for specific team
-        const teamMembers = await storage.getUsersByTeam(req.orgId, teamId as string, true);
-        const userIds = teamMembers.map(u => u.id);
-        console.log('[BACKEND /api/checkins/team] Fetching for specific team:', {
-          teamId,
-          memberCount: teamMembers.length,
-          userIds: userIds.slice(0, 5) // Show first 5 IDs
-        });
-        checkins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, userIds);
-      } else {
-        // Get all check-ins for the week
-        if (user.role === 'manager') {
-          // Managers see their reports only
-          const reports = await storage.getUsersByManager(req.orgId, user.id, true);
-          const userIds = reports.map(u => u.id);
-          console.log('[BACKEND /api/checkins/team] Manager fetching reports:', {
-            managerId: user.id,
-            reportCount: reports.length,
-            userIds: userIds.slice(0, 5)
-          });
-          checkins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, userIds);
-        } else {
-          // Admins see all
-          console.log('[BACKEND /api/checkins/team] Admin fetching all check-ins');
-          checkins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart);
-        }
-      }
-      
-      console.log('[BACKEND /api/checkins/team] Retrieved check-ins:', {
-        count: checkins.length,
-        checkins: checkins.slice(0, 3).map(c => ({
-          id: c.id,
-          userId: c.userId,
-          weekOf: c.weekOf,
-          submittedAt: c.submittedAt,
-          isComplete: c.isComplete
-        }))
-      });
-      
-      // Enhance check-ins with user and team information
-      const enhancedCheckins = await Promise.all(
-        checkins.map(async (checkin) => {
-          const checkinUser = await storage.getUser(req.orgId, checkin.userId);
-          const team = checkinUser?.teamId 
-            ? await storage.getTeam(req.orgId, checkinUser.teamId)
-            : null;
-          const reviewer = checkin.reviewedBy 
-            ? await storage.getUser(req.orgId, checkin.reviewedBy)
-            : null;
-          
-          return {
-            ...checkin,
-            user: checkinUser ? {
-              id: checkinUser.id,
-              name: checkinUser.name,
-              email: checkinUser.email,
-              teamId: checkinUser.teamId,
-              teamName: team?.name || null
-            } : null,
-            reviewer: reviewer ? {
-              id: reviewer.id,
-              name: reviewer.name,
-              email: reviewer.email
-            } : null
-          };
-        })
-      );
-      
-      res.json({ checkins: enhancedCheckins });
-    } catch (error) {
-      console.error("Failed to fetch team check-ins:", error);
-      res.status(500).json({ message: "Failed to fetch team check-ins" });
     }
   });
 
