@@ -2965,7 +2965,8 @@ export async function notifyCheckinSubmitted(
   overallMood: number, 
   submissionSummary?: string,
   organizationId?: string,
-  teamLeaderUserId?: string
+  teamLeaderUserId?: string,
+  teamLeaderSlackId?: string
 ) {
   if (!slack) return;
   
@@ -2985,10 +2986,27 @@ export async function notifyCheckinSubmitted(
     }
   }
 
-  // Use private channel for sensitive check-in notifications
-  const channel = process.env.SLACK_PRIVATE_CHANNEL_ID;
-  if (!channel) {
-    console.warn("SLACK_PRIVATE_CHANNEL_ID not configured. Sensitive check-in notification not sent for security.");
+  // If no Slack ID provided, we can't send a DM
+  if (!teamLeaderSlackId) {
+    console.warn(`No Slack ID for ${teamLeaderName}, cannot send check-in review notification`);
+    return;
+  }
+
+  // Open a DM channel with the team leader
+  let channel: string;
+  try {
+    const conversationResult = await slack.conversations.open({
+      users: teamLeaderSlackId
+    });
+    
+    if (!conversationResult.ok || !conversationResult.channel?.id) {
+      console.error('Failed to open DM channel with team leader:', conversationResult.error);
+      return;
+    }
+    
+    channel = conversationResult.channel.id;
+  } catch (error) {
+    console.error('Error opening DM channel with team leader:', error);
     return;
   }
   
@@ -3008,7 +3026,7 @@ export async function notifyCheckinSubmitted(
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: `*${userName}* has submitted their weekly check-in and needs your review, ${teamLeaderName}!`
+        text: `Hi ${teamLeaderName}! 👋 *${userName}* has submitted their weekly check-in and it's ready for your review.`
       }
     },
     {
@@ -3020,7 +3038,7 @@ export async function notifyCheckinSubmitted(
         },
         {
           type: 'mrkdwn',
-          text: `*Status:*\nPending Review`
+          text: `*Status:*\n⏳ Awaiting Your Review`
         }
       ]
     }
@@ -3043,7 +3061,7 @@ export async function notifyCheckinSubmitted(
         type: 'button' as const,
         text: {
           type: 'plain_text' as const,
-          text: 'Review Check-in 👁️'
+          text: '👁️ Review Check-in Now'
         },
         url: reviewUrl,
         style: 'primary' as const
@@ -3051,11 +3069,23 @@ export async function notifyCheckinSubmitted(
     ]
   });
 
-  const messageId = await sendSlackMessage({
-    channel,
-    blocks
+  blocks.push({
+    type: 'context',
+    elements: [
+      {
+        type: 'mrkdwn',
+        text: `_Review their full responses and provide feedback to help ${userName} grow and succeed._`
+      }
+    ]
   });
 
+  const messageId = await sendSlackMessage({
+    channel,
+    blocks,
+    text: `${userName} has submitted their check-in for review.`
+  }, organizationId);
+
+  console.log(`✅ Check-in review notification sent to ${teamLeaderName} via DM`);
   return messageId;
 }
 

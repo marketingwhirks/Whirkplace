@@ -6170,12 +6170,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (user) {
               // Find team leader to notify
               let teamLeaderName = "Team Leader";
+              let teamLeaderUserId: string | undefined;
+              let teamLeaderSlackId: string | undefined;
               
               // First try direct manager
               if (user.managerId) {
                 const manager = await storage.getUser(req.orgId, user.managerId);
                 if (manager) {
                   teamLeaderName = manager.name;
+                  teamLeaderUserId = manager.id;
+                  teamLeaderSlackId = manager.slackUserId || undefined;
                 }
               }
               // Then try team leader if no direct manager
@@ -6185,6 +6189,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   const teamLeader = await storage.getUser(req.orgId, team.leaderId);
                   if (teamLeader) {
                     teamLeaderName = teamLeader.name;
+                    teamLeaderUserId = teamLeader.id;
+                    teamLeaderSlackId = teamLeader.slackUserId || undefined;
                   }
                 }
               }
@@ -6203,7 +6209,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   user.name,
                   teamLeaderName,
                   checkin.overallMood,
-                  firstResponse
+                  firstResponse,
+                  req.orgId,
+                  teamLeaderUserId,
+                  teamLeaderSlackId
                 ),
                 notificationTimeout
               ]);
