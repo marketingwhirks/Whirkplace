@@ -304,12 +304,14 @@ export default function LoginPage() {
           await new Promise(resolve => setTimeout(resolve, 200));
         }
         
-        // Redirect based on user role - super admins go to organization selection
+        // Force a hard refresh to ensure the session cookie is properly handled
+        // This is more reliable than client-side routing for session-based auth
         if (data.user?.isSuperAdmin) {
-          setLocation("/select-organization");
+          window.location.href = "/select-organization";
         } else {
-          setLocation("/dashboard");
+          window.location.href = "/dashboard";
         }
+        return; // Exit early since we're doing a hard refresh
       } else {
         const error = await response.json();
         toast({ 
@@ -376,8 +378,9 @@ export default function LoginPage() {
           await new Promise(resolve => setTimeout(resolve, 100));
         }
         
-        // Redirect to dashboard
-        setLocation("/dashboard");
+        // Force a hard refresh for sign-up redirect too
+        window.location.href = "/dashboard";
+        return; // Exit early since we're doing a hard refresh
       } else {
         const error = await response.json();
         toast({ 

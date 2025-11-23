@@ -56,20 +56,22 @@ export default function OAuthCallbackPage() {
         // Small delay to ensure authentication state is ready
         await new Promise(resolve => setTimeout(resolve, 150));
         
-        // Redirect to the appropriate page
+        // Force hard refresh to ensure session cookie is properly handled
+        // This is more reliable than client-side routing for session-based auth
         if (isSuperAdmin) {
           // Super admins go to organization selection
-          setLocation('/select-organization');
+          window.location.href = '/select-organization';
         } else if (needsOnboarding && orgSlug) {
           // New organizations go to onboarding
-          setLocation(`/onboarding?org=${orgSlug}`);
+          window.location.href = `/onboarding?org=${orgSlug}`;
         } else if (orgSlug) {
           // Existing organizations go to dashboard
-          setLocation(`/dashboard?org=${orgSlug}`);
+          window.location.href = `/dashboard?org=${orgSlug}`;
         } else {
           // Fallback to dashboard
-          setLocation('/dashboard');
+          window.location.href = '/dashboard';
         }
+        return; // Exit early since we're doing a hard refresh
       } else {
         // No user ID, something went wrong
         setLocation('/login?error=oauth_failed');

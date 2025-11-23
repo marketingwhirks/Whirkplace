@@ -54,7 +54,7 @@ export default function ReviewModal({
     ""
   );
   const [responseComments, setResponseComments] = useState<Record<string, string>>(
-    checkin?.responseComments || {}
+    (checkin?.responseComments || {}) as Record<string, string>
   );
   // Initialize responseFlags with proper boolean conversion
   const [responseFlags, setResponseFlags] = useState<Record<string, { addToOneOnOne: boolean; flagForFollowUp: boolean }>>(() => {
