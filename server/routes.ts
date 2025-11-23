@@ -6202,6 +6202,149 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get check-ins for review (pending, reviewed, missing)
+  app.get("/api/checkins/reviews", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    console.log('[GET /api/checkins/reviews] ========== REVIEWS ENDPOINT - CRITICAL FIX ==========');
+    console.log('[GET /api/checkins/reviews] Request details:', {
+      userId: req.currentUser?.id,
+      userName: req.currentUser?.name,
+      userRole: req.currentUser?.role,
+      orgId: req.orgId,
+      weekStart: req.query.weekStart || 'NONE - RETURNING ALL PENDING',
+      timestamp: new Date().toISOString(),
+      note: 'CRITICAL: Pending must return ALL pending reviews, NOT filtered by week'
+    });
+    
+    try {
+      const { weekStart } = req.query;
+      const user = req.currentUser!;
+      
+      // Parse week start date (for reviewed/missing only, NOT for pending)
+      const targetWeekStart = weekStart 
+        ? getWeekStartCentral(new Date(weekStart as string))
+        : getWeekStartCentral(new Date());
+      
+      console.log('[GET /api/checkins/reviews] Week calculation (for reviewed/missing only):', {
+        targetWeekStart: targetWeekStart.toISOString(),
+        dayOfWeek: targetWeekStart.getDay(),
+        note: 'This week is ONLY used for reviewed and missing, NOT for pending'
+      });
+      
+      // Get the organization for proper week calculations
+      const organization = await storage.getOrganization(req.orgId);
+      
+      // Get all users managed by this person
+      let managedUsers: any[] = [];
+      if (user.role === 'manager') {
+        console.log('[GET /api/checkins/reviews] Getting users managed by:', user.id);
+        managedUsers = await storage.getUsersByManager(req.orgId, user.id, true);
+      } else {
+        console.log('[GET /api/checkins/reviews] Admin - getting ALL users');
+        managedUsers = await storage.getAllUsers(req.orgId, true);
+      }
+      
+      const userIds = managedUsers.map(u => u.id);
+      
+      console.log('[GET /api/checkins/reviews] Managed users:', {
+        count: managedUsers.length,
+        userIds: userIds,
+        userNames: managedUsers.map(u => ({ id: u.id, name: u.name, email: u.email }))
+      });
+      
+      // CRITICAL FIX: Get ALL pending checkins regardless of week
+      // This MUST match the behavior of /api/checkins/pending
+      console.log('[GET /api/checkins/reviews] ===== FETCHING ALL PENDING REVIEWS =====');
+      let allPendingCheckins: Checkin[] = [];
+      if (user.id) {
+        // Use the same method as /api/checkins/pending
+        console.log('[GET /api/checkins/reviews] Calling storage.getPendingCheckins...');
+        allPendingCheckins = await storage.getPendingCheckins(req.orgId, user.id, true);
+        console.log('[GET /api/checkins/reviews] storage.getPendingCheckins returned:', {
+          count: allPendingCheckins.length,
+          weeks: Array.from(new Set(allPendingCheckins.map(c => c.weekOf.toISOString().split('T')[0]))),
+          details: allPendingCheckins.map(c => ({
+            id: c.id,
+            userId: c.userId,
+            weekOf: c.weekOf,
+            reviewStatus: c.reviewStatus
+          }))
+        });
+      }
+      
+      // Get check-ins for the specific week (for reviewed and missing)
+      const weekCheckins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, userIds);
+      
+      console.log('[/api/checkins/reviews] Week checkins:', {
+        weekStart: targetWeekStart.toISOString(),
+        totalCount: weekCheckins.length,
+        pendingInWeek: weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'pending').length,
+        reviewedInWeek: weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'reviewed').length
+      });
+      
+      // Use ALL pending checkins (not filtered by week)
+      const pending = allPendingCheckins;
+      // For reviewed, use only the selected week
+      const reviewed = weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'reviewed');
+      
+      // Find users without check-ins
+      const usersWithCheckins = new Set(weekCheckins.map(c => c.userId));
+      const missing = managedUsers
+        .filter(u => !usersWithCheckins.has(u.id) && u.isActive)
+        .map(u => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          teamId: u.teamId
+        }));
+      
+      // Enhance check-ins with user info
+      const enhanceCheckin = async (checkin: Checkin) => {
+        const checkinUser = await storage.getUser(req.orgId, checkin.userId);
+        const team = checkinUser?.teamId 
+          ? await storage.getTeam(req.orgId, checkinUser.teamId)
+          : null;
+        const reviewer = checkin.reviewedBy 
+          ? await storage.getUser(req.orgId, checkin.reviewedBy)
+          : null;
+        
+        return {
+          ...checkin,
+          user: checkinUser ? {
+            id: checkinUser.id,
+            name: checkinUser.name,
+            email: checkinUser.email,
+            teamId: checkinUser.teamId,
+            teamName: team?.name || null
+          } : null,
+          reviewer: reviewer ? {
+            id: reviewer.id,
+            name: reviewer.name,
+            email: reviewer.email
+          } : null
+        };
+      };
+      
+      const enhancedPending = await Promise.all(pending.map(enhanceCheckin));
+      const enhancedReviewed = await Promise.all(reviewed.map(enhanceCheckin));
+      
+      console.log('[/api/checkins/reviews] Final response summary:', {
+        pendingCount: enhancedPending.length,
+        reviewedCount: enhancedReviewed.length,
+        missingCount: missing.length,
+        pendingWeeks: enhancedPending.map(c => ({ id: c.id, weekOf: c.weekOf }))
+      });
+      
+      res.json({ 
+        pending: enhancedPending, 
+        reviewed: enhancedReviewed, 
+        missing 
+      });
+    } catch (error) {
+      console.error("Failed to fetch review check-ins:", error);
+      res.status(500).json({ message: "Failed to fetch review check-ins" });
+    }
+  });
+
   // Generic check-in by ID route - MUST come after all specific routes
   app.get("/api/checkins/:id", requireAuth(), async (req, res) => {
     try {
@@ -6794,149 +6937,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       res.status(500).json({ message: "Failed to review check-in" });
-    }
-  });
-
-  // Get check-ins for review (pending, reviewed, missing)
-  app.get("/api/checkins/reviews", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
-    console.log('[GET /api/checkins/reviews] ========== REVIEWS ENDPOINT - CRITICAL FIX ==========');
-    console.log('[GET /api/checkins/reviews] Request details:', {
-      userId: req.currentUser?.id,
-      userName: req.currentUser?.name,
-      userRole: req.currentUser?.role,
-      orgId: req.orgId,
-      weekStart: req.query.weekStart || 'NONE - RETURNING ALL PENDING',
-      timestamp: new Date().toISOString(),
-      note: 'CRITICAL: Pending must return ALL pending reviews, NOT filtered by week'
-    });
-    
-    try {
-      const { weekStart } = req.query;
-      const user = req.currentUser!;
-      
-      // Parse week start date (for reviewed/missing only, NOT for pending)
-      const targetWeekStart = weekStart 
-        ? getWeekStartCentral(new Date(weekStart as string))
-        : getWeekStartCentral(new Date());
-      
-      console.log('[GET /api/checkins/reviews] Week calculation (for reviewed/missing only):', {
-        targetWeekStart: targetWeekStart.toISOString(),
-        dayOfWeek: targetWeekStart.getDay(),
-        note: 'This week is ONLY used for reviewed and missing, NOT for pending'
-      });
-      
-      // Get the organization for proper week calculations
-      const organization = await storage.getOrganization(req.orgId);
-      
-      // Get all users managed by this person
-      let managedUsers: any[] = [];
-      if (user.role === 'manager') {
-        console.log('[GET /api/checkins/reviews] Getting users managed by:', user.id);
-        managedUsers = await storage.getUsersByManager(req.orgId, user.id, true);
-      } else {
-        console.log('[GET /api/checkins/reviews] Admin - getting ALL users');
-        managedUsers = await storage.getAllUsers(req.orgId, true);
-      }
-      
-      const userIds = managedUsers.map(u => u.id);
-      
-      console.log('[GET /api/checkins/reviews] Managed users:', {
-        count: managedUsers.length,
-        userIds: userIds,
-        userNames: managedUsers.map(u => ({ id: u.id, name: u.name, email: u.email }))
-      });
-      
-      // CRITICAL FIX: Get ALL pending checkins regardless of week
-      // This MUST match the behavior of /api/checkins/pending
-      console.log('[GET /api/checkins/reviews] ===== FETCHING ALL PENDING REVIEWS =====');
-      let allPendingCheckins: Checkin[] = [];
-      if (user.id) {
-        // Use the same method as /api/checkins/pending
-        console.log('[GET /api/checkins/reviews] Calling storage.getPendingCheckins...');
-        allPendingCheckins = await storage.getPendingCheckins(req.orgId, user.id, true);
-        console.log('[GET /api/checkins/reviews] storage.getPendingCheckins returned:', {
-          count: allPendingCheckins.length,
-          weeks: Array.from(new Set(allPendingCheckins.map(c => c.weekOf.toISOString().split('T')[0]))),
-          details: allPendingCheckins.map(c => ({
-            id: c.id,
-            userId: c.userId,
-            weekOf: c.weekOf,
-            reviewStatus: c.reviewStatus
-          }))
-        });
-      }
-      
-      // Get check-ins for the specific week (for reviewed and missing)
-      const weekCheckins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, userIds);
-      
-      console.log('[/api/checkins/reviews] Week checkins:', {
-        weekStart: targetWeekStart.toISOString(),
-        totalCount: weekCheckins.length,
-        pendingInWeek: weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'pending').length,
-        reviewedInWeek: weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'reviewed').length
-      });
-      
-      // Use ALL pending checkins (not filtered by week)
-      const pending = allPendingCheckins;
-      // For reviewed, use only the selected week
-      const reviewed = weekCheckins.filter(c => c.isComplete && c.reviewStatus === 'reviewed');
-      
-      // Find users without check-ins
-      const usersWithCheckins = new Set(weekCheckins.map(c => c.userId));
-      const missing = managedUsers
-        .filter(u => !usersWithCheckins.has(u.id) && u.isActive)
-        .map(u => ({
-          id: u.id,
-          name: u.name,
-          email: u.email,
-          teamId: u.teamId
-        }));
-      
-      // Enhance check-ins with user info
-      const enhanceCheckin = async (checkin: Checkin) => {
-        const checkinUser = await storage.getUser(req.orgId, checkin.userId);
-        const team = checkinUser?.teamId 
-          ? await storage.getTeam(req.orgId, checkinUser.teamId)
-          : null;
-        const reviewer = checkin.reviewedBy 
-          ? await storage.getUser(req.orgId, checkin.reviewedBy)
-          : null;
-        
-        return {
-          ...checkin,
-          user: checkinUser ? {
-            id: checkinUser.id,
-            name: checkinUser.name,
-            email: checkinUser.email,
-            teamId: checkinUser.teamId,
-            teamName: team?.name || null
-          } : null,
-          reviewer: reviewer ? {
-            id: reviewer.id,
-            name: reviewer.name,
-            email: reviewer.email
-          } : null
-        };
-      };
-      
-      const enhancedPending = await Promise.all(pending.map(enhanceCheckin));
-      const enhancedReviewed = await Promise.all(reviewed.map(enhanceCheckin));
-      
-      console.log('[/api/checkins/reviews] Final response summary:', {
-        pendingCount: enhancedPending.length,
-        reviewedCount: enhancedReviewed.length,
-        missingCount: missing.length,
-        pendingWeeks: enhancedPending.map(c => ({ id: c.id, weekOf: c.weekOf }))
-      });
-      
-      res.json({ 
-        pending: enhancedPending, 
-        reviewed: enhancedReviewed, 
-        missing 
-      });
-    } catch (error) {
-      console.error("Failed to fetch review check-ins:", error);
-      res.status(500).json({ message: "Failed to fetch review check-ins" });
     }
   });
 
