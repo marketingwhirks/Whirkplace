@@ -6153,6 +6153,224 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get compliance data for check-ins - MUST come before generic :id route
+  app.get("/api/checkins/compliance", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
+    try {
+      const { weekStart } = req.query;
+      
+      // Parse week start date
+      const targetWeekStart = weekStart 
+        ? getWeekStartCentral(new Date(weekStart as string))
+        : getWeekStartCentral(new Date());
+      
+      // Get the organization for proper week calculations
+      const organization = await storage.getOrganization(req.orgId);
+      
+      // Get teams compliance data
+      const teams = await storage.getAllTeams(req.orgId);
+      const teamsCompliance = await Promise.all(
+        teams.map(async (team) => {
+          const members = await storage.getUsersByTeam(req.orgId, team.id, false);
+          const memberIds = members.map(m => m.id);
+          
+          if (memberIds.length === 0) {
+            return {
+              teamId: team.id,
+              teamName: team.name,
+              metrics: {
+                submissionRate: 0,
+                onTimeRate: 0,
+                averageMood: null,
+                submitted: 0,
+                expected: 0,
+                onVacation: 0
+              },
+              members: []
+            };
+          }
+          
+          // Get check-ins for team members
+          const checkins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, memberIds);
+          
+          // Calculate metrics
+          const submitted = checkins.filter(c => c.isComplete).length;
+          const expected = members.filter(m => m.isActive).length;
+          const submissionRate = expected > 0 ? (submitted / expected) * 100 : 0;
+          
+          // Calculate on-time rate
+          const dueDate = getCheckinDueDate(targetWeekStart, organization);
+          const onTime = checkins.filter(c => c.isComplete && c.createdAt <= dueDate).length;
+          const onTimeRate = submitted > 0 ? (onTime / submitted) * 100 : 0;
+          
+          // Calculate average mood
+          const moods = checkins
+            .filter(c => c.isComplete && c.overallMood !== null)
+            .map(c => c.overallMood as number);
+          const averageMood = moods.length > 0 
+            ? moods.reduce((sum, mood) => sum + mood, 0) / moods.length 
+            : null;
+          
+          // Get member status
+          const memberStatus = await Promise.all(
+            members.map(async (member) => {
+              const checkin = checkins.find(c => c.userId === member.id);
+              const compliance = await storage.getUserComplianceMetrics(
+                req.orgId, 
+                member.id, 
+                12
+              );
+              
+              // Check for vacation status
+              const vacation = await storage.getVacationForUserAndWeek(
+                req.orgId,
+                member.id,
+                targetWeekStart
+              );
+              
+              // Check for exemption status
+              const exemption = await storage.getExemptionForUserAndWeek(
+                req.orgId,
+                member.id,
+                targetWeekStart
+              );
+              
+              // Determine status with priority: submitted > exempted > vacation > missing
+              let status: 'submitted' | 'missing' | 'on-vacation' | 'exempted';
+              if (checkin?.isComplete) {
+                status = 'submitted';
+              } else if (exemption) {
+                status = 'exempted';
+              } else if (vacation) {
+                status = 'on-vacation';
+              } else {
+                status = 'missing';
+              }
+              
+              return {
+                userId: member.id,
+                userName: member.name,
+                email: member.email,
+                status,
+                submittedAt: checkin?.createdAt,
+                moodRating: checkin?.overallMood,
+                compliance: {
+                  rate: compliance.submissionRate,
+                  streak: compliance.currentStreak,
+                  onTimeRate: compliance.onTimeRate,
+                  recentText: `${compliance.recentSubmissions}/${compliance.recentWeeks}`,
+                  totalSubmitted: compliance.totalSubmitted,
+                  totalExpected: compliance.totalExpected
+                }
+              };
+            })
+          );
+          
+          return {
+            teamId: team.id,
+            teamName: team.name,
+            metrics: {
+              submissionRate,
+              onTimeRate,
+              averageMood,
+              submitted,
+              expected,
+              onVacation: 0
+            },
+            members: memberStatus
+          };
+        })
+      );
+      
+      // Get organization summary
+      const allUsers = await storage.getAllUsers(req.orgId, false);
+      const allCheckins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart);
+      
+      const totalSubmitted = allCheckins.filter(c => c.isComplete).length;
+      const totalExpected = allUsers.filter(u => u.isActive).length;
+      const overallSubmissionRate = totalExpected > 0 
+        ? (totalSubmitted / totalExpected) * 100 
+        : 0;
+      
+      // Top performing teams
+      const topPerforming = teamsCompliance
+        .filter(t => t.metrics.expected > 0)
+        .sort((a, b) => b.metrics.submissionRate - a.metrics.submissionRate)
+        .slice(0, 3)
+        .map(t => ({
+          teamId: t.teamId,
+          teamName: t.teamName,
+          submissionRate: t.metrics.submissionRate
+        }));
+      
+      // Teams needing attention
+      const needingAttention = teamsCompliance
+        .filter(t => t.metrics.expected > 0)
+        .sort((a, b) => a.metrics.submissionRate - b.metrics.submissionRate)
+        .slice(0, 3)
+        .map(t => ({
+          teamId: t.teamId,
+          teamName: t.teamName,
+          submissionRate: t.metrics.submissionRate
+        }));
+      
+      // Top performing individuals
+      const allMemberStatuses = teamsCompliance.flatMap(t => t.members);
+      const topIndividuals = allMemberStatuses
+        .sort((a, b) => b.compliance.rate - a.compliance.rate)
+        .slice(0, 5)
+        .map(m => ({
+          userId: m.userId,
+          userName: m.userName,
+          complianceRate: m.compliance.rate
+        }));
+      
+      // Individuals needing attention
+      const strugglingIndividuals = allMemberStatuses
+        .filter(m => m.compliance.rate < 50)
+        .sort((a, b) => a.compliance.rate - b.compliance.rate)
+        .slice(0, 5)
+        .map(m => ({
+          userId: m.userId,
+          userName: m.userName,
+          complianceRate: m.compliance.rate
+        }));
+      
+      const organizationSummary = {
+        overall: {
+          submissionRate: overallSubmissionRate,
+          submitted: totalSubmitted,
+          expected: totalExpected,
+          onVacation: 0,
+          totalActive: totalExpected
+        },
+        teams: {
+          all: teamsCompliance.map(t => ({
+            teamId: t.teamId,
+            teamName: t.teamName,
+            submissionRate: t.metrics.submissionRate,
+            submitted: t.metrics.submitted,
+            expected: t.metrics.expected,
+            members: t.members.length
+          })),
+          topPerforming,
+          needingAttention
+        },
+        individuals: {
+          topPerformers: topIndividuals,
+          needingAttention: strugglingIndividuals
+        }
+      };
+      
+      res.json({ 
+        teams: teamsCompliance,
+        organization: organizationSummary
+      });
+    } catch (error) {
+      console.error("Failed to fetch compliance data:", error);
+      res.status(500).json({ message: "Failed to fetch compliance data" });
+    }
+  });
+
   // Generic check-in by ID route - MUST come after all specific routes
   app.get("/api/checkins/:id", requireAuth(), async (req, res) => {
     try {
@@ -6888,224 +7106,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Failed to fetch review check-ins:", error);
       res.status(500).json({ message: "Failed to fetch review check-ins" });
-    }
-  });
-
-  // Get compliance data for check-ins
-  app.get("/api/checkins/compliance", requireAuth(), requireRole(['admin', 'manager']), async (req, res) => {
-    try {
-      const { weekStart } = req.query;
-      
-      // Parse week start date
-      const targetWeekStart = weekStart 
-        ? getWeekStartCentral(new Date(weekStart as string))
-        : getWeekStartCentral(new Date());
-      
-      // Get the organization for proper week calculations
-      const organization = await storage.getOrganization(req.orgId);
-      
-      // Get teams compliance data
-      const teams = await storage.getAllTeams(req.orgId);
-      const teamsCompliance = await Promise.all(
-        teams.map(async (team) => {
-          const members = await storage.getUsersByTeam(req.orgId, team.id, false);
-          const memberIds = members.map(m => m.id);
-          
-          if (memberIds.length === 0) {
-            return {
-              teamId: team.id,
-              teamName: team.name,
-              metrics: {
-                submissionRate: 0,
-                onTimeRate: 0,
-                averageMood: null,
-                submitted: 0,
-                expected: 0,
-                onVacation: 0
-              },
-              members: []
-            };
-          }
-          
-          // Get check-ins for team members
-          const checkins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart, memberIds);
-          
-          // Calculate metrics
-          const submitted = checkins.filter(c => c.isComplete).length;
-          const expected = members.filter(m => m.isActive).length;
-          const submissionRate = expected > 0 ? (submitted / expected) * 100 : 0;
-          
-          // Calculate on-time rate
-          const dueDate = getCheckinDueDate(targetWeekStart, organization);
-          const onTime = checkins.filter(c => c.isComplete && c.createdAt <= dueDate).length;
-          const onTimeRate = submitted > 0 ? (onTime / submitted) * 100 : 0;
-          
-          // Calculate average mood
-          const moods = checkins
-            .filter(c => c.isComplete && c.overallMood !== null)
-            .map(c => c.overallMood as number);
-          const averageMood = moods.length > 0 
-            ? moods.reduce((sum, mood) => sum + mood, 0) / moods.length 
-            : null;
-          
-          // Get member status
-          const memberStatus = await Promise.all(
-            members.map(async (member) => {
-              const checkin = checkins.find(c => c.userId === member.id);
-              const compliance = await storage.getUserComplianceMetrics(
-                req.orgId, 
-                member.id, 
-                12
-              );
-              
-              // Check for vacation status
-              const vacation = await storage.getVacationForUserAndWeek(
-                req.orgId,
-                member.id,
-                targetWeekStart
-              );
-              
-              // Check for exemption status
-              const exemption = await storage.getExemptionForUserAndWeek(
-                req.orgId,
-                member.id,
-                targetWeekStart
-              );
-              
-              // Determine status with priority: submitted > exempted > vacation > missing
-              let status: 'submitted' | 'missing' | 'on-vacation' | 'exempted';
-              if (checkin?.isComplete) {
-                status = 'submitted';
-              } else if (exemption) {
-                status = 'exempted';
-              } else if (vacation) {
-                status = 'on-vacation';
-              } else {
-                status = 'missing';
-              }
-              
-              return {
-                userId: member.id,
-                userName: member.name,
-                email: member.email,
-                status,
-                submittedAt: checkin?.createdAt,
-                moodRating: checkin?.overallMood,
-                compliance: {
-                  rate: compliance.submissionRate,
-                  streak: compliance.currentStreak,
-                  onTimeRate: compliance.onTimeRate,
-                  recentText: `${compliance.recentSubmissions}/${compliance.recentWeeks}`,
-                  totalSubmitted: compliance.totalSubmitted,
-                  totalExpected: compliance.totalExpected
-                }
-              };
-            })
-          );
-          
-          return {
-            teamId: team.id,
-            teamName: team.name,
-            metrics: {
-              submissionRate,
-              onTimeRate,
-              averageMood,
-              submitted,
-              expected,
-              onVacation: 0
-            },
-            members: memberStatus
-          };
-        })
-      );
-      
-      // Get organization summary
-      const allUsers = await storage.getAllUsers(req.orgId, false);
-      const allCheckins = await storage.getCheckinsForWeek(req.orgId, targetWeekStart);
-      
-      const totalSubmitted = allCheckins.filter(c => c.isComplete).length;
-      const totalExpected = allUsers.filter(u => u.isActive).length;
-      const overallSubmissionRate = totalExpected > 0 
-        ? (totalSubmitted / totalExpected) * 100 
-        : 0;
-      
-      // Top performing teams
-      const topPerforming = teamsCompliance
-        .filter(t => t.metrics.expected > 0)
-        .sort((a, b) => b.metrics.submissionRate - a.metrics.submissionRate)
-        .slice(0, 3)
-        .map(t => ({
-          teamId: t.teamId,
-          teamName: t.teamName,
-          submissionRate: t.metrics.submissionRate
-        }));
-      
-      // Teams needing attention
-      const needingAttention = teamsCompliance
-        .filter(t => t.metrics.expected > 0)
-        .sort((a, b) => a.metrics.submissionRate - b.metrics.submissionRate)
-        .slice(0, 3)
-        .map(t => ({
-          teamId: t.teamId,
-          teamName: t.teamName,
-          submissionRate: t.metrics.submissionRate
-        }));
-      
-      // Top performing individuals
-      const allMemberStatuses = teamsCompliance.flatMap(t => t.members);
-      const topIndividuals = allMemberStatuses
-        .sort((a, b) => b.compliance.rate - a.compliance.rate)
-        .slice(0, 5)
-        .map(m => ({
-          userId: m.userId,
-          userName: m.userName,
-          complianceRate: m.compliance.rate
-        }));
-      
-      // Individuals needing attention
-      const strugglingIndividuals = allMemberStatuses
-        .filter(m => m.compliance.rate < 50)
-        .sort((a, b) => a.compliance.rate - b.compliance.rate)
-        .slice(0, 5)
-        .map(m => ({
-          userId: m.userId,
-          userName: m.userName,
-          complianceRate: m.compliance.rate
-        }));
-      
-      const organizationSummary = {
-        overall: {
-          submissionRate: overallSubmissionRate,
-          submitted: totalSubmitted,
-          expected: totalExpected,
-          onVacation: 0,
-          totalActive: totalExpected
-        },
-        teams: {
-          all: teamsCompliance.map(t => ({
-            teamId: t.teamId,
-            teamName: t.teamName,
-            submissionRate: t.metrics.submissionRate,
-            submitted: t.metrics.submitted,
-            expected: t.metrics.expected,
-            members: t.members.length
-          })),
-          topPerforming,
-          needingAttention
-        },
-        individuals: {
-          topPerformers: topIndividuals,
-          needingAttention: strugglingIndividuals
-        }
-      };
-      
-      res.json({ 
-        teams: teamsCompliance,
-        organization: organizationSummary
-      });
-    } catch (error) {
-      console.error("Failed to fetch compliance data:", error);
-      res.status(500).json({ message: "Failed to fetch compliance data" });
     }
   });
 
