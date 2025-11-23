@@ -304,14 +304,27 @@ export default function LoginPage() {
           await new Promise(resolve => setTimeout(resolve, 200));
         }
         
-        // Force a hard refresh to ensure the session cookie is properly handled
-        // This is more reliable than client-side routing for session-based auth
-        if (data.user?.isSuperAdmin) {
-          window.location.href = "/select-organization";
+        // Small delay to ensure session is fully established
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Try to refetch the current user to confirm authentication
+        const currentUserResponse = await fetch('/api/users/current', {
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        
+        if (currentUserResponse.ok) {
+          // Authentication confirmed, do a hard reload to refresh the entire app state
+          window.location.replace(data.user?.isSuperAdmin ? "/select-organization" : "/dashboard");
         } else {
-          window.location.href = "/dashboard";
+          // If authentication check fails, try client-side navigation as fallback
+          if (data.user?.isSuperAdmin) {
+            setLocation("/select-organization");
+          } else {
+            setLocation("/dashboard");
+          }
         }
-        return; // Exit early since we're doing a hard refresh
+        return;
       } else {
         const error = await response.json();
         toast({ 

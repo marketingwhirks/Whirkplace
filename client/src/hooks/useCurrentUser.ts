@@ -36,6 +36,20 @@ export function useCurrentUser() {
         });
         
         if (!response.ok) {
+          // Check if we just logged in (indicated by user data in localStorage)
+          const storedUser = localStorage.getItem('whirkplace-user');
+          if (storedUser && response.status === 401) {
+            // Try once more after a small delay (session might be establishing)
+            await new Promise(resolve => setTimeout(resolve, 300));
+            const retryResponse = await fetch(url, {
+              method: 'GET',
+              credentials: 'include',
+              headers
+            });
+            if (retryResponse.ok) {
+              return retryResponse.json();
+            }
+          }
           // Return null for unauthenticated users instead of throwing
           return null;
         }
@@ -47,8 +61,10 @@ export function useCurrentUser() {
       }
     },
     staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-    retry: false, // Don't retry on auth failures
+    retry: false, // Don't retry on auth failures (we handle retry internally)
     gcTime: 0, // Don't cache failed auth attempts
+    refetchOnWindowFocus: true, // Refetch when window regains focus
+    refetchOnMount: true, // Always refetch when component mounts
   });
 }
 
