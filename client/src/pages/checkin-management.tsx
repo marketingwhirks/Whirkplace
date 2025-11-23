@@ -403,9 +403,10 @@ export default function CheckinManagement() {
   });
 
   // Fetch check-ins for review
-  // CRITICAL: Don't include week in the query key for pending reviews - we want ALL pending reviews regardless of week
+  // CRITICAL: Include selectedWeek in query key so reviewed/missing refresh when week changes
+  // The backend returns ALL pending reviews regardless of week, but reviewed/missing are filtered by week
   const { data: reviewCheckins = { pending: [], reviewed: [], missing: [] }, isLoading: reviewCheckinsLoading } = useQuery({
-    queryKey: ["/api/checkins/reviews", "all-pending"], // No selectedWeek - we want ALL pending reviews
+    queryKey: ["/api/checkins/reviews", selectedWeek.toISOString()], // Include week for cache invalidation
     queryFn: async () => {
       const weekStart = getWeekStartCentral(selectedWeek);
       
