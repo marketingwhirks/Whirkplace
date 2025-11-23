@@ -844,7 +844,7 @@ export default function Dashboard() {
                   </CardTitle>
                   <Button 
                     variant="link" 
-                    onClick={() => navigate("/checkins")}
+                    onClick={() => navigate(currentUser.role === "member" ? "/checkins" : "/checkin-management")}
                     data-testid="button-view-all-checkins"
                   >
                     View All <ArrowRight className="w-4 h-4 ml-1" />
