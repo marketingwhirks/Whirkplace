@@ -4018,63 +4018,193 @@ export async function handleChannelMembershipEvent(
 }
 
 /**
- * Weekly reminder scheduler - Call this function via cron job or scheduler at 9:05 AM
+ * Comprehensive reminder scheduler - Sends both check-in and review reminders
+ * Call this function via cron job or scheduler at regular intervals
  */
 export async function scheduleWeeklyReminders(organizationId: string, storage: any) {
-  if (!slack) {
-    console.log('Slack not configured - skipping weekly reminders');
-    return { remindersSent: 0, errors: 0, totalUsers: 0 };
-  }
-
   try {
-    console.log(`Running weekly check-in reminders for organization ${organizationId}`);
+    console.log(`Running comprehensive reminders for organization ${organizationId}`);
+    
+    const organization = await storage.getOrganization(organizationId);
+    if (!organization || !organization.isActive) {
+      console.log(`Organization ${organizationId} is not active, skipping reminders`);
+      return { checkinRemindersSent: 0, reviewRemindersSent: 0, errors: 0 };
+    }
+    
+    // Import email reminder functions
+    const { sendCheckinReminderEmail, sendReviewReminderEmail } = await import('./emailNotifications');
     
     // Get all active users
-    const users = await storage.getAllUsers(organizationId, false); // Pass includeInactive=false
-    const activeUsers = users.filter((user: any) => user.isActive && user.slackUserId);
+    const users = await storage.getAllUsers(organizationId, false);
+    const activeUsers = users.filter((user: any) => user.isActive);
     
-    // Get current week check-ins to see who hasn't completed theirs
-    // Get organization for timezone settings (using default since we're in a general reminder context)
-    const organization = await storage.getOrganization(organizationId);
+    // Get current week start
     const currentWeekStart = getWeekStartCentral(new Date(), organization);
     
     // Get active questions for preview
     const questions = await storage.getActiveQuestions(organizationId);
     
-    let remindersSent = 0;
+    let checkinRemindersSent = 0;
+    let reviewRemindersSent = 0;
     let errors = 0;
     
+    // Part 1: Send check-in reminders to users who haven't completed their check-ins
+    console.log('Sending check-in reminders...');
     for (const user of activeUsers) {
       try {
         // Check if user has completed this week's check-in
         const currentCheckin = await storage.getCurrentWeekCheckin(organizationId, user.id);
         
         if (!currentCheckin || !currentCheckin.isComplete) {
-          // Send personalized reminder
-          await sendPersonalizedCheckinReminder(
-            user.slackUserId,
-            user.name || user.slackDisplayName || 'Team Member',
-            questions,
-            true, // isWeeklyScheduled
-            organization // Pass organization for due date calculation
-          );
+          // Check if user is on vacation
+          const isOnVacation = await storage.isUserOnVacation(organizationId, user.id, currentWeekStart);
           
-          remindersSent++;
-          
-          // Add small delay to avoid rate limits
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          if (!isOnVacation) {
+            let slackSent = false;
+            let emailSent = false;
+            
+            // Try Slack first if available
+            if (user.slackUserId && slack) {
+              try {
+                await sendPersonalizedCheckinReminder(
+                  user.slackUserId,
+                  user.name || user.slackDisplayName || 'Team Member',
+                  questions,
+                  true, // isWeeklyScheduled
+                  organization
+                );
+                slackSent = true;
+                console.log(`✅ Sent Slack check-in reminder to ${user.name}`);
+              } catch (slackError) {
+                console.log(`Failed to send Slack reminder to ${user.name}:`, slackError);
+              }
+            }
+            
+            // Send email if Slack failed or not available
+            if (!slackSent && user.email) {
+              try {
+                emailSent = await sendCheckinReminderEmail(
+                  user.id,
+                  organizationId,
+                  user.email,
+                  user.name,
+                  organization.name
+                );
+                if (emailSent) {
+                  console.log(`✅ Sent email check-in reminder to ${user.name}`);
+                }
+              } catch (emailError) {
+                console.log(`Failed to send email reminder to ${user.name}:`, emailError);
+              }
+            }
+            
+            if (slackSent || emailSent) {
+              checkinRemindersSent++;
+              // Add small delay to avoid rate limits
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
         }
       } catch (userError) {
-        console.error(`Error sending reminder to user ${user.name}:`, userError);
+        console.error(`Error processing check-in reminder for user ${user.name}:`, userError);
         errors++;
       }
     }
     
-    console.log(`Weekly reminders completed: ${remindersSent} sent, ${errors} errors`);
-    return { remindersSent, errors, totalUsers: activeUsers.length };
+    // Part 2: Send review reminders to managers with pending reviews
+    console.log('Sending review reminders...');
+    const managersAndLeaders = activeUsers.filter((user: any) => 
+      user.role === 'admin' || user.role === 'manager' || 
+      activeUsers.some((u: any) => u.managerId === user.id)
+    );
+    
+    for (const manager of managersAndLeaders) {
+      try {
+        // Get pending check-ins for this manager
+        const pendingCheckins = await storage.getPendingCheckins(
+          organizationId, 
+          manager.id,
+          true // includeOwnIfNoManager
+        );
+        
+        if (pendingCheckins && pendingCheckins.length > 0) {
+          // Get user details for the pending check-ins
+          const teamMemberNames: string[] = [];
+          const teamMemberCheckins: any[] = [];
+          
+          for (const checkin of pendingCheckins.slice(0, 5)) { // Limit to first 5 for summary
+            const user = await storage.getUser(organizationId, checkin.userId);
+            if (user) {
+              teamMemberNames.push(user.name || user.email);
+              teamMemberCheckins.push({
+                memberName: user.name || user.email,
+                moodRating: checkin.overallMood,
+                submittedAt: checkin.submittedAt,
+                needsReview: true
+              });
+            }
+          }
+          
+          let slackSent = false;
+          let emailSent = false;
+          
+          // Try Slack first if available
+          if (manager.slackUserId && slack) {
+            try {
+              await sendCheckinReviewReminder(
+                manager.id,
+                manager.name || 'Team Leader',
+                teamMemberCheckins
+              );
+              slackSent = true;
+              console.log(`✅ Sent Slack review reminder to ${manager.name} for ${pendingCheckins.length} reviews`);
+            } catch (slackError) {
+              console.log(`Failed to send Slack review reminder to ${manager.name}:`, slackError);
+            }
+          }
+          
+          // Send email if Slack failed or not available  
+          if (!slackSent && manager.email) {
+            try {
+              emailSent = await sendReviewReminderEmail(
+                manager.id,
+                organizationId,
+                pendingCheckins.length,
+                teamMemberNames,
+                manager.email,
+                manager.name,
+                organization.name
+              );
+              if (emailSent) {
+                console.log(`✅ Sent email review reminder to ${manager.name} for ${pendingCheckins.length} reviews`);
+              }
+            } catch (emailError) {
+              console.log(`Failed to send email review reminder to ${manager.name}:`, emailError);
+            }
+          }
+          
+          if (slackSent || emailSent) {
+            reviewRemindersSent++;
+            // Add small delay to avoid rate limits
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      } catch (managerError) {
+        console.error(`Error processing review reminder for manager ${manager.name}:`, managerError);
+        errors++;
+      }
+    }
+    
+    console.log(`✅ Reminders completed: ${checkinRemindersSent} check-in reminders, ${reviewRemindersSent} review reminders, ${errors} errors`);
+    return { 
+      checkinRemindersSent, 
+      reviewRemindersSent, 
+      errors, 
+      totalUsers: activeUsers.length 
+    };
     
   } catch (error) {
-    console.error('Error in weekly reminder scheduler:', error);
+    console.error('Error in comprehensive reminder scheduler:', error);
     throw error;
   }
 }
