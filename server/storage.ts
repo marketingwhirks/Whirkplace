@@ -2017,7 +2017,7 @@ export class DatabaseStorage implements IStorage {
       userIdsCount: userIds?.length || 'all'
     });
     
-    // Build conditions
+    // Build conditions - NO isComplete filter!
     const conditions: any[] = [
       eq(checkins.organizationId, organizationId),
       gte(checkins.weekOf, normalizedWeekStart),
