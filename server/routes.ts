@@ -6221,14 +6221,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
               );
               
               // Check for vacation status
-              const vacation = await storage.getVacationForUserAndWeek(
+              const vacation = await storage.isUserOnVacation(
                 req.orgId,
                 member.id,
                 targetWeekStart
               );
               
               // Check for exemption status
-              const exemption = await storage.getExemptionForUserAndWeek(
+              const exemption = await storage.isUserExempted(
                 req.orgId,
                 member.id,
                 targetWeekStart
