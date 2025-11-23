@@ -1236,7 +1236,7 @@ export default function CheckinManagement() {
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="all">All Users</SelectItem>
-                              {(Array.from(new Map(teamCheckinsData.checkins.map((c: EnhancedCheckin) => [
+                              {(Array.from(new Map((teamCheckinsData?.checkins || []).map((c: EnhancedCheckin) => [
                                 c.user?.id, 
                                 { id: c.user?.id, name: c.user?.name }
                               ])).values()) as { id: string; name: string }[])
@@ -1267,7 +1267,7 @@ export default function CheckinManagement() {
                         <Skeleton key={i} className="h-16 w-full" />
                       ))}
                     </div>
-                  ) : teamCheckinsData.checkins.length > 0 ? (
+                  ) : teamCheckinsData?.checkins && teamCheckinsData.checkins.length > 0 ? (
                     <div className="space-y-3">
                       {teamCheckinsData.checkins
                         .filter((checkin: EnhancedCheckin) => {
