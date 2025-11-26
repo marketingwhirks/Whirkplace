@@ -1181,6 +1181,7 @@ export function IntegrationsDashboard() {
                               credentials: 'include'
                             });
                             const diagnostics = await response.json();
+                            console.log("Slack Diagnostics Results:", JSON.stringify(diagnostics, null, 2));
                             
                             // Display diagnostic results
                             if (diagnostics.summary?.allTestsPassed) {
@@ -1189,25 +1190,56 @@ export function IntegrationsDashboard() {
                                 description: "All tests passed. Sync should work correctly.",
                               });
                             } else {
+                              // Get failed tests with clear descriptions
                               const failedTests = Object.entries(diagnostics.tests || {})
                                 .filter(([_, test]: [string, any]) => !test.success)
-                                .map(([name, test]: [string, any]) => `${name}: ${test.message}`)
-                                .join('\n');
+                                .map(([name, test]: [string, any]) => {
+                                  const testNames: Record<string, string> = {
+                                    tokenValidation: "Token",
+                                    channelAccess: "Channel",
+                                    permissions: "Permissions",
+                                    membersList: "Members List"
+                                  };
+                                  return `${testNames[name] || name}: ${test.message}`;
+                                });
+                              
+                              // Show first failed test prominently
+                              const firstFailed = failedTests[0] || "Unknown error";
+                              const moreCount = failedTests.length > 1 ? ` (+${failedTests.length - 1} more)` : "";
                               
                               toast({
-                                title: "⚠️ Slack Integration Issues Detected",
-                                description: failedTests || "Some tests failed.",
+                                title: "⚠️ Slack Integration Issues",
+                                description: firstFailed + moreCount,
                                 variant: "destructive",
+                                duration: 10000,
                               });
+                              
+                              // Show additional failed tests if any
+                              if (failedTests.length > 1) {
+                                failedTests.slice(1).forEach((test, index) => {
+                                  setTimeout(() => {
+                                    toast({
+                                      title: `❌ Issue ${index + 2}`,
+                                      description: test,
+                                      variant: "destructive",
+                                      duration: 8000,
+                                    });
+                                  }, (index + 1) * 1500);
+                                });
+                              }
                               
                               // Show recommendations if available
                               if (diagnostics.summary?.recommendations?.length > 0) {
-                                setTimeout(() => {
-                                  toast({
-                                    title: "💡 Recommendations",
-                                    description: diagnostics.summary.recommendations.join(', '),
-                                  });
-                                }, 2000);
+                                const totalDelay = (failedTests.length) * 1500 + 1000;
+                                diagnostics.summary.recommendations.forEach((rec: string, index: number) => {
+                                  setTimeout(() => {
+                                    toast({
+                                      title: `💡 Recommendation ${index + 1}`,
+                                      description: rec,
+                                      duration: 10000,
+                                    });
+                                  }, totalDelay + (index * 1500));
+                                });
                               }
                             }
                           } catch (error) {
