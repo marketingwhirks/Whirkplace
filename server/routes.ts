@@ -8845,26 +8845,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Comments
-  app.get("/api/checkins/:id/comments", async (req, res) => {
+  app.get("/api/checkins/:id/comments", authenticateUser(), requireAuth(), async (req, res) => {
     try {
       const comments = await storage.getCommentsByCheckin(req.orgId, req.params.id);
       res.json(comments);
     } catch (error) {
+      console.error("Failed to fetch comments:", error);
       res.status(500).json({ message: "Failed to fetch comments" });
     }
   });
 
-  app.post("/api/checkins/:id/comments", async (req, res) => {
+  app.post("/api/checkins/:id/comments", authenticateUser(), requireAuth(), async (req, res) => {
     try {
+      const currentUser = req.currentUser!;
+      
+      // Build comment data with userId and organizationId from session
       const commentData = insertCommentSchema.parse({
         ...req.body,
         checkinId: req.params.id,
+        userId: currentUser.id,
+        organizationId: req.orgId,
       });
-      const sanitizedData = sanitizeForOrganization(commentData, req.orgId);
-      const comment = await storage.createComment(req.orgId, sanitizedData);
+      
+      const comment = await storage.createComment(req.orgId, commentData);
       res.status(201).json(comment);
     } catch (error) {
-      res.status(400).json({ message: "Invalid comment data" });
+      console.error("Failed to create comment:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid comment data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to create comment" });
     }
   });
 
