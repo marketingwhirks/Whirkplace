@@ -16597,12 +16597,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`   Team ID: ${tokenData.team?.id}`);
       console.log(`   Team Name: ${tokenData.team?.name}`);
       console.log(`   Access Token: ${tokenData.access_token?.substring(0, 10)}...`);
+      console.log(`   Refresh Token: ${tokenData.refresh_token ? tokenData.refresh_token.substring(0, 10) + '...' : 'NOT PROVIDED'}`);
+      console.log(`   Token Expires In: ${tokenData.expires_in || 'NOT PROVIDED'} seconds`);
       console.log(`   Bot User ID: ${tokenData.bot_user_id}`);
       console.log(`   Scopes: ${tokenData.scope}`);
       
+      // Calculate token expiry time (Slack tokens expire in 12 hours = 43200 seconds)
+      const tokenExpiresAt = new Date();
+      if (tokenData.expires_in) {
+        tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + tokenData.expires_in);
+      } else {
+        // Default to 12 hours if not provided
+        tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + 43200);
+      }
+      
+      console.log(`   Token Expires At: ${tokenExpiresAt.toISOString()}`);
+      
       // Update organization with Slack integration data
+      // IMPORTANT: Save both access token and refresh token for token rotation
       const updateData = {
-        slackBotToken: tokenData.access_token,
+        slackBotToken: tokenData.access_token, // Legacy field for backwards compatibility
+        slackAccessToken: tokenData.access_token, // OAuth access token (expires)
+        slackRefreshToken: tokenData.refresh_token || null, // OAuth refresh token (single-use)
+        slackTokenExpiresAt: tokenExpiresAt, // When the access token expires
         slackWorkspaceId: tokenData.team?.id || tokenData.team_id,
         slackChannelId: null, // Will be set separately by admin
         enableSlackIntegration: true,
@@ -16611,7 +16628,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
       
       console.log(`📝 Updating organization ${orgId} with Slack data...`);
-      console.log(`   Bot Token: ${updateData.slackBotToken?.substring(0, 10)}...`);
+      console.log(`   Access Token: ${updateData.slackAccessToken?.substring(0, 10)}...`);
+      console.log(`   Refresh Token: ${updateData.slackRefreshToken ? updateData.slackRefreshToken.substring(0, 10) + '...' : 'NOT PROVIDED'}`);
+      console.log(`   Token Expires At: ${updateData.slackTokenExpiresAt?.toISOString()}`);
       console.log(`   Workspace ID: ${updateData.slackWorkspaceId}`);
       console.log(`   Connection Status: ${updateData.slackConnectionStatus}`);
       console.log(`   Last Connected: ${updateData.slackLastConnected.toISOString()}`);
