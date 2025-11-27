@@ -1173,10 +1173,15 @@ export function IntegrationsDashboard() {
                       <Button
                         onClick={async () => {
                           try {
+                            // First get CSRF token
+                            const csrfResponse = await fetch('/api/csrf-token', { credentials: 'include' });
+                            const csrfData = await csrfResponse.json();
+                            
                             const response = await fetch('/api/integrations/slack/diagnose', {
                               method: 'POST',
                               headers: {
                                 'Content-Type': 'application/json',
+                                'X-CSRF-Token': csrfData.csrfToken,
                               },
                               credentials: 'include'
                             });
