@@ -353,17 +353,17 @@ export default function Wins() {
                       name="userId"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Team Member</FormLabel>
+                          <FormLabel>Who is this recognition for?</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger data-testid="select-win-user">
-                                <SelectValue placeholder="Select team member..." />
+                                <SelectValue placeholder="Select the person being recognized..." />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
                               {users.map((user) => (
                                 <SelectItem key={user.id} value={user.id}>
-                                  {user.name}
+                                  {user.name} {user.id === currentUser?.id ? "(You)" : ""}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -377,15 +377,15 @@ export default function Wins() {
                       name="nominatedBy"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Nominated By (Optional)</FormLabel>
+                          <FormLabel>Who is giving this recognition?</FormLabel>
                           <Select onValueChange={field.onChange} value={field.value || currentUser?.id || ""}>
                             <FormControl>
                               <SelectTrigger data-testid="select-win-nominator">
-                                <SelectValue placeholder="Select nominator..." />
+                                <SelectValue placeholder="Select who is recognizing them..." />
                               </SelectTrigger>
                             </FormControl>
                             <SelectContent>
-                              <SelectItem value="none">None</SelectItem>
+                              <SelectItem value="none">None (Anonymous)</SelectItem>
                               {users.map((user) => (
                                 <SelectItem key={user.id} value={user.id}>
                                   {user.name} {user.id === currentUser?.id ? "(You)" : ""}
