@@ -12596,20 +12596,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`   Team ID: ${tokenData.team?.id}`);
       console.log(`   Team Name: ${tokenData.team?.name}`);
       console.log(`   Access Token: ${tokenData.access_token?.substring(0, 10)}...`);
+      console.log(`   Refresh Token: ${tokenData.refresh_token ? tokenData.refresh_token.substring(0, 10) + '... ✅' : '❌ Not provided (token rotation may not be enabled)'}`);
+      console.log(`   Expires In: ${tokenData.expires_in ? tokenData.expires_in + ' seconds' : 'Not specified (non-rotating token)'}`);
       console.log(`   Bot User ID: ${tokenData.bot_user_id}`);
       console.log(`   Bot Scopes: ${tokenData.scope}`);
       
-      // Update organization with bot token
-      const updateData = {
+      // Calculate token expiration if expires_in is provided
+      let tokenExpiresAt: Date | null = null;
+      if (tokenData.expires_in) {
+        tokenExpiresAt = new Date();
+        tokenExpiresAt.setSeconds(tokenExpiresAt.getSeconds() + tokenData.expires_in);
+        console.log(`   Token expires at: ${tokenExpiresAt.toISOString()}`);
+      }
+      
+      // Update organization with bot token AND refresh token for automatic renewal
+      const updateData: Record<string, any> = {
         slackBotToken: tokenData.access_token,
         slackWorkspaceId: tokenData.team?.id || tokenData.team_id,
         slackConnectionStatus: 'connected' as const,
         slackLastConnected: new Date(),
-        enableSlackIntegration: true
+        enableSlackIntegration: true,
+        // CRITICAL: Save OAuth tokens for automatic refresh
+        slackAccessToken: tokenData.access_token,
+        slackRefreshToken: tokenData.refresh_token || null,
+        slackTokenExpiresAt: tokenExpiresAt
       };
       
       console.log(`📝 Updating organization ${orgId} with bot token...`);
       console.log(`   Bot Token: ${updateData.slackBotToken?.substring(0, 10)}...`);
+      console.log(`   Refresh Token: ${updateData.slackRefreshToken ? updateData.slackRefreshToken.substring(0, 10) + '... ✅' : '❌ None (token rotation may not be enabled in Slack)'}`);
+      console.log(`   Token Expires: ${updateData.slackTokenExpiresAt ? updateData.slackTokenExpiresAt.toISOString() : 'Never (non-rotating)'}`);
       console.log(`   Workspace ID: ${updateData.slackWorkspaceId}`);
       console.log(`   Connection Status: ${updateData.slackConnectionStatus}`);
       console.log(`   Last Connected: ${updateData.slackLastConnected.toISOString()}`);
@@ -12650,8 +12666,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`✅ VERIFIED: Bot token successfully persisted`);
       }
       
+      // Verify refresh token saved (critical for automatic token renewal)
+      if (updateData.slackRefreshToken) {
+        if (verificationOrg.slackRefreshToken === updateData.slackRefreshToken) {
+          console.log(`✅ VERIFIED: Refresh token saved - automatic renewal enabled`);
+        } else {
+          console.error(`❌ CRITICAL: Refresh token not persisted - tokens will expire!`);
+        }
+      } else {
+        console.log(`⚠️ NOTE: No refresh token provided by Slack`);
+        console.log(`   This means either:`);
+        console.log(`   1. Token rotation is NOT enabled in your Slack app (tokens won't expire - good!)`);
+        console.log(`   2. Or there was an issue with the OAuth flow`);
+        console.log(`   To check: Go to api.slack.com → Your App → OAuth & Permissions → Token Rotation`);
+      }
+      
       console.log(`✅ BOT OAUTH COMPLETE: Organization ${updatedOrg.name} connected to Slack workspace ${tokenData.team?.name} (${tokenData.team?.id})`);
       console.log(`📋 Bot token starts with: ${tokenData.access_token?.substring(0, 10)}...`);
+      console.log(`🔄 Token Rotation: ${tokenData.refresh_token ? 'ENABLED (auto-refresh active)' : 'DISABLED (tokens never expire)'}`);
       
       // Redirect to integrations page with success message
       res.redirect('/integrations?success=slack_connected');
