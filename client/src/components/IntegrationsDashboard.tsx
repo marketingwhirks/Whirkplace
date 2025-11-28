@@ -486,6 +486,18 @@ export function IntegrationsDashboard() {
     enabled: !!organizationId && !!userData && currentUser?.role === "admin",
   });
 
+  // Pre-populate form fields when integration data loads
+  useEffect(() => {
+    if (orgIntegrations) {
+      if (orgIntegrations.slackChannelId) {
+        setSlackChannelId(orgIntegrations.slackChannelId);
+      }
+      if (orgIntegrations.slackWinsChannelId) {
+        setSlackWinsChannelId(orgIntegrations.slackWinsChannelId);
+      }
+    }
+  }, [orgIntegrations]);
+
   // Slack OAuth installation flow
   const getSlackInstallUrl = useMutation({
     mutationFn: async () => {

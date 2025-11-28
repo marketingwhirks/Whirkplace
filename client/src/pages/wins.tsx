@@ -660,14 +660,14 @@ export default function Wins() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Nominated By (Optional)</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                        <Select onValueChange={(value) => field.onChange(value === "none" ? "" : value)} value={field.value || "none"}>
                           <FormControl>
                             <SelectTrigger data-testid="select-edit-win-nominator">
                               <SelectValue placeholder="Select nominator..." />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">None</SelectItem>
+                            <SelectItem value="none">None</SelectItem>
                             {users.map((user) => (
                               <SelectItem key={user.id} value={user.id}>
                                 {user.name}
@@ -693,11 +693,12 @@ export default function Wins() {
                             <div key={value} className="flex items-center space-x-2">
                               <Checkbox
                                 id={`edit-value-${value}`}
-                                checked={field.value.includes(value)}
+                                checked={(field.value || []).includes(value)}
                                 onCheckedChange={(checked) => {
+                                  const currentValues = field.value || [];
                                   const updatedValues = checked
-                                    ? [...field.value, value]
-                                    : field.value.filter((v) => v !== value);
+                                    ? [...currentValues, value]
+                                    : currentValues.filter((v) => v !== value);
                                   field.onChange(updatedValues);
                                 }}
                                 data-testid={`checkbox-edit-value-${value.replace(/\s+/g, '-')}`}
