@@ -7878,17 +7878,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/wins", requireAuth(), async (req, res) => {
     try {
-      // Add userId from current user
-      const bodyWithUserId = {
-        ...req.body,
-        userId: req.currentUser!.id
-      };
-      const winData = insertWinSchema.parse(bodyWithUserId);
+      // Parse win data - userId and teamId are both optional (one or the other is required)
+      const winData = insertWinSchema.parse(req.body);
       const sanitizedData = sanitizeForOrganization(winData, req.orgId);
       const win = await storage.createWin(req.orgId, sanitizedData);
       
       // Log successful save for debugging production issues
-      console.log(`✅ Win saved successfully for user ${req.currentUser?.email} (${win.id})`);
+      console.log(`✅ Win saved successfully for user ${req.currentUser?.email} (${win.id}), teamId: ${win.teamId}, userId: ${win.userId}`);
       
       // Send response immediately to prevent timeouts in production
       res.status(201).json(win);
@@ -7899,16 +7895,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Get the organization for Slack channel configuration
           const organization = await storage.getOrganization(req.orgId);
           
-          // Get users involved
-          const recipient = await storage.getUser(req.orgId, win.userId);
+          // Get recipient info - could be user or team
+          let recipientName: string | null = null;
+          let recipient: any = null;
+          
+          if (win.teamId) {
+            // Team win - get team name
+            const team = await storage.getTeam(req.orgId, win.teamId);
+            recipientName = team ? `${team.name} Team` : null;
+          } else if (win.userId) {
+            // Individual win - get user
+            recipient = await storage.getUser(req.orgId, win.userId);
+            recipientName = recipient?.name || null;
+          }
+          
           const sender = win.nominatedBy ? await storage.getUser(req.orgId, win.nominatedBy) : null;
           
           // Auto-increment team goals for wins metric
-          if (recipient?.teamId) {
+          if (win.teamId) {
+            await storage.incrementGoalsByMetric(req.orgId, "wins", win.teamId);
+          } else if (recipient?.teamId) {
             await storage.incrementGoalsByMetric(req.orgId, "wins", recipient.teamId);
           }
           
-          if (recipient) {
+          if (recipientName) {
             // Handle Slack notifications based on visibility
             if (win.isPublic && organization?.enableSlackIntegration) {
               // Public win: post to organization's configured wins channel, or fallback to main channel
@@ -7933,7 +7943,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   announceWin(
                     win.title, 
                     win.description, 
-                    recipient.name, 
+                    recipientName, 
                     sender?.name,
                     channelId,
                     req.orgId
@@ -7948,41 +7958,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   console.log(`⚠️ Win created but Slack notification failed or timed out`);
                 }
               }
-            } else {
-              // Private win: send DM to recipient if they have a Slack ID
-              if (recipient.slackUserId) {
-                console.log(`💌 Sending private win DM to ${recipient.name} (${recipient.slackUserId})`);
-                const { sendPrivateWinNotification } = await import('./services/slack');
-                
-                // Add timeout to Slack notification to prevent hanging
-                const notificationTimeout = new Promise<string | undefined>((resolve) => 
-                  setTimeout(() => {
-                    console.warn('⏱️ Slack DM timeout - skipping');
-                    resolve(undefined);
-                  }, 5000)
-                );
-                
-                const slackMessageId = await Promise.race([
-                  sendPrivateWinNotification(
-                    win.title,
-                    win.description,
-                    recipient.slackUserId,
-                    recipient.name,
-                    sender?.name || req.currentUser!.name,
-                    sender?.name
-                  ),
-                  notificationTimeout
-                ]);
-                
-                if (slackMessageId) {
-                  await storage.updateWin(req.orgId, win.id, { slackMessageId });
-                }
-              } else {
-                console.log(`⚠️ Cannot send private win DM to ${recipient.name}: No Slack user ID`);
+            } else if (!win.teamId && recipient?.slackUserId) {
+              // Private win: send DM to recipient if they have a Slack ID (only for individual wins)
+              console.log(`💌 Sending private win DM to ${recipient.name} (${recipient.slackUserId})`);
+              const { sendPrivateWinNotification } = await import('./services/slack');
+              
+              // Add timeout to Slack notification to prevent hanging
+              const notificationTimeout = new Promise<string | undefined>((resolve) => 
+                setTimeout(() => {
+                  console.warn('⏱️ Slack DM timeout - skipping');
+                  resolve(undefined);
+                }, 5000)
+              );
+              
+              const slackMessageId = await Promise.race([
+                sendPrivateWinNotification(
+                  win.title,
+                  win.description,
+                  recipient.slackUserId,
+                  recipient.name,
+                  sender?.name || req.currentUser!.name,
+                  sender?.name
+                ),
+                notificationTimeout
+              ]);
+              
+              if (slackMessageId) {
+                await storage.updateWin(req.orgId, win.id, { slackMessageId });
               }
             }
           } else {
-            console.warn(`⚠️ Could not find recipient user for win ${win.id}`);
+            console.warn(`⚠️ Could not find recipient for win ${win.id}`);
           }
         } catch (error) {
           console.error("Failed to handle post-win tasks:", error);

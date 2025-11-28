@@ -533,7 +533,8 @@ export const wins = pgTable("wins", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),
   description: text("description").notNull(),
-  userId: varchar("user_id").notNull(),
+  userId: varchar("user_id"), // Nullable - for individual wins
+  teamId: varchar("team_id"), // Nullable - for team wins
   organizationId: varchar("organization_id").notNull(),
   nominatedBy: varchar("nominated_by"),
   isPublic: boolean("is_public").notNull().default(false),

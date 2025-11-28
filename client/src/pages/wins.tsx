@@ -28,19 +28,24 @@ import { TOUR_IDS } from "@/lib/tours/tour-configs";
 import { useManagedTour } from "@/contexts/TourProvider";
 import { EmojiReactions } from "@/components/ui/emoji-reactions";
 
-import type { Win, User, InsertWin, CompanyValue } from "@shared/schema";
+import type { Win, User, Team, InsertWin, CompanyValue } from "@shared/schema";
 import { insertWinSchema, DefaultCompanyValues, defaultCompanyValuesArray } from "@shared/schema";
 
 // Form schemas - extend shared schema for UI-specific validation
 const winFormSchema = insertWinSchema.extend({
   title: z.string().min(1, "Title is required").max(100, "Title too long"),
   description: z.string().min(1, "Description is required").max(500, "Description too long"),
-  userId: z.string().min(1, "User is required"),
+  userId: z.string().optional().nullable(),
+  teamId: z.string().optional().nullable(),
   nominatedBy: z.string().optional(),
   values: z.array(z.string()).min(1, "At least one company value must be selected"),
+}).refine((data) => data.userId || data.teamId, {
+  message: "Either a team member or team must be selected",
+  path: ["userId"],
 });
 
 type WinForm = z.infer<typeof winFormSchema>;
+type WinType = "individual" | "team";
 
 export default function Wins() {
   const { toast } = useToast();
@@ -48,6 +53,7 @@ export default function Wins() {
   const [editingWin, setEditingWin] = useState<Win | null>(null);
   const [filter, setFilter] = useState<"all" | "public" | "private">("all");
   const [deleteWin, setDeleteWin] = useState<Win | null>(null);
+  const [winType, setWinType] = useState<WinType>("individual");
   
   // Tour management
   const tourManager = useManagedTour(TOUR_IDS.WINS_INTRO);
@@ -62,6 +68,11 @@ export default function Wins() {
     queryKey: ["/api/users"],
   });
 
+  // Fetch teams for team wins
+  const { data: teams = [] } = useQuery<Team[]>({
+    queryKey: ["/api/teams"],
+  });
+
   // Fetch current user for defaults
   const { data: currentUser } = useCurrentUser();
 
@@ -73,6 +84,7 @@ export default function Wins() {
       description: "",
       isPublic: false,
       userId: "",
+      teamId: "",
       nominatedBy: "",
       values: [],
       organizationId: "",
@@ -112,6 +124,8 @@ export default function Wins() {
     mutationFn: async (data: WinForm) => {
       const response = await apiRequest("POST", "/api/wins", {
         ...data,
+        userId: data.userId || null,
+        teamId: data.teamId || null,
         nominatedBy: data.nominatedBy === "none" ? null : data.nominatedBy || null,
       });
       return await response.json();
@@ -123,10 +137,12 @@ export default function Wins() {
         description: "",
         isPublic: false,
         userId: "",
+        teamId: "",
         nominatedBy: currentUser?.id || "",
         values: [],
         organizationId: currentUser?.organizationId || "",
       });
+      setWinType("individual");
       setShowCreateDialog(false);
       toast({
         title: "Success",
@@ -192,6 +208,29 @@ export default function Wins() {
   const getUserName = (userId: string) => {
     const user = users.find(u => u.id === userId);
     return user?.name || "Unknown User";
+  };
+
+  // Get team name by ID
+  const getTeamName = (teamId: string) => {
+    const team = teams.find(t => t.id === teamId);
+    return team?.name || "Unknown Team";
+  };
+
+  // Get recipient name (user or team)
+  const getRecipientName = (win: Win) => {
+    if (win.teamId) {
+      return getTeamName(win.teamId);
+    }
+    if (win.userId) {
+      return getUserName(win.userId);
+    }
+    return "Unknown";
+  };
+
+  // Get recipient initials (user or team)
+  const getRecipientInitials = (win: Win) => {
+    const name = getRecipientName(win);
+    return name.split(' ').map(n => n[0]).join('').toUpperCase();
   };
 
   // Filter wins based on current filter
@@ -348,30 +387,79 @@ export default function Wins() {
                         </FormItem>
                       )}
                     />
-                    <FormField
-                      control={createForm.control}
-                      name="userId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Who is this recognition for?</FormLabel>
-                          <Select onValueChange={field.onChange} value={field.value}>
-                            <FormControl>
-                              <SelectTrigger data-testid="select-win-user">
-                                <SelectValue placeholder="Select the person being recognized..." />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {users.map((user) => (
-                                <SelectItem key={user.id} value={user.id}>
-                                  {user.name} {user.id === currentUser?.id ? "(You)" : ""}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    {/* Win Type Toggle */}
+                    <div className="space-y-3">
+                      <FormLabel>Recognition Type</FormLabel>
+                      <Tabs value={winType} onValueChange={(value) => {
+                        setWinType(value as WinType);
+                        if (value === "team") {
+                          createForm.setValue("userId", "");
+                        } else {
+                          createForm.setValue("teamId", "");
+                        }
+                      }} className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                          <TabsTrigger value="individual" data-testid="tab-individual-win">Individual</TabsTrigger>
+                          <TabsTrigger value="team" data-testid="tab-team-win">Team</TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+                    </div>
+
+                    {/* Individual User Selection */}
+                    {winType === "individual" && (
+                      <FormField
+                        control={createForm.control}
+                        name="userId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Who is this recognition for?</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value || ""}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-win-user">
+                                  <SelectValue placeholder="Select the person being recognized..." />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {users.map((user) => (
+                                  <SelectItem key={user.id} value={user.id}>
+                                    {user.name} {user.id === currentUser?.id ? "(You)" : ""}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+
+                    {/* Team Selection */}
+                    {winType === "team" && (
+                      <FormField
+                        control={createForm.control}
+                        name="teamId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Which team is this recognition for?</FormLabel>
+                            <Select onValueChange={field.onChange} value={field.value || ""}>
+                              <FormControl>
+                                <SelectTrigger data-testid="select-win-team">
+                                  <SelectValue placeholder="Select the team being recognized..." />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {teams.map((team) => (
+                                  <SelectItem key={team.id} value={team.id}>
+                                    {team.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                     <FormField
                       control={createForm.control}
                       name="nominatedBy"
@@ -515,7 +603,7 @@ export default function Wins() {
                       <div className="flex items-start space-x-3">
                         <Avatar className="w-10 h-10">
                           <AvatarFallback>
-                            {getUserName(win.userId).split(' ').map(n => n[0]).join('')}
+                            {getRecipientInitials(win)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1">
@@ -541,9 +629,12 @@ export default function Wins() {
                             </Badge>
                           </div>
                           <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                            <span>By {getUserName(win.userId)}</span>
+                            <span>
+                              {win.teamId ? "Team: " : ""}
+                              {getRecipientName(win)}
+                            </span>
                             {win.nominatedBy && (
-                              <span>Nominated by {getUserName(win.nominatedBy)}</span>
+                              <span>Recognized by {getUserName(win.nominatedBy)}</span>
                             )}
                             <span>{win.createdAt ? formatDistanceToNow(new Date(win.createdAt), { addSuffix: true }) : "Just now"}</span>
                           </div>
