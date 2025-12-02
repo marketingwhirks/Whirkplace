@@ -222,10 +222,10 @@ app.use((req, res, next) => {
     
     // Initialize reminder scheduler (checks hourly for organizations that need reminders)
     try {
-      const { initializeReminderScheduler } = await import("./services/reminder-scheduler");
+      const { initializeReminderScheduler, initializeReviewReminderScheduler } = await import("./services/reminder-scheduler");
       const { storage } = await import("./storage");
       initializeReminderScheduler(storage);
-      console.log("Initializing weekly reminder scheduler for all organizations...");
+      initializeReviewReminderScheduler(storage);
     } catch (error) {
       console.error("Failed to initialize reminder scheduler:", error);
       // Don't throw here, as this is not critical for startup

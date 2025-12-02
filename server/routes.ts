@@ -15520,7 +15520,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         checkinReminderDay: organization.checkinReminderDay,
         checkinReminderDayName: organization.checkinReminderDay ? dayNames[organization.checkinReminderDay] : null,
         checkinReminderTime: organization.checkinReminderTime,
-        timezone: organization.timezone
+        timezone: organization.timezone,
+        reviewerReminderEnabled: organization.reviewerReminderEnabled,
+        reviewerReminderDay: organization.reviewerReminderDay,
+        reviewerReminderDayName: organization.reviewerReminderDay != null ? dayNames[organization.reviewerReminderDay] : null,
+        reviewerReminderTime: organization.reviewerReminderTime
       });
     } catch (error) {
       console.error("GET /api/organizations/:id/checkin-schedule - Error:", error);
@@ -15537,6 +15541,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         checkinDueTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format"),
         checkinReminderDay: z.number().min(0).max(6).optional().nullable(),
         checkinReminderTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format"),
+        // Review reminder settings (for managers with pending reviews)
+        reviewerReminderEnabled: z.boolean().optional(),
+        reviewerReminderDay: z.number().min(0).max(6).optional().nullable(),
+        reviewerReminderTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format").optional(),
       });
       
       const scheduleData = checkinScheduleSchema.parse(req.body);
@@ -15556,7 +15564,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         checkinDueDay: updatedOrganization.checkinDueDay,
         checkinDueTime: updatedOrganization.checkinDueTime,
         checkinReminderDay: updatedOrganization.checkinReminderDay,
-        checkinReminderTime: updatedOrganization.checkinReminderTime
+        checkinReminderTime: updatedOrganization.checkinReminderTime,
+        reviewerReminderEnabled: updatedOrganization.reviewerReminderEnabled,
+        reviewerReminderDay: updatedOrganization.reviewerReminderDay,
+        reviewerReminderTime: updatedOrganization.reviewerReminderTime
       });
     } catch (error) {
       if (error instanceof z.ZodError) {

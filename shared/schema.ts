@@ -246,10 +246,14 @@ export const organizations = pgTable("organizations", {
   checkinDueTime: text("checkin_due_time").notNull().default("17:00"), // HH:MM format in 24-hour (default 5 PM)
   checkinReminderDay: integer("checkin_reminder_day"), // Optional: day to send reminders (null = same as due day)
   checkinReminderTime: text("checkin_reminder_time").notNull().default("09:00"), // HH:MM format (default 9 AM)
+  // Review Reminder Configuration (for managers/reviewers with pending reviews)
+  reviewerReminderEnabled: boolean("reviewer_reminder_enabled").notNull().default(false), // Enable scheduled review reminders
+  reviewerReminderDay: integer("reviewer_reminder_day"), // Optional: day to send review reminders (0=Sunday, 6=Saturday)
+  reviewerReminderTime: text("reviewer_reminder_time").notNull().default("09:00"), // HH:MM format (default 9 AM)
   // Legacy fields - kept for backward compatibility during migration
   weeklyCheckInSchedule: text("weekly_check_in_schedule"), // deprecated - use checkinDueDay instead
-  reviewReminderDay: text("review_reminder_day"), // deprecated - use checkinReminderDay instead
-  reviewReminderTime: text("review_reminder_time"), // deprecated - use checkinReminderTime instead
+  reviewReminderDay: text("review_reminder_day"), // deprecated - kept for backward compatibility
+  reviewReminderTime: text("review_reminder_time"), // deprecated - kept for backward compatibility
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().default(sql`now()`),
 });

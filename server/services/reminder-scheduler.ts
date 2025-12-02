@@ -1,5 +1,5 @@
 import * as cron from 'node-cron';
-import { getCheckinReminderDate } from '@shared/utils/dueDates';
+import { getCheckinReminderDate, getReviewerReminderDate } from '@shared/utils/dueDates';
 import type { Organization } from '@shared/schema';
 
 /**
@@ -72,6 +72,60 @@ export function initializeReminderScheduler(storage: any) {
       }
     }, 30000); // 30 seconds after startup
   }
+  
+  return cronTask;
+}
+
+/**
+ * Initialize the review reminder scheduler that runs every hour to check if any organization
+ * needs to send review reminders to managers with pending reviews
+ */
+export function initializeReviewReminderScheduler(storage: any) {
+  console.log('Initializing weekly reminder scheduler for all organizations...');
+  
+  // Run every hour at minute 5 (offset from check-in reminders at minute 0)
+  const cronTask = cron.schedule('5 * * * *', async () => {
+    try {
+      console.log('Checking organizations for scheduled review reminders...');
+      
+      const now = new Date();
+      const organizations = await storage.getAllOrganizations();
+      
+      for (const org of organizations) {
+        try {
+          // Skip if organization is not active, doesn't have Slack enabled, or review reminders disabled
+          if (!org.isActive || !org.enableSlackIntegration || !org.reviewerReminderEnabled) {
+            continue;
+          }
+          
+          // Calculate when the review reminder should be sent for this organization
+          const reviewReminderDate = getReviewerReminderDate(now, org);
+          
+          // Check if we're within the same hour as the review reminder time
+          const hourDiff = Math.abs(now.getTime() - reviewReminderDate.getTime()) / (1000 * 60 * 60);
+          
+          if (hourDiff < 1) {
+            // It's time to send review reminders for this organization
+            console.log(`Sending scheduled review reminders for organization ${org.name}...`);
+            
+            // Import the sendScheduledReviewReminders function from slack service
+            const { sendScheduledReviewReminders } = await import('./slack');
+            const result = await sendScheduledReviewReminders(org.id, storage);
+            
+            console.log(`Review reminders for ${org.name}: ${result.remindersSent} sent, ${result.errors} errors`);
+          }
+        } catch (orgError) {
+          console.error(`Failed to check/send review reminders for organization ${org.name}:`, orgError);
+        }
+      }
+      
+      console.log('Review reminder check completed for all organizations');
+    } catch (error) {
+      console.error('Error in review reminder scheduler:', error);
+    }
+  });
+  
+  console.log('✅ Review reminder scheduler initialized - checking every hour for organizations that need review reminders');
   
   return cronTask;
 }

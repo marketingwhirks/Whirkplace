@@ -172,6 +172,64 @@ export function getReviewDueDate(weekOf: Date, organization?: Partial<Organizati
 }
 
 /**
+ * Calculates the reviewer reminder date/time based on the organization's review reminder settings.
+ * This is used to notify managers/reviewers about pending check-in reviews they need to complete.
+ * 
+ * @param currentDate - The current date to calculate from
+ * @param organization - The organization with custom schedule settings (optional)
+ * @returns A Date object representing when the review reminder should be sent (stored as UTC)
+ */
+export function getReviewerReminderDate(currentDate: Date, organization?: Partial<Organization>): Date {
+  // Get configuration from organization or use defaults
+  const config = {
+    reviewerReminderDay: organization?.reviewerReminderDay ?? 1, // Default Monday
+    reviewerReminderTime: organization?.reviewerReminderTime ?? '09:00', // Default 9 AM
+    timezone: organization?.timezone ?? DEFAULT_TIMEZONE
+  };
+  
+  // Convert the input date to the organization's timezone
+  const localDate = toZonedTime(currentDate, config.timezone);
+  
+  // Get the start of the current week (Saturday) in the organization's timezone
+  const saturday = startOfWeek(localDate, { weekStartsOn: 6 });
+  
+  // Add days to get to the reminder day
+  // From Saturday: Saturday=0, Sunday=1, Monday=2, Tuesday=3, Wednesday=4, Thursday=5, Friday=6
+  let daysToAdd: number;
+  if (config.reviewerReminderDay === 6) {
+    daysToAdd = 0; // Saturday
+  } else if (config.reviewerReminderDay === 5) {
+    daysToAdd = 6; // Friday
+  } else if (config.reviewerReminderDay === 0) {
+    daysToAdd = 1; // Sunday
+  } else if (config.reviewerReminderDay < 0 || config.reviewerReminderDay === null) {
+    daysToAdd = 2; // Default to Monday
+  } else {
+    // Monday(1)=2, Tuesday(2)=3, Wednesday(3)=4, Thursday(4)=5
+    daysToAdd = config.reviewerReminderDay + 1;
+  }
+  const reminderDate = addDays(saturday, daysToAdd);
+  
+  // Parse the reminder time
+  const { hours, minutes } = parseTimeString(config.reviewerReminderTime);
+  
+  // Set the time on the reminder day
+  const reminderDateWithTime = setMilliseconds(
+    setSeconds(
+      setMinutes(
+        setHours(reminderDate, hours),
+        minutes
+      ),
+      0
+    ),
+    0
+  );
+  
+  // Convert back to UTC for storage
+  return fromZonedTime(reminderDateWithTime, config.timezone);
+}
+
+/**
  * Checks if a submission was made on time (on or before the due date).
  * 
  * @param submittedAt - The timestamp when the submission was made (null if not submitted)

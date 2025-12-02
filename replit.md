@@ -23,6 +23,9 @@ The frontend uses React 18 with TypeScript, Tailwind CSS, and shadcn/ui componen
     - **Wins**: Peer-to-peer recognition system with private/public visibility and integration with company values.
     - **Questions**: Customizable question bank with pre-built categories.
     - **Slack Integration**: Enhanced onboarding, configurable wins channel, welcome DMs, and 8 slash commands.
+    - **Reminder System**: 
+      - Check-in reminders: Configurable day/time to remind users to complete check-ins.
+      - Review reminders: Optional scheduled reminders for managers with pending check-in reviews. Configurable via Settings → Admin Settings → Check-in Schedule. Uses hourly cron scheduler to check if it's time to send reminders based on organization timezone.
 
 ### System Design Choices
 The application adopts a multi-tenant architecture with data isolation. A storage abstraction layer in the backend allows for flexible database implementations. Secure authentication mechanisms, including OAuth and SSO, are central to the system. Account ownership and role-based access control (Super admin > Account owner > Regular admin > Manager > Member) ensure robust management. Check-in weeks are calculated using Monday as the week start. Super administrators have access to a comprehensive data management tool for fixing production data issues, with audit logging and safety features. Security hardening includes robust session management, disabled automatic schema sync in production, environment-dependent development authentication, organization-scoped data access enforcement, SQL injection prevention, CSRF protection, rate limiting, and comprehensive data validation.

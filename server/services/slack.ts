@@ -5969,3 +5969,175 @@ export async function sendMissingCheckinReminder(
     return false;
   }
 }
+
+/**
+ * Send scheduled review reminders to managers/reviewers who have pending check-in reviews.
+ * This is called by the review reminder scheduler on the configured day/time.
+ * 
+ * @param organizationId - The organization to send reminders for
+ * @param storage - Storage interface
+ * @returns Object with count of reminders sent and errors
+ */
+export async function sendScheduledReviewReminders(organizationId: string, storage: any) {
+  try {
+    console.log(`Running scheduled review reminders for organization ${organizationId}`);
+    
+    const organization = await storage.getOrganization(organizationId);
+    if (!organization || !organization.isActive) {
+      console.log(`Organization ${organizationId} is not active, skipping review reminders`);
+      return { remindersSent: 0, errors: 0 };
+    }
+    
+    // Get all active users who could be reviewers (managers and admins)
+    const allUsers = await storage.getAllUsers(organizationId, false);
+    const reviewers = allUsers.filter((user: any) => 
+      user.isActive && (user.role === 'admin' || user.role === 'manager')
+    );
+    
+    let remindersSent = 0;
+    let errors = 0;
+    
+    // Get organization-specific Slack client
+    let slackClient: WebClient | null = slack;
+    
+    try {
+      const orgToken = await getValidSlackToken(organizationId);
+      if (orgToken) {
+        console.log(`Using organization-specific token for review reminders`);
+        slackClient = new WebClient(orgToken);
+      } else {
+        console.log(`No org token available for ${organizationId}, falling back to global token`);
+      }
+    } catch (tokenError) {
+      console.error(`Error getting org token:`, tokenError);
+    }
+    
+    if (!slackClient) {
+      console.warn('No Slack client available for review reminders');
+      return { remindersSent: 0, errors: 0 };
+    }
+    
+    const baseUrl = process.env.PUBLIC_BASE_URL || process.env.REPL_URL || 'https://whirkplace.com';
+    const reviewsUrl = `${baseUrl}/#/reviews`;
+    
+    for (const reviewer of reviewers) {
+      try {
+        // Get pending check-ins for this reviewer
+        const pendingCheckins = await storage.getPendingCheckins(
+          organizationId,
+          reviewer.id,
+          reviewer.role === 'admin' ? false : true // includeOwnIfNoManager for non-admins
+        );
+        
+        if (!pendingCheckins || pendingCheckins.length === 0) {
+          console.log(`No pending reviews for ${reviewer.name}, skipping`);
+          continue;
+        }
+        
+        // Check if user has Slack ID
+        if (!reviewer.slackUserId) {
+          console.log(`No Slack ID for ${reviewer.name}, skipping Slack reminder`);
+          continue;
+        }
+        
+        // Check notification preferences
+        const { shouldSendNotification } = await import('./notificationPreferences');
+        const shouldSend = await shouldSendNotification(
+          reviewer.id,
+          'slack',
+          'checkinSubmissions', // Using existing preference for review notifications
+          organizationId,
+          true // Respect DND and working hours
+        );
+        
+        if (!shouldSend) {
+          console.log(`Skipping review reminder for ${reviewer.name} - notifications disabled or outside schedule`);
+          continue;
+        }
+        
+        // Build the reminder message
+        const pendingCount = pendingCheckins.length;
+        const memberNames = pendingCheckins
+          .slice(0, 3)
+          .map((c: any) => c.userName || c.user?.name || 'Team Member')
+          .join(', ');
+        const andMore = pendingCount > 3 ? ` and ${pendingCount - 3} more` : '';
+        
+        const reminderBlocks = [
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `📋 *Pending Check-in Reviews*`
+            }
+          },
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `Hi ${reviewer.name}! 👋 You have *${pendingCount}* pending check-in review${pendingCount > 1 ? 's' : ''} waiting for your feedback.`
+            }
+          },
+          {
+            type: 'section' as const,
+            text: {
+              type: 'mrkdwn' as const,
+              text: `*Team members waiting for review:*\n${memberNames}${andMore}`
+            }
+          },
+          {
+            type: 'context' as const,
+            elements: [
+              {
+                type: 'mrkdwn' as const,
+                text: `💡 Taking time to review check-ins helps your team feel heard and supported.`
+              }
+            ]
+          },
+          {
+            type: 'actions' as const,
+            elements: [
+              {
+                type: 'button' as const,
+                text: {
+                  type: 'plain_text' as const,
+                  text: '📝 Review Check-ins Now'
+                },
+                url: reviewsUrl,
+                style: 'primary' as const
+              }
+            ]
+          }
+        ];
+        
+        // Send DM to the reviewer
+        const dmResult = await slackClient.conversations.open({
+          users: reviewer.slackUserId
+        });
+        
+        if (dmResult.ok && dmResult.channel?.id) {
+          await slackClient.chat.postMessage({
+            channel: dmResult.channel.id,
+            blocks: reminderBlocks,
+            text: `You have ${pendingCount} pending check-in reviews waiting for your feedback.`
+          });
+          
+          console.log(`✅ Sent review reminder to ${reviewer.name} (${pendingCount} pending)`);
+          remindersSent++;
+        } else {
+          console.warn(`Failed to open DM with ${reviewer.name}: ${dmResult.error}`);
+          errors++;
+        }
+      } catch (userError) {
+        console.error(`Error sending review reminder to ${reviewer.name}:`, userError);
+        errors++;
+      }
+    }
+    
+    console.log(`Review reminders completed: ${remindersSent} sent, ${errors} errors`);
+    return { remindersSent, errors };
+  } catch (error) {
+    console.error('Error in sendScheduledReviewReminders:', error);
+    return { remindersSent: 0, errors: 1 };
+  }
+}

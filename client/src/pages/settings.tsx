@@ -71,6 +71,10 @@ const checkinScheduleFormSchema = z.object({
   checkinDueTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
   checkinReminderDay: z.number().min(0).max(6).optional().nullable(),
   checkinReminderTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)"),
+  // Review reminder settings (for managers with pending reviews)
+  reviewerReminderEnabled: z.boolean().default(false),
+  reviewerReminderDay: z.number().min(0).max(6).optional().nullable(),
+  reviewerReminderTime: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/, "Invalid time format (HH:MM)").default("09:00"),
 });
 
 const passwordFormSchema = z.object({
@@ -615,6 +619,10 @@ export default function Settings() {
       checkinDueTime: currentOrganization?.checkinDueTime || "17:00", // Default to 5 PM
       checkinReminderDay: currentOrganization?.checkinReminderDay,
       checkinReminderTime: currentOrganization?.checkinReminderTime || "09:00", // Default to 9 AM
+      // Review reminder settings
+      reviewerReminderEnabled: currentOrganization?.reviewerReminderEnabled ?? false,
+      reviewerReminderDay: currentOrganization?.reviewerReminderDay,
+      reviewerReminderTime: currentOrganization?.reviewerReminderTime || "09:00",
     },
   });
 
@@ -1642,6 +1650,94 @@ export default function Settings() {
                                   </FormControl>
                                   <FormDescription>
                                     Time to send check-in reminders (24-hour format)
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
+
+                          {/* Review Reminder Settings */}
+                          <div className="space-y-4">
+                            <h3 className="text-sm font-semibold">Review Reminders (for Managers)</h3>
+                            <p className="text-sm text-muted-foreground">
+                              Send scheduled reminders to managers and admins when they have pending check-in reviews.
+                            </p>
+                            
+                            <FormField
+                              control={checkinScheduleForm.control}
+                              name="reviewerReminderEnabled"
+                              render={({ field }) => (
+                                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                                  <div className="space-y-0.5">
+                                    <FormLabel className="text-base">Enable Review Reminders</FormLabel>
+                                    <FormDescription>
+                                      Send Slack messages to managers with pending reviews
+                                    </FormDescription>
+                                  </div>
+                                  <FormControl>
+                                    <Switch
+                                      checked={field.value}
+                                      onCheckedChange={field.onChange}
+                                      data-testid="switch-reviewer-reminder-enabled"
+                                    />
+                                  </FormControl>
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={checkinScheduleForm.control}
+                              name="reviewerReminderDay"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Review Reminder Day</FormLabel>
+                                  <Select
+                                    onValueChange={(value) => field.onChange(value === "none" ? null : parseInt(value))}
+                                    value={field.value === undefined || field.value === null ? "none" : field.value.toString()}
+                                    disabled={!checkinScheduleForm.watch("reviewerReminderEnabled")}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger data-testid="select-reviewer-reminder-day">
+                                        <SelectValue placeholder="Select a day" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      <SelectItem value="none">Not set</SelectItem>
+                                      <SelectItem value="0">Sunday</SelectItem>
+                                      <SelectItem value="1">Monday</SelectItem>
+                                      <SelectItem value="2">Tuesday</SelectItem>
+                                      <SelectItem value="3">Wednesday</SelectItem>
+                                      <SelectItem value="4">Thursday</SelectItem>
+                                      <SelectItem value="5">Friday</SelectItem>
+                                      <SelectItem value="6">Saturday</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                  <FormDescription>
+                                    Day to send reminders about pending reviews
+                                  </FormDescription>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={checkinScheduleForm.control}
+                              name="reviewerReminderTime"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Review Reminder Time</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="time"
+                                      placeholder="09:00"
+                                      data-testid="input-reviewer-reminder-time"
+                                      disabled={!checkinScheduleForm.watch("reviewerReminderEnabled")}
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormDescription>
+                                    Time to send review reminders (24-hour format)
                                   </FormDescription>
                                   <FormMessage />
                                 </FormItem>
